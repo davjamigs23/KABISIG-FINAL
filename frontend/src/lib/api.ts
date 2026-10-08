@@ -192,6 +192,10 @@ class KabisigApiClient {
 
   async completeProfile(data: {
     full_name: string;
+    first_name?: string;
+    middle_name?: string | null;
+    last_name?: string;
+    suffix?: string | null;
     phone?: string;
     profile_pic?: string;
     birthdate: string;
@@ -350,6 +354,10 @@ class KabisigApiClient {
     email: string;
     password?: string;
     full_name: string;
+    first_name?: string;
+    middle_name?: string | null;
+    last_name?: string;
+    suffix?: string | null;
     barangay_id: string;
     phone?: string;
     profile_pic?: string;

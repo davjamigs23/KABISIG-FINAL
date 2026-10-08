@@ -1,5 +1,6 @@
 import { formatCurrencyInput } from '../lib/utils';
 import { useState, useEffect } from 'react';
+import { composeFullName, splitFullName } from '../lib/name';
 import { 
   Building2, 
   Calendar, 
@@ -212,6 +213,7 @@ export default function OfficialPages({
   const [showYouthEditModal, setShowYouthEditModal] = useState<boolean>(false);
   const [youthEditForm, setYouthEditForm] = useState({
     name: '',
+    first_name: '',     middle_name: '',     last_name: '',     suffix: '',
     email: '',
     mobile: '',
     zone: 'Zone 1',
@@ -4298,6 +4300,9 @@ export default function OfficialPages({
                                 setSelectedYouthProfile(y);
                                 setYouthEditForm({
                                   name: y.name,
+                                  ...(y.first_name || y.last_name
+                                    ? { first_name: y.first_name || '', middle_name: y.middle_name || '', last_name: y.last_name || '', suffix: y.suffix || '' }
+                                    : splitFullName(y.name || '')),
                                   email: y.email,
                                   mobile: y.mobile,
                                   zone: y.zone,
@@ -5517,14 +5522,50 @@ export default function OfficialPages({
 
             <div className="p-6 space-y-4 text-xs font-semibold text-slate-700 max-h-[75vh] overflow-y-auto">
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Full Name *</label>
-                  <input 
-                    type="text" 
-                    value={youthEditForm.name} 
-                    onChange={(e) => setYouthEditForm({ ...youthEditForm, name: e.target.value })} 
-                    className="w-full p-2 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-[#091d64]" 
-                  />
+                <div className="col-span-2 grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">First Name *</label>
+                    <input 
+                      type="text" 
+                      value={youthEditForm.first_name || ''} 
+                      onChange={(e) => setYouthEditForm({ ...youthEditForm, first_name: e.target.value })} 
+                      className="w-full p-2 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-[#091d64]" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Last Name *</label>
+                    <input 
+                      type="text" 
+                      value={youthEditForm.last_name || ''} 
+                      onChange={(e) => setYouthEditForm({ ...youthEditForm, last_name: e.target.value })} 
+                      className="w-full p-2 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-[#091d64]" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Middle Name</label>
+                    <input 
+                      type="text" 
+                      value={youthEditForm.middle_name || ''} 
+                      onChange={(e) => setYouthEditForm({ ...youthEditForm, middle_name: e.target.value })} 
+                      className="w-full p-2 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-[#091d64]" 
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Suffix</label>
+                    <select 
+                      value={youthEditForm.suffix || ''} 
+                      onChange={(e) => setYouthEditForm({ ...youthEditForm, suffix: e.target.value })} 
+                      className="w-full p-2 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-[#091d64]" 
+                    >
+                      <option value="">None</option>
+                      <option value="Jr.">Jr.</option>
+                      <option value="Sr.">Sr.</option>
+                      <option value="II">II</option>
+                      <option value="III">III</option>
+                      <option value="IV">IV</option>
+                      <option value="V">V</option>
+                    </select>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Barangay Zone *</label>
@@ -5608,7 +5649,11 @@ export default function OfficialPages({
                 <button onClick={() => setShowYouthDetailModal(false)} className="px-4 py-2 border rounded-lg text-xs">Cancel</button>
                 <button 
                   onClick={async () => {
-                    const updated = { ...selectedYouthProfile, ...youthEditForm };
+                    const _split = (youthEditForm.first_name || youthEditForm.last_name)
+                      ? { first_name: youthEditForm.first_name, middle_name: youthEditForm.middle_name, last_name: youthEditForm.last_name, suffix: youthEditForm.suffix }
+                      : splitFullName(youthEditForm.name || '');
+                    const _composedName = composeFullName(_split) || youthEditForm.name;
+                    const updated = { ...selectedYouthProfile, ...youthEditForm, ..._split, name: _composedName };
                     setLocalYouthProfiles(prev => prev.map(y => y.id === selectedYouthProfile.id ? updated : y));
                     try {
                       const result = await kabisigApi.updateProfile(updated, selectedYouthProfile.userId);
@@ -5617,7 +5662,7 @@ export default function OfficialPages({
                         return;
                       }
                       setShowYouthDetailModal(false);
-                      alert('Profile updated for ' + youthEditForm.name + '!');
+                      alert('Profile updated for ' + _composedName + '!');
                     } catch (err: any) {
                       console.warn('Save error:', err);
                       alert('Save failed: ' + (err?.message || 'Unknown error.'));

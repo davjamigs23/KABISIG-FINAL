@@ -38,6 +38,10 @@ export interface YouthProfile {
   userId?: string;
   id: string; // Resident ID (Auto-generated, e.g. SK-2026-001)
   name: string; // Full Name (Required)
+  first_name?: string;    // Rule #1: split name field
+  middle_name?: string | null;
+  last_name?: string;
+  suffix?: string | null;
   sex: 'Male' | 'Female' | 'Other'; // Sex (Required)
   birthdate: string; // Birthdate (Required)
   age: number; // Age (Auto-calculated from birthdate)

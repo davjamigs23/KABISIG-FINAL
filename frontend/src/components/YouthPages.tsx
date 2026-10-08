@@ -43,6 +43,7 @@ import {
   History,
   Loader2
 } from 'lucide-react';
+import { composeFullName, splitFullName } from '../lib/name';
 import { QRCodeSVG } from 'qrcode.react';
 import { 
   Program, 
@@ -135,7 +136,7 @@ export default function YouthPages({
   useEffect(() => {
     if (currentYouth) {
       setYouth(currentYouth);
-      setEditForm(currentYouth);
+      setEditForm(ensureSplitName(currentYouth));
     }
   }, [currentYouth]);
 
@@ -259,6 +260,14 @@ export default function YouthPages({
     return f.submittedBy === youth.name;
   });
 
+  // Rule #1: ensure editForm has split fields populated for editing
+  const ensureSplitName = (profile: YouthProfile): YouthProfile => {
+    if ((profile.first_name && profile.first_name.trim()) || (profile.last_name && profile.last_name.trim())) {
+      return profile;
+    }
+    const parts = splitFullName(profile.name || '');
+    return { ...profile, ...parts };
+  };
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingProfile(true);
@@ -273,8 +282,16 @@ export default function YouthPages({
       }
     }
 
+    const composedName = composeFullName({
+      first_name: editForm.first_name,
+      middle_name: editForm.middle_name,
+      last_name: editForm.last_name,
+      suffix: editForm.suffix,
+    }) || editForm.name;
+
     const updatedProfile: YouthProfile = {
       ...editForm,
+      name: composedName,
       age: calculatedAge
     };
 
@@ -1019,7 +1036,7 @@ export default function YouthPages({
 
                       <button
                         onClick={() => {
-                          setEditForm(youth);
+                          setEditForm(ensureSplitName(youth));
                           setIsEditModalOpen(true);
                         }}
                         className="px-4 py-2 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-xl text-xs transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer self-center xl:self-start flex-shrink-0"
@@ -1739,14 +1756,52 @@ export default function YouthPages({
                   </h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Full Name</label>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">First Name <span className="text-rose-500">*</span></label>
                       <input 
                         type="text" 
-                        value={editForm.name} 
-                        onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                        value={editForm.first_name || ''} 
+                        onChange={(e) => setEditForm({ ...editForm, first_name: e.target.value })}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                         required
                       />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Last Name <span className="text-rose-500">*</span></label>
+                      <input 
+                        type="text" 
+                        value={editForm.last_name || ''} 
+                        onChange={(e) => setEditForm({ ...editForm, last_name: e.target.value })}
+                        className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Middle Name</label>
+                      <input 
+                        type="text" 
+                        value={editForm.middle_name || ''} 
+                        onChange={(e) => setEditForm({ ...editForm, middle_name: e.target.value })}
+                        className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">Suffix</label>
+                      <select 
+                        value={editForm.suffix || ''} 
+                        onChange={(e) => setEditForm({ ...editForm, suffix: e.target.value })}
+                        className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
+                      >
+                        <option value="">None</option>
+                        <option value="Jr.">Jr.</option>
+                        <option value="Sr.">Sr.</option>
+                        <option value="II">II</option>
+                        <option value="III">III</option>
+                        <option value="IV">IV</option>
+                        <option value="V">V</option>
+                      </select>
                     </div>
 
                     <div>
