@@ -5,6 +5,7 @@ import { supabaseAdmin, canAccessTenant, recordAuditLog } from '../services/supa
 import { sendSuccess, sendCreated, sendError } from '../utils/response.js';
 import { authenticateUser, optionalAuthenticateUser, requireActiveUser, requireRoles } from '../middleware/auth.js';
 import type { AuthRequest, FeedbackSentiment } from '../types/database.types.js';
+import { detectSpam, applyRestriction } from '../services/spam-detection.service.js';
 
 const router = express.Router();
 
@@ -107,6 +108,38 @@ router.post(
     return;
   }
 
+  // P12: spam detection BEFORE accepting the submission
+  const spamResult = await detectSpam(user.id, user.tenant_id, subject, message);
+
+  if (spamResult.action === 'temp_suspend' || spamResult.action === 'permanent_ban') {
+    await applyRestriction({
+      userId: user.id,
+      tenantId: user.tenant_id,
+      action: spamResult.action,
+      reason: spamResult.reason,
+      details: spamResult.details,
+      ipAddress: req.ip || null,
+    });
+    sendError(
+      res,
+      spamResult.action === 'permanent_ban'
+        ? 'Your account has been permanently restricted due to repeated abusive submissions.'
+        : 'Your account has been temporarily suspended (24 hours) due to suspicious submission patterns.',
+      403
+    );
+    return;
+  }
+
+  if (spamResult.action === 'flag') {
+    await applyRestriction({
+      userId: user.id,
+      tenantId: user.tenant_id,
+      action: 'flag',
+      reason: spamResult.reason,
+      details: spamResult.details,
+      ipAddress: req.ip || null,
+    });
+  }
   const textToAnalyze = `${subject} ${message}`;
   const sentimentResult = analyzeSentiment(textToAnalyze);
 
