@@ -354,5 +354,193 @@ router.post(
   }
 );
 
+// POST /api/admin/invite-sk-official - Super Admin invites SK Kagawad/Secretary/Treasurer
+const InviteSkOfficialSchema = z.object({
+  email: z.string().email('Valid email address is required'),
+  barangay_id: z.string().uuid('Valid Barangay ID is required'),
+  official_role: z.enum(['SK Kagawad', 'SK Secretary', 'SK Treasurer']),
+});
+
+router.post(
+  '/invite-sk-official',
+  authenticateUser,
+  requireRoles('SUPER_ADMIN'),
+  async (req: Request, res: Response): Promise<void> => {
+    const parseResult = InviteSkOfficialSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      sendError(res, 'Validation failed', 400, parseResult.error.flatten().fieldErrors);
+      return;
+    }
+    const { email, barangay_id, official_role } = parseResult.data;
+    const cleanEmail = email.trim().toLowerCase();
+    const authReq = req as AuthRequest;
+    const admin = authReq.user;
+    if (!admin) { sendError(res, 'Authentication required.', 401); return; }
+
+    const { data: barangay, error: bgyError } = await supabaseAdmin
+      .from('barangay').select('id, name, district').eq('id', barangay_id).single();
+    if (bgyError || !barangay) { sendError(res, 'Target Barangay does not exist in Naga City registry.', 404); return; }
+
+    let targetUserId: string = '';
+    let inviteMethod: 'email_invitation' | 'existing_auth_user' | 'temp_credentials' = 'email_invitation';
+    const redirectUrl = FRONTEND_URL + '/official-setup?invite_email=' + encodeURIComponent(cleanEmail) + '&role=official&tenant_id=' + barangay_id + '&official_role=' + encodeURIComponent(official_role);
+
+    const { data: existingUser } = await supabaseAdmin
+      .from('users').select('id, email, tenant_id, role_id, full_name, status')
+      .eq('email', cleanEmail).maybeSingle();
+
+    const { data: authUsersData, error: listAuthError } = await supabaseAdmin.auth.admin.listUsers();
+    if (listAuthError) { sendError(res, 'Failed to inspect existing auth users: ' + listAuthError.message, 500); return; }
+
+    const existingAuthUser = authUsersData?.users?.find(u => u.email?.toLowerCase() === cleanEmail);
+
+    if (existingUser) {
+      targetUserId = existingUser.id;
+      if (!existingAuthUser) {
+        const { data: inviteData, error: inviteErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(cleanEmail, {
+          data: { tenant_id: barangay_id, role_id: 3, official_role },
+          redirectTo: redirectUrl,
+        } as any);
+        if (!inviteErr && inviteData?.user) {
+          targetUserId = inviteData.user.id;
+          inviteMethod = 'email_invitation';
+        } else {
+          const tempPassword = 'KabisigOfficial' + new Date().getFullYear() + '!';
+          const { data: createData, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+            email: cleanEmail,
+            password: tempPassword,
+            email_confirm: true,
+            user_metadata: { tenant_id: barangay_id, role_id: 3, official_role },
+            redirectTo: redirectUrl,
+          } as any);
+          if (createErr || !createData?.user) { sendError(res, createErr?.message || 'Failed to initialize SK Official account.', 500); return; }
+          targetUserId = createData.user.id;
+          inviteMethod = 'temp_credentials';
+        }
+        const { error: rebindErr } = await supabaseAdmin.from('users').update({
+          id: targetUserId,
+          tenant_id: barangay_id,
+          role_id: 3,
+          full_name: existingUser.full_name || 'Pending Invitation',
+          email: cleanEmail,
+          status: 'active',
+          approved_by: admin.id,
+          updated_at: new Date().toISOString(),
+        }).eq('email', cleanEmail);
+        if (rebindErr) { sendError(res, 'Failed to rebind SK Official record: ' + rebindErr.message, 500); return; }
+      } else {
+        const { error: updateErr } = await supabaseAdmin.from('users').update({
+          tenant_id: barangay_id,
+          role_id: 3,
+          status: 'active',
+          approved_by: admin.id,
+          updated_at: new Date().toISOString(),
+        }).eq('id', existingUser.id);
+        if (updateErr) { sendError(res, 'Failed to update user record: ' + updateErr.message, 500); return; }
+      }
+    } else if (existingAuthUser) {
+      targetUserId = existingAuthUser.id;
+      inviteMethod = 'existing_auth_user';
+      const { error: insertUserErr } = await supabaseAdmin.from('users').upsert({
+        id: targetUserId,
+        tenant_id: barangay_id,
+        role_id: 3,
+        full_name: existingAuthUser.user_metadata?.full_name || '',
+        email: cleanEmail,
+        phone: null,
+        status: 'active',
+        approved_by: admin.id,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'id' });
+      if (insertUserErr) { sendError(res, 'Failed to bind existing auth user: ' + insertUserErr.message, 500); return; }
+    } else {
+      const { data: inviteData, error: inviteErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(cleanEmail, {
+        data: { tenant_id: barangay_id, role_id: 3, official_role },
+        redirectTo: redirectUrl,
+      } as any);
+      if (!inviteErr && inviteData?.user) {
+        targetUserId = inviteData.user.id;
+        inviteMethod = 'email_invitation';
+      } else {
+        const tempPassword = 'KabisigOfficial' + new Date().getFullYear() + '!';
+        const { data: createData, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+          email: cleanEmail,
+          password: tempPassword,
+          email_confirm: true,
+          user_metadata: { tenant_id: barangay_id, role_id: 3, official_role },
+          redirectTo: redirectUrl,
+        } as any);
+        if (createErr || !createData?.user) { sendError(res, createErr?.message || 'Failed to initialize SK Official account.', 500); return; }
+        targetUserId = createData.user.id;
+        inviteMethod = 'temp_credentials';
+      }
+      const { error: insertUserErr } = await supabaseAdmin.from('users').upsert({
+        id: targetUserId,
+        tenant_id: barangay_id,
+        role_id: 3,
+        full_name: 'Pending Invitation',
+        email: cleanEmail,
+        phone: null,
+        status: 'active',
+        approved_by: admin.id,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'id' });
+      if (insertUserErr) { sendError(res, 'Failed to pre-set SK Official record: ' + insertUserErr.message, 500); return; }
+    }
+
+    let actionLink = '';
+    try {
+      const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
+        type: 'magiclink',
+        email: cleanEmail,
+        options: { redirectTo: redirectUrl } as any,
+      });
+      if (linkData?.properties?.action_link) actionLink = linkData.properties.action_link;
+    } catch (linkErr) {
+      console.warn('generateLink warning:', linkErr);
+    }
+
+    await recordAuditLog({
+      tenantId: barangay_id,
+      userId: admin.id,
+      action: 'INVITE_SK_OFFICIAL',
+      entityName: 'users',
+      entityId: targetUserId,
+      details: {
+        official_email: cleanEmail,
+        official_role,
+        barangay_id,
+        barangay_name: barangay.name,
+        assigned_by: admin.full_name,
+        invitation_method: inviteMethod,
+        setup_url: redirectUrl,
+      },
+      ipAddress: req.ip || null,
+    });
+
+    const emailDelivered = inviteMethod === 'email_invitation';
+    const responseMessage = emailDelivered
+      ? official_role + ' invitation generated for ' + cleanEmail + ' (Barangay ' + barangay.name + '). They can visit Sign In to create their password.'
+      : official_role + ' setup link generated for ' + cleanEmail + ' (Barangay ' + barangay.name + '). Supabase email delivery is not available, so they must use the direct setup link below.';
+
+    sendCreated(res, {
+      user_id: targetUserId,
+      email: cleanEmail,
+      full_name: (existingUser?.full_name && existingUser.full_name !== 'Pending Invitation' ? existingUser.full_name : existingAuthUser?.user_metadata?.full_name) || null,
+      barangay_id,
+      barangay_name: barangay.name,
+      role: 'SK_OFFICIAL',
+      official_role,
+      status: 'active',
+      invitation_method: inviteMethod,
+      invitation_status: emailDelivered ? 'email_sent' : 'setup_link_only',
+      email_delivery: emailDelivered,
+      setup_url: redirectUrl,
+      action_link: actionLink || redirectUrl,
+    }, responseMessage);
+  }
+);
 export default router;
 

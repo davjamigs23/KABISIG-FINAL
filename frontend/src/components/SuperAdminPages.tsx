@@ -65,6 +65,15 @@ export default function SuperAdminPages({
   const [chairpersonSetupLink, setChairpersonSetupLink] = useState('');
   const [districtFilter, setDistrictFilter] = useState<'All' | 'North' | 'South' | 'West' | 'East'>('All');
   const [chairpersonFilter, setChairpersonFilter] = useState<'All' | 'Assigned' | 'Unassigned'>('All');
+
+  // P9/P10: SK Official invite modal state
+  const [showInviteOfficialModal, setShowInviteOfficialModal] = useState(false);
+  const [inviteOfficialBarangay, setInviteOfficialBarangay] = useState<BarangayTenant | null>(null);
+  const [inviteOfficialEmail, setInviteOfficialEmail] = useState('');
+  const [inviteOfficialRole, setInviteOfficialRole] = useState<'SK Kagawad' | 'SK Secretary' | 'SK Treasurer'>('SK Kagawad');
+  const [isInvitingOfficial, setIsInvitingOfficial] = useState(false);
+  const [inviteOfficialNotice, setInviteOfficialNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [officialSetupLink, setOfficialSetupLink] = useState('');
   const [federationAnalytics, setFederationAnalytics] = useState<any>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const [analyticsError, setAnalyticsError] = useState('');
@@ -163,6 +172,42 @@ export default function SuperAdminPages({
   const analyticsChartData = filteredBarangays.length === sortedBarangays.length
     ? chartBarangayData
     : chartBarangayData.filter((item: any) => filteredBarangays.some(b => b.id === item.id));
+
+  const handleOpenInviteOfficialModal = (b?: BarangayTenant) => {
+    const target = b || sortedBarangays[0];
+    setInviteOfficialBarangay(target || null);
+    setInviteOfficialEmail('');
+    setInviteOfficialRole('SK Kagawad');
+    setInviteOfficialNotice(null);
+    setOfficialSetupLink('');
+    setShowInviteOfficialModal(true);
+  };
+
+  const handleInviteOfficialSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inviteOfficialBarangay) return;
+    const email = inviteOfficialEmail.trim().toLowerCase();
+    if (!email) {
+      setInviteOfficialNotice({ type: 'error', text: 'Please enter a valid official email address.' });
+      return;
+    }
+    setIsInvitingOfficial(true);
+    setInviteOfficialNotice(null);
+    try {
+      const res = await kabisigApi.inviteSkOfficial(inviteOfficialBarangay.id, email, inviteOfficialRole);
+      if (!res.success) {
+        setInviteOfficialNotice({ type: 'error', text: res.message || 'Failed to send SK Official invitation.' });
+        setIsInvitingOfficial(false);
+        return;
+      }
+      setOfficialSetupLink(res.data?.action_link || res.data?.setup_url || '');
+      setInviteOfficialNotice({ type: 'success', text: res.message || (inviteOfficialRole + ' invitation created for ' + email + '.') });
+    } catch (err: any) {
+      setInviteOfficialNotice({ type: 'error', text: err.message || 'Network connection failed.' });
+    } finally {
+      setIsInvitingOfficial(false);
+    }
+  };
 
   const handleOpenAssignModal = (b?: BarangayTenant) => {
     const target = b || sortedBarangays[0];
@@ -584,6 +629,12 @@ export default function SuperAdminPages({
                     className="px-4 py-2.5 bg-[#091d64] text-white hover:bg-[#102a83] font-bold rounded-xl text-xs transition-colors flex items-center gap-2 cursor-pointer shadow-xs"
                   >
                     <ShieldCheck className="w-4 h-4" /> Assign Chairperson
+                  </button>
+                  <button
+                    onClick={() => handleOpenInviteOfficialModal()}
+                    className="px-4 py-2.5 bg-amber-400 text-amber-950 hover:bg-amber-300 font-bold rounded-xl text-xs transition-colors flex items-center gap-2 cursor-pointer shadow-xs"
+                  >
+                    <ShieldCheck className="w-4 h-4" /> Invite SK Official
                   </button>
                   <button 
                     onClick={() => setShowLydpModal(true)}
@@ -1210,6 +1261,72 @@ export default function SuperAdminPages({
       )}
 
       {/* DEDICATED ASSIGN SK CHAIRPERSON MODAL (ONLY CHAIRPERSON EMAIL) */}
+      {/* P9/P10: INVITE SK OFFICIAL MODAL */}
+      {showInviteOfficialModal && inviteOfficialBarangay && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200">
+            <div className="bg-[#091d64] p-5 text-white flex justify-between items-center text-left">
+              <div>
+                <h3 className="font-sans font-black text-base flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-amber-300" />
+                  Invite SK Official
+                </h3>
+                <p className="text-xs text-blue-100">Barangay {inviteOfficialBarangay.name}</p>
+              </div>
+              <button onClick={() => { setShowInviteOfficialModal(false); setInviteOfficialBarangay(null); }} className="text-white/80 hover:text-white cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleInviteOfficialSubmit} className="p-6 space-y-4 text-left text-xs">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Target Barangay</label>
+                <select value={inviteOfficialBarangay.id}
+                  onChange={(e) => {
+                    const selected = barangays.find(b => b.id === e.target.value);
+                    if (selected) setInviteOfficialBarangay(selected);
+                  }}
+                  className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-1 focus:ring-[#091d64] focus:outline-none cursor-pointer"
+                >
+                  {sortedBarangays.map(b => (<option key={b.id} value={b.id}>Barangay {b.name}</option>))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Official Role</label>
+                <select value={inviteOfficialRole}
+                  onChange={(e) => setInviteOfficialRole(e.target.value as any)}
+                  className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-1 focus:ring-[#091d64] focus:outline-none cursor-pointer"
+                >
+                  <option value="SK Kagawad">SK Kagawad</option>
+                  <option value="SK Secretary">SK Secretary</option>
+                  <option value="SK Treasurer">SK Treasurer</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-800 mb-1">Official Email Address <span className="text-rose-500">*</span></label>
+                <input type="email" value={inviteOfficialEmail} onChange={(e) => setInviteOfficialEmail(e.target.value)}
+                  className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-1 focus:ring-[#091d64] focus:outline-none"
+                  placeholder="official@example.com" required />
+              </div>
+              {inviteOfficialNotice && (
+                <div className={'p-3 rounded-xl text-xs border ' + (inviteOfficialNotice.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-700')}>
+                  {inviteOfficialNotice.text}
+                </div>
+              )}
+              {officialSetupLink && (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
+                  <p className="font-bold text-slate-700">Setup Link (share manually):</p>
+                  <p className="text-[10px] break-all text-[#091d64] font-mono">{officialSetupLink}</p>
+                </div>
+              )}
+              <button type="submit" disabled={isInvitingOfficial}
+                className="w-full py-3 bg-[#091d64] hover:bg-[#102a83] disabled:opacity-60 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer">
+                {isInvitingOfficial ? 'Sending...' : ('Send ' + inviteOfficialRole + ' Invitation')}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
       {showAssignModal && assigningBarangay && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
@@ -1498,6 +1615,17 @@ export default function SuperAdminPages({
                     className="px-3 py-2 bg-[#091d64] text-white rounded-lg text-[10px] font-bold whitespace-nowrap"
                   >
                     Assign / Reassign
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const barangay = editingBarangay;
+                      setShowModal(false);
+                      if (barangay) handleOpenInviteOfficialModal(barangay);
+                    }}
+                    className="px-3 py-2 bg-amber-400 text-amber-950 rounded-lg text-[10px] font-bold whitespace-nowrap ml-2"
+                  >
+                    Invite Official
                   </button>
                 </div>
 

@@ -571,198 +571,11 @@ const RegisterOfficialSchema = z.object({
   phone: z.string().optional(),
 });
 
-router.post('/register-official', async (req: Request, res: Response): Promise<void> => {
-  const parseResult = RegisterOfficialSchema.safeParse(req.body);
-  if (!parseResult.success) {
-    sendError(res, 'Validation failed', 400, parseResult.error.flatten().fieldErrors);
-    return;
-  }
-
-  const { email, password, full_name, barangay_id, role, phone } = parseResult.data;
-  const normalizedEmail = email.trim().toLowerCase();
-
-  // Enforce role boundary: Super Admin / Federation President cannot self-register
-  const forbiddenRoles = ['SUPER_ADMIN', 'PRESIDENT', 'FEDERATION'];
-  if (forbiddenRoles.some(r => role.toUpperCase().includes(r))) {
-    sendError(res, 'SK Federation President (Super Admin) cannot self-register through public forms.', 403);
-    return;
-  }
-
-  // 1. Verify Barangay Existence
-  let barangay = null as { id: string; name: string } | null;
-  const { data: existingBarangay, error: bgyError } = await supabaseAdmin
-    .from('barangay')
-    .select('id, name')
-    .eq('id', barangay_id)
-    .maybeSingle();
-
-  if (existingBarangay) {
-    barangay = existingBarangay;
-  } else {
-    barangay = await ensureBarangayRecordExists(barangay_id);
-  }
-
-  if (!barangay) {
-    sendError(res, 'Specified Barangay does not exist in Naga City registry.', 404);
-    return;
-  }
-
-  const isChairperson = role.toUpperCase().includes('CHAIRPERSON') || role.toUpperCase().includes('BARANGAY_ADMIN');
-  const roleId = isChairperson ? ROLE_IDS.BARANGAY_ADMIN : ROLE_IDS.SK_OFFICIAL;
-  // Chairpersons are activated immediately so they can log in; other SK officials are pending validation
-  const status = isChairperson ? 'active' : 'pending';
-
-  // --- Role capacity enforcement (RA 10742 SK council structure) ---
-  // Per barangay: 1 Chairperson, 1 Secretary, 1 Treasurer, 7 Kagawad.
-  const ROLE_LIMITS: Record<string, number> = {
-    'SK Chairperson': 1,
-    'SK Secretary': 1,
-    'SK Treasurer': 1,
-    'SK Kagawad': 7,
-    'SK Official': 7,
-  };
-  const normalizeRoleKey = (r: string): string => {
-    if (/chairperson|barangay_admin/i.test(r)) return 'SK Chairperson';
-    if (/secretary/i.test(r)) return 'SK Secretary';
-    if (/treasurer/i.test(r)) return 'SK Treasurer';
-    if (/kagawad/i.test(r)) return 'SK Kagawad';
-    return 'SK Official';
-  };
-  const roleKey = normalizeRoleKey(role);
-  const roleLimit = ROLE_LIMITS[roleKey] ?? 0;
-  const { data: _capacityList } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
-  const _allAuthUsersForCapacity = _capacityList?.users || [];
-  const _emailAlreadyExists = _allAuthUsersForCapacity.some(u => u.email?.toLowerCase() === normalizedEmail);
-  if (!_emailAlreadyExists && roleLimit > 0) {
-    const _roleOccupants = _allAuthUsersForCapacity.filter(u => {
-      const meta = u.user_metadata || {};
-      if (meta.tenant_id !== barangay_id) return false;
-      if (!meta.role) return false;
-      return normalizeRoleKey(String(meta.role)) === roleKey;
-    });
-    if (_roleOccupants.length >= roleLimit) {
-      sendError(res, "Barangay capacity reached: only " + roleLimit + " " + roleKey + (roleLimit > 1 ? "s" : "") + " allowed per Barangay. " + _roleOccupants.length + " already registered.", 409);
-      return;
-    }
-  }
-
-  // Check if user already exists in public.users
-  const { data: existingUser } = await supabaseAdmin
-    .from('users')
-    .select('id, email, tenant_id, role_id, status')
-    .eq('email', normalizedEmail)
-    .maybeSingle();
-
-  let userId: string;
-
-  if (existingUser) {
-    userId = existingUser.id;
-    // Update password and metadata in auth.users
-    const { error: updateAuthErr } = await supabaseAdmin.auth.admin.updateUserById(userId, {
-      password,
-      email_confirm: true,
-      user_metadata: { full_name, tenant_id: barangay_id, role_id: roleId, role },
-    });
-
-    if (updateAuthErr) {
-      sendError(res, `Failed to update credentials: ${updateAuthErr.message}`, 400);
-      return;
-    }
-
-    // Update public.users record
-    const { error: updatePublicErr } = await supabaseAdmin
-      .from('users')
-      .update({
-        full_name,
-        tenant_id: barangay_id,
-        role_id: roleId,
-        phone: phone || null,
-        status,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', userId);
-
-    if (updatePublicErr) {
-      sendError(res, `Failed to update user profile: ${updatePublicErr.message}`, 500);
-      return;
-    }
-  } else {
-    // Check if auth user exists (in case user exists in auth but not yet in public.users)
-    const { data: authUsersList } = await supabaseAdmin.auth.admin.listUsers();
-    const existingAuthUser = authUsersList?.users?.find(u => u.email?.toLowerCase() === normalizedEmail);
-
-    if (existingAuthUser) {
-      userId = existingAuthUser.id;
-      const { error: updateAuthErr } = await supabaseAdmin.auth.admin.updateUserById(userId, {
-        password,
-        email_confirm: true,
-        user_metadata: { full_name, tenant_id: barangay_id, role_id: roleId, role },
-      });
-      if (updateAuthErr) {
-        sendError(res, `Failed to configure account credentials: ${updateAuthErr.message}`, 400);
-        return;
-      }
-    } else {
-      // Create new user in Supabase Auth
-      const { data: newAuthData, error: createAuthErr } = await supabaseAdmin.auth.admin.createUser({
-        email: normalizedEmail,
-        password,
-        email_confirm: true,
-        user_metadata: { full_name, tenant_id: barangay_id, role_id: roleId, role },
-      });
-
-      if (createAuthErr || !newAuthData?.user) {
-        sendError(res, createAuthErr?.message || 'Failed to create official auth account.', 400);
-        return;
-      }
-      userId = newAuthData.user.id;
-    }
-
-    // Insert into public.users
-    const { error: insertUserErr } = await supabaseAdmin.from('users').upsert({
-      id: userId,
-      tenant_id: barangay_id,
-      role_id: roleId,
-      full_name,
-      email: normalizedEmail,
-      phone: phone || null,
-      status,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    });
-
-    if (insertUserErr) {
-      sendError(res, `Failed to initialize official user record: ${insertUserErr.message}`, 500);
-      return;
-    }
-  }
-
-  await recordAuditLog({
-    tenantId: barangay_id,
-    userId,
-    action: isChairperson ? 'REGISTER_SK_CHAIRPERSON' : 'REGISTER_SK_OFFICIAL',
-    entityName: 'users',
-    entityId: userId,
-    details: { full_name, role: isChairperson ? 'SK Chairperson' : role, barangay: barangay.name },
-    ipAddress: req.ip || null,
-  });
-
-  sendCreated(
+router.post('/register-official', async (_req: Request, res: Response): Promise<void> => {
+  sendError(
     res,
-    {
-      user_id: userId,
-      email: normalizedEmail,
-      full_name,
-      barangay: barangay.name,
-      role: isChairperson ? 'SK Chairperson' : role,
-      status,
-    },
-    (() => {
-      const displayName = full_name.startsWith('Hon.') ? full_name : `Hon. ${full_name}`;
-      return isChairperson
-        ? `SK Chairperson account created successfully for ${displayName}. You can now sign in with your password.`
-        : `Official registration for ${displayName} submitted. Awaiting approval.`;
-    })()
+    'SK Officials are now invited directly by the SK Federation President. Please contact your SK Federation President to receive your setup link.',
+    403
   );
 });
 
@@ -1012,6 +825,175 @@ router.post('/setup-chairperson-password', async (req: Request, res: Response): 
   );
 });
 
+// POST /api/auth/setup-official-password - SK Official creates password
+const SetupOfficialPasswordSchema = z.object({
+  email: z.string().email('Valid email is required'),
+  password: SecurePasswordSchema,
+  confirmPassword: z.string(),
+  full_name: z.string().optional(),
+  official_role: z.string().default('SK Kagawad'),
+});
+
+router.post('/setup-official-password', async (req: Request, res: Response): Promise<void> => {
+  const parseResult = SetupOfficialPasswordSchema.safeParse(req.body);
+  if (!parseResult.success) {
+    sendError(res, 'Validation failed', 400, parseResult.error.flatten().fieldErrors);
+    return;
+  }
+
+  const { email, password, confirmPassword, full_name, official_role } = parseResult.data;
+  if (password !== confirmPassword) {
+    sendError(res, 'Password and Confirm Password do not match.', 400);
+    return;
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const { data: existingUser } = await supabaseAdmin
+    .from('users')
+    .select('id, tenant_id, role_id, full_name, status, barangay(name)')
+    .eq('email', normalizedEmail)
+    .maybeSingle();
+
+  const { data: authList } = await supabaseAdmin.auth.admin.listUsers();
+  const existingAuthUser = authList?.users?.find((u) => u.email?.toLowerCase() === normalizedEmail);
+
+  let userId: string;
+  let tenantId = existingUser?.tenant_id || existingAuthUser?.user_metadata?.tenant_id;
+
+  if (!tenantId) {
+    sendError(res, 'No SK Official invitation found for this email. Please contact your SK Federation President.', 404);
+    return;
+  }
+
+  const cleanFullName =
+    full_name && full_name.trim().length > 0
+      ? full_name.trim()
+      : existingUser?.full_name && existingUser.full_name !== 'Pending Invitation'
+      ? existingUser.full_name
+      : 'SK Official';
+
+  const displayName = cleanFullName.startsWith('Hon.') ? cleanFullName : 'Hon. ' + cleanFullName;
+
+  const userMetadata = {
+    tenant_id: tenantId,
+    role_id: ROLE_IDS.SK_OFFICIAL,
+    role: 'SK Official',
+    official_role: official_role,
+    full_name: displayName,
+    must_set_password: false,
+  };
+
+  if (existingAuthUser) {
+    userId = existingAuthUser.id;
+    const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+      password,
+      email_confirm: true,
+      user_metadata: userMetadata,
+    });
+    if (updateErr) {
+      sendError(res, 'Failed to update password credentials: ' + updateErr.message, 400);
+      return;
+    }
+  } else {
+    const { data: newAuthUser, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+      email: normalizedEmail,
+      password,
+      email_confirm: true,
+      user_metadata: userMetadata,
+    });
+    if (createErr || !newAuthUser?.user) {
+      sendError(res, 'Failed to initialize SK Official auth account: ' + (createErr?.message || 'unknown error'), 400);
+      return;
+    }
+    userId = newAuthUser.user.id;
+  }
+
+  const { error: userUpsertErr } = await supabaseAdmin.from('users').upsert(
+    {
+      id: userId,
+      tenant_id: tenantId,
+      role_id: ROLE_IDS.SK_OFFICIAL,
+      full_name: displayName,
+      email: normalizedEmail,
+      status: 'active',
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'id' }
+  );
+
+  if (userUpsertErr) {
+    console.warn('Notice updating users table:', userUpsertErr.message);
+  }
+
+  const { error: profileUpsertErr } = await supabaseAdmin.from('resident_profile').upsert(
+    {
+      user_id: userId,
+      tenant_id: tenantId,
+      birthdate: '2001-01-01',
+      sex: 'Female',
+      address: 'Barangay Hall, Naga City',
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id' }
+  );
+
+  if (profileUpsertErr) {
+    console.warn('Notice updating resident_profile:', profileUpsertErr.message);
+  }
+
+  await recordAuditLog({
+    tenantId,
+    userId,
+    action: 'SK_OFFICIAL_PASSWORD_SETUP',
+    entityName: 'users',
+    entityId: userId,
+    details: { email: normalizedEmail, full_name: displayName, official_role, status: 'active' },
+    ipAddress: req.ip || null,
+  });
+
+  const { data: sessionData, error: signInErr } = await supabase.auth.signInWithPassword({
+    email: normalizedEmail,
+    password,
+  });
+
+  if (signInErr || !sessionData?.session) {
+    sendError(res, signInErr?.message || 'Password configured, but could not start session. Please sign in.', 400);
+    return;
+  }
+
+  const { data: profile } = await supabaseAdmin
+    .from('users')
+    .select('*, roles(role_name), barangay(name, city, district), resident_profile(*)')
+    .eq('id', userId)
+    .single();
+
+  const enrichedUser = {
+    ...(profile || {}),
+    id: userId,
+    email: normalizedEmail,
+    full_name: displayName,
+    role_id: ROLE_IDS.SK_OFFICIAL,
+    tenant_id: tenantId,
+    status: 'active',
+    user_metadata: userMetadata,
+    resident_profile: {
+      birthdate: '2001-01-01',
+      sex: 'Female',
+      address: 'Barangay Hall, Naga City',
+    },
+  };
+
+  sendSuccess(
+    res,
+    {
+      token: sessionData.session.access_token,
+      refreshToken: sessionData.session.refresh_token,
+      user: enrichedUser,
+    },
+    'SK Official password configured successfully! Redirecting to SK Official Dashboard...'
+  );
+});
 // GET /api/auth/me - Get current user profile
 router.get('/me', authenticateUser, async (req: Request, res: Response): Promise<void> => {
   const user = (req as AuthRequest).user!;

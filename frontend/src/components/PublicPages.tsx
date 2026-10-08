@@ -870,7 +870,6 @@ export default function PublicPages({
                           >
                             <option value=""></option>
                             <option value="Youth Constituent">Youth Constituent (KK Member)</option>
-                            <option value="SK Kagawad">SK Kagawad</option>
                             <option value="SK Secretary">SK Secretary</option>
                             <option value="SK Treasurer">SK Treasurer</option>
                           </select>
