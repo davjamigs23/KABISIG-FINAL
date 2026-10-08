@@ -239,6 +239,19 @@ class KabisigApiClient {
     const res = await this.request<any>('/public/programs/' + programId + '/budget', { method: 'GET' });
     return res.data || null;
   }
+  async getRestrictions(params?: { activeOnly?: boolean }): Promise<any[]> {
+    const url = params?.activeOnly ? '/admin/restrictions?active_only=true' : '/admin/restrictions';
+    const res = await this.request<any>(url, { method: 'GET' });
+    if (Array.isArray(res.data)) return res.data;
+    return [];
+  }
+
+  async clearRestriction(restrictionId: string, adminNotes?: string): Promise<{ success: boolean; message?: string; data?: any }> {
+    return await this.request<any>('/admin/restrictions/' + restrictionId + '/clear', {
+      method: 'PATCH',
+      body: JSON.stringify({ admin_notes: adminNotes || null }),
+    });
+  }
   async getPublicAnnouncements(): Promise<any[]> {
     const res = await this.request<any[]>('/public/announcements', { method: 'GET' });
     if (!res.success || !res.data) return [];

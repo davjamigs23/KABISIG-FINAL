@@ -542,5 +542,126 @@ router.post(
     }, responseMessage);
   }
 );
+// P12b: Restriction review — Super Admin only
+const ClearRestrictionSchema = z.object({
+  admin_notes: z.string().max(1000).optional(),
+});
+
+// GET /api/admin/restrictions - list all (or active-only) restrictions
+router.get(
+  '/restrictions',
+  authenticateUser,
+  requireRoles('SUPER_ADMIN'),
+  async (req: Request, res: Response): Promise<void> => {
+    const { active_only } = req.query;
+
+    let q = supabaseAdmin
+      .from('account_restrictions')
+      .select('id, user_id, tenant_id, restriction_type, reason, detection_details, admin_id, admin_notes, expires_at, is_active, review_history, created_at, updated_at')
+      .order('created_at', { ascending: false })
+      .limit(200);
+
+    if (active_only === 'true') q = q.eq('is_active', true);
+
+    const { data: rows, error } = await q;
+    if (error) { sendError(res, 'Failed to retrieve restrictions: ' + error.message, 500); return; }
+
+    const userIds = Array.from(new Set((rows || []).map((r: any) => r.user_id)));
+    const userMap: Record<string, any> = {};
+    if (userIds.length > 0) {
+      const { data: users } = await supabaseAdmin
+        .from('users')
+        .select('id, email, full_name, status, tenant_id, roles(role_name), barangay(name)')
+        .in('id', userIds);
+      (users || []).forEach((u: any) => { userMap[u.id] = u; });
+    }
+
+    const merged = (rows || []).map((r: any) => ({
+      ...r,
+      users: userMap[r.user_id] || null,
+    }));
+
+    sendSuccess(res, merged, 'Restrictions retrieved.');
+  }
+);
+
+
+// PATCH /api/admin/restrictions/:id/clear - clear restriction and reactivate account
+router.patch(
+  '/restrictions/:id/clear',
+  authenticateUser,
+  requireRoles('SUPER_ADMIN'),
+  async (req: Request, res: Response): Promise<void> => {
+    const restrictionId = String(req.params.id || '');
+    if (!restrictionId) { sendError(res, 'Restriction ID is required.', 400); return; }
+
+    const parseResult = ClearRestrictionSchema.safeParse(req.body || {});
+    if (!parseResult.success) {
+      sendError(res, 'Validation failed', 400, parseResult.error.flatten().fieldErrors);
+      return;
+    }
+
+    const authReq = req as AuthRequest;
+    const admin = authReq.user;
+    if (!admin) { sendError(res, 'Authentication required.', 401); return; }
+
+    const { data: restriction, error: rErr } = await supabaseAdmin
+      .from('account_restrictions')
+      .select('id, user_id, tenant_id, restriction_type, review_history')
+      .eq('id', restrictionId)
+      .single();
+
+    if (rErr || !restriction) { sendError(res, 'Restriction not found.', 404); return; }
+
+    const history = Array.isArray(restriction.review_history) ? restriction.review_history : [];
+    const newEntry = {
+      at: new Date().toISOString(),
+      action: 'cleared',
+      by: admin.full_name || 'Super Admin',
+      admin_id: admin.id,
+      notes: parseResult.data.admin_notes || null,
+    };
+
+    const { error: updErr } = await supabaseAdmin
+      .from('account_restrictions')
+      .update({
+        is_active: false,
+        admin_id: admin.id,
+        admin_notes: parseResult.data.admin_notes || null,
+        review_history: [...history, newEntry],
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', restrictionId);
+
+    if (updErr) { sendError(res, 'Failed to clear restriction: ' + updErr.message, 500); return; }
+
+    const { error: userErr } = await supabaseAdmin
+      .from('users')
+      .update({ status: 'active', updated_at: new Date().toISOString() })
+      .eq('id', restriction.user_id);
+
+    if (userErr) { sendError(res, 'Restriction cleared but failed to reactivate account: ' + userErr.message, 500); return; }
+
+    await recordAuditLog({
+      tenantId: restriction.tenant_id,
+      userId: admin.id,
+      action: 'RESTRICTION_CLEARED',
+      entityName: 'account_restrictions',
+      entityId: restrictionId,
+      details: {
+        cleared_user: restriction.user_id,
+        original_type: restriction.restriction_type,
+        notes: parseResult.data.admin_notes || null,
+      },
+      ipAddress: req.ip || null,
+    });
+
+    sendSuccess(
+      res,
+      { restriction_id: restrictionId, user_id: restriction.user_id, status: 'active' },
+      'Restriction cleared and account reactivated.'
+    );
+  }
+);
 export default router;
 
