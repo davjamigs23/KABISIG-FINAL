@@ -668,7 +668,7 @@ export default function ViewerPages({
                       <div>
                         <span className="text-[10px] font-bold text-slate-400 uppercase block tracking-wider">Total Disbursed Funds</span>
                         <h3 className="text-2xl font-black text-slate-800 mt-1">₱{totalCitySpent.toLocaleString()}</h3>
-                        <span className="text-[10px] text-rose-600 font-bold block mt-1">Utilization: {((totalCitySpent/totalCityBudget)*100).toFixed(1)}%</span>
+                        <span className="text-[10px] text-rose-600 font-bold block mt-1">Utilization: {totalCityBudget > 0 ? ((totalCitySpent/totalCityBudget)*100).toFixed(1) : "0.0"}%</span>
                       </div>
                       <div className="p-3 bg-rose-50 text-rose-600 rounded-lg">
                         <TrendingUp className="w-6 h-6" />

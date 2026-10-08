@@ -1096,7 +1096,7 @@ export default function App() {
             }).catch(() => {});
           }}
           onLogout={handleLogout}
-          userEmail={currentEmail || "kyla.vinzon@example.com"}
+          userEmail={currentEmail || "Guest"}
         />
       )}
 
