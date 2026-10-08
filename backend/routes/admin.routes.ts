@@ -107,6 +107,30 @@ router.post(
       return;
     }
 
+    // Panel rec #9: prevent silent overwrite of an existing Chairperson.
+    // If a Chairperson already exists, use the Transfer Leadership workflow instead.
+    const { data: existingChair } = await supabaseAdmin
+      .from('users')
+      .select('id, email, full_name, status')
+      .eq('tenant_id', barangay_id)
+      .eq('role_id', 2)
+      .eq('status', 'active')
+      .maybeSingle();
+
+    if (existingChair && existingChair.email && existingChair.email.toLowerCase() !== cleanEmail) {
+      sendError(
+        res,
+        `Barangay ${barangay.name} already has an active Chairperson (${existingChair.full_name || existingChair.email}). Use Transfer Leadership to hand over the role.`,
+        409,
+        {
+          code: 'CHAIRPERSON_EXISTS',
+          current_chairperson_id: existingChair.id,
+          current_chairperson_email: existingChair.email,
+        }
+      );
+      return;
+    }
+
     let targetUserId: string = '';
     let inviteMethod: 'email_invitation' | 'existing_auth_user' | 'temp_credentials' = 'email_invitation';
 
@@ -353,7 +377,7 @@ router.post(
         barangay_name: barangay.name,
         assigned_by: admin.full_name,
         invitation_method: inviteMethod,
-        setup_url: directSetupUrl,
+        setup_url: '',
       },
       ipAddress: req.ip || null,
     });
@@ -361,7 +385,7 @@ router.post(
     const emailDelivered = inviteMethod === 'email_invitation';
     const responseMessage = emailDelivered
       ? `SK Chairperson invitation generated for ${cleanEmail} (Barangay ${barangay.name}). Chairperson can visit Sign In to create their password and access their dashboard.`
-      : `SK Chairperson setup link generated for ${cleanEmail} (Barangay ${barangay.name}). Supabase invitation email delivery is not available in this project, so the Chairperson must use the direct setup link below.`;
+      : `SK Chairperson setup link generated for ${cleanEmail} (Barangay ${barangay.name}). If the invitation email is not received within a few minutes, please retry the assignment or contact your SK Federation President.`;
 
     sendCreated(
       res,
@@ -376,8 +400,8 @@ router.post(
         invitation_method: inviteMethod,
         invitation_status: emailDelivered ? 'email_sent' : 'setup_link_only',
         email_delivery: emailDelivered,
-        setup_url: emailDelivered ? '' : directSetupUrl,
-        action_link: emailDelivered ? '' : (actionLink || directSetupUrl),
+        setup_url: '',
+        action_link: '',
       },
       responseMessage
     );
@@ -574,7 +598,7 @@ router.post(
         barangay_name: barangay.name,
         assigned_by: admin.full_name,
         invitation_method: inviteMethod,
-        setup_url: redirectUrl,
+        setup_url: '',
       },
       ipAddress: req.ip || null,
     });
@@ -582,7 +606,7 @@ router.post(
     const emailDelivered = inviteMethod === 'email_invitation';
     const responseMessage = emailDelivered
       ? official_role + ' invitation generated for ' + cleanEmail + ' (Barangay ' + barangay.name + '). They can visit Sign In to create their password.'
-      : official_role + ' setup link generated for ' + cleanEmail + ' (Barangay ' + barangay.name + '). Supabase email delivery is not available, so they must use the direct setup link below.';
+      : official_role + ' setup link generated for ' + cleanEmail + ' (Barangay ' + barangay.name + '). If the invitation email is not received within a few minutes, please retry the invitation.';
 
     sendCreated(res, {
       user_id: targetUserId,
@@ -596,8 +620,8 @@ router.post(
       invitation_method: inviteMethod,
       invitation_status: emailDelivered ? 'email_sent' : 'setup_link_only',
       email_delivery: emailDelivered,
-      setup_url: redirectUrl,
-      action_link: actionLink || redirectUrl,
+      setup_url: '',
+      action_link: '',
     }, responseMessage);
   }
 );
@@ -720,6 +744,340 @@ router.patch(
       { restriction_id: restrictionId, user_id: restriction.user_id, status: 'active' },
       'Restriction cleared and account reactivated.'
     );
+  }
+);
+// ============================================================
+// Panel rec #9: Transfer Leadership (Chairperson handover)
+// ============================================================
+const TransferChairmanshipSchema = z.object({
+  barangay_id: z.string().uuid('Valid Barangay ID is required'),
+  successor_email: z.string().email('Valid successor email is required'),
+  reason: z.enum(['Resigned', 'End of Term', 'Replaced', 'Other']).default('Other'),
+  notes: z.string().max(1000).optional(),
+});
+
+router.post(
+  '/transfer-chairmanship',
+  authenticateUser,
+  requireRoles('SUPER_ADMIN'),
+  async (req: Request, res: Response): Promise<void> => {
+    const parseResult = TransferChairmanshipSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      sendError(res, 'Validation failed', 400, parseResult.error.flatten().fieldErrors);
+      return;
+    }
+    const { barangay_id, successor_email, reason, notes } = parseResult.data;
+    const cleanSuccessorEmail = successor_email.trim().toLowerCase();
+    const admin = (req as AuthRequest).user!;
+
+    // 1. Verify barangay
+    const { data: barangay, error: bgyError } = await supabaseAdmin
+      .from('barangay')
+      .select('id, name, district')
+      .eq('id', barangay_id)
+      .single();
+
+    if (bgyError || !barangay) {
+      sendError(res, 'Target Barangay does not exist.', 404);
+      return;
+    }
+
+    // 2. Find current active Chairperson
+    const { data: outgoing } = await supabaseAdmin
+      .from('users')
+      .select('id, email, full_name, first_name, middle_name, last_name, suffix, status, role_id')
+      .eq('tenant_id', barangay_id)
+      .eq('role_id', 2)
+      .eq('status', 'active')
+      .maybeSingle();
+
+    if (!outgoing) {
+      sendError(res, `Barangay ${barangay.name} has no active Chairperson. Use Assign Chairperson instead.`, 409, { code: 'NO_CURRENT_CHAIRPERSON' });
+      return;
+    }
+
+    if (outgoing.email && outgoing.email.toLowerCase() === cleanSuccessorEmail) {
+      sendError(res, 'Successor cannot be the same person as the current Chairperson.', 409, { code: 'SAME_AS_CURRENT' });
+      return;
+    }
+
+    // 3. Demote outgoing Chairperson → SK Official FIRST (release DB constraint)
+    const { error: demoteErr } = await supabaseAdmin
+      .from('users')
+      .update({
+        role_id: 3,
+        status: 'active',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', outgoing.id);
+
+    if (demoteErr) {
+      sendError(res, 'Failed to demote outgoing Chairperson: ' + demoteErr.message, 500);
+      return;
+    }
+
+    // 4. Find or create successor
+    const { data: successor } = await supabaseAdmin
+      .from('users')
+      .select('id, email, full_name, first_name, middle_name, last_name, suffix, status, role_id, tenant_id')
+      .ilike('email', cleanSuccessorEmail)
+      .maybeSingle();
+
+    let successorUserId: string = '';
+    let successorInviteMethod: 'existing_user' | 'email_invitation' | 'temp_credentials' = 'existing_user';
+    let successorLink = '';
+    const redirectUrl = FRONTEND_URL + '/chairperson-setup?invite_email=' + encodeURIComponent(cleanSuccessorEmail) + '&role=chairperson&tenant_id=' + barangay_id;
+
+    if (successor) {
+      // Existing user — promote them
+      const { error: promoteErr } = await supabaseAdmin
+        .from('users')
+        .update({
+          tenant_id: barangay_id,
+          role_id: 2,
+          status: 'active',
+          approved_by: admin.id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', successor.id);
+
+      if (promoteErr) {
+        sendError(res, 'Failed to promote successor: ' + promoteErr.message, 500);
+        return;
+      }
+      successorUserId = successor.id;
+      successorLink = redirectUrl;
+    } else {
+      // New user — invite
+      const { data: authList } = await supabaseAdmin.auth.admin.listUsers();
+      const existingAuthUser = authList?.users?.find(u => u.email?.toLowerCase() === cleanSuccessorEmail);
+
+      if (existingAuthUser) {
+        successorUserId = existingAuthUser.id;
+        successorInviteMethod = 'email_invitation';
+      } else {
+        const { data: inviteData, error: inviteErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+          cleanSuccessorEmail,
+          {
+            data: { tenant_id: barangay_id, role_id: 2 },
+            redirectTo: redirectUrl,
+          } as any
+        );
+
+        if (!inviteErr && inviteData?.user) {
+          successorUserId = inviteData.user.id;
+          successorInviteMethod = 'email_invitation';
+        } else {
+          const tempPassword = 'KabisigChairperson' + new Date().getFullYear() + '!';
+          const { data: createData, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+            email: cleanSuccessorEmail,
+            password: tempPassword,
+            email_confirm: true,
+            user_metadata: { tenant_id: barangay_id, role_id: 2 },
+            redirectTo: redirectUrl,
+          } as any);
+
+          if (createErr || !createData?.user) {
+            sendError(res, 'Failed to initialize successor account: ' + (createErr?.message || 'unknown'), 500);
+            return;
+          }
+          successorUserId = createData.user.id;
+          successorInviteMethod = 'temp_credentials';
+        }
+      }
+
+      // Insert into public.users
+      const { error: insertErr } = await supabaseAdmin.from('users').upsert({
+        id: successorUserId,
+        tenant_id: barangay_id,
+        role_id: 2,
+        full_name: 'Pending Invitation',
+        first_name: null,
+        middle_name: null,
+        last_name: null,
+        suffix: null,
+        email: cleanSuccessorEmail,
+        phone: null,
+        status: 'active',
+        approved_by: admin.id,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'id' });
+
+      if (insertErr) {
+        sendError(res, 'Failed to pre-set successor record: ' + insertErr.message, 500);
+        return;
+      }
+
+      // Generate setup link
+      try {
+        const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
+          type: 'magiclink',
+          email: cleanSuccessorEmail,
+          options: { redirectTo: redirectUrl } as any,
+        });
+        if (linkData?.properties?.action_link) {
+          successorLink = linkData.properties.action_link;
+        }
+      } catch (linkErr) {
+        console.warn('generateLink warning:', linkErr);
+      }
+      if (!successorLink) successorLink = redirectUrl;
+    }
+
+
+
+    // 5. Record transfer in audit table
+    await supabaseAdmin.from('chairperson_transfers').insert({
+      barangay_id,
+      outgoing_user_id: outgoing.id,
+      outgoing_email: outgoing.email,
+      outgoing_full_name: outgoing.full_name,
+      incoming_user_id: successorUserId,
+      incoming_email: cleanSuccessorEmail,
+      incoming_full_name: successor?.full_name || 'Pending Invitation',
+      reason,
+      notes: notes || null,
+      previous_role_action: 'DEMOTED_TO_SK_OFFICIAL',
+      performed_by: admin.id,
+      performed_by_email: admin.email || null,
+    });
+
+    // 6. Audit log
+    await recordAuditLog({
+      tenantId: barangay_id,
+      userId: admin.id,
+      action: 'TRANSFER_CHAIRMANSHIP',
+      entityName: 'users',
+      entityId: successorUserId,
+      details: {
+        outgoing_email: outgoing.email,
+        outgoing_name: outgoing.full_name,
+        incoming_email: cleanSuccessorEmail,
+        reason,
+        notes: notes || null,
+        invitation_method: successorInviteMethod,
+      },
+      ipAddress: req.ip || null,
+    });
+
+    // 7. Response
+    const emailDelivered = successorInviteMethod === 'email_invitation';
+    sendSuccess(res, {
+      barangay_id,
+      barangay_name: barangay.name,
+      outgoing: {
+        id: outgoing.id,
+        email: outgoing.email,
+        full_name: outgoing.full_name,
+        new_role: 'SK Official',
+      },
+      incoming: {
+        id: successorUserId,
+        email: cleanSuccessorEmail,
+        full_name: successor?.full_name || 'Pending Invitation',
+        new_role: 'Barangay Admin',
+      },
+      setup_url: '',
+      action_link: '',
+      invitation_method: successorInviteMethod,
+      email_delivery: emailDelivered,
+    }, 'Leadership transferred at Barangay ' + barangay.name + '. ' + (outgoing.full_name || outgoing.email) + ' demoted to SK Official; ' + cleanSuccessorEmail + ' is now Chairperson.');
+  }
+);
+// ============================================================
+// Cancel a pending Chairperson invitation (Super Admin)
+// ============================================================
+const CancelChairpersonInvitationSchema = z.object({
+  barangay_id: z.string().uuid('Valid Barangay ID is required'),
+});
+
+router.post(
+  '/cancel-chairperson-invitation',
+  authenticateUser,
+  requireRoles('SUPER_ADMIN'),
+  async (req: Request, res: Response): Promise<void> => {
+    const parseResult = CancelChairpersonInvitationSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      sendError(res, 'Validation failed', 400, parseResult.error.flatten().fieldErrors);
+      return;
+    }
+    const { barangay_id } = parseResult.data;
+    const admin = (req as AuthRequest).user!;
+
+    const { data: barangay } = await supabaseAdmin
+      .from('barangay')
+      .select('id, name')
+      .eq('id', barangay_id)
+      .single();
+
+    if (!barangay) {
+      sendError(res, 'Barangay not found.', 404);
+      return;
+    }
+
+    const { data: pendingChair } = await supabaseAdmin
+      .from('users')
+      .select('id, email, full_name, first_name, last_name, role_id, status')
+      .eq('tenant_id', barangay_id)
+      .eq('role_id', 2)
+      .eq('status', 'active')
+      .maybeSingle();
+
+    if (!pendingChair) {
+      sendError(res, 'No active Chairperson to cancel.', 404);
+      return;
+    }
+
+    const isPendingInvite =
+      pendingChair.full_name === 'Pending Invitation'
+      || (!pendingChair.first_name && !pendingChair.last_name);
+
+    if (!isPendingInvite) {
+      sendError(
+        res,
+        `Barangay ${barangay.name}'s Chairperson has already completed onboarding (${pendingChair.full_name}). Use Transfer Leadership instead.`,
+        409,
+        { code: 'CHAIRPERSON_ALREADY_REGISTERED' }
+      );
+      return;
+    }
+
+    try {
+      await supabaseAdmin.auth.admin.deleteUser(pendingChair.id);
+    } catch (authErr: any) {
+      console.warn('Auth user delete warning (non-fatal):', authErr?.message);
+    }
+
+    const { error: delErr } = await supabaseAdmin
+      .from('users')
+      .delete()
+      .eq('id', pendingChair.id);
+
+    if (delErr) {
+      sendError(res, 'Failed to remove invitation record: ' + delErr.message, 500);
+      return;
+    }
+
+    await recordAuditLog({
+      tenantId: barangay_id,
+      userId: admin.id,
+      action: 'CANCEL_CHAIRPERSON_INVITATION',
+      entityName: 'users',
+      entityId: pendingChair.id,
+      details: {
+        cancelled_email: pendingChair.email,
+        barangay_name: barangay.name,
+        cancelled_by: admin.full_name,
+      },
+      ipAddress: req.ip || null,
+    });
+
+    sendSuccess(res, {
+      barangay_id,
+      barangay_name: barangay.name,
+      cancelled_email: pendingChair.email,
+    }, `Chairperson invitation for ${pendingChair.email} cancelled. Barangay ${barangay.name} is now open for a new assignment.`);
   }
 );
 export default router;

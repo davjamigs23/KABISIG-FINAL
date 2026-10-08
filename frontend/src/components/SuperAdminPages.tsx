@@ -65,6 +65,21 @@ export default function SuperAdminPages({
   const [chairpersonSetupLink, setChairpersonSetupLink] = useState('');
   const [districtFilter, setDistrictFilter] = useState<'All' | 'North' | 'South' | 'West' | 'East'>('All');
   const [chairpersonFilter, setChairpersonFilter] = useState<'All' | 'Assigned' | 'Unassigned'>('All');
+  // Panel rec #9: Transfer Leadership modal state
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [transferringBarangay, setTransferringBarangay] = useState<BarangayTenant | null>(null);
+  const [transferCurrentChair, setTransferCurrentChair] = useState<{ email: string; name: string } | null>(null);
+  const [transferSuccessorEmail, setTransferSuccessorEmail] = useState('');
+  const [transferReason, setTransferReason] = useState<'Resigned' | 'End of Term' | 'Replaced' | 'Other'>('Resigned');
+  const [transferNotes, setTransferNotes] = useState('');
+  const [isTransferring, setIsTransferring] = useState(false);
+  const [transferNotice, setTransferNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [transferSetupLink, setTransferSetupLink] = useState('');
+  // Cancel pending Chairperson invitation state
+  const [showCancelInviteModal, setShowCancelInviteModal] = useState(false);
+  const [cancellingBarangay, setCancellingBarangay] = useState<BarangayTenant | null>(null);
+  const [isCancellingInvite, setIsCancellingInvite] = useState(false);
+  const [cancelInviteNotice, setCancelInviteNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   // P12b: Restricted users panel state
   const [restrictions, setRestrictions] = useState<any[]>([]);
   const [restrictionsLoading, setRestrictionsLoading] = useState(false);
@@ -252,6 +267,91 @@ export default function SuperAdminPages({
     loadRestrictions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeMenu, restrictionsFilter]);
+  const handleOpenCancelInviteModal = (b: BarangayTenant) => {
+    setCancellingBarangay(b);
+    setCancelInviteNotice(null);
+    setShowCancelInviteModal(true);
+  };
+
+  const handleCancelInviteSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cancellingBarangay) return;
+    setIsCancellingInvite(true);
+    setCancelInviteNotice(null);
+    try {
+      const res = await kabisigApi.cancelChairpersonInvitation(cancellingBarangay.id);
+      if (!res.success) {
+        setCancelInviteNotice({ type: 'error', text: res.message || 'Failed to cancel invitation.' });
+        return;
+      }
+      onSyncBarangay(cancellingBarangay.id, { chairperson: 'Unassigned', chairpersonEmail: '' });
+      await onRefreshAuditLogs();
+      setCancelInviteNotice({ type: 'success', text: res.message || 'Invitation cancelled.' });
+    } catch (err: any) {
+      setCancelInviteNotice({ type: 'error', text: err.message || 'Network error.' });
+    } finally {
+      setIsCancellingInvite(false);
+    }
+  };
+  const handleOpenTransferModal = async (b: BarangayTenant) => {
+    setTransferringBarangay(b);
+    setTransferSuccessorEmail('');
+    setTransferReason('Resigned');
+    setTransferNotes('');
+    setTransferNotice(null);
+    setTransferSetupLink('');
+    setTransferCurrentChair(null);
+    setShowTransferModal(true);
+
+    const current = barangays.find((x) => x.id === b.id);
+    if (current) {
+      setTransferCurrentChair({
+        email: current.chairpersonEmail || '',
+        name: current.chairperson || 'Unassigned',
+      });
+    }
+  };
+
+  const handleTransferSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!transferringBarangay) return;
+
+    const email = transferSuccessorEmail.trim().toLowerCase();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setTransferNotice({ type: 'error', text: 'Please enter a valid successor email address.' });
+      return;
+    }
+
+    setIsTransferring(true);
+    setTransferNotice(null);
+
+    try {
+      const res = await kabisigApi.transferChairmanship(
+        transferringBarangay.id,
+        email,
+        transferReason,
+        transferNotes.trim() || undefined
+      );
+
+      if (!res.success) {
+        setTransferNotice({ type: 'error', text: res.message || 'Failed to transfer leadership.' });
+        setIsTransferring(false);
+        return;
+      }
+
+      onSyncBarangay(transferringBarangay.id, {
+        chairperson: res.data?.incoming?.full_name || 'Pending Invitation',
+        chairpersonEmail: email,
+      });
+      await onRefreshAuditLogs();
+      setTransferSetupLink(res.data?.action_link || res.data?.setup_url || '');
+      setTransferNotice({ type: 'success', text: res.message || 'Leadership transferred successfully.' });
+    } catch (err: any) {
+      setTransferNotice({ type: 'error', text: err.message || 'Network error.' });
+    } finally {
+      setIsTransferring(false);
+    }
+  };
   const handleOpenAssignModal = (b?: BarangayTenant) => {
     const target = b || sortedBarangays[0];
     setAssigningBarangay(target || null);
@@ -465,18 +565,18 @@ export default function SuperAdminPages({
                 Analytics & LYDP Reports
               </button>
               <button
-                onClick={() => { setActiveMenu('audit'); setIsMobileMenuOpen(false); }}
-                className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-3 ${activeMenu === 'audit' ? 'bg-[#091d64] text-white shadow-md' : 'text-slate-200 hover:bg-white/10'}`}
-              >
-                <History className="w-4.5 h-4.5 text-amber-400" />
-                Audit Logs
-              </button>
-              <button
                 onClick={() => { setActiveMenu('restrictions'); setIsMobileMenuOpen(false); }}
                 className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-3 ${activeMenu === 'restrictions' ? 'bg-[#091d64] text-white shadow-md' : 'text-slate-200 hover:bg-white/10'}`}
               >
                 <ShieldAlert className="w-4.5 h-4.5 text-amber-400" />
                 Restricted Users
+              </button>
+              <button
+                onClick={() => { setActiveMenu('audit'); setIsMobileMenuOpen(false); }}
+                className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-3 ${activeMenu === 'audit' ? 'bg-[#091d64] text-white shadow-md' : 'text-slate-200 hover:bg-white/10'}`}
+              >
+                <History className="w-4.5 h-4.5 text-amber-400" />
+                Audit Logs
               </button>
             </nav>
           </div>
@@ -542,18 +642,6 @@ export default function SuperAdminPages({
             </button>
 
             <button
-              onClick={() => setActiveMenu('audit')}
-              className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-3 cursor-pointer ${
-                activeMenu === 'audit' 
-                  ? 'bg-[#091d64] text-white shadow-sm' 
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-[#091d64]'
-              }`}
-            >
-              <History className={`w-4 h-4 ${activeMenu === 'audit' ? 'text-white' : 'text-slate-400'}`} />
-              Audit Logs
-            </button>
-
-            <button
               onClick={() => setActiveMenu('restrictions')}
               className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-3 cursor-pointer ${
                 activeMenu === 'restrictions' 
@@ -563,6 +651,18 @@ export default function SuperAdminPages({
             >
               <ShieldAlert className={`w-4 h-4 ${activeMenu === 'restrictions' ? 'text-white' : 'text-slate-400'}`} />
               Restricted Users
+            </button>
+
+            <button
+              onClick={() => setActiveMenu('audit')}
+              className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-3 cursor-pointer ${
+                activeMenu === 'audit' 
+                  ? 'bg-[#091d64] text-white shadow-sm' 
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-[#091d64]'
+              }`}
+            >
+              <History className={`w-4 h-4 ${activeMenu === 'audit' ? 'text-white' : 'text-slate-400'}`} />
+              Audit Logs
             </button>
 
             <div className="pt-4 mt-2 border-t border-slate-100">
@@ -1418,6 +1518,158 @@ export default function SuperAdminPages({
         </div>
       )}
 
+      {/* CANCEL PENDING CHAIRPERSON INVITATION MODAL */}
+      {showCancelInviteModal && cancellingBarangay && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200">
+            <div className="bg-rose-600 p-5 text-white flex justify-between items-center text-left">
+              <div>
+                <h3 className="font-sans font-black text-base flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5 text-white" />
+                  Cancel Chairperson Invitation
+                </h3>
+                <p className="text-xs text-rose-50">Barangay {cancellingBarangay.name}</p>
+              </div>
+              <button
+                onClick={() => { setShowCancelInviteModal(false); setCancellingBarangay(null); }}
+                className="text-white/80 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCancelInviteSubmit} className="p-6 space-y-4 text-left text-xs">
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                <span className="block text-[10px] font-bold text-amber-600 uppercase tracking-wider mb-1">
+                  Pending Invitation
+                </span>
+                <p className="font-mono text-xs text-amber-900">{cancellingBarangay.chairpersonEmail || 'no email'}</p>
+                <p className="text-[10px] text-amber-700 mt-2 italic">
+                  This invite has not been accepted yet. Cancelling will free the slot so you can assign a new Chairperson.
+                </p>
+              </div>
+
+              {cancelInviteNotice && (
+                <div className={'p-3 rounded-xl text-xs border ' + (cancelInviteNotice.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-700')}>
+                  {cancelInviteNotice.text}
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowCancelInviteModal(false); setCancellingBarangay(null); }}
+                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+                >
+                  Keep Invitation
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCancellingInvite}
+                  className="flex-1 py-3 bg-rose-600 hover:bg-rose-500 disabled:opacity-60 text-white font-bold rounded-xl text-xs cursor-pointer"
+                >
+                  {isCancellingInvite ? 'Cancelling...' : 'Cancel Invitation'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* PANEL REC #9: TRANSFER LEADERSHIP MODAL */}
+      {showTransferModal && transferringBarangay && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200">
+            <div className="bg-amber-500 p-5 text-white flex justify-between items-center text-left">
+              <div>
+                <h3 className="font-sans font-black text-base flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-white" />
+                  Transfer Leadership
+                </h3>
+                <p className="text-xs text-amber-50">Barangay {transferringBarangay.name}</p>
+              </div>
+              <button
+                onClick={() => { setShowTransferModal(false); setTransferringBarangay(null); }}
+                className="text-white/80 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleTransferSubmit} className="p-6 space-y-4 text-left text-xs">
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl">
+                <span className="block text-[10px] font-bold text-rose-500 uppercase tracking-wider mb-1">
+                  Current Chairperson
+                </span>
+                <p className="font-bold text-rose-900 text-sm">{transferCurrentChair?.name || 'Unknown'}</p>
+                <p className="text-rose-700 text-[11px] font-mono">{transferCurrentChair?.email || 'no email'}</p>
+                <p className="text-[10px] text-rose-600 mt-2 italic">
+                  This person will be demoted to SK Official. Their record is preserved.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-800 mb-1">
+                  Successor Official Email <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="email"
+                  value={transferSuccessorEmail}
+                  onChange={(e) => setTransferSuccessorEmail(e.target.value)}
+                  placeholder="incoming.chairperson@example.com"
+                  className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-1 focus:ring-amber-500 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-800 mb-1">Reason for Transfer</label>
+                <select
+                  value={transferReason}
+                  onChange={(e) => setTransferReason(e.target.value as any)}
+                  className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-1 focus:ring-amber-500 focus:outline-none cursor-pointer"
+                >
+                  <option value="Resigned">Resigned</option>
+                  <option value="End of Term">End of Term</option>
+                  <option value="Replaced">Replaced</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-800 mb-1">Notes (optional)</label>
+                <textarea
+                  value={transferNotes}
+                  onChange={(e) => setTransferNotes(e.target.value)}
+                  placeholder="Additional context for audit trail..."
+                  rows={2}
+                  className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:ring-1 focus:ring-amber-500 focus:outline-none resize-none"
+                />
+              </div>
+
+              {transferNotice && (
+                <div className={'p-3 rounded-xl text-xs border ' + (transferNotice.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-700')}>
+                  {transferNotice.text}
+                </div>
+              )}
+
+              {transferSetupLink && (
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
+                  <p className="font-bold text-slate-700">Successor Setup Link:</p>
+                  <p className="text-[10px] break-all text-[#091d64] font-mono">{transferSetupLink}</p>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isTransferring}
+                className="w-full py-3 bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {isTransferring ? 'Transferring...' : 'Confirm Transfer of Leadership'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
       {/* DEDICATED ASSIGN SK CHAIRPERSON MODAL (ONLY CHAIRPERSON EMAIL) */}
       {/* P9/P10: INVITE SK OFFICIAL MODAL */}
       {showInviteOfficialModal && inviteOfficialBarangay && (
@@ -1763,17 +2015,55 @@ export default function SuperAdminPages({
                     <span className="block mt-1 text-xs font-bold text-slate-800">{editingBarangay?.chairperson || 'Unassigned'}</span>
                     <span className="block text-[10px] text-slate-500">{editingBarangay?.chairpersonEmail || 'No email recorded'}</span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const barangay = editingBarangay;
-                      setShowModal(false);
-                      if (barangay) handleOpenAssignModal(barangay);
-                    }}
-                    className="px-3 py-2 bg-[#091d64] text-white rounded-lg text-[10px] font-bold whitespace-nowrap"
-                  >
-                    Assign / Reassign
-                  </button>
+                  {(() => {
+                    const ch = editingBarangay?.chairperson;
+                    const isPendingInvite = ch === 'Pending Invitation';
+                    const hasRealChair = Boolean(ch && ch !== 'Unassigned' && ch !== 'Pending Invitation');
+
+                    if (hasRealChair) {
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const barangay = editingBarangay;
+                            setShowModal(false);
+                            if (barangay) handleOpenTransferModal(barangay);
+                          }}
+                          className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-bold whitespace-nowrap"
+                        >
+                          Transfer Leadership
+                        </button>
+                      );
+                    }
+                    if (isPendingInvite) {
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const barangay = editingBarangay;
+                            setShowModal(false);
+                            if (barangay) handleOpenCancelInviteModal(barangay);
+                          }}
+                          className="px-3 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-[10px] font-bold whitespace-nowrap"
+                        >
+                          Cancel Invitation
+                        </button>
+                      );
+                    }
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const barangay = editingBarangay;
+                          setShowModal(false);
+                          if (barangay) handleOpenAssignModal(barangay);
+                        }}
+                        className="px-3 py-2 bg-[#091d64] text-white rounded-lg text-[10px] font-bold whitespace-nowrap"
+                      >
+                        Assign Chairperson
+                      </button>
+                    );
+                  })()}
                   <button
                     type="button"
                     onClick={() => {
@@ -1850,16 +2140,6 @@ export default function SuperAdminPages({
         </button>
 
         <button
-          onClick={() => setActiveMenu('audit')}
-          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
-            activeMenu === 'audit' ? 'text-[#091d64] font-extrabold bg-blue-50/80' : 'text-slate-400 font-medium hover:text-slate-600'
-          }`}
-        >
-          <History className={`w-5 h-5 ${activeMenu === 'audit' ? 'text-[#091d64] scale-110' : 'text-slate-400'} transition-transform`} />
-          <span className="text-[10px] mt-0.5 tracking-tight font-sans">Audit</span>
-        </button>
-
-        <button
           onClick={() => setActiveMenu('restrictions')}
           className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
             activeMenu === 'restrictions' ? 'text-[#091d64] font-extrabold bg-blue-50/80' : 'text-slate-400 font-medium hover:text-slate-600'
@@ -1867,6 +2147,16 @@ export default function SuperAdminPages({
         >
           <ShieldAlert className={`w-5 h-5 ${activeMenu === 'restrictions' ? 'text-[#091d64] scale-110' : 'text-slate-400'} transition-transform`} />
           <span className="text-[10px] mt-0.5 tracking-tight font-sans">Restricted</span>
+        </button>
+
+        <button
+          onClick={() => setActiveMenu('audit')}
+          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
+            activeMenu === 'audit' ? 'text-[#091d64] font-extrabold bg-blue-50/80' : 'text-slate-400 font-medium hover:text-slate-600'
+          }`}
+        >
+          <History className={`w-5 h-5 ${activeMenu === 'audit' ? 'text-[#091d64] scale-110' : 'text-slate-400'} transition-transform`} />
+          <span className="text-[10px] mt-0.5 tracking-tight font-sans">Audit</span>
         </button>
       </div>
 

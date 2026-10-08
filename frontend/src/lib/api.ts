@@ -190,6 +190,20 @@ class KabisigApiClient {
     });
   }
 
+  async transferChairmanship(barangayId: string, successorEmail: string, reason: string, notes?: string): Promise<{ success: boolean; message?: string; data?: any }> {
+    return await this.request<any>('/admin/transfer-chairmanship', {
+      method: 'POST',
+      body: JSON.stringify({ barangay_id: barangayId, successor_email: successorEmail, reason, notes: notes || null }),
+    });
+  }
+
+  async cancelChairpersonInvitation(barangayId: string): Promise<{ success: boolean; message?: string; data?: any }> {
+    return await this.request<any>('/admin/cancel-chairperson-invitation', {
+      method: 'POST',
+      body: JSON.stringify({ barangay_id: barangayId }),
+    });
+  }
+
   async completeProfile(data: {
     full_name: string;
     first_name?: string;
@@ -280,6 +294,10 @@ class KabisigApiClient {
     password: string;
     confirmPassword: string;
     full_name: string;
+    first_name?: string;
+    middle_name?: string | null;
+    last_name?: string;
+    suffix?: string | null;
     official_role: string;
     tenant_id: string;
   }): Promise<{ success: boolean; message?: string; data?: any }> {
@@ -337,6 +355,10 @@ class KabisigApiClient {
     password: string;
     confirmPassword: string;
     full_name?: string;
+    first_name?: string;
+    middle_name?: string | null;
+    last_name?: string;
+    suffix?: string | null;
   }): Promise<{ success: boolean; token?: string; user?: any; message?: string }> {
     const res = await this.request<{ token: string; user: any }>('/auth/setup-chairperson-password', {
       method: 'POST',

@@ -4,6 +4,7 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ShieldCheck, Lock, Eye, EyeOff, User, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { kabisigApi } from '../../src/lib/api';
+import { composeFullName } from '../../src/lib/name';
 import { KabisigLogo } from '../../src/components/PublicPages';
 
 function validatePassword(pw: string) {
@@ -22,13 +23,18 @@ function SetupForm() {
   const [email, setEmail] = useState('');
   const [tenantId, setTenantId] = useState('');
   const [barangayName, setBarangayName] = useState('');
-  const [fullName, setFullName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [middleName, setMiddleName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [suffix, setSuffix] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const composedFullName = composeFullName({ first_name: firstName, middle_name: middleName, last_name: lastName, suffix });
 
   useEffect(() => {
     const inviteEmail = searchParams.get('invite_email');
@@ -63,7 +69,11 @@ function SetupForm() {
         email: cleanEmail,
         password: password,
         confirmPassword: confirmPassword,
-        full_name: fullName.trim() || 'Hon. SK Chairperson',
+        full_name: composedFullName || ('Hon. ' + firstName.trim() + ' ' + lastName.trim()).trim(),
+        first_name: firstName.trim() || null,
+        middle_name: middleName.trim() || null,
+        last_name: lastName.trim() || null,
+        suffix: suffix.trim() || null,
       });
       if (!res.success) {
         setError(res.message || 'Password setup failed. Please check your inputs and try again.');
@@ -136,11 +146,35 @@ function SetupForm() {
 
             <div>
               <label className="block text-xs font-bold text-slate-900 mb-1">Chairperson Full Name <span className="text-slate-400 font-normal">(Optional)</span></label>
-              <div className="relative">
-                <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)}
-                  className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
-                  placeholder="Hon. Ashley Kyla D. Vinzon" />
-                <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="relative">
+                  <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)}
+                    className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
+                    placeholder="Juan (First Name)" />
+                  <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+                <div className="relative">
+                  <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)}
+                    className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
+                    placeholder="Dela Cruz (Last Name)" />
+                  <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+                <div className="relative">
+                  <input type="text" value={middleName} onChange={(e) => setMiddleName(e.target.value)}
+                    className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
+                    placeholder="Santos (Middle Name)" />
+                  <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+                <select value={suffix} onChange={(e) => setSuffix(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600 cursor-pointer">
+                  <option value="">Suffix — None</option>
+                  <option value="Jr.">Jr.</option>
+                  <option value="Sr.">Sr.</option>
+                  <option value="II">II</option>
+                  <option value="III">III</option>
+                  <option value="IV">IV</option>
+                  <option value="V">V</option>
+                </select>
               </div>
             </div>
 
