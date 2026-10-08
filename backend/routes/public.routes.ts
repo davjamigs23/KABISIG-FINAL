@@ -96,4 +96,81 @@ router.get('/demographics', async (_req: Request, res: Response): Promise<void> 
   );
 });
 
+// GET /api/public/programs - public program listing
+router.get('/programs', async (_req: Request, res: Response): Promise<void> => {
+  const { data, error } = await supabaseAdmin
+    .from('program')
+    .select('id, tenant_id, title, description, category, location, start_date, end_date, budget_allocation, status, barangay(name)')
+    .order('start_date', { ascending: false })
+    .limit(100);
+
+  if (error) {
+    sendError(res, 'Failed to load public programs: ' + error.message, 500);
+    return;
+  }
+  sendSuccess(res, data || [], 'Public programs retrieved.');
+});
+
+// GET /api/public/programs/:id/budget - itemized budget breakdown
+router.get('/programs/:id/budget', async (req: Request, res: Response): Promise<void> => {
+  const programId = String(req.params.id || '');
+  if (!programId) {
+    sendError(res, 'Program ID is required.', 400);
+    return;
+  }
+
+  const { data: program, error: pErr } = await supabaseAdmin
+    .from('program')
+    .select('id, title, tenant_id, budget_allocation, start_date, end_date, status, barangay(name)')
+    .eq('id', programId)
+    .single();
+
+  if (pErr || !program) {
+    sendError(res, 'Program not found.', 404);
+    return;
+  }
+
+  const { data: expenses, error: eErr } = await supabaseAdmin
+    .from('expense')
+    .select('id, title, description, gross_amount, status, expense_date')
+    .eq('program_id', programId)
+    .in('status', ['approved', 'pending'])
+    .order('expense_date', { ascending: true });
+
+  if (eErr) {
+    sendError(res, 'Failed to load program budget: ' + eErr.message, 500);
+    return;
+  }
+
+  const list = (expenses || []) as Array<{ gross_amount: number | string; status: string }>;
+  const allocated = Number(program.budget_allocation) || 0;
+  const spent = list
+    .filter((e) => e.status === 'approved')
+    .reduce((acc, e) => acc + (Number(e.gross_amount) || 0), 0);
+  const remaining = Math.max(allocated - spent, 0);
+  const utilization = allocated > 0 ? (spent / allocated) * 100 : 0;
+
+  sendSuccess(
+    res,
+    {
+      program: {
+        id: program.id,
+        title: program.title,
+        barangay: (program as any).barangay?.name || null,
+        start_date: program.start_date,
+        end_date: program.end_date,
+        status: program.status,
+      },
+      summary: {
+        total_allocated: allocated,
+        total_spent: spent,
+        remaining_balance: remaining,
+        utilization_rate: Number(utilization.toFixed(1)),
+      },
+      expenses: expenses || [],
+    },
+    'Program budget breakdown retrieved.'
+  );
+});
+
 export default router;

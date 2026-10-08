@@ -80,6 +80,10 @@ export default function ViewerPages({
   const [publicDemographics, setPublicDemographics] = useState<any>(null);
   const [publicDemographicsLoading, setPublicDemographicsLoading] = useState(false);
 
+  // P13: Program budget transparency state
+  const [expandedBudget, setExpandedBudget] = useState<string | null>(null);
+  const [budgetCache, setBudgetCache] = useState<Record<string, any>>({});
+
   useEffect(() => {
     if (activeMenu !== 'transparency' || transparencySubTab !== 'demographics') return;
     let isMounted = true;
@@ -90,6 +94,17 @@ export default function ViewerPages({
       .finally(() => { if (isMounted) setPublicDemographicsLoading(false); });
     return () => { isMounted = false; };
   }, [activeMenu, transparencySubTab]);
+
+  // P13: Fetch + toggle program budget breakdown
+  const toggleBudget = async (progId: string) => {
+    if (expandedBudget === progId) { setExpandedBudget(null); return; }
+    setExpandedBudget(progId);
+    if (budgetCache[progId]) return;
+    try {
+      const data = await kabisigApi.getPublicProgramBudget(progId);
+      if (data) setBudgetCache(prev => ({ ...prev, [progId]: data }));
+    } catch (e) { /* no-op */ }
+  };
 
   // Search & Filter state
   const [selectedBarangayId, setSelectedBarangayId] = useState('All');
@@ -1020,6 +1035,48 @@ export default function ViewerPages({
                           <span>{prog.location}</span>
                           <span className="font-mono font-bold text-[#091d64]">₱{prog.budgetAllocation.toLocaleString()}</span>
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => toggleBudget(prog.id)}
+                          className="w-full text-[10px] font-bold text-[#091d64] bg-white hover:bg-slate-100 border border-slate-200 rounded-lg py-1.5 transition-colors"
+                        >
+                          {expandedBudget === prog.id ? "Hide Budget Breakdown" : "View Budget Breakdown"}
+                        </button>
+                        {expandedBudget === prog.id && budgetCache[prog.id] && (
+                          <div className="bg-white rounded-lg border border-slate-200 p-3 space-y-2 text-[10px]">
+                            <table className="w-full">
+                              <tbody>
+                                {budgetCache[prog.id].expenses.map((e: any) => (
+                                  <tr key={e.id} className="border-b border-slate-100 last:border-0">
+                                    <td className="py-1 text-slate-700 font-medium">{e.title}</td>
+                                    <td className="py-1 text-right font-mono text-slate-800">₱{Number(e.gross_amount).toLocaleString()}</td>
+                                    <td className="py-1 pl-2 text-right text-[9px] uppercase font-bold">
+                                      <span className={e.status === "approved" ? "text-emerald-600" : "text-amber-600"}>{e.status}</span>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                            <div className="pt-2 border-t border-slate-200 space-y-1">
+                              <div className="flex justify-between font-semibold text-slate-700">
+                                <span>Total Allocation</span>
+                                <span className="font-mono">₱{Number(budgetCache[prog.id].summary.total_allocated).toLocaleString()}</span>
+                              </div>
+                              <div className="flex justify-between font-semibold text-slate-700">
+                                <span>Total Spent</span>
+                                <span className="font-mono text-rose-600">₱{Number(budgetCache[prog.id].summary.total_spent).toLocaleString()}</span>
+                              </div>
+                              <div className="flex justify-between font-semibold text-slate-700">
+                                <span>Remaining</span>
+                                <span className="font-mono text-emerald-600">₱{Number(budgetCache[prog.id].summary.remaining_balance).toLocaleString()}</span>
+                              </div>
+                              <div className="flex justify-between font-bold text-[#091d64] pt-1 border-t border-slate-200">
+                                <span>Utilization</span>
+                                <span>{budgetCache[prog.id].summary.utilization_rate}%</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

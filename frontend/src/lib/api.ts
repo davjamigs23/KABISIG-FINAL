@@ -229,6 +229,16 @@ class KabisigApiClient {
   }
 
   // --- AUTHENTICATION & MULTI-TENANCY ---
+  async getPublicPrograms(): Promise<any[]> {
+    const res = await this.request<any>('/public/programs', { method: 'GET' });
+    if (Array.isArray(res.data)) return res.data;
+    return [];
+  }
+
+  async getPublicProgramBudget(programId: string): Promise<any | null> {
+    const res = await this.request<any>('/public/programs/' + programId + '/budget', { method: 'GET' });
+    return res.data || null;
+  }
   async getPublicAnnouncements(): Promise<any[]> {
     const res = await this.request<any[]>('/public/announcements', { method: 'GET' });
     if (!res.success || !res.data) return [];
@@ -241,6 +251,26 @@ class KabisigApiClient {
     return Array.isArray(res.data) ? res.data : [];
   }
 
+  async inviteSkOfficial(barangayId: string, email: string, officialRole: string): Promise<{ success: boolean; message?: string; data?: any }> {
+    return await this.request<any>('/admin/invite-sk-official', {
+      method: 'POST',
+      body: JSON.stringify({ barangay_id: barangayId, email, official_role: officialRole }),
+    });
+  }
+
+  async setupOfficialPassword(payload: {
+    email: string;
+    password: string;
+    confirmPassword: string;
+    full_name: string;
+    official_role: string;
+    tenant_id: string;
+  }): Promise<{ success: boolean; message?: string; data?: any }> {
+    return await this.request<any>('/auth/setup-official-password', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
   async getPublicDemographics(): Promise<any | null> {
     const res = await this.request<any>('/public/demographics', { method: 'GET' });
     return res.success && res.data ? res.data : null;
