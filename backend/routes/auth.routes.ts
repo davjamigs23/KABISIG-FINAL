@@ -1,4 +1,5 @@
 import express from 'express';
+import { composeFullName, splitFullName, normalizeSuffix, resolveName } from '../utils/name.js';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import QRCode from 'qrcode';
@@ -97,10 +98,23 @@ const SecurePasswordSchema = z
   .regex(/[0-9]/, 'Password must contain at least one number (0-9)')
   .regex(/[^A-Za-z0-9]/, 'Password must contain at least one symbol (!@#$%^&*...)');
 
+// Rule #1: Name Structure — shared Zod schema for the 4 split name fields
+// Legacy clients that send only `full_name` still work; server splits it.
+const NamePartsSchema = z.object({
+  first_name: z.string().min(1).max(100).optional(),
+  middle_name: z.string().max(100).optional().nullable(),
+  last_name: z.string().min(1).max(100).optional(),
+  suffix: z.string().max(20).optional().nullable(),
+  full_name: z.string().min(2).max(200).optional(),
+});
 const RegisterYouthSchema = z.object({
   email: z.string().email('Invalid email address'),
   password: SecurePasswordSchema,
-  full_name: z.string().min(2, 'Full name is required'),
+  full_name: z.string().min(2, 'Full name is required').optional(),
+  first_name: z.string().max(100).optional(),
+  middle_name: z.string().max(100).optional().nullable(),
+  last_name: z.string().max(100).optional(),
+  suffix: z.string().max(20).optional().nullable(),
   barangay_id: z.string().uuid('Valid Barangay ID is required'),
   phone: z.string().optional(),
   profile_pic: z.string().max(2_000_000).optional(),
@@ -147,6 +161,10 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
     email,
     password,
     full_name,
+    first_name,
+    middle_name,
+    last_name,
+    suffix,
     barangay_id,
     phone,
     profile_pic,
@@ -160,6 +178,11 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
     year,
     is_registered_voter,
   } = parseResult.data;
+
+  const resolvedName = resolveName({
+    payload: { first_name, middle_name, last_name, suffix, full_name },
+    fallback: { first_name: 'Youth', last_name: 'Constituent' },
+  });
 
   // 1. Age Verification (SK Reform Act: 15 to 30 years old)
   const calculatedAge = calculateAge(birthdate);
@@ -223,7 +246,7 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
     email: normalizedEmail,
     password,
     options: {
-      data: { full_name, barangay_id, tenant_id: barangay_id },
+      data: { full_name: resolvedName.full_name, first_name: resolvedName.first_name, middle_name: resolvedName.middle_name, last_name: resolvedName.last_name, suffix: resolvedName.suffix, barangay_id, tenant_id: barangay_id },
     },
   });
 
@@ -240,7 +263,11 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
       id: userId,
       tenant_id: barangay_id,
       role_id: ROLE_IDS.YOUTH_CONSTITUENT, // Integer ID (4)
-      full_name,
+      full_name: resolvedName.full_name,
+      first_name: resolvedName.first_name || null,
+      middle_name: resolvedName.middle_name || null,
+      last_name: resolvedName.last_name || null,
+      suffix: resolvedName.suffix || null,
       email: normalizedEmail,
       phone: phone || null,
       status: 'pending',
@@ -300,7 +327,7 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
     action: 'REGISTER_YOUTH',
     entityName: 'users',
     entityId: userId,
-    details: { full_name, barangay: barangay.name, age: calculatedAge },
+    details: { full_name: resolvedName.full_name, first_name: resolvedName.first_name, last_name: resolvedName.last_name, barangay: barangay.name, age: calculatedAge },
     ipAddress: req.ip || null,
   });
 
@@ -309,7 +336,11 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
     {
       user_id: userId,
       email,
-      full_name,
+      full_name: resolvedName.full_name,
+      first_name: resolvedName.first_name,
+      middle_name: resolvedName.middle_name,
+      last_name: resolvedName.last_name,
+      suffix: resolvedName.suffix,
       barangay: barangay.name,
       status: 'pending',
       age: calculatedAge,
@@ -646,6 +677,10 @@ const SetupChairpersonPasswordSchema = z.object({
   password: SecurePasswordSchema,
   confirmPassword: z.string(),
   full_name: z.string().optional(),
+  first_name: z.string().max(100).optional(),
+  middle_name: z.string().max(100).optional().nullable(),
+  last_name: z.string().max(100).optional(),
+  suffix: z.string().max(20).optional().nullable(),
 });
 
 router.post('/setup-chairperson-password', async (req: Request, res: Response): Promise<void> => {
@@ -655,7 +690,7 @@ router.post('/setup-chairperson-password', async (req: Request, res: Response): 
     return;
   }
 
-  const { email, password, confirmPassword, full_name } = parseResult.data;
+  const { email, password, confirmPassword, full_name, first_name, middle_name, last_name, suffix } = parseResult.data;
   if (password !== confirmPassword) {
     sendError(res, 'Password and Confirm Password do not match.', 400);
     return;
@@ -666,7 +701,7 @@ router.post('/setup-chairperson-password', async (req: Request, res: Response): 
   // Find user in public.users or auth.users
   const { data: existingUser } = await supabaseAdmin
     .from('users')
-    .select('id, tenant_id, role_id, full_name, status, barangay(name)')
+    .select('id, tenant_id, role_id, full_name, first_name, middle_name, last_name, suffix, status, barangay(name)')
     .eq('email', normalizedEmail)
     .maybeSingle();
 
@@ -681,12 +716,21 @@ router.post('/setup-chairperson-password', async (req: Request, res: Response): 
     tenantId = 'b0222222-2222-4000-8000-000000000012';
   }
 
-  const cleanFullName =
-    full_name && full_name.trim().length > 0
-      ? full_name.trim()
-      : existingUser?.full_name && existingUser.full_name !== 'Pending Chairperson' && existingUser.full_name !== 'Pending Invitation'
-      ? existingUser.full_name
-      : 'Hon. SK Chairperson';
+  const resolvedName = resolveName({
+    payload: { first_name, middle_name, last_name, suffix, full_name },
+    existing: existingUser
+      ? {
+          first_name: (existingUser as any).first_name,
+          middle_name: (existingUser as any).middle_name,
+          last_name: (existingUser as any).last_name,
+          suffix: (existingUser as any).suffix,
+          full_name: existingUser.full_name,
+        }
+      : null,
+    placeholders: ['Pending Chairperson', 'Pending Invitation'],
+    fallback: { first_name: 'SK', last_name: 'Chairperson' },
+  });
+  const cleanFullName = resolvedName.full_name || 'Hon. SK Chairperson';
 
   if (existingAuthUser) {
     userId = existingAuthUser.id;
@@ -698,6 +742,10 @@ router.post('/setup-chairperson-password', async (req: Request, res: Response): 
         role_id: ROLE_IDS.BARANGAY_ADMIN,
         role: 'Barangay Admin',
         full_name: cleanFullName,
+              first_name: resolvedName.first_name,
+              middle_name: resolvedName.middle_name,
+              last_name: resolvedName.last_name,
+              suffix: resolvedName.suffix,
         must_set_password: false,
       },
     });
@@ -715,6 +763,10 @@ router.post('/setup-chairperson-password', async (req: Request, res: Response): 
         role_id: ROLE_IDS.BARANGAY_ADMIN,
         role: 'Barangay Admin',
         full_name: cleanFullName,
+              first_name: resolvedName.first_name,
+              middle_name: resolvedName.middle_name,
+              last_name: resolvedName.last_name,
+              suffix: resolvedName.suffix,
         must_set_password: false,
       },
     });
@@ -732,6 +784,10 @@ router.post('/setup-chairperson-password', async (req: Request, res: Response): 
       tenant_id: tenantId,
       role_id: ROLE_IDS.BARANGAY_ADMIN,
       full_name: cleanFullName,
+              first_name: resolvedName.first_name,
+              middle_name: resolvedName.middle_name,
+              last_name: resolvedName.last_name,
+              suffix: resolvedName.suffix,
       email: normalizedEmail,
       status: 'active',
       updated_at: new Date().toISOString(),
@@ -770,6 +826,10 @@ router.post('/setup-chairperson-password', async (req: Request, res: Response): 
     details: {
       email: normalizedEmail,
       full_name: cleanFullName,
+              first_name: resolvedName.first_name,
+              middle_name: resolvedName.middle_name,
+              last_name: resolvedName.last_name,
+              suffix: resolvedName.suffix,
       status: 'active',
     },
     ipAddress: req.ip || null,
@@ -798,6 +858,10 @@ router.post('/setup-chairperson-password', async (req: Request, res: Response): 
     id: userId,
     email: normalizedEmail,
     full_name: cleanFullName,
+              first_name: resolvedName.first_name,
+              middle_name: resolvedName.middle_name,
+              last_name: resolvedName.last_name,
+              suffix: resolvedName.suffix,
     role_id: ROLE_IDS.BARANGAY_ADMIN,
     tenant_id: tenantId,
     status: 'active',
@@ -806,6 +870,10 @@ router.post('/setup-chairperson-password', async (req: Request, res: Response): 
       role_id: ROLE_IDS.BARANGAY_ADMIN,
       role: 'Barangay Admin',
       full_name: cleanFullName,
+              first_name: resolvedName.first_name,
+              middle_name: resolvedName.middle_name,
+              last_name: resolvedName.last_name,
+              suffix: resolvedName.suffix,
     },
     resident_profile: {
       birthdate: '2001-01-01',
@@ -832,6 +900,10 @@ const SetupOfficialPasswordSchema = z.object({
   confirmPassword: z.string(),
   full_name: z.string().optional(),
   official_role: z.string().default('SK Kagawad'),
+  first_name: z.string().max(100).optional(),
+  middle_name: z.string().max(100).optional().nullable(),
+  last_name: z.string().max(100).optional(),
+  suffix: z.string().max(20).optional().nullable(),
 });
 
 router.post('/setup-official-password', async (req: Request, res: Response): Promise<void> => {
@@ -841,7 +913,7 @@ router.post('/setup-official-password', async (req: Request, res: Response): Pro
     return;
   }
 
-  const { email, password, confirmPassword, full_name, official_role } = parseResult.data;
+  const { email, password, confirmPassword, full_name, official_role, first_name, middle_name, last_name, suffix } = parseResult.data;
   if (password !== confirmPassword) {
     sendError(res, 'Password and Confirm Password do not match.', 400);
     return;
@@ -851,7 +923,7 @@ router.post('/setup-official-password', async (req: Request, res: Response): Pro
 
   const { data: existingUser } = await supabaseAdmin
     .from('users')
-    .select('id, tenant_id, role_id, full_name, status, barangay(name)')
+    .select('id, tenant_id, role_id, full_name, first_name, middle_name, last_name, suffix, status, barangay(name)')
     .eq('email', normalizedEmail)
     .maybeSingle();
 
@@ -866,12 +938,21 @@ router.post('/setup-official-password', async (req: Request, res: Response): Pro
     return;
   }
 
-  const cleanFullName =
-    full_name && full_name.trim().length > 0
-      ? full_name.trim()
-      : existingUser?.full_name && existingUser.full_name !== 'Pending Invitation'
-      ? existingUser.full_name
-      : 'SK Official';
+  const resolvedName = resolveName({
+    payload: { first_name, middle_name, last_name, suffix, full_name },
+    existing: existingUser
+      ? {
+          first_name: (existingUser as any).first_name,
+          middle_name: (existingUser as any).middle_name,
+          last_name: (existingUser as any).last_name,
+          suffix: (existingUser as any).suffix,
+          full_name: existingUser.full_name,
+        }
+      : null,
+    placeholders: ['Pending Invitation'],
+    fallback: { first_name: 'SK', last_name: 'Official' },
+  });
+  const cleanFullName = resolvedName.full_name || 'SK Official';
 
   const displayName = cleanFullName.startsWith('Hon.') ? cleanFullName : 'Hon. ' + cleanFullName;
 
@@ -881,6 +962,10 @@ router.post('/setup-official-password', async (req: Request, res: Response): Pro
     role: 'SK Official',
     official_role: official_role,
     full_name: displayName,
+    first_name: resolvedName.first_name,
+    middle_name: resolvedName.middle_name,
+    last_name: resolvedName.last_name,
+    suffix: resolvedName.suffix,
     must_set_password: false,
   };
 
@@ -915,6 +1000,10 @@ router.post('/setup-official-password', async (req: Request, res: Response): Pro
       tenant_id: tenantId,
       role_id: ROLE_IDS.SK_OFFICIAL,
       full_name: displayName,
+      first_name: resolvedName.first_name,
+      middle_name: resolvedName.middle_name,
+      last_name: resolvedName.last_name,
+      suffix: resolvedName.suffix,
       email: normalizedEmail,
       status: 'active',
       updated_at: new Date().toISOString(),
@@ -973,6 +1062,10 @@ router.post('/setup-official-password', async (req: Request, res: Response): Pro
     id: userId,
     email: normalizedEmail,
     full_name: displayName,
+    first_name: resolvedName.first_name,
+    middle_name: resolvedName.middle_name,
+    last_name: resolvedName.last_name,
+    suffix: resolvedName.suffix,
     role_id: ROLE_IDS.SK_OFFICIAL,
     tenant_id: tenantId,
     status: 'active',

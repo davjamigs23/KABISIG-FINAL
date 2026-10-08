@@ -159,7 +159,10 @@ export default function PublicPages({
   const [signUpStep, setSignUpStep] = useState(1);
   const [signUpBarangayId, setSignUpBarangayId] = useState('');
   const [signUpForm, setSignUpForm] = useState({
-    name: '',
+    firstName: '',
+    middleName: '',
+    lastName: '',
+    suffix: '',
     sex: 'Male' as 'Male' | 'Female',
     birthdate: '',
     age: 0,
@@ -178,6 +181,14 @@ export default function PublicPages({
     profilePic: undefined,
     registeredRole: 'Youth Constituent' as any
   });
+
+  // Rule #1: compose display name from split fields
+  const signUpFullName = [
+    signUpForm.firstName,
+    signUpForm.middleName,
+    signUpForm.lastName,
+    signUpForm.suffix,
+  ].map((p) => (p || '').trim()).filter(Boolean).join(' ').trim();
 
   const handleBirthdateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const dob = e.target.value;
@@ -342,7 +353,7 @@ export default function PublicPages({
     setIsSubmittingSignUp(true);
 
     const newProfile: Partial<YouthProfile> = {
-      name: signUpForm.name || 'Anonymous User',
+      name: signUpFullName || 'Anonymous User',
       sex: signUpForm.sex,
       birthdate: signUpForm.birthdate,
       age: signUpForm.age,
@@ -368,7 +379,7 @@ export default function PublicPages({
         const res = await kabisigApi.registerOfficial({
           email: signUpForm.email.trim(),
           password: signUpForm.password,
-          full_name: signUpForm.name.trim(),
+          full_name: signUpFullName,
           barangay_id: resolvedBarangayId,
           role: signUpForm.registeredRole || 'SK_OFFICIAL',
           phone: signUpForm.mobile.trim(),
@@ -397,7 +408,11 @@ export default function PublicPages({
         const res = await kabisigApi.registerYouth({
           email: signUpForm.email.trim(),
           password: signUpForm.password,
-          full_name: signUpForm.name.trim(),
+          full_name: signUpFullName,
+          first_name: signUpForm.firstName.trim(),
+          middle_name: signUpForm.middleName.trim() || null,
+          last_name: signUpForm.lastName.trim(),
+          suffix: signUpForm.suffix.trim() || null,
           barangay_id: resolvedBarangayId,
           phone: signUpForm.mobile.trim(),
           profile_pic: typeof signUpForm.profilePic === 'string' ? signUpForm.profilePic : undefined,
@@ -878,21 +893,63 @@ export default function PublicPages({
                         </p>
                       </div>
 
-                      {/* Full Name */}
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans">
-                          Full Name <span className="text-red-500">*</span>
-                        </label>
-                        <div className="relative w-full">
+                      {/* Rule #1: Split name fields */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans">
+                            First Name <span className="text-red-500">*</span>
+                          </label>
                           <input
                             type="text"
-                            value={signUpForm.name}
-                            onChange={(e) => setSignUpForm({...signUpForm, name: e.target.value})}
-                            className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
-                            placeholder="Enter your full name"
+                            value={signUpForm.firstName}
+                            onChange={(e) => setSignUpForm({...signUpForm, firstName: e.target.value})}
+                            className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
+                            placeholder="Juan"
                             required
                           />
-                          <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans">
+                            Last Name <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={signUpForm.lastName}
+                            onChange={(e) => setSignUpForm({...signUpForm, lastName: e.target.value})}
+                            className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
+                            placeholder="Dela Cruz"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans">
+                            Middle Name <span className="text-slate-400 font-normal">(Optional)</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={signUpForm.middleName}
+                            onChange={(e) => setSignUpForm({...signUpForm, middleName: e.target.value})}
+                            className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
+                            placeholder="Santos"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans">
+                            Suffix <span className="text-slate-400 font-normal">(Optional)</span>
+                          </label>
+                          <select
+                            value={signUpForm.suffix}
+                            onChange={(e) => setSignUpForm({...signUpForm, suffix: e.target.value})}
+                            className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors cursor-pointer"
+                          >
+                            <option value="">None</option>
+                            <option value="Jr.">Jr.</option>
+                            <option value="Sr.">Sr.</option>
+                            <option value="II">II</option>
+                            <option value="III">III</option>
+                            <option value="IV">IV</option>
+                            <option value="V">V</option>
+                          </select>
                         </div>
                       </div>
 
@@ -1169,7 +1226,7 @@ export default function PublicPages({
                       onClick={() => {
                         if (signUpStep === 1) {
                           if (!signUpForm.registeredRole) { alert('Please select your Desired KABISIG Role.'); return; }
-                          if (!signUpForm.name.trim()) { alert('Full Name is required.'); return; }
+                          if (!signUpForm.firstName.trim() || !signUpForm.lastName.trim()) { alert('First Name and Last Name are required.'); return; }
                           if (!signUpForm.birthdate) { alert('Birthdate is required.'); return; }
                         }
                         if (signUpStep === 2) {

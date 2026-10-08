@@ -5,6 +5,7 @@ import { supabaseAdmin, recordAuditLog } from '../services/supabase.service.js';
 import { sendSuccess, sendError } from '../utils/response.js';
 import {authenticateUser, requireActiveUser, requireRoles} from '../middleware/auth.js';
 import type { AuthRequest } from '../types/database.types.js';
+import { resolveName } from '../utils/name.js';
 
 const router = express.Router();
 
@@ -35,6 +36,10 @@ const CompleteProfileSchema = z.object({
   address: z.string().min(3, 'Address is required'),
   password: z.string().optional(),
   confirmPassword: z.string().optional(),
+  first_name: z.string().max(100).optional(),
+  middle_name: z.string().max(100).optional().nullable(),
+  last_name: z.string().max(100).optional(),
+  suffix: z.string().max(20).optional().nullable(),
 });
 
 /**
@@ -50,7 +55,12 @@ router.put('/complete-profile', authenticateUser, async (req: Request, res: Resp
     return;
   }
 
-  const { full_name, phone, birthdate, sex, address, password, confirmPassword } = parseResult.data;
+  const { full_name, phone, birthdate, sex, address, password, confirmPassword, first_name, middle_name, last_name, suffix } = parseResult.data;
+  const resolvedName = resolveName({
+    payload: { first_name, middle_name, last_name, suffix, full_name },
+    placeholders: ['Pending Chairperson', 'Pending Invitation'],
+    fallback: { first_name: 'SK', last_name: 'Chairperson' },
+  });
   const user = (req as AuthRequest).user!;
 
   if ((password || confirmPassword) && (!password || !confirmPassword)) {
@@ -105,7 +115,11 @@ router.put('/complete-profile', authenticateUser, async (req: Request, res: Resp
   const { error: userUpdateErr } = await supabaseAdmin
     .from('users')
     .update({
-      full_name: full_name.trim(),
+      full_name: resolvedName.full_name || full_name.trim(),
+      first_name: resolvedName.first_name || null,
+      middle_name: resolvedName.middle_name || null,
+      last_name: resolvedName.last_name || null,
+      suffix: resolvedName.suffix || null,
       phone: phone ? phone.trim() : null,
       updated_at: new Date().toISOString(),
     })
@@ -139,7 +153,7 @@ router.put('/complete-profile', authenticateUser, async (req: Request, res: Resp
   // 5. Update auth user metadata and password in Supabase Auth
   try {
     const authUpdateData: Record<string, any> = {
-      user_metadata: { full_name: full_name.trim() },
+      user_metadata: { full_name: resolvedName.full_name || full_name.trim(), first_name: resolvedName.first_name, middle_name: resolvedName.middle_name, last_name: resolvedName.last_name, suffix: resolvedName.suffix },
     };
 
     if (password) {
@@ -159,7 +173,11 @@ router.put('/complete-profile', authenticateUser, async (req: Request, res: Resp
     entityName: 'users',
     entityId: user.id,
     details: {
-      full_name: full_name.trim(),
+      full_name: resolvedName.full_name || full_name.trim(),
+      first_name: resolvedName.first_name || null,
+      middle_name: resolvedName.middle_name || null,
+      last_name: resolvedName.last_name || null,
+      suffix: resolvedName.suffix || null,
       email: user.email,
       birthdate,
       sex,
@@ -179,7 +197,11 @@ router.put('/complete-profile', authenticateUser, async (req: Request, res: Resp
     res,
     updatedProfile || {
       id: user.id,
-      full_name: full_name.trim(),
+      full_name: resolvedName.full_name || full_name.trim(),
+      first_name: resolvedName.first_name || null,
+      middle_name: resolvedName.middle_name || null,
+      last_name: resolvedName.last_name || null,
+      suffix: resolvedName.suffix || null,
       email: user.email,
       tenant_id: tenantId,
       phone: phone || null,
@@ -226,7 +248,7 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
     const userId = authenticatedUser.id;
     const { data: user, error: userError } = await supabaseAdmin
       .from('users')
-      .select('id, email, tenant_id, full_name')
+      .select('id, email, tenant_id, full_name, first_name, middle_name, last_name, suffix')
       .eq('id', userId)
       .maybeSingle();
 
@@ -245,8 +267,22 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
     const userUpdates: Record<string, any> = {
       updated_at: new Date().toISOString(),
     };
-    if (body.name || body.full_name) {
-      userUpdates.full_name = (body.name || body.full_name).trim();
+    if (body.name || body.full_name || body.first_name || body.last_name) {
+      const _resolvedProfile = resolveName({
+        payload: {
+          first_name: body.first_name,
+          middle_name: body.middle_name,
+          last_name: body.last_name,
+          suffix: body.suffix,
+          full_name: body.full_name || body.name,
+        },
+        existing: { full_name: user.full_name || null },
+      });
+      userUpdates.full_name = _resolvedProfile.full_name;
+      userUpdates.first_name = _resolvedProfile.first_name || null;
+      userUpdates.middle_name = _resolvedProfile.middle_name || null;
+      userUpdates.last_name = _resolvedProfile.last_name || null;
+      userUpdates.suffix = _resolvedProfile.suffix || null;
     }
     if (body.mobile || body.phone) {
       userUpdates.phone = (body.mobile || body.phone).trim();
@@ -578,7 +614,7 @@ router.put(
       // Load target user
       const { data: targetUser, error: targetErr } = await supabaseAdmin
         .from('users')
-        .select('id, tenant_id, full_name, email')
+        .select('id, tenant_id, full_name, first_name, middle_name, last_name, suffix, email')
         .eq('id', targetUserId)
         .maybeSingle();
 
@@ -595,7 +631,23 @@ router.put(
 
       // Update public.users row (name/phone only)
       const userUpdates: Record<string, any> = {};
-      if (body.name || body.full_name) userUpdates.full_name = body.name || body.full_name;
+      if (body.name || body.full_name || body.first_name || body.last_name) {
+        const _resolvedAdminProfile = resolveName({
+          payload: {
+            first_name: body.first_name,
+            middle_name: body.middle_name,
+            last_name: body.last_name,
+            suffix: body.suffix,
+            full_name: body.full_name || body.name,
+          },
+          existing: { full_name: (targetUser as any)?.full_name || null },
+        });
+        userUpdates.full_name = _resolvedAdminProfile.full_name;
+        userUpdates.first_name = _resolvedAdminProfile.first_name || null;
+        userUpdates.middle_name = _resolvedAdminProfile.middle_name || null;
+        userUpdates.last_name = _resolvedAdminProfile.last_name || null;
+        userUpdates.suffix = _resolvedAdminProfile.suffix || null;
+      }
       if (body.mobile || body.phone) userUpdates.phone = body.mobile || body.phone;
       if (Object.keys(userUpdates).length > 0) {
         await supabaseAdmin.from('users').update(userUpdates).eq('id', targetUserId);

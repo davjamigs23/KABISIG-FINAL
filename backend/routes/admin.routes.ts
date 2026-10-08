@@ -5,6 +5,7 @@ import { supabaseAdmin, recordAuditLog } from '../services/supabase.service.js';
 import { sendSuccess, sendCreated, sendError } from '../utils/response.js';
 import { authenticateUser, requireRoles } from '../middleware/auth.js';
 import type { AuthRequest } from '../types/database.types.js';
+import { resolveName } from '../utils/name.js';
 
 const router = express.Router();
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
@@ -112,7 +113,7 @@ router.post(
     // 2. Check the app's users table first
     const { data: existingUser } = await supabaseAdmin
       .from('users')
-      .select('id, email, tenant_id, role_id, full_name, status')
+      .select('id, email, tenant_id, role_id, full_name, first_name, middle_name, last_name, suffix, status')
       .eq('email', cleanEmail)
       .maybeSingle();
 
@@ -174,6 +175,10 @@ router.post(
             tenant_id: barangay_id,
             role_id: 2,
             full_name: existingUser.full_name || 'Pending Invitation',
+            first_name: (existingUser as any).first_name || null,
+            middle_name: (existingUser as any).middle_name || null,
+            last_name: (existingUser as any).last_name || null,
+            suffix: (existingUser as any).suffix || null,
             email: cleanEmail,
             status: 'active',
             approved_by: admin.id,
@@ -187,6 +192,18 @@ router.post(
         }
       } else {
         // Update the existing user to BARANGAY_ADMIN for the selected barangay
+        const _preserveChair = resolveName({
+          payload: {},
+          existing: {
+            first_name: (existingUser as any).first_name,
+            middle_name: (existingUser as any).middle_name,
+            last_name: (existingUser as any).last_name,
+            suffix: (existingUser as any).suffix,
+            full_name: existingUser.full_name,
+          },
+          placeholders: ['Pending Invitation', 'Pending Chairperson'],
+          fallback: { first_name: 'SK', last_name: 'Chairperson' },
+        });
         const { error: updateErr } = await supabaseAdmin
           .from('users')
           .update({
@@ -195,6 +212,11 @@ router.post(
             status: 'active',
             approved_by: admin.id,
             updated_at: new Date().toISOString(),
+            full_name: _preserveChair.full_name || existingUser.full_name || 'Pending Invitation',
+            first_name: _preserveChair.first_name || null,
+            middle_name: _preserveChair.middle_name || null,
+            last_name: _preserveChair.last_name || null,
+            suffix: _preserveChair.suffix || null,
           })
           .eq('id', existingUser.id);
 
@@ -214,6 +236,10 @@ router.post(
           tenant_id: barangay_id,
           role_id: 2,
           full_name: existingAuthUser.user_metadata?.full_name || '',
+          first_name: null,
+          middle_name: null,
+          last_name: null,
+          suffix: null,
           email: cleanEmail,
           phone: null,
           status: 'active',
@@ -275,6 +301,10 @@ router.post(
           tenant_id: barangay_id,
           role_id: 2, // BARANGAY_ADMIN
           full_name: 'Pending Invitation',
+          first_name: null,
+          middle_name: null,
+          last_name: null,
+          suffix: null,
           email: cleanEmail,
           phone: null,
           status: 'active',
@@ -386,7 +416,7 @@ router.post(
     const redirectUrl = FRONTEND_URL + '/official-setup?invite_email=' + encodeURIComponent(cleanEmail) + '&role=official&tenant_id=' + barangay_id + '&official_role=' + encodeURIComponent(official_role);
 
     const { data: existingUser } = await supabaseAdmin
-      .from('users').select('id, email, tenant_id, role_id, full_name, status')
+      .from('users').select('id, email, tenant_id, role_id, full_name, first_name, middle_name, last_name, suffix, status')
       .eq('email', cleanEmail).maybeSingle();
 
     const { data: authUsersData, error: listAuthError } = await supabaseAdmin.auth.admin.listUsers();
@@ -422,6 +452,10 @@ router.post(
           tenant_id: barangay_id,
           role_id: 3,
           full_name: existingUser.full_name || 'Pending Invitation',
+          first_name: (existingUser as any).first_name || null,
+          middle_name: (existingUser as any).middle_name || null,
+          last_name: (existingUser as any).last_name || null,
+          suffix: (existingUser as any).suffix || null,
           email: cleanEmail,
           status: 'active',
           approved_by: admin.id,
@@ -429,12 +463,29 @@ router.post(
         }).eq('email', cleanEmail);
         if (rebindErr) { sendError(res, 'Failed to rebind SK Official record: ' + rebindErr.message, 500); return; }
       } else {
+        const _preserveOff = resolveName({
+          payload: {},
+          existing: {
+            first_name: (existingUser as any).first_name,
+            middle_name: (existingUser as any).middle_name,
+            last_name: (existingUser as any).last_name,
+            suffix: (existingUser as any).suffix,
+            full_name: existingUser.full_name,
+          },
+          placeholders: ['Pending Invitation'],
+          fallback: { first_name: 'SK', last_name: 'Official' },
+        });
         const { error: updateErr } = await supabaseAdmin.from('users').update({
           tenant_id: barangay_id,
           role_id: 3,
           status: 'active',
           approved_by: admin.id,
           updated_at: new Date().toISOString(),
+          full_name: _preserveOff.full_name || existingUser.full_name || 'Pending Invitation',
+          first_name: _preserveOff.first_name || null,
+          middle_name: _preserveOff.middle_name || null,
+          last_name: _preserveOff.last_name || null,
+          suffix: _preserveOff.suffix || null,
         }).eq('id', existingUser.id);
         if (updateErr) { sendError(res, 'Failed to update user record: ' + updateErr.message, 500); return; }
       }
@@ -446,6 +497,10 @@ router.post(
         tenant_id: barangay_id,
         role_id: 3,
         full_name: existingAuthUser.user_metadata?.full_name || '',
+        first_name: null,
+        middle_name: null,
+        last_name: null,
+        suffix: null,
         email: cleanEmail,
         phone: null,
         status: 'active',
@@ -480,6 +535,10 @@ router.post(
         tenant_id: barangay_id,
         role_id: 3,
         full_name: 'Pending Invitation',
+        first_name: null,
+        middle_name: null,
+        last_name: null,
+        suffix: null,
         email: cleanEmail,
         phone: null,
         status: 'active',
@@ -664,4 +723,3 @@ router.patch(
   }
 );
 export default router;
-

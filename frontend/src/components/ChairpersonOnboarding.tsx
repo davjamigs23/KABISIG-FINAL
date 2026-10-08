@@ -14,6 +14,7 @@ import {
   Eye,
   EyeOff
 } from 'lucide-react';
+import { composeFullName, splitFullName } from '../lib/name';
 import { BarangayTenant } from '../types';
 import { KabisigLogo, DecorativeBackground, validatePassword } from './PublicPages';
 import { kabisigApi } from '../lib/api';
@@ -31,7 +32,10 @@ export default function ChairpersonOnboarding({
   onProfileCompleted,
   onLogout
 }: ChairpersonOnboardingProps) {
-  const [fullName, setFullName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [middleName, setMiddleName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [suffix, setSuffix] = useState('');
   const [phone, setPhone] = useState('');
   const [birthdate, setBirthdate] = useState('');
   const [sex, setSex] = useState<'Male' | 'Female' | 'Other' | 'Prefer not to say'>('Male');
@@ -42,6 +46,9 @@ export default function ChairpersonOnboarding({
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Rule #1: composed display name
+  const composedFullName = composeFullName({ first_name: firstName, middle_name: middleName, last_name: lastName, suffix });
 
   // Auto-calculate age for SK Reform Act verification
   const calculateAge = (dob: string): number => {
@@ -62,11 +69,11 @@ export default function ChairpersonOnboarding({
     e.preventDefault();
     setErrorMsg(null);
 
-    const cleanName = fullName.trim();
-    if (!cleanName || cleanName.split(/\s+/).length < 2) {
-      setErrorMsg('Please enter your full name (both First Name and Last Name).');
+    if (!firstName.trim() || !lastName.trim()) {
+      setErrorMsg('Please enter both First Name and Last Name.');
       return;
     }
+    const cleanName = composedFullName;
 
     if (!birthdate) {
       setErrorMsg('Please provide your date of birth.');
@@ -115,6 +122,10 @@ export default function ChairpersonOnboarding({
     try {
       const res = await kabisigApi.completeProfile({
         full_name: cleanName,
+        first_name: firstName.trim(),
+        middle_name: middleName.trim() || null,
+        last_name: lastName.trim(),
+        suffix: suffix.trim() || null,
         phone: phone.trim(),
         birthdate,
         sex,
@@ -213,21 +224,59 @@ export default function ChairpersonOnboarding({
           {/* Onboarding Form */}
           <form onSubmit={handleSubmit} className="space-y-4 text-left">
             
-            {/* Full Name */}
-            <div>
-              <label className="block text-xs font-bold text-slate-800 mb-1">
-                Full Name (First Name, Middle Initial, Last Name) <span className="text-rose-500">*</span>
+            {/* Rule #1: Split name fields */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-slate-800">
+                Full Name <span className="text-rose-500">*</span>
               </label>
-              <div className="relative">
-                <input 
-                  type="text"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Hon. Juan P. Dela Cruz"
-                  className="w-full pl-9 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#091d64] focus:border-[#091d64] transition-colors"
-                  required
-                />
-                <User className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="relative">
+                  <input 
+                    type="text"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="Juan"
+                    className="w-full pl-9 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#091d64] focus:border-[#091d64] transition-colors"
+                    required
+                  />
+                  <User className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+                </div>
+                <div className="relative">
+                  <input 
+                    type="text"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    placeholder="Dela Cruz"
+                    className="w-full pl-9 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#091d64] focus:border-[#091d64] transition-colors"
+                    required
+                  />
+                  <User className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+                </div>
+                <div className="relative">
+                  <input 
+                    type="text"
+                    value={middleName}
+                    onChange={(e) => setMiddleName(e.target.value)}
+                    placeholder="P. (Middle Name)"
+                    className="w-full pl-9 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#091d64] focus:border-[#091d64] transition-colors"
+                  />
+                  <User className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+                </div>
+                <div>
+                  <select
+                    value={suffix}
+                    onChange={(e) => setSuffix(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#091d64] focus:border-[#091d64] transition-colors cursor-pointer"
+                  >
+                    <option value="">Suffix — None</option>
+                    <option value="Jr.">Jr.</option>
+                    <option value="Sr.">Sr.</option>
+                    <option value="II">II</option>
+                    <option value="III">III</option>
+                    <option value="IV">IV</option>
+                    <option value="V">V</option>
+                  </select>
+                </div>
               </div>
             </div>
 
