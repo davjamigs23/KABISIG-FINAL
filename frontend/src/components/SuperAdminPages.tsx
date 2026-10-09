@@ -7,7 +7,7 @@ import {
   X, ChevronDown, RefreshCw, Layers, Award, TrendingUp, LogOut, Menu,
   Upload, Image as ImageIcon, Trash2, Mail, Loader2, Settings, AlertCircle,
   Copy, ExternalLink, ShieldAlert
-} from 'lucide-react';
+, ArrowLeft} from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
   PieChart, Pie, Cell, Legend
@@ -95,6 +95,23 @@ export default function SuperAdminPages({
   const [isInvitingOfficial, setIsInvitingOfficial] = useState(false);
   const [inviteOfficialNotice, setInviteOfficialNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [officialSetupLink, setOfficialSetupLink] = useState('');
+  // Role capacity for the selected barangay
+  const [roleCapacity, setRoleCapacity] = useState<any>(null);
+  const [isLoadingCapacity, setIsLoadingCapacity] = useState(false);
+
+  useEffect(() => {
+    if (!showInviteOfficialModal || !inviteOfficialBarangay?.id) {
+      setRoleCapacity(null);
+      return;
+    }
+    let cancelled = false;
+    setIsLoadingCapacity(true);
+    kabisigApi.getRoleCapacity(inviteOfficialBarangay.id)
+      .then((res) => { if (!cancelled && res.success) setRoleCapacity(res.data); })
+      .catch(() => { if (!cancelled) setRoleCapacity(null); })
+      .finally(() => { if (!cancelled) setIsLoadingCapacity(false); });
+    return () => { cancelled = true; };
+  }, [showInviteOfficialModal, inviteOfficialBarangay?.id]);
   const [federationAnalytics, setFederationAnalytics] = useState<any>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const [analyticsError, setAnalyticsError] = useState('');
@@ -1530,12 +1547,14 @@ export default function SuperAdminPages({
                 </h3>
                 <p className="text-xs text-rose-50">Barangay {cancellingBarangay.name}</p>
               </div>
+                        <div className="flex items-center gap-2">                 <button                   type="button"                   onClick={() => { setShowCancelInviteModal(false); setCancellingBarangay(null); }}                   className="flex items-center gap-1 text-white/90 hover:text-white cursor-pointer text-xs font-bold px-2 py-1 rounded hover:bg-white/10 transition-colors"                 >                   <ArrowLeft className="w-4 h-4" /> Back                 </button>
               <button
                 onClick={() => { setShowCancelInviteModal(false); setCancellingBarangay(null); }}
                 className="text-white/80 hover:text-white cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
+              </div>
             </div>
 
             <form onSubmit={handleCancelInviteSubmit} className="p-6 space-y-4 text-left text-xs">
@@ -1587,12 +1606,14 @@ export default function SuperAdminPages({
                 </h3>
                 <p className="text-xs text-amber-50">Barangay {transferringBarangay.name}</p>
               </div>
+                        <div className="flex items-center gap-2">                 <button                   type="button"                   onClick={() => { setShowTransferModal(false); setTransferringBarangay(null); }}                   className="flex items-center gap-1 text-white/90 hover:text-white cursor-pointer text-xs font-bold px-2 py-1 rounded hover:bg-white/10 transition-colors"                 >                   <ArrowLeft className="w-4 h-4" /> Back                 </button>
               <button
                 onClick={() => { setShowTransferModal(false); setTransferringBarangay(null); }}
                 className="text-white/80 hover:text-white cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
+              </div>
             </div>
 
             <form onSubmit={handleTransferSubmit} className="p-6 space-y-4 text-left text-xs">
@@ -1683,9 +1704,18 @@ export default function SuperAdminPages({
                 </h3>
                 <p className="text-xs text-blue-100">Barangay {inviteOfficialBarangay.name}</p>
               </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowInviteOfficialModal(false); setInviteOfficialBarangay(null); }}
+                  className="flex items-center gap-1 text-white/90 hover:text-white cursor-pointer text-xs font-bold px-2 py-1 rounded hover:bg-white/10 transition-colors"
+                >
+                  <ArrowLeft className="w-4 h-4" /> Back
+                </button>
               <button onClick={() => { setShowInviteOfficialModal(false); setInviteOfficialBarangay(null); }} className="text-white/80 hover:text-white cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
+              </div>
             </div>
             <form onSubmit={handleInviteOfficialSubmit} className="p-6 space-y-4 text-left text-xs">
               <div>
@@ -1711,6 +1741,26 @@ export default function SuperAdminPages({
                   <option value="SK Treasurer">SK Treasurer</option>
                 </select>
               </div>
+
+                {isLoadingCapacity && (
+                  <p className="text-[10px] text-slate-400 mt-1">Loading current roster…</p>
+                )}
+                {!isLoadingCapacity && roleCapacity && (
+                  <div className="mt-2 space-y-1 text-[10px]">
+                    {(['SK Kagawad', 'SK Secretary', 'SK Treasurer'] as const).map((r) => {
+                      const key = r === 'SK Kagawad' ? 'kagawad' : r === 'SK Secretary' ? 'secretary' : 'treasurer';
+                      const row = roleCapacity[key] || { current: 0, limit: 0 };
+                      const full = row.current >= row.limit;
+                      const isSelected = inviteOfficialRole === r;
+                      return (
+                        <div key={r} className={`flex justify-between ${isSelected ? 'font-bold text-[#091d64]' : 'text-slate-500'}`}>
+                          <span>{r}{isSelected ? ' ←' : ''}</span>
+                          <span className={full ? 'text-rose-600 font-bold' : ''}>{row.current} / {row.limit}{full ? ' (FULL)' : ''}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               <div>
                 <label className="block text-xs font-bold text-slate-800 mb-1">Official Email Address <span className="text-rose-500">*</span></label>
                 <input type="email" value={inviteOfficialEmail} onChange={(e) => setInviteOfficialEmail(e.target.value)}
@@ -1722,16 +1772,8 @@ export default function SuperAdminPages({
                   {inviteOfficialNotice.text}
                 </div>
               )}
-              {officialSetupLink && (
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
-                  <p className="font-bold text-slate-700">Setup Link (share manually):</p>
-                  <p className="text-[10px] break-all text-[#091d64] font-mono">{officialSetupLink}</p>
-                </div>
-              )}
-              <button type="submit" disabled={isInvitingOfficial}
-                className="w-full py-3 bg-[#091d64] hover:bg-[#102a83] disabled:opacity-60 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer">
-                {isInvitingOfficial ? 'Sending...' : ('Send ' + inviteOfficialRole + ' Invitation')}
-              </button>
+
+              {(() => {                 const _key = inviteOfficialRole === 'SK Kagawad' ? 'kagawad' : inviteOfficialRole === 'SK Secretary' ? 'secretary' : 'treasurer';                 const _row = roleCapacity?.[_key];                 const _full = _row ? _row.current >= _row.limit : false;                 return (                   <>                     {_full && (                       <p className="text-[10px] text-rose-600 font-bold text-center">                         {inviteOfficialRole} slots are full for this barangay. Choose a different role or barangay.                       </p>                     )}                     <button type="submit" disabled={isInvitingOfficial || _full}                       className="w-full py-3 bg-[#091d64] hover:bg-[#102a83] disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer">                       {isInvitingOfficial ? 'Sending...' : (_full ? inviteOfficialRole + ' — At Capacity' : 'Send ' + inviteOfficialRole + ' Invitation')}                     </button>                   </>                 );               })()}
             </form>
           </div>
         </div>
@@ -1831,44 +1873,8 @@ export default function SuperAdminPages({
                   </p>
                 </div>
 
-                {/* Onboarding Notice */}
-                <div className="p-3 bg-blue-50/70 border border-blue-100 rounded-xl text-xs text-blue-900 flex items-start gap-2">
-                  <ShieldCheck className="w-4 h-4 text-blue-700 shrink-0 mt-0.5" />
-                  <p className="text-[11px] leading-relaxed">
-                    The backend sets the user's role to <strong>BARANGAY_ADMIN</strong> bound to <strong>Barangay {assigningBarangay.name}</strong>. The Chairperson will be prompted to create their password and confirm it upon sign in.
-                  </p>
-                </div>
 
-                {assignNotice?.type === 'success' && (
-                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2 text-emerald-800">
-                    <p className="text-xs font-bold">{assignNotice.text}</p>
-                    {chairpersonSetupLink && (
-                      <div className="flex gap-2">
-                        <input
-                          readOnly
-                          value={chairpersonSetupLink}
-                          aria-label="Chairperson setup link"
-                          className="min-w-0 flex-1 px-2 py-1.5 border border-emerald-200 rounded-lg bg-white text-[10px] font-mono"
-                        />
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              await navigator.clipboard.writeText(chairpersonSetupLink);
-                              setCopiedLink(true);
-                            } catch {
-                              setCopiedLink(false);
-                            }
-                          }}
-                          className="px-2.5 py-1.5 bg-emerald-700 text-white rounded-lg text-[10px] font-bold flex items-center gap-1"
-                        >
-                          <Copy className="w-3 h-3" /> {copiedLink ? 'Copied' : 'Copy Link'}
-                        </button>
-                      </div>
-                    )}
-                    {!chairpersonSetupLink && <p className="text-[10px]">No setup link was returned. The invitation status is shown above.</p>}
-                  </div>
-                )}
+                {assignNotice?.type === 'success' && (                   <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800">                     {assignNotice.text}                   </div>                 )}
 
                 {assignError && (
                   <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-start gap-2 animate-in fade-in">

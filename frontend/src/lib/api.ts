@@ -197,6 +197,10 @@ class KabisigApiClient {
     });
   }
 
+  async getRoleCapacity(barangayId: string): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request<any>('/users/role-capacity/' + barangayId, { method: 'GET' });
+  }
+
   async cancelChairpersonInvitation(barangayId: string): Promise<{ success: boolean; message?: string; data?: any }> {
     return await this.request<any>('/admin/cancel-chairperson-invitation', {
       method: 'POST',
@@ -256,6 +260,22 @@ class KabisigApiClient {
   async getPublicProgramBudget(programId: string): Promise<any | null> {
     const res = await this.request<any>('/public/programs/' + programId + '/budget', { method: 'GET' });
     return res.data || null;
+  }
+
+  // Panel rec #12: ID-based Profile Verification
+  async uploadVerification(payload: { id_type: string; id_number: string; file_base64: string; file_name: string; mime_type: string }): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request<any>('/users/verification/upload', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async getVerificationStatus(): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request<any>('/users/verification/status', { method: 'GET' });
+  }
+
+  async getUserVerification(userId: string): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request<any>('/users/verification/' + userId, { method: 'GET' });
   }
   async getRestrictions(params?: { activeOnly?: boolean }): Promise<any[]> {
     const url = params?.activeOnly ? '/admin/restrictions?active_only=true' : '/admin/restrictions';
@@ -359,6 +379,10 @@ class KabisigApiClient {
     middle_name?: string | null;
     last_name?: string;
     suffix?: string | null;
+    phone?: string | null;
+    birthdate?: string;
+    sex?: 'Male' | 'Female' | 'Other' | 'Prefer not to say';
+    address?: string;
   }): Promise<{ success: boolean; token?: string; user?: any; message?: string }> {
     const res = await this.request<{ token: string; user: any }>('/auth/setup-chairperson-password', {
       method: 'POST',
@@ -392,6 +416,14 @@ class KabisigApiClient {
     course?: string;
     year?: string;
     is_registered_voter?: boolean;
+    id_type?: string;
+    id_number?: string;
+    id_document_name?: string;
+    id_document_mime?: string;
+    id_document_base64?: string;
+    id_back_document_name?: string;
+    id_back_document_mime?: string;
+    id_back_document_base64?: string;
   }): Promise<{ success: boolean; data?: any; message?: string; error?: any }> {
     const body = {
       password: payload.password || 'KabisigYouth2026!',

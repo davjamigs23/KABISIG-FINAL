@@ -27,6 +27,10 @@ function SetupForm() {
   const [middleName, setMiddleName] = useState('');
   const [lastName, setLastName] = useState('');
   const [suffix, setSuffix] = useState('');
+  const [phone, setPhone] = useState('');
+  const [birthdate, setBirthdate] = useState('');
+  const [sex, setSex] = useState<'Male' | 'Female' | 'Other' | 'Prefer not to say'>('Male');
+  const [address, setAddress] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -74,6 +78,10 @@ function SetupForm() {
         middle_name: middleName.trim() || null,
         last_name: lastName.trim() || null,
         suffix: suffix.trim() || null,
+        phone: phone.trim() || null,
+        birthdate: birthdate || undefined,
+        sex: sex,
+        address: address.trim() || undefined,
       });
       if (!res.success) {
         setError(res.message || 'Password setup failed. Please check your inputs and try again.');
@@ -175,6 +183,40 @@ function SetupForm() {
                   <option value="IV">IV</option>
                   <option value="V">V</option>
                 </select>
+              </div>
+            </div>
+
+            {/* Contact, birthdate, sex, address */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-900 mb-1">Mobile Contact <span className="text-rose-500">*</span></label>
+                <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
+                  placeholder="0917-123-4567"
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
+                  required />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-900 mb-1">Birthdate <span className="text-rose-500">*</span></label>
+                <input type="date" value={birthdate} onChange={(e) => setBirthdate(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
+                  required />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-900 mb-1">Biological Sex</label>
+                <select value={sex} onChange={(e) => setSex(e.target.value as any)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600 cursor-pointer">
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Other">Other</option>
+                  <option value="Prefer not to say">Prefer not to say</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-900 mb-1">Address <span className="text-rose-500">*</span></label>
+                <input type="text" value={address} onChange={(e) => setAddress(e.target.value)}
+                  placeholder="Purok/Zone, Street, Naga City"
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
+                  required />
               </div>
             </div>
 

@@ -42,6 +42,7 @@ import {
   Clock,
   History,
   Loader2
+, Upload, AlertCircle, ImageIcon
 } from 'lucide-react';
 import { composeFullName, splitFullName } from '../lib/name';
 import { QRCodeSVG } from 'qrcode.react';
@@ -117,6 +118,16 @@ export default function YouthPages({
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editForm, setEditForm] = useState<YouthProfile>(currentYouth);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  // Panel rec #12: Identity verification state
+  const [verificationStatus, setVerificationStatus] = useState<any>(null);
+  const [verificationLoading, setVerificationLoading] = useState(false);
+  const [verificationForm, setVerificationForm] = useState({
+    id_type: 'Student ID',
+    id_number: '',
+    file: null as File | null,
+  });
+  const [isSubmittingVerification, setIsSubmittingVerification] = useState(false);
+  const [verificationNotice, setVerificationNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [localRegs, setLocalRegs] = useState<Registration[]>(registrations);
   const [registeringProgramId, setRegisteringProgramId] = useState<string | null>(null);
   const [registrationNotice, setRegistrationNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -268,6 +279,81 @@ export default function YouthPages({
     const parts = splitFullName(profile.name || '');
     return { ...profile, ...parts };
   };
+  const loadVerification = async () => {
+    setVerificationLoading(true);
+    try {
+      const res = await kabisigApi.getVerificationStatus();
+      if (res.success) setVerificationStatus(res.data);
+    } catch { /* no-op */ }
+    finally { setVerificationLoading(false); }
+  };
+
+  const handleVerificationFile = (file: File | null) => {
+    if (!file) {
+      setVerificationForm((p) => ({ ...p, file: null }));
+      return;
+    }
+    const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowed.includes(file.type)) {
+      setVerificationNotice({ type: 'error', text: 'Only JPEG, PNG, or WEBP images are allowed.' });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setVerificationNotice({ type: 'error', text: 'File must be 5 MB or smaller.' });
+      return;
+    }
+    setVerificationNotice(null);
+    setVerificationForm((p) => ({ ...p, file }));
+  };
+
+  const handleVerificationSubmit = async () => {
+    const { id_type, id_number, file } = verificationForm;
+    if (!id_number.trim()) {
+      setVerificationNotice({ type: 'error', text: 'Please enter your ID number.' });
+      return;
+    }
+    if (!file) {
+      setVerificationNotice({ type: 'error', text: 'Please select an ID image to upload.' });
+      return;
+    }
+    setIsSubmittingVerification(true);
+    setVerificationNotice(null);
+    try {
+      const b64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          const commaIdx = result.indexOf(',');
+          resolve(commaIdx >= 0 ? result.substring(commaIdx + 1) : result);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const res = await kabisigApi.uploadVerification({
+        id_type,
+        id_number: id_number.trim(),
+        file_base64: b64,
+        file_name: file.name,
+        mime_type: file.type,
+      });
+      if (!res.success) {
+        setVerificationNotice({ type: 'error', text: res.message || 'Upload failed.' });
+        return;
+      }
+      setVerificationNotice({ type: 'success', text: res.message || 'ID uploaded. Awaiting review.' });
+      setVerificationForm({ id_type, id_number: '', file: null });
+      await loadVerification();
+    } catch (err: any) {
+      setVerificationNotice({ type: 'error', text: err.message || 'Upload failed.' });
+    } finally {
+      setIsSubmittingVerification(false);
+    }
+  };
+  useEffect(() => {
+    if (!isEditModalOpen) return;
+    loadVerification();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditModalOpen]);
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingProfile(true);
@@ -1869,6 +1955,105 @@ export default function YouthPages({
                       </select>
                     </div>
                   </div>
+                </div>
+
+                {/* SECTION 1.5: IDENTITY VERIFICATION (Panel rec #12) */}
+                <div className="space-y-4">
+                  <h4 className="text-xs font-black uppercase text-[#091d64] tracking-wider border-b border-slate-100 pb-1">
+                    Identity Verification
+                  </h4>
+
+                  {verificationLoading && (
+                    <div className="p-4 text-center text-slate-400 text-xs">
+                      <Loader2 className="w-4 h-4 animate-spin inline mr-2" /> Loading verification status...
+                    </div>
+                  )}
+
+                  {!verificationLoading && verificationStatus && verificationStatus.verification_status && verificationStatus.verification_status !== 'not_submitted' && (
+                    <div className={`p-3 rounded-xl border text-xs ${
+                      verificationStatus.verification_status === 'verified' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' :
+                      verificationStatus.verification_status === 'submitted' ? 'bg-blue-50 border-blue-200 text-blue-800' :
+                      verificationStatus.verification_status === 'rejected' ? 'bg-rose-50 border-rose-200 text-rose-800' :
+                      'bg-slate-50 border-slate-200 text-slate-700'
+                    }`}>
+                      <p className="font-black uppercase tracking-wider text-[10px] mb-1">
+                        Status: {String(verificationStatus.verification_status).replace('_', ' ')}
+                      </p>
+                      {verificationStatus.id_type && <p>ID Type: <strong>{verificationStatus.id_type}</strong></p>}
+                      {verificationStatus.id_number && <p>ID Number: <strong>{verificationStatus.id_number}</strong></p>}
+                      {verificationStatus.verification_notes && (
+                        <p className="mt-1 italic">Note: {verificationStatus.verification_notes}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {!verificationLoading && (!verificationStatus || verificationStatus.verification_status !== 'verified') && (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">ID Type <span className="text-rose-500">*</span></label>
+                          <select
+                            value={verificationForm.id_type}
+                            onChange={(e) => setVerificationForm({ ...verificationForm, id_type: e.target.value })}
+                            className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
+                          >
+                            <option value="Student ID">Student ID</option>
+                            <option value="Government ID">Government ID</option>
+                            <option value="Barangay Certificate">Barangay Certificate</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-1">ID Number <span className="text-rose-500">*</span></label>
+                          <input
+                            type="text"
+                            value={verificationForm.id_number}
+                            onChange={(e) => setVerificationForm({ ...verificationForm, id_number: e.target.value })}
+                            placeholder="e.g. 2024-12345"
+                            className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Upload ID Image <span className="text-slate-400 font-normal">(JPG / PNG / WEBP, ≤ 5 MB)</span></label>
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          onChange={(e) => handleVerificationFile(e.target.files && e.target.files[0] ? e.target.files[0] : null)}
+                          className="w-full text-xs file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#091d64] file:text-white hover:file:bg-[#102a83] file:cursor-pointer"
+                        />
+                        {verificationForm.file && (
+                          <p className="mt-1 text-[10px] text-slate-500">
+                            Selected: <strong>{verificationForm.file.name}</strong> ({(verificationForm.file.size / 1024).toFixed(0)} KB)
+                          </p>
+                        )}
+                      </div>
+
+                      {verificationNotice && (
+                        <div className={`p-3 rounded-xl text-xs border ${
+                          verificationNotice.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-700'
+                        }`}>
+                          {verificationNotice.text}
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={handleVerificationSubmit}
+                        disabled={isSubmittingVerification}
+                        className="w-full py-3 bg-[#091d64] hover:bg-[#102a83] disabled:opacity-60 text-white font-bold rounded-lg text-xs flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        {isSubmittingVerification ? <><Loader2 className="w-4 h-4 animate-spin" /> Uploading...</> : <><Upload className="w-4 h-4" /> Submit for Verification</>}
+                      </button>
+                    </>
+                  )}
+
+                  {!verificationLoading && verificationStatus && verificationStatus.verification_status === 'verified' && (
+                    <div className="flex items-center gap-2 text-emerald-700 text-xs font-bold">
+                      <CheckCircle2 className="w-4 h-4" /> Your identity has been verified.
+                    </div>
+                  )}
                 </div>
 
                 {/* SECTION 2: CONTACT DETAILS & EMERGENCY CONTACT */}

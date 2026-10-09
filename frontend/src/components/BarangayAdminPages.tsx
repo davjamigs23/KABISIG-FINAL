@@ -55,7 +55,7 @@ import {
   HelpCircle,
   TrendingUpIcon,
   Trash2
-} from 'lucide-react';
+, AlertCircle, Loader2} from 'lucide-react';
 import { 
   BarChart, 
   Bar, 
@@ -402,6 +402,28 @@ export default function BarangayAdminPages({
 
   const [inspectProfile, setInspectProfile] = useState<YouthProfile | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
+
+  // Panel rec #12: ID verification preview state
+  const [youthVerification, setYouthVerification] = useState<any>(null);
+  const [youthVerificationLoading, setYouthVerificationLoading] = useState(false);
+
+
+  useEffect(() => {
+    if (!inspectProfile) {
+      setYouthVerification(null);
+      return;
+    }
+    let cancelled = false;
+    setYouthVerificationLoading(true);
+    kabisigApi.getUserVerification(inspectProfile.userId || inspectProfile.id).then((res) => {
+      if (!cancelled && res.success) setYouthVerification(res.data);
+    }).catch(() => {
+      if (!cancelled) setYouthVerification(null);
+    }).finally(() => {
+      if (!cancelled) setYouthVerificationLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [inspectProfile]);
   const [showRejectField, setShowRejectField] = useState(false);
 
   const [showCreateProgDrawer, setShowCreateProgDrawer] = useState(false);
@@ -3115,6 +3137,59 @@ return (
                 </div>
               </div>
 
+              {/* Panel rec #12: ID verification preview */}
+              <div className="p-4 border border-slate-200 rounded-lg space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Identity Verification</span>
+                  {youthVerificationLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />}
+                </div>
+
+                {!youthVerificationLoading && (!youthVerification || youthVerification.verification_status === "not_submitted") && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <span>This youth has <strong>not submitted an ID</strong>. Approval is blocked until they upload one.</span>
+                  </div>
+                )}
+
+                {!youthVerificationLoading && youthVerification && youthVerification.verification_status !== "not_submitted" && (
+                  <>
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase tracking-wider">ID Type</span>
+                        <span className="text-slate-800 font-bold block">{youthVerification.id_type || "Not provided"}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase tracking-wider">ID Number</span>
+                        <span className="text-slate-800 font-mono font-bold block">{youthVerification.id_number || "Not provided"}</span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-slate-400 block text-[10px] uppercase tracking-wider">Status</span>
+                        <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                          youthVerification.verification_status === "verified" ? "bg-emerald-100 text-emerald-800" :
+                          youthVerification.verification_status === "submitted" ? "bg-blue-100 text-blue-800" :
+                          youthVerification.verification_status === "rejected" ? "bg-rose-100 text-rose-800" :
+                          "bg-slate-100 text-slate-700"
+                        }`}>
+                          {String(youthVerification.verification_status).replace("_", " ")}
+                        </span>
+                      </div>
+                    </div>
+
+                    {youthVerification.signed_url && (                       <div className="space-y-2">                         <div className="border border-slate-200 rounded-lg overflow-hidden bg-slate-50">                           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2 pt-2">Front Side</p>                           <img src={youthVerification.signed_url} alt="ID Front" className="w-full max-h-64 object-contain bg-white" />                         </div>                         {youthVerification.back_signed_url && (                           <div className="border border-slate-200 rounded-lg overflow-hidden bg-slate-50">                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2 pt-2">Back Side</p>                             <img src={youthVerification.back_signed_url} alt="ID Back" className="w-full max-h-64 object-contain bg-white" />                           </div>                         )}                         <p className="text-[10px] text-slate-400 text-center">Signed URLs expire in 5 minutes</p>                       </div>                     )}
+
+                    {!youthVerification.signed_url && youthVerification.has_document && (
+                      <p className="text-[10px] text-slate-400 italic">ID document exists but preview could not be generated.</p>
+                    )}
+
+                    {youthVerification.verification_notes && (
+                      <p className="text-[11px] text-slate-600 italic border-l-2 border-amber-300 pl-2">
+                        Review note: {youthVerification.verification_notes}
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+
               {showRejectField && (
                 <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-xs space-y-2">
                   <label className="block font-bold text-slate-700">Reason for Application Rejection</label>
@@ -3138,7 +3213,7 @@ return (
                           alert('Please enter a rejection reason.');
                           return;
                         }
-                        onRejectYouth(inspectProfile.id, rejectionReason);
+                        onRejectYouth(inspectProfile.userId || inspectProfile.id, rejectionReason);
                         setInspectProfile(null);
                         setShowRejectField(false);
                       }}
@@ -3171,10 +3246,11 @@ return (
                 {inspectProfile.status === 'Pending' && !showRejectField && (
                   <button
                     onClick={() => {
-                      onApproveYouth(inspectProfile.id);
+                      onApproveYouth(inspectProfile.userId || inspectProfile.id);
                       setInspectProfile(null);
                     }}
-                    className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-xs shadow-md flex items-center gap-1 cursor-pointer"
+                    className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-xs shadow-md flex items-center gap-1 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-red-600"
+                  disabled={Boolean(youthVerification && youthVerification.verification_status === 'not_submitted')}
                   >
                     <Check className="w-4 h-4" />
                     Approve Application

@@ -60,7 +60,7 @@ import {
   QrCode,
   Sparkles,
   ArrowRight
-} from 'lucide-react';
+, Loader2, AlertCircle} from 'lucide-react';
 import { LiveCameraScanner } from './LiveCameraScanner';
 import { 
   BarChart, 
@@ -210,6 +210,43 @@ export default function OfficialPages({
   const [secYouthTab, setSecYouthTab] = useState<'verified' | 'pending'>('verified');
   const [selectedYouthProfile, setSelectedYouthProfile] = useState<YouthProfile | null>(null);
   const [showYouthDetailModal, setShowYouthDetailModal] = useState<boolean>(false);
+  // Panel rec #12: ID verification preview state (view-only for SK Officials)
+  const [youthVerification, setYouthVerification] = useState<any>(null);
+  const [youthVerificationLoading, setYouthVerificationLoading] = useState(false);
+
+  useEffect(() => {
+    if (!showYouthDetailModal || !selectedYouthProfile) {
+      setYouthVerification(null);
+      return;
+    }
+    let cancelled = false;
+    setYouthVerificationLoading(true);
+    kabisigApi
+      .getUserVerification(selectedYouthProfile.userId || selectedYouthProfile.id)
+      .then((res) => {
+        if (!cancelled && res.success) setYouthVerification(res.data);
+      })
+      .catch(() => { if (!cancelled) setYouthVerification(null); })
+      .finally(() => { if (!cancelled) setYouthVerificationLoading(false); });
+    return () => { cancelled = true; };
+  }, [showYouthDetailModal, selectedYouthProfile]);
+
+  useEffect(() => {
+    if (!showYouthDetailModal || !selectedYouthProfile) {
+      setYouthVerification(null);
+      return;
+    }
+    let cancelled = false;
+    setYouthVerificationLoading(true);
+    kabisigApi
+      .getUserVerification(selectedYouthProfile.userId || selectedYouthProfile.id)
+      .then((res) => {
+        if (!cancelled && res.success) setYouthVerification(res.data);
+      })
+      .catch(() => { if (!cancelled) setYouthVerification(null); })
+      .finally(() => { if (!cancelled) setYouthVerificationLoading(false); });
+    return () => { cancelled = true; };
+  }, [showYouthDetailModal, selectedYouthProfile]);
   const [showYouthEditModal, setShowYouthEditModal] = useState<boolean>(false);
   const [youthEditForm, setYouthEditForm] = useState({
     name: '',
@@ -4349,7 +4386,7 @@ export default function OfficialPages({
                       className="flex-grow p-2 border border-amber-300 rounded-lg text-xs bg-white focus:outline-none"
                     />
                     <button onClick={confirmRejectionSubmit} className="px-4 py-2 bg-amber-800 text-white font-bold rounded-lg text-xs">Log Observation</button>
-                    <button onClick={() => setRejectionTargetId(null)} className="px-4 py-2 bg-slate-100 text-slate-600 font-bold rounded-lg text-xs">Cancel</button>
+                    <button onClick={() => setRejectionTargetId(null)} className="px-4 py-2 bg-slate-100 text-slate-600 font-bold rounded-lg text-xs">Close</button>
                   </div>
                 </div>
               )}
@@ -4473,7 +4510,7 @@ export default function OfficialPages({
                     </label>
                     {allocateError && <p role="alert" className="text-xs font-semibold text-rose-700">{allocateError}</p>}
                     <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
-                      <button type="button" disabled={isSavingAllocate} onClick={() => setShowAllocateProgram(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 disabled:opacity-50">Cancel</button>
+                      <button type="button" disabled={isSavingAllocate} onClick={() => setShowAllocateProgram(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 disabled:opacity-50">Close</button>
                       <button type="submit" disabled={isSavingAllocate} className="rounded-lg bg-[#091d64] px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{isSavingAllocate ? 'Saving...' : 'Save allocation'}</button>
                     </div>
                   </form>
@@ -4933,7 +4970,7 @@ export default function OfficialPages({
                 <input type="text" value={progForm.location} onChange={(e)=>setProgForm({...progForm, location: e.target.value})} className="w-full p-2 border rounded text-xs" required />
               </div>
               <div className="flex justify-end gap-2 border-t pt-4">
-                <button onClick={()=>setShowProgModal(false)} className="px-4 py-2 border rounded text-xs">Cancel</button>
+                <button onClick={()=>setShowProgModal(false)} className="px-4 py-2 border rounded text-xs">Close</button>
                 <button onClick={handlePublishProgram} className="px-5 py-2 bg-[#091d64] text-white rounded font-bold text-xs">Publish Initiative</button>
               </div>
             </div>
@@ -5027,7 +5064,7 @@ export default function OfficialPages({
               </div>
               {documentUploadError && <p role="alert" className="text-[11px] font-semibold text-rose-700">{documentUploadError}</p>}
               <div className="flex justify-end gap-2 border-t pt-4">
-                <button disabled={isUploadingDocument} onClick={()=>setShowDocModal(false)} className="px-4 py-2 border rounded text-xs disabled:opacity-50">Cancel</button>
+                <button disabled={isUploadingDocument} onClick={()=>setShowDocModal(false)} className="px-4 py-2 border rounded text-xs disabled:opacity-50">Close</button>
                 <button disabled={isUploadingDocument} onClick={handleUploadDocumentSubmit} className="px-5 py-2 bg-[#091d64] text-white rounded font-bold text-xs disabled:opacity-50">
                   {isUploadingDocument ? 'Uploading...' : 'Submit Document'}
                 </button>
@@ -5117,7 +5154,7 @@ export default function OfficialPages({
 
               <div className="flex justify-end gap-2 border-t pt-4">
                 {expenseSaveError && <p role="alert" className="mr-auto self-center text-[10px] text-rose-700">{expenseSaveError}</p>}
-                <button disabled={isSavingExpense} onClick={()=>setShowExpenseModal(false)} className="px-4 py-2 border rounded text-xs disabled:opacity-50">Cancel</button>
+                <button disabled={isSavingExpense} onClick={()=>setShowExpenseModal(false)} className="px-4 py-2 border rounded text-xs disabled:opacity-50">Close</button>
                 <button disabled={isSavingExpense || isLoadingBudgets || budgetOptions.length === 0} onClick={handleLogExpenseSubmit} className="px-5 py-2 bg-[#091d64] text-white rounded font-bold text-xs disabled:opacity-50">
                   {isSavingExpense ? 'Saving...' : 'Log Transaction'}
                 </button>
@@ -5156,7 +5193,7 @@ export default function OfficialPages({
                 />
               </div>
               <div className="flex justify-end gap-2 border-t pt-4">
-                <button disabled={isSavingResolution} onClick={()=>setShowResModal(false)} className="px-4 py-2 border rounded text-xs disabled:opacity-50">Cancel</button>
+                <button disabled={isSavingResolution} onClick={()=>setShowResModal(false)} className="px-4 py-2 border rounded text-xs disabled:opacity-50">Close</button>
                 <button disabled={isSavingResolution} onClick={handleDraftResolutionSubmit} className="px-5 py-2 bg-[#091d64] text-white rounded font-bold text-xs disabled:opacity-50">
                   {isSavingResolution ? 'Saving...' : 'Create Voting Poll'}
                 </button>
@@ -5213,7 +5250,7 @@ export default function OfficialPages({
                 <input type="text" value={invForm.location} onChange={(e)=>setInvForm({...invForm, location: e.target.value})} className="w-full p-2 border rounded text-xs" required />
               </div>
               <div className="flex justify-end gap-2 border-t pt-4">
-                <button onClick={()=>setShowInvModal(false)} className="px-4 py-2 border rounded text-xs">Cancel</button>
+                <button onClick={()=>setShowInvModal(false)} className="px-4 py-2 border rounded text-xs">Close</button>
                 <button onClick={handleRegisterInventorySubmit} className="px-5 py-2 bg-[#091d64] text-white rounded font-bold text-xs">Register Asset</button>
               </div>
             </div>
@@ -5264,7 +5301,7 @@ export default function OfficialPages({
               </div>
 
               <div className="flex justify-end gap-2 border-t pt-4">
-                <button onClick={() => setShowFeedbackModal(false)} className="px-4 py-2 border rounded text-xs">Cancel</button>
+                <button onClick={() => setShowFeedbackModal(false)} className="px-4 py-2 border rounded text-xs">Close</button>
                 <button onClick={handleSaveFeedbackResponse} className="px-5 py-2 bg-[#091d64] text-white rounded font-bold text-xs">Post Official Response</button>
               </div>
             </div>
@@ -5333,7 +5370,7 @@ export default function OfficialPages({
             </div>
 
             <div className="flex justify-between items-center border-t border-slate-100 p-4 bg-slate-50">
-              <button onClick={() => { setShowReviewDocModal(false); setSelectedDoc(null); }} className="px-4 py-2 border border-slate-200 bg-white rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Cancel</button>
+              <button onClick={() => { setShowReviewDocModal(false); setSelectedDoc(null); }} className="px-4 py-2 border border-slate-200 bg-white rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Close</button>
               <div className="flex gap-2">
                 <button onClick={async () => { if (!onRejectDocument || !selectedDoc) return; setIsReviewingDoc(true); try { await onRejectDocument(selectedDoc.id, reviewNotes || 'Rejected by reviewer.'); setShowReviewDocModal(false); setSelectedDoc(null); } catch (err: any) { alert((err && err.message) ? err.message : 'Reject failed.'); } finally { setIsReviewingDoc(false); } }} disabled={isReviewingDoc || !onRejectDocument} className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"><X className="w-4 h-4" /> Reject</button>
                 <button onClick={async () => { if (!onApproveDocument || !selectedDoc) return; setIsReviewingDoc(true); try { await onApproveDocument(selectedDoc.id, reviewNotes || 'Approved.'); setShowReviewDocModal(false); setSelectedDoc(null); } catch (err: any) { alert((err && err.message) ? err.message : 'Approve failed.'); } finally { setIsReviewingDoc(false); } }} disabled={isReviewingDoc || !onApproveDocument} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"><CheckCircle2 className="w-4 h-4" /> Approve</button>
@@ -5495,7 +5532,7 @@ export default function OfficialPages({
                 />
               </div>
               <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
-                <button onClick={() => setShowEditDocModal(false)} className="px-4 py-2 border rounded-lg text-xs">Cancel</button>
+                <button onClick={() => setShowEditDocModal(false)} className="px-4 py-2 border rounded-lg text-xs">Close</button>
                 <button onClick={handleSaveDocEdit} className="px-5 py-2 bg-[#091d64] text-white font-bold rounded-lg text-xs">Save Changes</button>
               </div>
             </div>
@@ -5636,6 +5673,69 @@ export default function OfficialPages({
                 />
               </div>
 
+              {/* Panel rec #12: ID verification preview (view-only for SK Officials) */}
+              <div className="p-4 border border-slate-200 rounded-lg space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Identity Verification</span>
+                  {youthVerificationLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />}
+                </div>
+
+                {!youthVerificationLoading && (!youthVerification || youthVerification.verification_status === "not_submitted") && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <span>This youth has not submitted an ID yet.</span>
+                  </div>
+                )}
+
+                {!youthVerificationLoading && youthVerification && youthVerification.verification_status !== "not_submitted" && (
+                  <>
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase tracking-wider">ID Type</span>
+                        <span className="text-slate-800 font-bold block">{youthVerification.id_type || "Not provided"}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px] uppercase tracking-wider">ID Number</span>
+                        <span className="text-slate-800 font-mono font-bold block">{youthVerification.id_number || "Not provided"}</span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-slate-400 block text-[10px] uppercase tracking-wider">Status</span>
+                        <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                          youthVerification.verification_status === "verified" ? "bg-emerald-100 text-emerald-800" :
+                          youthVerification.verification_status === "submitted" ? "bg-blue-100 text-blue-800" :
+                          youthVerification.verification_status === "rejected" ? "bg-rose-100 text-rose-800" :
+                          "bg-slate-100 text-slate-700"
+                        }`}>
+                          {String(youthVerification.verification_status).replace("_", " ")}
+                        </span>
+                      </div>
+                    </div>
+
+                    {youthVerification.signed_url && (
+                      <div className="space-y-2">
+                        <div className="border border-slate-200 rounded-lg overflow-hidden bg-slate-50">
+                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2 pt-2">Front Side</p>
+                          <img src={youthVerification.signed_url} alt="ID Front" className="w-full max-h-56 object-contain bg-white" />
+                        </div>
+                        {youthVerification.back_signed_url && (
+                          <div className="border border-slate-200 rounded-lg overflow-hidden bg-slate-50">
+                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2 pt-2">Back Side</p>
+                            <img src={youthVerification.back_signed_url} alt="ID Back" className="w-full max-h-56 object-contain bg-white" />
+                          </div>
+                        )}
+                        <p className="text-[10px] text-slate-400 text-center">Signed URLs expire in 5 minutes</p>
+                      </div>
+                    )}
+
+                    {youthVerification.verification_notes && (
+                      <p className="text-[11px] text-slate-600 italic border-l-2 border-amber-300 pl-2">
+                        Review note: {youthVerification.verification_notes}
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+
               <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg flex justify-between items-center text-[11px]">
                 <span className="text-slate-500">Registry Status:</span>
                 <span className={`px-2 py-0.5 rounded font-black uppercase ${
@@ -5646,32 +5746,7 @@ export default function OfficialPages({
               </div>
 
               <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
-                <button onClick={() => setShowYouthDetailModal(false)} className="px-4 py-2 border rounded-lg text-xs">Cancel</button>
-                <button 
-                  onClick={async () => {
-                    const _split = (youthEditForm.first_name || youthEditForm.last_name)
-                      ? { first_name: youthEditForm.first_name, middle_name: youthEditForm.middle_name, last_name: youthEditForm.last_name, suffix: youthEditForm.suffix }
-                      : splitFullName(youthEditForm.name || '');
-                    const _composedName = composeFullName(_split) || youthEditForm.name;
-                    const updated = { ...selectedYouthProfile, ...youthEditForm, ..._split, name: _composedName };
-                    setLocalYouthProfiles(prev => prev.map(y => y.id === selectedYouthProfile.id ? updated : y));
-                    try {
-                      const result = await kabisigApi.updateProfile(updated, selectedYouthProfile.userId);
-                      if (!result.success) {
-                        alert('Save failed: ' + (result.message || 'Unable to update profile. You may not have permission to edit this user.'));
-                        return;
-                      }
-                      setShowYouthDetailModal(false);
-                      alert('Profile updated for ' + _composedName + '!');
-                    } catch (err: any) {
-                      console.warn('Save error:', err);
-                      alert('Save failed: ' + (err?.message || 'Unknown error.'));
-                    }
-                  }}
-                  className="px-5 py-2 bg-[#091d64] text-white font-bold rounded-lg text-xs cursor-pointer"
-                >
-                  Save Profile Updates
-                </button>
+                <button onClick={() => setShowYouthDetailModal(false)} className="px-4 py-2 border rounded-lg text-xs">Close</button>
               </div>
             </div>
           </div>

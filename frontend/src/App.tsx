@@ -270,7 +270,7 @@ export default function App() {
               }
             }
           } else if (roleId === 3) {
-            const registeredRole = user.user_metadata?.role || user.official_position || user.role;
+            const registeredRole = user.user_metadata?.official_role || user.user_metadata?.role || user.official_position || user.role;
             setCurrentRole(
               registeredRole === 'SK Secretary'
                 ? 'SK Secretary'
@@ -599,8 +599,8 @@ export default function App() {
           email: userObj.email || meta.email || matchedProfile?.email || emailOrName || '',
           educationalLevel: meta.educationalLevel || resident.educational_status || matchedProfile?.educationalLevel || 'College',
           school: resident.school || meta.school || matchedProfile?.school || '',
-          course: meta.course || matchedProfile?.course || '',
-          year: meta.year || matchedProfile?.year || '1st Year',
+          course: resident.course || meta.course || matchedProfile?.course || '',
+          year: resident.year_level || meta.year || matchedProfile?.year || '1st Year',
           employmentStatus: meta.employmentStatus || resident.employment_status || matchedProfile?.employmentStatus || 'Student',
           scholarStatus: meta.scholarStatus || matchedProfile?.scholarStatus || 'Non-Scholar',
           scholarshipType: meta.scholarshipType || matchedProfile?.scholarshipType || '',
@@ -679,7 +679,7 @@ export default function App() {
 
   // --- BARANGAY ADMIN INTERACTION WORKFLOWS ---
   const handleApproveYouth = async (id: string) => {
-    const matchedYouth = youthProfiles.find(p => p.id === id);
+    const matchedYouth = youthProfiles.find(p => p.id === id || p.userId === id);
     if (!matchedYouth?.userId) {
       alert('This profile has no database user ID and cannot be approved yet. Refresh the youth registry and try again.');
       return;
@@ -730,7 +730,7 @@ export default function App() {
   };
 
   const handleRejectYouth = async (id: string, reason: string) => {
-    const matchedYouth = youthProfiles.find(p => p.id === id);
+    const matchedYouth = youthProfiles.find(p => p.id === id || p.userId === id);
     if (!matchedYouth?.userId) {
       alert('This profile has no database user ID and cannot be rejected yet.');
       return;
