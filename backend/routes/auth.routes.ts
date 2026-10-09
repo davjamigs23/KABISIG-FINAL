@@ -129,6 +129,14 @@ const RegisterYouthSchema = z.object({
   course: z.string().max(200).optional(),
   year: z.string().max(50).optional(),
   is_registered_voter: z.boolean().default(false),
+  id_type: z.enum(['Student ID', 'Government ID', 'Barangay Certificate', 'Other']).optional(),
+  id_number: z.string().max(100).optional(),
+  id_document_name: z.string().max(200).optional(),
+  id_document_mime: z.string().regex(/^image\/(jpeg|png|webp)$/).optional(),
+  id_document_base64: z.string().min(20).optional(),
+  id_back_document_name: z.string().max(200).optional(),
+  id_back_document_mime: z.string().regex(/^image\/(jpeg|png|webp)$/).optional(),
+  id_back_document_base64: z.string().min(20).optional(),
 });
 
 const ApproveUserSchema = z.object({
@@ -177,6 +185,14 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
     course,
     year,
     is_registered_voter,
+    id_type,
+    id_number,
+    id_document_name,
+    id_document_mime,
+    id_document_base64,
+    id_back_document_name,
+    id_back_document_mime,
+    id_back_document_base64,
   } = parseResult.data;
 
   const resolvedName = resolveName({
@@ -319,6 +335,50 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
     sendError(res, `Failed to create resident profile: ${profileError.message}`, 500, profileError);
     return;
   }
+  // Panel rec #12 (Option A): upload front + back ID during signup
+  const _uploadID = async (b64: string, mime: string, name: string | undefined, prefix: string) => {
+    const buf = Buffer.from(b64, 'base64');
+    if (buf.length > 5 * 1024 * 1024) return { path: null as string | null, err: 'File > 5 MB' };
+    const extFromName = (name || '').split('.').pop()?.toLowerCase() || '';
+    const allowedExt = ['jpg', 'jpeg', 'png', 'webp'];
+    const ext = allowedExt.includes(extFromName)
+      ? extFromName
+      : (mime === 'image/png' ? 'png' : (mime === 'image/webp' ? 'webp' : 'jpg'));
+    const storagePath = userId + '/' + prefix + '-' + Date.now() + '.' + ext;
+    const { error: upErr } = await supabaseAdmin.storage
+      .from('verification-ids')
+      .upload(storagePath, buf, { contentType: mime, upsert: true });
+    if (upErr) return { path: null as string | null, err: upErr.message };
+    return { path: storagePath, err: null };
+  };
+
+  if (id_document_base64 && id_type && id_number && id_document_mime) {
+    try {
+      const frontRes = await _uploadID(id_document_base64, id_document_mime, id_document_name, 'front');
+      let backPath: string | null = null;
+      if (id_back_document_base64 && id_back_document_mime) {
+        const backRes = await _uploadID(id_back_document_base64, id_back_document_mime, id_back_document_name, 'back');
+        backPath = backRes.path;
+      }
+      if (frontRes.path) {
+        await supabaseAdmin
+          .from('resident_profile')
+          .update({
+            id_type,
+            id_number,
+            id_document_path: frontRes.path,
+            id_back_document_path: backPath,
+            verification_status: 'submitted',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('user_id', userId);
+      } else {
+        console.warn('Signup ID upload failed:', frontRes.err);
+      }
+    } catch (upEx: any) {
+      console.warn('Signup ID upload exception:', upEx?.message);
+    }
+  }
 
   // 6. Record System Audit Log
   await recordAuditLog({
@@ -385,6 +445,33 @@ router.post(
       return;
     }
 
+    // Panel rec #12: require ID submission before approval
+    const { data: verificationRow } = await supabaseAdmin
+      .from('resident_profile')
+      .select('verification_status, id_type, id_number, id_document_path')
+      .eq('user_id', targetUser.id)
+      .maybeSingle();
+
+    const vStatus = verificationRow?.verification_status || 'not_submitted';
+    if (vStatus === 'not_submitted') {
+      sendError(
+        res,
+        'This youth has not uploaded an ID document yet. Ask them to submit a valid ID before you can approve their account.',
+        400,
+        { code: 'ID_NOT_SUBMITTED' }
+      );
+      return;
+    }
+    if (!verificationRow?.id_document_path) {
+      sendError(
+        res,
+        'Verification record is incomplete — no ID file on file. Ask the youth to re-upload.',
+        400,
+        { code: 'ID_DOCUMENT_MISSING' }
+      );
+      return;
+    }
+
     const currentYear = new Date().getFullYear();
     const randomSuffix = Math.random().toString(36).substring(2, 8).toUpperCase();
     const digitalYouthId = `KAB-NAGA-${currentYear}-${randomSuffix}`;
@@ -432,6 +519,9 @@ router.post(
       .update({
         digital_youth_id: digitalYouthId,
         qr_code_url: qrCodeDataUrl,
+        verification_status: 'verified',
+        verification_reviewed_by: admin.id,
+        verification_reviewed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
       .eq('user_id', targetUser.id);
@@ -451,6 +541,8 @@ router.post(
         target_email: targetUser.email,
         digital_youth_id: digitalYouthId,
         approved_by: admin.full_name,
+        id_type: verificationRow?.id_type || null,
+        id_number: verificationRow?.id_number || null,
       },
       ipAddress: req.ip || null,
     });
@@ -549,7 +641,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
 
   const { data: profile } = await supabaseAdmin
     .from('users')
-    .select('*, roles(role_name), barangay(name), resident_profile(*)')
+    .select('*, roles(role_name), barangay(name), resident_profile!resident_profile_user_id_fkey(*)')
     .eq('id', data.user.id)
     .single();
 
@@ -681,6 +773,10 @@ const SetupChairpersonPasswordSchema = z.object({
   middle_name: z.string().max(100).optional().nullable(),
   last_name: z.string().max(100).optional(),
   suffix: z.string().max(20).optional().nullable(),
+  phone: z.string().max(30).optional().nullable(),
+  birthdate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Birthdate must be formatted as YYYY-MM-DD').optional(),
+  sex: z.enum(['Male', 'Female', 'Other', 'Prefer not to say']).optional(),
+  address: z.string().min(3).max(500).optional(),
 });
 
 router.post('/setup-chairperson-password', async (req: Request, res: Response): Promise<void> => {
@@ -690,7 +786,7 @@ router.post('/setup-chairperson-password', async (req: Request, res: Response): 
     return;
   }
 
-  const { email, password, confirmPassword, full_name, first_name, middle_name, last_name, suffix } = parseResult.data;
+  const { email, password, confirmPassword, full_name, first_name, middle_name, last_name, suffix, phone, birthdate, sex, address } = parseResult.data;
   if (password !== confirmPassword) {
     sendError(res, 'Password and Confirm Password do not match.', 400);
     return;
@@ -800,13 +896,14 @@ router.post('/setup-chairperson-password', async (req: Request, res: Response): 
   }
 
   // Ensure resident_profile exists with valid birthdate so App.tsx routes straight to Chairperson's Dashboard
+  const profileBirthdate = birthdate || '2001-01-01';   const profileSex = sex || 'Female';   const profileAddress = address || 'Barangay Hall, Naga City'; 
   const { error: profileUpsertErr } = await supabaseAdmin.from('resident_profile').upsert(
     {
       user_id: userId,
       tenant_id: tenantId,
-      birthdate: '2001-01-01',
-      sex: 'Female',
-      address: 'Barangay Hall, Naga City',
+      birthdate: profileBirthdate,
+      sex: profileSex,
+      address: profileAddress,
       updated_at: new Date().toISOString(),
     },
     { onConflict: 'user_id' }
@@ -849,7 +946,7 @@ router.post('/setup-chairperson-password', async (req: Request, res: Response): 
   // Retrieve complete user profile
   const { data: profile } = await supabaseAdmin
     .from('users')
-    .select('*, roles(role_name), barangay(name, city, district), resident_profile(*)')
+    .select('*, roles(role_name), barangay(name, city, district), resident_profile!resident_profile_user_id_fkey(*)')
     .eq('id', userId)
     .single();
 
@@ -1053,7 +1150,7 @@ router.post('/setup-official-password', async (req: Request, res: Response): Pro
 
   const { data: profile } = await supabaseAdmin
     .from('users')
-    .select('*, roles(role_name), barangay(name, city, district), resident_profile(*)')
+    .select('*, roles(role_name), barangay(name, city, district), resident_profile!resident_profile_user_id_fkey(*)')
     .eq('id', userId)
     .single();
 
@@ -1092,7 +1189,7 @@ router.get('/me', authenticateUser, async (req: Request, res: Response): Promise
   const user = (req as AuthRequest).user!;
   const { data: profile } = await supabaseAdmin
     .from('users')
-    .select('*, roles(role_name), barangay(name, city, district), resident_profile(*)')
+    .select('*, roles(role_name), barangay(name, city, district), resident_profile!resident_profile_user_id_fkey(*)')
     .eq('id', user.id)
     .single();
 

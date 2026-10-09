@@ -209,7 +209,7 @@ router.get(
 
   let query = supabaseAdmin
     .from('feedback')
-    .select('*, barangay(name), users(full_name, email, phone, resident_profile(birthdate, sex, address, educational_status, employment_status, is_registered_voter, digital_youth_id))');
+    .select('*, barangay(name), users(full_name, email, phone, resident_profile!resident_profile_user_id_fkey(birthdate, sex, address, educational_status, employment_status, is_registered_voter, digital_youth_id))');
 
   if (user.role === 'YOUTH_CONSTITUENT') {
     if (!user.tenant_id) {

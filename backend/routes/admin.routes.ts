@@ -383,9 +383,7 @@ router.post(
     });
 
     const emailDelivered = inviteMethod === 'email_invitation';
-    const responseMessage = emailDelivered
-      ? `SK Chairperson invitation generated for ${cleanEmail} (Barangay ${barangay.name}). Chairperson can visit Sign In to create their password and access their dashboard.`
-      : `SK Chairperson setup link generated for ${cleanEmail} (Barangay ${barangay.name}). If the invitation email is not received within a few minutes, please retry the assignment or contact your SK Federation President.`;
+    const responseMessage = `SK Chairperson invitation sent to ${cleanEmail} for Barangay ${barangay.name}. Please check the inbox (and spam folder) for the setup email. If it has not arrived within a few minutes, retry the assignment or contact the SK Federation President.`;
 
     sendCreated(
       res,
@@ -426,6 +424,49 @@ router.post(
       return;
     }
     const { email, barangay_id, official_role } = parseResult.data;
+
+    // Role capacity enforcement: 1 Chairperson, 1 Secretary, 1 Treasurer, 7 Kagawad
+    {
+      const ROLE_LIMITS: Record<string, number> = {
+        'SK Kagawad': 7,
+        'SK Secretary': 1,
+        'SK Treasurer': 1,
+      };
+      const limit = ROLE_LIMITS[official_role] || 0;
+
+      const { data: existingOfficials } = await supabaseAdmin
+        .from('users')
+        .select('id, role_id, status')
+        .eq('tenant_id', barangay_id)
+        .eq('role_id', 3)
+        .eq('status', 'active');
+
+      const list = existingOfficials || [];
+      if (list.length > 0) {
+        const authList = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
+        const metaMap: Record<string, any> = {};
+        (authList.data?.users || []).forEach((u) => { metaMap[u.id] = u.user_metadata || {}; });
+
+        let current = 0;
+        for (const o of list) {
+          const sub = String(metaMap[o.id]?.official_role || '').toLowerCase();
+          const normalized = sub.includes('secretary') ? 'SK Secretary'
+            : sub.includes('treasurer') ? 'SK Treasurer'
+            : 'SK Kagawad';
+          if (normalized === official_role) current++;
+        }
+
+        if (current >= limit) {
+          sendError(
+            res,
+            `Barangay capacity reached: only ${limit} ${official_role}${limit > 1 ? 's' : ''} allowed per Barangay. ${current} already registered.`,
+            409,
+            { code: 'ROLE_CAPACITY_REACHED', role: official_role, current, limit }
+          );
+          return;
+        }
+      }
+    }
     const cleanEmail = email.trim().toLowerCase();
     const authReq = req as AuthRequest;
     const admin = authReq.user;
@@ -604,9 +645,7 @@ router.post(
     });
 
     const emailDelivered = inviteMethod === 'email_invitation';
-    const responseMessage = emailDelivered
-      ? official_role + ' invitation generated for ' + cleanEmail + ' (Barangay ' + barangay.name + '). They can visit Sign In to create their password.'
-      : official_role + ' setup link generated for ' + cleanEmail + ' (Barangay ' + barangay.name + '). If the invitation email is not received within a few minutes, please retry the invitation.';
+    const responseMessage = official_role + ' invitation sent to ' + cleanEmail + ' for Barangay ' + barangay.name + '. Please check the inbox (and spam folder) for the setup email. If it has not arrived within a few minutes, retry the invitation.';
 
     sendCreated(res, {
       user_id: targetUserId,
@@ -753,7 +792,7 @@ const TransferChairmanshipSchema = z.object({
   barangay_id: z.string().uuid('Valid Barangay ID is required'),
   successor_email: z.string().email('Valid successor email is required'),
   reason: z.enum(['Resigned', 'End of Term', 'Replaced', 'Other']).default('Other'),
-  notes: z.string().max(1000).optional(),
+  notes: z.string().max(1000).optional().nullable(),
 });
 
 router.post(

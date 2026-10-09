@@ -41,7 +41,7 @@ router.get('/expenses', async (_req: Request, res: Response): Promise<void> => {
 router.get('/demographics', async (_req: Request, res: Response): Promise<void> => {
   const { data: profiles, error } = await supabaseAdmin
     .from('resident_profile')
-    .select('sex, birthdate, educational_status, employment_status, users!inner(role_id, status)')
+    .select('sex, birthdate, educational_status, employment_status, users!resident_profile_user_id_fkey!inner(role_id, status)')
     .eq('users.role_id', 4)
     .eq('users.status', 'active');
 

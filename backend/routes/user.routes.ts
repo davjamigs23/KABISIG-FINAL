@@ -189,7 +189,7 @@ router.put('/complete-profile', authenticateUser, async (req: Request, res: Resp
   // 7. Retrieve refreshed comprehensive profile
   const { data: updatedProfile } = await supabaseAdmin
     .from('users')
-    .select('*, roles(role_name), barangay(name, city, district), resident_profile(birthdate, sex, address, digital_youth_id, qr_code_url)')
+    .select('*, roles(role_name), barangay(name, city, district), resident_profile!resident_profile_user_id_fkey(birthdate, sex, address, digital_youth_id, qr_code_url)')
     .eq('id', user.id)
     .single();
 
@@ -457,7 +457,7 @@ router.get('/profile', authenticateUser, async (req: Request, res: Response): Pr
 
     const { data: dbUser } = await supabaseAdmin
       .from('users')
-      .select('*, roles(role_name), barangay(name, city, district), resident_profile(*)')
+      .select('*, roles(role_name), barangay(name, city, district), resident_profile!resident_profile_user_id_fkey(*)')
       .eq('id', userId)
       .single();
 
@@ -519,7 +519,7 @@ router.get('/youth-profiles', authenticateUser, async (req: Request, res: Respon
 
     let query = supabaseAdmin
       .from('users')
-      .select('*, resident_profile(*)');
+      .select('*, resident_profile!resident_profile_user_id_fkey(*)');
 
     query = includeOfficials ? query.in('role_id', [3, 4]) : query.or('role_id.eq.4,and(role_id.eq.3,status.eq.pending)');
 
@@ -570,9 +570,9 @@ router.get('/youth-profiles', authenticateUser, async (req: Request, res: Respon
           mobile: u.phone || meta.mobile || '',
           email: u.email || meta.email || '',
           educationalLevel: meta.educationalLevel || resident.educational_status || 'College',
-          school: meta.school || '',
-          course: meta.course || '',
-          year: meta.year || '1st Year',
+          school: resident.school || meta.school || '',
+          course: resident.course || meta.course || '',
+          year: resident.year_level || meta.year || '1st Year',
           employmentStatus: meta.employmentStatus || resident.employment_status || 'Student',
           scholarStatus: meta.scholarStatus || 'Non-Scholar',
           scholarshipType: meta.scholarshipType || '',
@@ -692,6 +692,290 @@ router.put(
     } catch (err: any) {
       sendError(res, err?.message || 'Failed to update profile.', 500);
     }
+  }
+);
+// ============================================================
+// Panel rec #12: ID-based Profile Verification
+// ============================================================
+
+const ID_TYPES = ['Student ID', 'Government ID', 'Barangay Certificate', 'Other'] as const;
+
+const UploadVerificationSchema = z.object({
+  id_type: z.enum(ID_TYPES),
+  id_number: z.string().min(2).max(100),
+  file_base64: z.string().min(20),
+  file_name: z.string().min(3).max(200),
+  mime_type: z.string().regex(/^image\/(jpeg|png|webp)$/, 'Only JPEG, PNG, or WEBP images are allowed'),
+});
+
+/**
+ * POST /api/users/verification/upload
+ * Youth uploads a valid ID. Stores file in `verification-ids/{userId}/{timestamp}.{ext}`
+ * and sets resident_profile.verification_status = 'submitted'.
+ */
+router.post(
+  '/verification/upload',
+  authenticateUser,
+
+  async (req: Request, res: Response): Promise<void> => {
+    const parseResult = UploadVerificationSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      sendError(res, 'Validation failed', 400, parseResult.error.flatten().fieldErrors);
+      return;
+    }
+    const { id_type, id_number, file_base64, file_name, mime_type } = parseResult.data;
+    const user = (req as AuthRequest).user!;
+
+    if (!user.tenant_id) {
+      sendError(res, 'Your account is not linked to a barangay.', 403);
+      return;
+    }
+
+    // Decode base64
+    let buffer: Buffer;
+    try {
+      buffer = Buffer.from(file_base64, 'base64');
+    } catch (e: any) {
+      sendError(res, 'Invalid base64 payload.', 400);
+      return;
+    }
+
+    const MAX_BYTES = 5 * 1024 * 1024;
+    if (buffer.length > MAX_BYTES) {
+      sendError(res, 'File exceeds 5 MB limit.', 413);
+      return;
+    }
+
+    // Sanitize extension
+    const extFromName = (file_name.split('.').pop() || '').toLowerCase();
+    const allowedExt = ['jpg', 'jpeg', 'png', 'webp'];
+    const ext = allowedExt.includes(extFromName) ? extFromName : (mime_type === 'image/png' ? 'png' : (mime_type === 'image/webp' ? 'webp' : 'jpg'));
+    const storagePath = user.id + '/' + Date.now() + '.' + ext;
+
+    // Upload to bucket
+    const { error: uploadErr } = await supabaseAdmin.storage
+      .from('verification-ids')
+      .upload(storagePath, buffer, { contentType: mime_type, upsert: true });
+
+    if (uploadErr) {
+      sendError(res, 'Failed to upload ID document: ' + uploadErr.message, 500);
+      return;
+    }
+
+    // Update resident_profile
+    const { error: updateErr } = await supabaseAdmin
+      .from('resident_profile')
+      .update({
+        id_type,
+        id_number,
+        id_document_path: storagePath,
+        verification_status: 'submitted',
+        verification_notes: null,
+        verification_reviewed_by: null,
+        verification_reviewed_at: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', user.id);
+
+    if (updateErr) {
+      // rollback storage
+      await supabaseAdmin.storage.from('verification-ids').remove([storagePath]);
+      sendError(res, 'Failed to record verification metadata: ' + updateErr.message, 500);
+      return;
+    }
+
+    await recordAuditLog({
+      tenantId: user.tenant_id,
+      userId: user.id,
+      action: 'ID_VERIFICATION_SUBMITTED',
+      entityName: 'resident_profile',
+      entityId: user.id,
+      details: { id_type, id_number, storage_path: storagePath, size_bytes: buffer.length },
+      ipAddress: req.ip || null,
+    });
+
+    sendSuccess(
+      res,
+      { id_type, id_number, verification_status: 'submitted' },
+      'ID document uploaded successfully. Your barangay SK will review it shortly.'
+    );
+  }
+);
+
+/**
+ * GET /api/users/verification/status
+ * Youth fetches their own verification status.
+ */
+router.get(
+  '/verification/status',
+  authenticateUser,
+
+  async (req: Request, res: Response): Promise<void> => {
+    const user = (req as AuthRequest).user!;
+
+    const { data, error } = await supabaseAdmin
+      .from('resident_profile')
+      .select('id_type, id_number, verification_status, verification_notes, verification_reviewed_at')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (error) {
+      sendError(res, 'Failed to load verification status: ' + error.message, 500);
+      return;
+    }
+
+    sendSuccess(
+      res,
+      data || { id_type: null, id_number: null, verification_status: 'not_submitted', verification_notes: null, verification_reviewed_at: null },
+      'Verification status retrieved.'
+    );
+  }
+);
+
+/**
+ * GET /api/users/verification/:userId
+ * Chairperson / SK Official reads a youth's ID — returns signed URL (5 min) + metadata.
+ */
+router.get(
+  '/verification/:userId',
+  authenticateUser,
+  requireActiveUser,
+  requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'),
+  async (req: Request, res: Response): Promise<void> => {
+    const requester = (req as AuthRequest).user!;
+    const targetUserId = String(req.params.userId || '');
+    if (!targetUserId) {
+      sendError(res, 'Target user ID is required.', 400);
+      return;
+    }
+
+    // Load profile + verify tenant access
+    const { data: profile, error } = await supabaseAdmin
+      .from('resident_profile')
+      .select('user_id, tenant_id, id_type, id_number, id_document_path, id_back_document_path, verification_status, verification_notes, verification_reviewed_at, users!resident_profile_user_id_fkey!inner(full_name, email)')
+      .eq('user_id', targetUserId)
+      .maybeSingle();
+
+    if (error) {
+      sendError(res, 'Failed to load verification: ' + error.message, 500);
+      return;
+    }
+    if (!profile) {
+      sendError(res, 'Verification record not found for this user.', 404);
+      return;
+    }
+
+    // Tenant scope check — non-Super-Admin must match tenant
+    if (requester.role !== 'SUPER_ADMIN' && profile.tenant_id !== requester.tenant_id) {
+      sendError(res, 'You can only review youth in your barangay.', 403);
+      return;
+    }
+
+    let signedUrl: string | null = null;
+    if (profile.id_document_path) {
+      const { data: signData, error: signErr } = await supabaseAdmin.storage
+        .from('verification-ids')
+        .createSignedUrl(profile.id_document_path, 300); // 5 min
+      if (!signErr && signData) {
+        signedUrl = signData.signedUrl;
+      }
+    }
+
+    let backSignedUrl: string | null = null;
+    if ((profile as any).id_back_document_path) {
+      const { data: signData, error: signErr } = await supabaseAdmin.storage
+        .from('verification-ids')
+        .createSignedUrl((profile as any).id_back_document_path, 300);
+      if (!signErr && signData) {
+        backSignedUrl = signData.signedUrl;
+      }
+    }
+
+    sendSuccess(
+      res,
+      {
+        user_id: profile.user_id,
+        full_name: (profile as any).users?.full_name || null,
+        email: (profile as any).users?.email || null,
+        id_type: profile.id_type,
+        id_number: profile.id_number,
+        has_document: Boolean(profile.id_document_path),
+        signed_url: signedUrl,
+        has_back_document: Boolean((profile as any).id_back_document_path),
+        back_signed_url: backSignedUrl,
+        signed_url_expires_in_seconds: signedUrl ? 300 : null,
+        verification_status: profile.verification_status,
+        verification_notes: profile.verification_notes,
+        verification_reviewed_at: profile.verification_reviewed_at,
+      },
+      'Verification details retrieved.'
+    );
+  }
+);
+/**
+ * GET /api/users/role-capacity/:barangayId
+ * Returns how many SK Officials per sub-role exist in a barangay + capacity limits.
+ * Limits: 1 Chairperson, 1 Secretary, 1 Treasurer, 7 Kagawad.
+ */
+router.get(
+  '/role-capacity/:barangayId',
+  authenticateUser,
+  requireRoles('SUPER_ADMIN'),
+  async (req: Request, res: Response): Promise<void> => {
+    const barangayId = String(req.params.barangayId || '');
+    if (!barangayId) {
+      sendError(res, 'Barangay ID is required.', 400);
+      return;
+    }
+
+    // Fetch all SK Officials for this barangay (role_id 2 or 3)
+    const { data: officials, error } = await supabaseAdmin
+      .from('users')
+      .select('id, email, role_id, status')
+      .eq('tenant_id', barangayId)
+      .in('role_id', [2, 3]);
+
+    if (error) {
+      sendError(res, 'Failed to load officials: ' + error.message, 500);
+      return;
+    }
+
+    // Fetch each official's metadata to determine sub-role
+    const authList = await supabaseAdmin.auth.admin.listUsers();
+    const metaMap: Record<string, any> = {};
+    (authList.data?.users || []).forEach((u) => {
+      metaMap[u.id] = u.user_metadata || {};
+    });
+
+    const activeOnly = (officials || []).filter((o: any) => o.status === 'active');
+
+    let chairperson = 0;
+    let secretary = 0;
+    let treasurer = 0;
+    let kagawad = 0;
+
+    activeOnly.forEach((o: any) => {
+      if (o.role_id === 2) {
+        chairperson++;
+        return;
+      }
+      const meta = metaMap[o.id] || {};
+      const sub = String(meta.official_role || '').toLowerCase();
+      if (sub.includes('secretary')) secretary++;
+      else if (sub.includes('treasurer')) treasurer++;
+      else kagawad++;
+    });
+
+    sendSuccess(
+      res,
+      {
+        chairperson: { current: chairperson, limit: 1 },
+        secretary:   { current: secretary,   limit: 1 },
+        treasurer:   { current: treasurer,   limit: 1 },
+        kagawad:     { current: kagawad,     limit: 7 },
+      },
+      'Role capacity retrieved.'
+    );
   }
 );
 export default router;
