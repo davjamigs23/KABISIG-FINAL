@@ -68,6 +68,9 @@ export default function SuperAdminPages({
   // Panel rec #9: Transfer Leadership modal state
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [transferringBarangay, setTransferringBarangay] = useState<BarangayTenant | null>(null);
+  const [transferReturnToConfigure, setTransferReturnToConfigure] = useState(false);
+  const [cancelInviteReturnToConfigure, setCancelInviteReturnToConfigure] = useState(false);
+  const [assignReturnToConfigure, setAssignReturnToConfigure] = useState(false);
   const [transferCurrentChair, setTransferCurrentChair] = useState<{ email: string; name: string } | null>(null);
   const [transferSuccessorEmail, setTransferSuccessorEmail] = useState('');
   const [transferReason, setTransferReason] = useState<'Resigned' | 'End of Term' | 'Replaced' | 'Other'>('Resigned');
@@ -90,6 +93,7 @@ export default function SuperAdminPages({
   // P9/P10: SK Official invite modal state
   const [showInviteOfficialModal, setShowInviteOfficialModal] = useState(false);
   const [inviteOfficialBarangay, setInviteOfficialBarangay] = useState<BarangayTenant | null>(null);
+  const [inviteReturnToConfigure, setInviteReturnToConfigure] = useState(false);
   const [inviteOfficialEmail, setInviteOfficialEmail] = useState('');
   const [inviteOfficialRole, setInviteOfficialRole] = useState<'SK Kagawad' | 'SK Secretary' | 'SK Treasurer'>('SK Kagawad');
   const [isInvitingOfficial, setIsInvitingOfficial] = useState(false);
@@ -211,13 +215,14 @@ export default function SuperAdminPages({
     ? chartBarangayData
     : chartBarangayData.filter((item: any) => filteredBarangays.some(b => b.id === item.id));
 
-  const handleOpenInviteOfficialModal = (b?: BarangayTenant) => {
+  const handleOpenInviteOfficialModal = (b?: BarangayTenant, returnToConfigure: boolean = false) => {
     const target = b || sortedBarangays[0];
     setInviteOfficialBarangay(target || null);
     setInviteOfficialEmail('');
     setInviteOfficialRole('SK Kagawad');
     setInviteOfficialNotice(null);
     setOfficialSetupLink('');
+    setInviteReturnToConfigure(returnToConfigure);
     setShowInviteOfficialModal(true);
   };
 
@@ -284,9 +289,10 @@ export default function SuperAdminPages({
     loadRestrictions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeMenu, restrictionsFilter]);
-  const handleOpenCancelInviteModal = (b: BarangayTenant) => {
+  const handleOpenCancelInviteModal = (b: BarangayTenant, returnToConfigure: boolean = false) => {
     setCancellingBarangay(b);
     setCancelInviteNotice(null);
+    setCancelInviteReturnToConfigure(returnToConfigure);
     setShowCancelInviteModal(true);
   };
 
@@ -310,7 +316,7 @@ export default function SuperAdminPages({
       setIsCancellingInvite(false);
     }
   };
-  const handleOpenTransferModal = async (b: BarangayTenant) => {
+  const handleOpenTransferModal = async (b: BarangayTenant, returnToConfigure: boolean = false) => {
     setTransferringBarangay(b);
     setTransferSuccessorEmail('');
     setTransferReason('Resigned');
@@ -318,6 +324,7 @@ export default function SuperAdminPages({
     setTransferNotice(null);
     setTransferSetupLink('');
     setTransferCurrentChair(null);
+    setTransferReturnToConfigure(returnToConfigure);
     setShowTransferModal(true);
 
     const current = barangays.find((x) => x.id === b.id);
@@ -369,7 +376,7 @@ export default function SuperAdminPages({
       setIsTransferring(false);
     }
   };
-  const handleOpenAssignModal = (b?: BarangayTenant) => {
+  const handleOpenAssignModal = (b?: BarangayTenant, returnToConfigure: boolean = false) => {
     const target = b || sortedBarangays[0];
     setAssigningBarangay(target || null);
     setAssignEmail(target?.chairpersonEmail && target.chairpersonEmail !== '' ? target.chairpersonEmail : '');
@@ -377,6 +384,7 @@ export default function SuperAdminPages({
     setAssignNotice(null);
     setChairpersonSetupLink('');
     setCopiedLink(false);
+    setAssignReturnToConfigure(returnToConfigure);
     setShowAssignModal(true);
   };
 
@@ -1547,9 +1555,9 @@ export default function SuperAdminPages({
                 </h3>
                 <p className="text-xs text-rose-50">Barangay {cancellingBarangay.name}</p>
               </div>
-                        <div className="flex items-center gap-2">                 <button                   type="button"                   onClick={() => { setShowCancelInviteModal(false); setCancellingBarangay(null); }}                   className="flex items-center gap-1 text-white/90 hover:text-white cursor-pointer text-xs font-bold px-2 py-1 rounded hover:bg-white/10 transition-colors"                 >                   <ArrowLeft className="w-4 h-4" /> Back                 </button>
+                        <div className="flex items-center gap-2">                 <button                   type="button"                   onClick={() => { setShowCancelInviteModal(false); setCancellingBarangay(null); if (cancelInviteReturnToConfigure) { setShowModal(true); setCancelInviteReturnToConfigure(false); } }}                   className="flex items-center gap-1 text-white/90 hover:text-white cursor-pointer text-xs font-bold px-2 py-1 rounded hover:bg-white/10 transition-colors"                 >                   <ArrowLeft className="w-4 h-4" /> Back                 </button>
               <button
-                onClick={() => { setShowCancelInviteModal(false); setCancellingBarangay(null); }}
+                onClick={() => { setShowCancelInviteModal(false); setCancellingBarangay(null); if (cancelInviteReturnToConfigure) { setShowModal(true); setCancelInviteReturnToConfigure(false); } }}
                 className="text-white/80 hover:text-white cursor-pointer"
               >
                 <X className="w-5 h-5" />
@@ -1577,7 +1585,7 @@ export default function SuperAdminPages({
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => { setShowCancelInviteModal(false); setCancellingBarangay(null); }}
+                  onClick={() => { setShowCancelInviteModal(false); setCancellingBarangay(null); if (cancelInviteReturnToConfigure) { setShowModal(true); setCancelInviteReturnToConfigure(false); } }}
                   className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
                 >
                   Keep Invitation
@@ -1606,9 +1614,9 @@ export default function SuperAdminPages({
                 </h3>
                 <p className="text-xs text-amber-50">Barangay {transferringBarangay.name}</p>
               </div>
-                        <div className="flex items-center gap-2">                 <button                   type="button"                   onClick={() => { setShowTransferModal(false); setTransferringBarangay(null); }}                   className="flex items-center gap-1 text-white/90 hover:text-white cursor-pointer text-xs font-bold px-2 py-1 rounded hover:bg-white/10 transition-colors"                 >                   <ArrowLeft className="w-4 h-4" /> Back                 </button>
+                        <div className="flex items-center gap-2">                 <button                   type="button"                   onClick={() => { setShowTransferModal(false); setTransferringBarangay(null); if (transferReturnToConfigure) { setShowModal(true); setTransferReturnToConfigure(false); } }}                   className="flex items-center gap-1 text-white/90 hover:text-white cursor-pointer text-xs font-bold px-2 py-1 rounded hover:bg-white/10 transition-colors"                 >                   <ArrowLeft className="w-4 h-4" /> Back                 </button>
               <button
-                onClick={() => { setShowTransferModal(false); setTransferringBarangay(null); }}
+                onClick={() => { setShowTransferModal(false); setTransferringBarangay(null); if (transferReturnToConfigure) { setShowModal(true); setTransferReturnToConfigure(false); } }}
                 className="text-white/80 hover:text-white cursor-pointer"
               >
                 <X className="w-5 h-5" />
@@ -1707,12 +1715,12 @@ export default function SuperAdminPages({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => { setShowInviteOfficialModal(false); setInviteOfficialBarangay(null); }}
+                  onClick={() => { setShowInviteOfficialModal(false); setInviteOfficialBarangay(null); if (inviteReturnToConfigure) { setShowModal(true); setInviteReturnToConfigure(false); } }}
                   className="flex items-center gap-1 text-white/90 hover:text-white cursor-pointer text-xs font-bold px-2 py-1 rounded hover:bg-white/10 transition-colors"
                 >
                   <ArrowLeft className="w-4 h-4" /> Back
                 </button>
-              <button onClick={() => { setShowInviteOfficialModal(false); setInviteOfficialBarangay(null); }} className="text-white/80 hover:text-white cursor-pointer">
+              <button onClick={() => { setShowInviteOfficialModal(false); setInviteOfficialBarangay(null); if (inviteReturnToConfigure) { setShowModal(true); setInviteReturnToConfigure(false); } }} className="text-white/80 hover:text-white cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
               </div>
@@ -1791,7 +1799,7 @@ export default function SuperAdminPages({
                 <p className="text-xs text-blue-100">Barangay {assigningBarangay.name} • Naga City Multi-Tenant Registry</p>
               </div>
               <button 
-                onClick={() => { setShowAssignModal(false); setAssigningBarangay(null); }} 
+                onClick={() => { setShowAssignModal(false); setAssigningBarangay(null); if (assignReturnToConfigure) { setShowModal(true); setAssignReturnToConfigure(false); } }} 
                 className="text-white/80 hover:text-white cursor-pointer"
               >
                 <X className="w-5 h-5" />
@@ -1887,7 +1895,7 @@ export default function SuperAdminPages({
                   <button 
                     type="button"
                     disabled={isAssigning}
-                    onClick={() => { setShowAssignModal(false); setAssigningBarangay(null); }}
+                    onClick={() => { setShowAssignModal(false); setAssigningBarangay(null); if (assignReturnToConfigure) { setShowModal(true); setAssignReturnToConfigure(false); } }}
                     className="px-4 py-2 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-100 transition-colors disabled:opacity-50 cursor-pointer"
                   >
                     Cancel
@@ -2033,7 +2041,7 @@ export default function SuperAdminPages({
                           onClick={() => {
                             const barangay = editingBarangay;
                             setShowModal(false);
-                            if (barangay) handleOpenTransferModal(barangay);
+                            if (barangay) handleOpenTransferModal(barangay, true);
                           }}
                           className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-bold whitespace-nowrap"
                         >
@@ -2048,7 +2056,7 @@ export default function SuperAdminPages({
                           onClick={() => {
                             const barangay = editingBarangay;
                             setShowModal(false);
-                            if (barangay) handleOpenCancelInviteModal(barangay);
+                            if (barangay) handleOpenCancelInviteModal(barangay, true);
                           }}
                           className="px-3 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-[10px] font-bold whitespace-nowrap"
                         >
@@ -2062,7 +2070,7 @@ export default function SuperAdminPages({
                         onClick={() => {
                           const barangay = editingBarangay;
                           setShowModal(false);
-                          if (barangay) handleOpenAssignModal(barangay);
+                          if (barangay) handleOpenAssignModal(barangay, true);
                         }}
                         className="px-3 py-2 bg-[#091d64] text-white rounded-lg text-[10px] font-bold whitespace-nowrap"
                       >
@@ -2075,7 +2083,7 @@ export default function SuperAdminPages({
                     onClick={() => {
                       const barangay = editingBarangay;
                       setShowModal(false);
-                      if (barangay) handleOpenInviteOfficialModal(barangay);
+                      if (barangay) handleOpenInviteOfficialModal(barangay, true);
                     }}
                     className="px-3 py-2 bg-amber-400 text-amber-950 rounded-lg text-[10px] font-bold whitespace-nowrap ml-2"
                   >
