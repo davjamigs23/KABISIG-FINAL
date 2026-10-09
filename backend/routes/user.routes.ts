@@ -931,7 +931,7 @@ router.get(
     // Fetch all SK Officials for this barangay (role_id 2 or 3)
     const { data: officials, error } = await supabaseAdmin
       .from('users')
-      .select('id, email, role_id, status')
+      .select('id, email, role_id, status, full_name, first_name, middle_name, last_name, suffix')
       .eq('tenant_id', barangayId)
       .in('role_id', [2, 3]);
 
@@ -966,6 +966,24 @@ router.get(
       else kagawad++;
     });
 
+    const skRoster = (officials || [])
+      .filter((o: any) => o.role_id === 3)
+      .map((o: any) => {
+        const meta = metaMap[o.id] || {};
+        const sub = String(meta.official_role || '').toLowerCase();
+        const official_role = sub.includes('secretary') ? 'SK Secretary'
+          : sub.includes('treasurer') ? 'SK Treasurer'
+          : 'SK Kagawad';
+        const row: any = o;
+        const composed = [row.first_name, row.middle_name, row.last_name, row.suffix].filter(Boolean).join(' ').trim();
+        return {
+          id: o.id,
+          email: o.email,
+          official_role,
+          status: o.status,
+          full_name: composed || row.full_name || 'Pending Invitation',
+        };
+      });
     sendSuccess(
       res,
       {
@@ -973,6 +991,7 @@ router.get(
         secretary:   { current: secretary,   limit: 1 },
         treasurer:   { current: treasurer,   limit: 1 },
         kagawad:     { current: kagawad,     limit: 7 },
+        officials: skRoster,
       },
       'Role capacity retrieved.'
     );

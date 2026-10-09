@@ -244,7 +244,7 @@ export default function SuperAdminPages({
         return;
       }
       setOfficialSetupLink(res.data?.action_link || res.data?.setup_url || '');
-      setInviteOfficialNotice({ type: 'success', text: res.message || (inviteOfficialRole + ' invitation created for ' + email + '.') });
+      setInviteOfficialNotice({ type: 'success', text: res.message || (inviteOfficialRole + ' invitation sent to ' + email + '.') });
     } catch (err: any) {
       setInviteOfficialNotice({ type: 'error', text: err.message || 'Network connection failed.' });
     } finally {
@@ -1769,6 +1769,26 @@ export default function SuperAdminPages({
                     })}
                   </div>
                 )}
+              {!isLoadingCapacity && roleCapacity?.officials && roleCapacity.officials.length > 0 && (
+                <div className="border-t border-slate-100 pt-3">
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                    Existing SK Officials for this Barangay
+                  </p>
+                  <div className="space-y-1.5 max-h-44 overflow-y-auto">
+                    {roleCapacity.officials.map((o: any) => (
+                      <div key={o.id} className="flex items-center justify-between text-[11px] p-2 bg-slate-50 rounded-lg">
+                        <div className="min-w-0 flex-1">
+                          <span className="font-bold text-slate-800 block truncate">{o.full_name}</span>
+                          <span className="text-[10px] text-slate-500 font-mono block truncate">{o.email}</span>
+                        </div>
+                        <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-blue-50 text-[#091d64] ml-2 shrink-0">
+                          {o.official_role}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-bold text-slate-800 mb-1">Official Email Address <span className="text-rose-500">*</span></label>
                 <input type="email" value={inviteOfficialEmail} onChange={(e) => setInviteOfficialEmail(e.target.value)}

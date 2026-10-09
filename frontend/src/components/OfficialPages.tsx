@@ -150,7 +150,12 @@ export default function OfficialPages({
   const [activeMenu, setActiveMenu] = useState<string>('dashboard');
 
   useEffect(() => {
-    setActiveMenu('dashboard');
+    const roleLanding: Record<string, string> = {
+      'SK Kagawad': 'programs',
+      'SK Secretary': 'documents',
+      'SK Treasurer': 'budget'
+    };
+    setActiveMenu(roleLanding[currentRole as string] || 'dashboard');
   }, [currentRole]);
 
   // Global UI utilities state
@@ -5723,7 +5728,7 @@ export default function OfficialPages({
                             <img src={youthVerification.back_signed_url} alt="ID Back" className="w-full max-h-56 object-contain bg-white" />
                           </div>
                         )}
-                        <p className="text-[10px] text-slate-400 text-center">Signed URLs expire in 5 minutes</p>
+                        
                       </div>
                     )}
 

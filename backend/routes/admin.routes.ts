@@ -411,6 +411,10 @@ const InviteSkOfficialSchema = z.object({
   email: z.string().email('Valid email address is required'),
   barangay_id: z.string().uuid('Valid Barangay ID is required'),
   official_role: z.enum(['SK Kagawad', 'SK Secretary', 'SK Treasurer']),
+  first_name: z.string().trim().optional().nullable(),
+  middle_name: z.string().trim().optional().nullable(),
+  last_name: z.string().trim().optional().nullable(),
+  suffix: z.string().trim().optional().nullable(),
 });
 
 router.post(
@@ -423,7 +427,7 @@ router.post(
       sendError(res, 'Validation failed', 400, parseResult.error.flatten().fieldErrors);
       return;
     }
-    const { email, barangay_id, official_role } = parseResult.data;
+    const { email, barangay_id, official_role, first_name, middle_name, last_name, suffix } = parseResult.data;
 
     // Role capacity enforcement: 1 Chairperson, 1 Secretary, 1 Treasurer, 7 Kagawad
     {
@@ -488,6 +492,41 @@ router.post(
     if (listAuthError) { sendError(res, 'Failed to inspect existing auth users: ' + listAuthError.message, 500); return; }
 
     const existingAuthUser = authUsersData?.users?.find(u => u.email?.toLowerCase() === cleanEmail);
+    // Guard: prevent email reassignment across roles / barangays.
+    // An email already bound to an active SK Chairperson or SK Official
+    // cannot be invited again (would overwrite the existing role).
+    if (existingUser && (existingUser as any).status === 'active') {
+      const eu: any = existingUser;
+      if (eu.role_id === 2) {
+        sendError(res, 'This email is already assigned as SK Chairperson in ' + barangay.name + '. Use Transfer Leadership instead of re-inviting.', 409, { code: 'EMAIL_ALREADY_CHAIRPERSON' });
+        return;
+      }
+      if (eu.role_id === 3) {
+        const euAuth = authUsersData?.users?.find((u: any) => u.id === eu.id);
+        const euMeta: any = euAuth?.user_metadata || {};
+        const euRoleRaw = String(euMeta.official_role || '').toLowerCase();
+        const euRole = euRoleRaw.includes('secretary') ? 'SK Secretary'
+          : euRoleRaw.includes('treasurer') ? 'SK Treasurer'
+          : 'SK Kagawad';
+        if (eu.tenant_id === barangay_id) {
+          sendError(
+            res,
+            'This email is already assigned as ' + euRole + ' in ' + barangay.name + '. Each email can only hold one SK Official role. To change their role, use a different email address.',
+            409,
+            { code: 'EMAIL_ALREADY_OFFICIAL_SAME_TENANT', current_role: euRole }
+          );
+        } else {
+          sendError(
+            res,
+            'This email is already registered as ' + euRole + ' in another barangay. Each email can only hold one SK Official role. To change their role, use a different email address.',
+            409,
+            { code: 'EMAIL_ALREADY_OFFICIAL_OTHER_TENANT', current_role: euRole }
+          );
+        }
+        return;
+      }
+    }
+
 
     if (existingUser) {
       targetUserId = existingUser.id;
@@ -512,15 +551,27 @@ router.post(
           targetUserId = createData.user.id;
           inviteMethod = 'temp_credentials';
         }
+        const resolvedA = resolveName({
+          payload: { first_name, middle_name, last_name, suffix },
+          existing: {
+            first_name: (existingUser as any).first_name,
+            middle_name: (existingUser as any).middle_name,
+            last_name: (existingUser as any).last_name,
+            suffix: (existingUser as any).suffix,
+            full_name: existingUser.full_name,
+          },
+          placeholders: ['Pending Invitation'],
+          fallback: { first_name: 'SK', last_name: 'Official' },
+        });
         const { error: rebindErr } = await supabaseAdmin.from('users').update({
           id: targetUserId,
           tenant_id: barangay_id,
           role_id: 3,
-          full_name: existingUser.full_name || 'Pending Invitation',
-          first_name: (existingUser as any).first_name || null,
-          middle_name: (existingUser as any).middle_name || null,
-          last_name: (existingUser as any).last_name || null,
-          suffix: (existingUser as any).suffix || null,
+          full_name: resolvedA.full_name,
+          first_name: resolvedA.first_name || null,
+          middle_name: resolvedA.middle_name || null,
+          last_name: resolvedA.last_name || null,
+          suffix: resolvedA.suffix || null,
           email: cleanEmail,
           status: 'active',
           approved_by: admin.id,
@@ -529,7 +580,7 @@ router.post(
         if (rebindErr) { sendError(res, 'Failed to rebind SK Official record: ' + rebindErr.message, 500); return; }
       } else {
         const _preserveOff = resolveName({
-          payload: {},
+          payload: { first_name, middle_name, last_name, suffix },
           existing: {
             first_name: (existingUser as any).first_name,
             middle_name: (existingUser as any).middle_name,
@@ -557,22 +608,30 @@ router.post(
     } else if (existingAuthUser) {
       targetUserId = existingAuthUser.id;
       inviteMethod = 'existing_auth_user';
-      const { error: insertUserErr } = await supabaseAdmin.from('users').upsert({
-        id: targetUserId,
-        tenant_id: barangay_id,
-        role_id: 3,
-        full_name: existingAuthUser.user_metadata?.full_name || '',
-        first_name: null,
-        middle_name: null,
-        last_name: null,
-        suffix: null,
-        email: cleanEmail,
-        phone: null,
-        status: 'active',
-        approved_by: admin.id,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'id' });
+        const resolvedC = resolveName({
+          payload: { first_name, middle_name, last_name, suffix },
+          existing: {
+            full_name: existingAuthUser.user_metadata?.full_name,
+          },
+          placeholders: ['Pending Invitation'],
+          fallback: { first_name: 'SK', last_name: 'Official' },
+        });
+        const { error: insertUserErr } = await supabaseAdmin.from('users').upsert({
+          id: targetUserId,
+          tenant_id: barangay_id,
+          role_id: 3,
+          full_name: resolvedC.full_name,
+          first_name: resolvedC.first_name || null,
+          middle_name: resolvedC.middle_name || null,
+          last_name: resolvedC.last_name || null,
+          suffix: resolvedC.suffix || null,
+          email: cleanEmail,
+          phone: null,
+          status: 'active',
+          approved_by: admin.id,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
       if (insertUserErr) { sendError(res, 'Failed to bind existing auth user: ' + insertUserErr.message, 500); return; }
     } else {
       const { data: inviteData, error: inviteErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(cleanEmail, {
@@ -595,15 +654,20 @@ router.post(
         targetUserId = createData.user.id;
         inviteMethod = 'temp_credentials';
       }
+      const resolvedD = resolveName({
+        payload: { first_name, middle_name, last_name, suffix },
+        placeholders: ['Pending Invitation'],
+        fallback: { first_name: 'SK', last_name: 'Official' },
+      });
       const { error: insertUserErr } = await supabaseAdmin.from('users').upsert({
         id: targetUserId,
         tenant_id: barangay_id,
         role_id: 3,
-        full_name: 'Pending Invitation',
-        first_name: null,
-        middle_name: null,
-        last_name: null,
-        suffix: null,
+        full_name: resolvedD.full_name,
+        first_name: resolvedD.first_name || null,
+        middle_name: resolvedD.middle_name || null,
+        last_name: resolvedD.last_name || null,
+        suffix: resolvedD.suffix || null,
         email: cleanEmail,
         phone: null,
         status: 'active',
@@ -645,7 +709,8 @@ router.post(
     });
 
     const emailDelivered = inviteMethod === 'email_invitation';
-    const responseMessage = official_role + ' invitation sent to ' + cleanEmail + ' for Barangay ' + barangay.name + '. Please check the inbox (and spam folder) for the setup email. If it has not arrived within a few minutes, retry the invitation.';
+    const composedRespName = [first_name, middle_name, last_name, suffix].filter(Boolean).join(' ') || cleanEmail;
+    const responseMessage = official_role + ' invitation sent to ' + composedRespName + ' (' + cleanEmail + ') for Barangay ' + barangay.name + '. Please check the inbox (and spam folder) for the setup email. If it has not arrived within a few minutes, retry the invitation.';
 
     sendCreated(res, {
       user_id: targetUserId,
