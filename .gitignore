@@ -58,3 +58,9 @@ desktop.ini
 # === Testing ===
 coverage/
 .nyc_output
+# === Backup files from debugging ===
+*.bak
+*.bak-*
+*.BAK
+backup_*
+*.backup
