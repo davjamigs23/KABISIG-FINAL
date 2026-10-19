@@ -6,6 +6,18 @@ import { sendSuccess, sendCreated, sendError } from '../utils/response.js';
 import { authenticateUser, requireActiveUser, requireRoles } from '../middleware/auth.js';
 import type { AuthRequest } from '../types/database.types.js';
 
+// Fix 3A: budget allocation restricted to SK Treasurer (SUPER_ADMIN retains override per RBAC)
+function requireTreasurerOnly(req: any, res: any, next: any): void {
+  const u = req?.user;
+  if (u?.role === 'SUPER_ADMIN') { next(); return; }
+  const sub = String(u?.official_role || '').toLowerCase();
+  if (!sub.includes('treasurer')) {
+    sendError(res, 'Budget allocation requires the SK Treasurer role.', 403);
+    return;
+  }
+  next();
+}
+
 const router = express.Router();
 
 function round2(num: number): number {
@@ -13,6 +25,7 @@ function round2(num: number): number {
 }
 
 const CreateBudgetSchema = z.object({
+  program_id: z.string().uuid().optional(),
   fiscal_year: z.number().int().min(2020).max(2100).default(new Date().getFullYear()),
   category: z.string().min(2, 'Category name is required'),
   allocated_amount: z.number().positive('Allocated amount must be greater than zero'),
@@ -82,7 +95,7 @@ router.post(
   '/',
   authenticateUser,
   requireActiveUser,
-  requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'),
+  requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'), requireTreasurerOnly,
   async (req: Request, res: Response): Promise<void> => {
     const parseResult = CreateBudgetSchema.safeParse(req.body);
     if (!parseResult.success) {
@@ -91,7 +104,7 @@ router.post(
     }
 
     const user = (req as AuthRequest).user!;
-    const { fiscal_year, category, allocated_amount, description } = parseResult.data;
+    const { fiscal_year, category, allocated_amount, description, program_id } = parseResult.data;
 
     const tenantId = user.tenant_id;
     if (!tenantId) {
@@ -116,7 +129,8 @@ router.post(
         .from('budget')
         .update({
           allocated_amount,
-          remaining_amount: allocated_amount,
+            program_id: program_id || null,
+            remaining_amount: allocated_amount,
           description: description || null,
           updated_at: new Date().toISOString(),
         })
@@ -134,6 +148,7 @@ router.post(
             fiscal_year,
             category,
             allocated_amount,
+            program_id: program_id || null,
             remaining_amount: allocated_amount,
             description: description || null,
           },
@@ -203,7 +218,7 @@ router.post(
   '/expense',
   authenticateUser,
   requireActiveUser,
-  requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'),
+  requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'), requireTreasurerOnly,
   async (req: Request, res: Response): Promise<void> => {
     const parseResult = RecordExpenseSchema.safeParse(req.body);
     if (!parseResult.success) {

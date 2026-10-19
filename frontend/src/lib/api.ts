@@ -467,6 +467,9 @@ class KabisigApiClient {
     });
   }
 
+  async uploadAvatar(base64: string, mime_type: string): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request<any>('/users/upload-avatar', { method: 'POST', body: JSON.stringify({ base64, mime_type }) });
+  }
   async getCurrentUser(): Promise<any> {
     const res = await this.request('/auth/me', { method: 'GET' });
     return res.success ? res.data : null;
@@ -744,6 +747,7 @@ class KabisigApiClient {
 
   // --- BUDGET & EXPENSES ---
   async allocateBudget(payload: {
+    program_id?: string;
     fiscal_year: number;
     category: string;
     allocated_amount: number;
@@ -842,6 +846,13 @@ class KabisigApiClient {
     });
   }
 
+  async updateUserEmail(userId: string, email: string): Promise<{ success: boolean; message?: string }> {
+    return await this.request<any>('/admin/users/' + userId + '/email', { method: 'PATCH', body: JSON.stringify({ email }) });
+  }
+
+  async requestEmailChange(new_email: string): Promise<{ success: boolean; message?: string }> {
+    return await this.request<any>('/users/request-email-change', { method: 'POST', body: JSON.stringify({ new_email }) });
+  }
   async getProfile(): Promise<{ success: boolean; data?: YouthProfile; message?: string }> {
     return await this.request<YouthProfile>('/users/profile', { method: 'GET' });
   }
@@ -860,6 +871,19 @@ class KabisigApiClient {
       return { data: null, error: 'The server returned an invalid youth profile response.' };
     }
     return { data: res.data, error: null };
+  }
+
+  async updateUserStatus(userId: string, status: string): Promise<{ success: boolean; message?: string }> {
+    return await this.request(`/users/${encodeURIComponent(userId)}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+  }
+
+
+  async getSuspendedUsers(): Promise<any[]> {
+    const res = await this.request<any[]>('/users/suspended', { method: 'GET' });
+    return res.success ? (res.data || []) : [];
   }
 }
 

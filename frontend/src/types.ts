@@ -69,7 +69,8 @@ export interface YouthProfile {
   isScholar?: boolean;
 
   // System metadata
-  status: 'Pending' | 'Approved' | 'Rejected';
+  status: 'Pending' | 'Approved' | 'Rejected' | 'suspended';
+    suspension_reason?: string;
   rejectionReason?: string;
   dateRegistered: string;
   registeredRole?: UserRole;
@@ -106,7 +107,8 @@ export interface Registration {
   participantId: string; // matches YouthProfile.id
   participantName: string;
   dateRegistered: string;
-  status: 'Pending' | 'Approved' | 'Rejected' | 'Completed';
+  status: 'Pending' | 'Approved' | 'Rejected' | 'suspended' | 'Completed';
+    suspension_reason?: string;
   qrCode: string;
 }
 
@@ -151,6 +153,7 @@ export interface ExpenseRecord {
   netAmount?: number;
   category: 'Supplies' | 'Honorarium' | 'Food & Catering' | 'Travel & Transport' | 'Equipment rental' | 'Others' | string;
   status: 'Pending' | 'Approved' | string;
+    suspension_reason?: string;
   dateLogged?: string;
   receiptUrl?: string;
   voucherNumber?: string;
@@ -174,6 +177,7 @@ export interface FeedbackRecord {
   rating: number; // 1 to 5
   anonymous: boolean;
   status: 'Pending' | 'Reviewed' | 'Resolved';
+    suspension_reason?: string;
   response?: string;
   residentProfile?: {
     age?: number;

@@ -429,142 +429,84 @@ router.post(
   }
 );
 
-router.post(
-  '/:id/attendance',
-  authenticateUser,
-  requireActiveUser,
-  requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'),
-  async (req: Request, res: Response): Promise<void> => {
-    const programId = String(req.params.id || '');
-    const scanner = (req as AuthRequest).user!;
+router.post('/:id/attendance', authenticateUser, requireActiveUser, requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    const programId = String(req.params.id);
+    const user = (req as AuthRequest).user!;
+    const { qr_payload } = req.body;
 
-    const parseResult = AttendanceScanSchema.safeParse(req.body);
-    if (!parseResult.success) {
-      sendError(res, 'Validation failed', 400, parseResult.error.flatten().fieldErrors);
-      return;
-    }
+    console.log('[KABISIG DEBUG] Route hit. qr_payload:', qr_payload);
 
-    const { qr_payload } = parseResult.data;
+    if (!qr_payload) { sendError(res, 'QR payload is required.', 400); return; }
 
-    const { data: program, error: progError } = await supabaseAdmin
-      .from('program')
-      .select('id, title, tenant_id')
-      .eq('id', programId)
-      .single();
-
-    if (progError || !program) {
-      sendError(res, 'Program not found.', 404);
-      return;
-    }
-
-    if (!canAccessTenant(scanner, program.tenant_id)) {
-      sendError(res, 'Forbidden: You cannot record attendance for other Barangays.', 403);
-      return;
-    }
-
-    let attendeeUserId: string | null = null;
-    let digitalYouthId: string | null = null;
+    let attendeeUserId = '';
+    let digitalYouthId = '';
 
     try {
       const parsedJson = JSON.parse(qr_payload);
-      attendeeUserId = parsedJson.user_id || null;
-      digitalYouthId = parsedJson.digital_youth_id || null;
+      attendeeUserId = parsedJson.user_id || parsedJson.id || '';
+      digitalYouthId = parsedJson.digital_youth_id || '';
     } catch {
-      if (qr_payload.startsWith('KAB-NAGA-')) {
+      if (String(qr_payload).startsWith('KABISIG-QR-')) {
+        const kabIndex = qr_payload.indexOf('KAB-NAGA-');
+        if (kabIndex !== -1) digitalYouthId = qr_payload.substring(kabIndex);
+        else attendeeUserId = qr_payload;
+      } else if (String(qr_payload).startsWith('KAB-NAGA-')) {
         digitalYouthId = qr_payload;
       } else {
         attendeeUserId = qr_payload;
       }
     }
 
-    let residentQuery = supabaseAdmin.from('resident_profile').select('user_id, digital_youth_id, users(full_name, email)');
+    let resolvedUserId = attendeeUserId;
 
-    if (attendeeUserId) {
-      residentQuery = residentQuery.eq('user_id', attendeeUserId);
-    } else if (digitalYouthId) {
-      residentQuery = residentQuery.eq('digital_youth_id', digitalYouthId);
+    if (!resolvedUserId && digitalYouthId) {
+      const { data: rp } = await supabaseAdmin.from('resident_profile').select('user_id').eq('digital_youth_id', digitalYouthId).maybeSingle();
+      if (rp) resolvedUserId = rp.user_id;
     }
 
-    const { data: resident, error: resError } = await residentQuery.maybeSingle();
-
-    if (resError || !resident) {
-      sendError(res, 'Invalid QR code: Attendee profile could not be verified.', 404);
+    if (!resolvedUserId) {
+      sendError(res, `Invalid QR code: Could not find user. (Payload: ${qr_payload})`, 404);
       return;
     }
 
-    const resolvedUserId = resident.user_id;
-    const attendeeUser = resident.users as unknown as { full_name: string; email: string } | { full_name: string; email: string }[] | null;
-    const attendeeName = (Array.isArray(attendeeUser) ? attendeeUser[0]?.full_name : attendeeUser?.full_name) || 'Youth Constituent';
+    const { data: program, error: progError } = await supabaseAdmin.from('program').select('*').eq('id', programId).single();
+    if (progError || !program) { sendError(res, 'Program not found.', 404); return; }
+    if (!canAccessTenant(user, program.tenant_id)) { sendError(res, 'Forbidden.', 403); return; }
 
-    const { data: existingAttendance } = await supabaseAdmin
-      .from('program_attendance')
-      .select('id, checked_in_at')
-      .eq('program_id', programId)
-      .eq('user_id', resolvedUserId)
-      .maybeSingle();
+    const { data: uData } = await supabaseAdmin.from('users').select('id, full_name').eq('id', resolvedUserId).maybeSingle();
+    const attendeeName = uData ? uData.full_name : 'Youth Constituent';
 
-    if (existingAttendance) {
-      sendError(
-        res,
-        `Duplicate Check-In: ${attendeeName} was already checked in at ${new Date(existingAttendance.checked_in_at).toLocaleTimeString()}.`,
-        409,
-        { checked_in_at: existingAttendance.checked_in_at }
-      );
-      return;
-    }
+    const { data: existingAttendance } = await supabaseAdmin.from('program_attendance').select('id').eq('program_id', programId).eq('user_id', resolvedUserId).maybeSingle();
+    if (existingAttendance) { sendError(res, 'Duplicate check-in: Already marked present.', 400, { attendee_name: attendeeName }); return; }
 
-    const { data: registration } = await supabaseAdmin
-      .from('program_registrations')
-      .select('id, status')
-      .eq('program_id', programId)
-      .eq('user_id', resolvedUserId)
-      .maybeSingle();
-
-    if (!registration) {
-      sendError(res, `${attendeeName} is not registered for this program.`, 400, { attendee_name: attendeeName, reason: 'not_registered' });
-      return;
-    }
+    const { data: registration } = await supabaseAdmin.from('program_registrations').select('id, status').eq('program_id', programId).eq('user_id', resolvedUserId).maybeSingle();
+    if (!registration) { sendError(res, `${attendeeName} is not registered for this program.`, 400, { attendee_name: attendeeName, reason: 'not_registered' }); return; }
 
     const checkInTime = new Date().toISOString();
-    const { data: newAttendance, error: attendError } = await supabaseAdmin
-      .from('program_attendance')
-      .insert([
-        {
-          program_id: programId,
-          user_id: resolvedUserId,
-          tenant_id: program.tenant_id,
-          checked_in_at: checkInTime,
-          checked_in_by: scanner.id,
-          qr_payload,
-        },
-      ])
-      .select()
-      .single();
+    const { data: newAttendance, error: attendError } = await supabaseAdmin.from('program_attendance').insert([{
+      program_id: programId,
+      user_id: resolvedUserId,
+      tenant_id: program.tenant_id,
+      checked_in_at: checkInTime,
+      
+    }]).select().single();
 
-    if (attendError) {
-      sendError(res, `Failed to record attendance: ${attendError.message}`, 500);
-      return;
-    }
+    if (attendError) { sendError(res, `Failed to record attendance: ${attendError.message}`, 500); return; }
 
-    await supabaseAdmin
-      .from('program_registrations')
-      .update({ status: 'attended' })
-      .eq('id', registration.id);
+    await supabaseAdmin.from('program_registrations').update({ status: 'attended' }).eq('id', registration.id);
 
-    sendSuccess(
-      res,
-      {
-        attendance: newAttendance,
-        attendee_name: attendeeName,
-        digital_youth_id: resident.digital_youth_id,
-        program_title: program.title,
-        checked_in_at: checkInTime,
-      },
-      `Attendance verified and recorded for ${attendeeName}.`
-    );
+    sendSuccess(res, {
+      attendance: newAttendance,
+      attendee_name: attendeeName,
+      program_title: program.title,
+      checked_in_at: checkInTime,
+    }, `Attendance verified and recorded for ${attendeeName}.`);
+
+  } catch (err: any) {
+    sendError(res, err.message || 'Internal server error', 500);
   }
-);
-
+});
 router.get(
   '/:id/attendance',
   authenticateUser,

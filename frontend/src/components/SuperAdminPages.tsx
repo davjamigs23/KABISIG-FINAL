@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import ProfileSettings from './ProfileSettings';
+import { formatAuditDetails } from '../lib/auditFormatter';
 import { 
   LayoutDashboard, Building2, BarChart3, History, 
   Plus, Edit2, Search, Filter, Download, FileSpreadsheet,
@@ -44,7 +46,19 @@ export default function SuperAdminPages({
     const parsed = typeof value === 'number' ? value : Number(value ?? 0);
     return Number.isFinite(parsed) ? parsed : 0;
   };
-  const [activeMenu, setActiveMenu] = useState<'dashboard' | 'barangays' | 'analytics' | 'audit' | 'restrictions'>('dashboard');
+  const [activeMenu, setActiveMenu] = useState<string>('dashboard');
+  
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await kabisigApi.getCurrentUser();
+        if (!cancelled) setCurrentUser(res?.data?.user || res?.user || res?.data || res || null);
+      } catch { /* silent - fallback stays */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Search and Filter states
@@ -156,6 +170,9 @@ export default function SuperAdminPages({
   const totalCityBudget = toNumber(citywideTotals?.total_budget_allocated ?? barangays.reduce((sum, b) => sum + toNumber(b.totalBudget), 0));
   const totalCitySpent = toNumber(citywideTotals?.total_budget_spent ?? barangays.reduce((sum, b) => sum + toNumber(b.spentBudget), 0));
   const totalActivePrograms = toNumber(citywideTotals?.total_active_programs ?? programs.filter(p => p.status === 'Upcoming' || p.status === 'Ongoing').length);
+
+  // Audit honesty flag: true only when server aggregate loaded.
+  const isAuthoritative = Boolean(citywideTotals && typeof citywideTotals === 'object');
   const avgBudgetUtilization = totalCityBudget > 0 ? Math.round((totalCitySpent / totalCityBudget) * 100) : 0;
 
   // Consistently sort barangays in alphabetical order
@@ -566,7 +583,6 @@ export default function SuperAdminPages({
 
             <nav className="space-y-2">
               <div className="text-[10px] font-black text-slate-300 uppercase tracking-wider mb-2">
-                Municipal System Administration
               </div>
               <button
                 onClick={() => { setActiveMenu('dashboard'); setIsMobileMenuOpen(false); }}
@@ -588,13 +604,6 @@ export default function SuperAdminPages({
               >
                 <BarChart3 className="w-4.5 h-4.5 text-amber-400" />
                 Analytics & LYDP Reports
-              </button>
-              <button
-                onClick={() => { setActiveMenu('restrictions'); setIsMobileMenuOpen(false); }}
-                className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-3 ${activeMenu === 'restrictions' ? 'bg-[#091d64] text-white shadow-md' : 'text-slate-200 hover:bg-white/10'}`}
-              >
-                <ShieldAlert className="w-4.5 h-4.5 text-amber-400" />
-                Restricted Users
               </button>
               <button
                 onClick={() => { setActiveMenu('audit'); setIsMobileMenuOpen(false); }}
@@ -627,7 +636,6 @@ export default function SuperAdminPages({
 
           <nav className="p-4 space-y-1">
             <div className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-2 px-2 mt-2">
-              Municipal System Administration
             </div>
             
             <button
@@ -666,17 +674,6 @@ export default function SuperAdminPages({
               Analytics
             </button>
 
-            <button
-              onClick={() => setActiveMenu('restrictions')}
-              className={`w-full text-left px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-3 cursor-pointer ${
-                activeMenu === 'restrictions' 
-                  ? 'bg-[#091d64] text-white shadow-sm' 
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-[#091d64]'
-              }`}
-            >
-              <ShieldAlert className={`w-4 h-4 ${activeMenu === 'restrictions' ? 'text-white' : 'text-slate-400'}`} />
-              Restricted Users
-            </button>
 
             <button
               onClick={() => setActiveMenu('audit')}
@@ -718,15 +715,15 @@ export default function SuperAdminPages({
           {activeMenu === 'restrictions' && 'Restricted Users & Spam Review'}
               </h1>
               <span className="text-[10px] font-extrabold uppercase tracking-widest px-2.5 py-1 rounded-full bg-[#091d64] text-white">
-                Super Admin
+                {activeMenu === 'profile' ? 'My Profile' : 'Super Admin'}
               </span>
             </div>
-            <p className="text-xs text-slate-400 mt-1">Naga City SK Federation Central Management Hub</p>
+            <p className="text-xs text-slate-400 mt-1">{activeMenu === 'profile' ? 'Your personal profile, name, photo, and account credentials' : 'Naga City SK Federation Central Management Hub'}</p>
           </div>
 
           <div className="flex items-center gap-5">
-            <UserMenu 
-              userName="Federation President"
+            <UserMenu avatarUrl={currentUser?.avatar_url} onNavigateProfile={() => setActiveMenu('profile')} 
+              userName={currentUser?.full_name || 'Federation President'}
               role="SK Federation President"
               onLogout={onLogout}
             />
@@ -737,6 +734,9 @@ export default function SuperAdminPages({
         <div className="flex-1 overflow-y-auto p-3.5 sm:p-6 lg:p-8 pb-24 sm:pb-8 bg-[#f8fafc]">
           
           {/* ==================== 1. DASHBOARD TAB ==================== */}
+          {activeMenu === 'profile' && (
+            <ProfileSettings />
+          )}
           {activeMenu === 'dashboard' && (
             <div className="space-y-6 animate-in fade-in duration-200 text-left">
               
@@ -890,7 +890,7 @@ export default function SuperAdminPages({
                       <div key={idx} className="flex justify-between items-center text-[11px] font-semibold">
                         <div className="flex items-center gap-2">
                           <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                          <span className="text-slate-600 truncate max-w-[140px]">{item.name}</span>
+                          <span className="text-slate-600 max-w-md whitespace-normal break-words truncate max-w-[140px]">{item.name}</span>
                         </div>
                         <span className="font-bold text-slate-900">
                           {item.value > 0 ? `₱${(item.value / 1000000).toFixed(1)}M` : '₱0'}
@@ -1343,7 +1343,7 @@ export default function SuperAdminPages({
                 </div>
 
                 <div className="overflow-x-auto border border-slate-100 rounded-xl">
-                  <table className="w-full text-left text-xs text-slate-600">
+                  <table className="w-full text-left text-xs text-slate-600 max-w-md whitespace-normal break-words">
                     <thead className="bg-slate-50 text-[10px] text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100">
                       <tr>
                         <th className="p-3">Timestamp</th>
@@ -1365,7 +1365,7 @@ export default function SuperAdminPages({
                               {log.action}
                             </span>
                           </td>
-                          <td className="p-3 text-slate-600">{log.details}</td>
+                          <td className="p-3 text-slate-600 max-w-md whitespace-normal break-words">{formatAuditDetails(log.action, log.details)}</td>
                         </tr>
                       ))}
                       {filteredAuditLogs.length === 0 && (
@@ -1418,7 +1418,7 @@ export default function SuperAdminPages({
                 )}
 
                 <div className="overflow-x-auto border border-slate-100 rounded-xl">
-                  <table className="w-full text-left text-xs text-slate-600">
+                  <table className="w-full text-left text-xs text-slate-600 max-w-md whitespace-normal break-words">
                     <thead className="bg-slate-50 text-[10px] text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100">
                       <tr>
                         <th className="p-3">Detected</th>
@@ -1450,7 +1450,7 @@ export default function SuperAdminPages({
                               'bg-slate-100 text-slate-700'
                             }`}>{r.restriction_type}</span>
                           </td>
-                          <td className="p-3 text-slate-600 text-[11px] max-w-xs">{r.reason}</td>
+                          <td className="p-3 text-slate-600 max-w-md whitespace-normal break-words text-[11px] max-w-xs">{r.reason}</td>
                           <td className="p-3">
                             <span className={`text-[10px] font-bold ${r.is_active ? 'text-rose-600' : 'text-emerald-600'}`}>
                               {r.is_active ? 'ACTIVE' : 'CLEARED'}
@@ -1498,7 +1498,7 @@ export default function SuperAdminPages({
             <div className="p-6 space-y-4 text-xs text-slate-700 text-left max-h-[70vh] overflow-y-auto">
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
                 <h4 className="font-extrabold text-slate-900 text-sm">Naga City SK Federation - 3-Year LYDP Summary</h4>
-                <p className="text-slate-600">
+                <p className="text-slate-600 max-w-md whitespace-normal break-words">
                   Current KABISIG snapshot: {barangays.length} barangays, {totalYouthPop.toLocaleString()} registered youth, and {totalActivePrograms} active programs. Figures reflect loaded records, not a certified population estimate.
                 </p>
               </div>
@@ -1508,22 +1508,22 @@ export default function SuperAdminPages({
                 
                 <div className="p-3 bg-blue-50/50 border border-blue-100 rounded-lg">
                   <span className="font-bold text-[#091d64] block">1. Governance & Active Citizenship</span>
-                  <p className="text-slate-600 text-[11px] mt-0.5">Planning theme for assemblies, civic participation, and transparent financial disclosures.</p>
+                  <p className="text-slate-600 max-w-md whitespace-normal break-words text-[11px] mt-0.5">Planning theme for assemblies, civic participation, and transparent financial disclosures.</p>
                 </div>
 
                 <div className="p-3 bg-emerald-50/50 border border-emerald-100 rounded-lg">
                   <span className="font-bold text-emerald-800 block">2. Education, Livelihood & Skills Empowerment</span>
-                  <p className="text-slate-600 text-[11px] mt-0.5">Planning theme for education assistance, livelihood access, and digital skills workshops.</p>
+                  <p className="text-slate-600 max-w-md whitespace-normal break-words text-[11px] mt-0.5">Planning theme for education assistance, livelihood access, and digital skills workshops.</p>
                 </div>
 
                 <div className="p-3 bg-amber-50/50 border border-amber-100 rounded-lg">
                   <span className="font-bold text-amber-900 block">3. Health, Sports & Anti-Drug Risk Prevention</span>
-                  <p className="text-slate-600 text-[11px] mt-0.5">Planning theme for sports participation, health promotion, and peer support.</p>
+                  <p className="text-slate-600 max-w-md whitespace-normal break-words text-[11px] mt-0.5">Planning theme for sports participation, health promotion, and peer support.</p>
                 </div>
 
                 <div className="p-3 bg-purple-50/50 border border-purple-100 rounded-lg">
                   <span className="font-bold text-purple-900 block">4. Climate Action & Environmental Protection</span>
-                  <p className="text-slate-600 text-[11px] mt-0.5">Planning theme for local climate action and environmental protection.</p>
+                  <p className="text-slate-600 max-w-md whitespace-normal break-words text-[11px] mt-0.5">Planning theme for local climate action and environmental protection.</p>
                 </div>
               </div>
             </div>
@@ -1916,7 +1916,7 @@ export default function SuperAdminPages({
                     type="button"
                     disabled={isAssigning}
                     onClick={() => { setShowAssignModal(false); setAssigningBarangay(null); if (assignReturnToConfigure) { setShowModal(true); setAssignReturnToConfigure(false); } }}
-                    className="px-4 py-2 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-100 transition-colors disabled:opacity-50 cursor-pointer"
+                    className="px-4 py-2 border border-slate-200 text-slate-600 max-w-md whitespace-normal break-words text-xs font-bold rounded-xl hover:bg-slate-100 transition-colors disabled:opacity-50 cursor-pointer"
                   >
                     Cancel
                   </button>
@@ -2173,15 +2173,6 @@ export default function SuperAdminPages({
           <span className="text-[10px] mt-0.5 tracking-tight font-sans">Analytics</span>
         </button>
 
-        <button
-          onClick={() => setActiveMenu('restrictions')}
-          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
-            activeMenu === 'restrictions' ? 'text-[#091d64] font-extrabold bg-blue-50/80' : 'text-slate-400 font-medium hover:text-slate-600'
-          }`}
-        >
-          <ShieldAlert className={`w-5 h-5 ${activeMenu === 'restrictions' ? 'text-[#091d64] scale-110' : 'text-slate-400'} transition-transform`} />
-          <span className="text-[10px] mt-0.5 tracking-tight font-sans">Restricted</span>
-        </button>
 
         <button
           onClick={() => setActiveMenu('audit')}

@@ -13,25 +13,7 @@ interface LandingPageProps {
   onTransparencyPortal: () => void;
 }
 
-const CHAIRPERSONS = [
-  { file: 'BagumbayanNorte_Chairperson.jpg', barangay: 'Bagumbayan Norte', name: 'Florabelle P. Paligar' },
-  { file: 'BagumbayanSur_Chairperson.jpg', barangay: 'Bagumbayan Sur', name: 'Patricia Mae P. Dimbuyayo' },
-  { file: 'Balatas_Chairperson.jpg', barangay: 'Balatas', name: 'Joseph S. Ibuseo, Jr.' },
-  { file: 'Calauag_Chairperson.jpg', barangay: 'Calauag', name: 'Patrick B. Bernas' },
-  { file: 'ConcepcionGrande_Chairperson.jpg', barangay: 'Concepcion Grande', name: 'Marinel Mae M. Chua' },
-  { file: 'ConcepcionPequena_Chairperson.jpg', barangay: 'Concepcion Pequeña', name: 'Micah DC. Imperial' },
-  { file: 'Dayangdang_Chairperson.jpg', barangay: 'Dayangdang', name: 'James Joshua E. Manlangit' },
-  { file: 'Dinaga_Chairperson.jpg', barangay: 'Dinaga', name: 'Josemarina Delacruz' },
-  { file: 'Igualidad_Chairperson.jpg', barangay: 'Igualdad Interior', name: 'Jamaica B. Soñas' },
-  { file: 'Liboton_Chairperson.jpg', barangay: 'Liboton', name: 'Don Vallen Colarina' },
-  { file: 'Panicuason_Chairperson.jpg', barangay: 'Panicuason', name: 'John Mark Cosa' },
-  { file: 'Penafrancia_Chairperson.jpg', barangay: 'Peñafrancia', name: 'Crystal Rose Ofemaria' },
-  { file: 'SanFelipe_Chairperson.jpg', barangay: 'San Felipe', name: 'Nikka O. Nayera' },
-  { file: 'SanFrancisco_Chairperson.jpg', barangay: 'San Francisco', name: 'Zaldy D. Bragais Jr.' },
-  { file: 'Tabuco_Chairperson.jpg', barangay: 'Tabuco', name: 'Christobal Salvador Cambe' },
-  { file: 'Tinago_Chairperson.jpg', barangay: 'Tinago', name: 'Kristin Ros Maleniza' },
-  { file: 'Triangulo_Chairperson.jpg', barangay: 'Triangulo', name: 'Jyla Mir Dangea' },
-];
+const CHAIRPERSONS: any[] = []; // Removed hardcoded array
 
 const FEATURES = [
   { icon: Users, title: 'Youth Profiling & Digital ID', desc: 'Centralized Katipunan ng Kabataan registry with automated demographic classification, digital youth ID, and QR code generation.' },

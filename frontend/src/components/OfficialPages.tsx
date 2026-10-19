@@ -1,4 +1,5 @@
 import { formatCurrencyInput } from '../lib/utils';
+import ProfileSettings from './ProfileSettings';
 import { useState, useEffect } from 'react';
 import { composeFullName, splitFullName } from '../lib/name';
 import { 
@@ -155,7 +156,7 @@ export default function OfficialPages({
       'SK Secretary': 'documents',
       'SK Treasurer': 'budget'
     };
-    setActiveMenu(roleLanding[currentRole as string] || 'dashboard');
+    setActiveMenu('dashboard');
   }, [currentRole]);
 
   // Global UI utilities state
@@ -689,6 +690,15 @@ export default function OfficialPages({
       registeredCount: 0
     };
     try {
+          // Schedule conflict advisory (manuscript 3.2.1 item 5: Rule-Based Schedule Conflict Detection)
+          const _conflicts = detectScheduleConflicts(newP, (programs || []).filter(p => p.id !== newP.id));
+          if (_conflicts.length > 0) {
+            alert('Scheduling conflicts detected:\n\n' +
+              _conflicts.join('\n\n') +
+              '\n\nPlease edit or delete the conflicting program(s) before proceeding.');
+            return;
+          }
+
           const created = await onAddProgram(newP);
           if (created !== false) {
             setShowProgModal(false);
@@ -1122,8 +1132,14 @@ export default function OfficialPages({
       const fromReg = registrations.find((r: any) => r.participantId === partId || r.userId === partId);
       youthName = fromReg?.participantName || '';
     }
-    if (!youthName) youthName = "Unknown / Unregistered Youth";
-    const finalPartId = reg?.participantId || youthProf?.id || regAny?.participantId || regGlobal?.participantId || partId;
+    if (!youthName) { // @ts-ignore
+        const _scannedVal = typeof scannedData !== 'undefined' ? scannedData : (typeof decodedText !== 'undefined' ? decodedText : (typeof qrCodeResult !== 'undefined' ? qrCodeResult : ""));
+        // @ts-ignore
+        const _matchedYouth: any = localYouthProfiles?.find((y: any) => y.userId === _scannedVal || y.id === _scannedVal || y.email === _scannedVal);
+        // @ts-ignore
+        youthName = _matchedYouth ? (_matchedYouth.name || _matchedYouth.full_name || "Registered Youth") : "Unknown / Unregistered Youth";
+    }
+    const finalPartId = scannedUserId || reg?.participantId || youthProf?.id || regAny?.participantId || regGlobal?.participantId || partId;
     const purokVal = youthProf?.zone || regAny?.zone || "Naga Youth Constituent";
     // The backend is authoritative for identity, registration, and duplicate check-in validation.
     const record: AttendanceRecord = {
@@ -1137,7 +1153,14 @@ export default function OfficialPages({
 
     setIsRecordingAttendance(true);
     try {
-      const savedRecord = await onRegisterAttendance(record, scannedText);
+      // Force the record to use the real UUID from the scan, not the custom KAB-NAGA ID
+        if (record) {
+          // @ts-ignore
+          record.participantId = scannedUserId || (record as any).participantId;
+          // @ts-ignore
+          record.participantName = youthProf?.name || (record as any).participantName;
+        }
+        const savedRecord = await onRegisterAttendance(record, scannedText);
       setLocalAttendance(prev => [savedRecord, ...prev.filter(item => item.id !== savedRecord.id)]);
       setLastScanDetail({
         rawCode: scannedText,
@@ -1275,9 +1298,20 @@ export default function OfficialPages({
           <span className="text-[10px] font-bold bg-[#1e3a8a] px-2 py-0.5 rounded text-amber-300 truncate">{currentRole}</span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <NotificationMenu
+          <NotificationMenu userRole={currentUser?.official_role}
             buttonClassName="text-white hover:bg-white/10"
-            onNavigate={() => { setActiveMenu('programs'); setIsMobileMenuOpen(false); }}
+              onNavigate={link => {
+                const roleStr = String(currentUser?.official_role || currentUser?.role || '').toLowerCase();
+                if (roleStr.includes('treasurer')) { setActiveMenu('budget'); return; }
+                if (roleStr.includes('secretary')) { setActiveMenu('documents'); return; }
+                if (roleStr.includes('kagawad')) { setActiveMenu('programs'); return; }
+                
+                if (link.includes('calendar') || link.includes('program')) setActiveMenu('programs');
+                else if (link.includes('doc') || link.includes('resolution')) setActiveMenu('documents');
+                else if (link.includes('budget')) setActiveMenu('budget');
+                else if (link.includes('regist')) setActiveMenu('youth');
+                else setActiveMenu('dashboard');
+              }}
           />
           <button 
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -1420,11 +1454,12 @@ export default function OfficialPages({
           </div>
 
           <div className="flex items-center gap-5">
-            <NotificationMenu onNavigate={() => setActiveMenu('programs')} />
-            <UserMenu 
+            <NotificationMenu userRole={currentUser?.official_role} onNavigate={() => setActiveMenu('programs')} />
+            <UserMenu avatarUrl={currentUser?.avatar_url} 
               userName={profileConfig[currentRole]?.name || 'User'}
               role={profileConfig[currentRole]?.title || 'Official'}
               onLogout={onLogout}
+              onNavigateProfile={() => setActiveMenu('profile')}
             />
           </div>
         </header>
@@ -1433,6 +1468,9 @@ export default function OfficialPages({
         <div className="flex-grow p-3.5 sm:p-6 lg:p-8 pb-24 sm:pb-8 overflow-y-auto">
           
           {/* ==================== SCREEN 1: DASHBOARD (Unified role-based screen) ==================== */}
+          {activeMenu === 'profile' && (
+            <ProfileSettings />
+          )}
           {activeMenu === 'dashboard' && (
             <div className="space-y-8 animate-in fade-in duration-200">
               {programNotice && (
@@ -2654,7 +2692,7 @@ export default function OfficialPages({
                     onChange={(e) => setSelectedProgId(e.target.value)}
                     className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                   >
-                    {programs.map(p => (
+                    {programs.filter(p => !p.budgetAllocation).map(p => (
                       <option key={p.id} value={p.id}>{p.title} ({p.category})</option>
                     ))}
                   </select>
@@ -3804,7 +3842,7 @@ export default function OfficialPages({
                             onChange={(e) => setSelectedProgramForReport(e.target.value)}
                             className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none min-w-[300px]"
                           >
-                            {programs.map(p => (
+                            {programs.filter(p => !p.budgetAllocation).map(p => (
                               <option key={p.id} value={p.id}>{p.title} ({p.startDate})</option>
                             ))}
                           </select>
@@ -3921,7 +3959,7 @@ export default function OfficialPages({
                         </div>
                         <div className="p-4 bg-violet-50/50 border border-violet-100 rounded-xl space-y-1">
                           <span className="text-[10px] font-bold text-violet-700 uppercase">Fund Disbursement Rate</span>
-                          <h4 className="text-xl font-black text-violet-700">{(() => { const allocated = programs.reduce((sum, program) => sum + (Number(program.budgetAllocation) || 0), 0); const spent = expenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0); return `${allocated > 0 ? ((spent / allocated) * 100).toFixed(1) : '0.0'}% Disbursed`; })()}</h4>
+                          <h4 className="text-xl font-black text-violet-700">{(() => { const allocated = programs.reduce((sum, program) => sum + (Number(program.budgetAllocation) || 0), 0); const spent = expenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0); return `${allocated > 0 ? (allocated > 0 ? (allocated > 0 ? (spent / allocated) * 100 : 0) : 0).toFixed(1) : '0.0'}% Disbursed`; })()}</h4>
                           <p className="text-[11px] text-slate-500">Calculated from recorded program expenses.</p>
                         </div>
                       </div>
@@ -3939,7 +3977,7 @@ export default function OfficialPages({
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 font-medium">
-                            {programs.map(p => (
+                            {programs.filter(p => !p.budgetAllocation).map(p => (
                               <tr key={p.id} className="hover:bg-slate-50">
                                 <td className="px-5 py-3 font-bold text-slate-800">{p.title}</td>
                                 <td className="px-5 py-3 font-bold text-slate-600">{p.category}</td>
@@ -4471,6 +4509,7 @@ export default function OfficialPages({
                       setIsSavingAllocate(true);
                       try {
                         const res = await kabisigApi.allocateBudget({
+      program_id: selectedProgId,
                           fiscal_year: Number(allocateForm.fiscalYear),
                           category: allocateForm.category.trim(),
                           allocated_amount: amount,

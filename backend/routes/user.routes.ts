@@ -243,6 +243,10 @@ function normalizeEmploymentStatus(status?: string | null): 'Employed' | 'Unempl
  * and permanently saves all 20 Katipunan ng Kabataan profile fields in Supabase Auth user_metadata.
  */
 router.put('/profile', authenticateUser, async (req: Request, res: Response): Promise<void> => {
+  const authUser = (req as any).user;
+  if (authUser.role_id === 1 && req.body.email && req.body.email !== authUser.email) {
+    sendError(res, 'Super Admin email cannot be changed.', 403); return;
+  }
   try {
     const authenticatedUser = (req as AuthRequest).user!;
     const userId = authenticatedUser.id;
@@ -581,7 +585,8 @@ router.get('/youth-profiles', authenticateUser, async (req: Request, res: Respon
           guardianContact: meta.guardianContact || '',
           profilePic: meta.profilePic || '',
           qrCode: resident.qr_code_url || meta.qrCode || resident.digital_youth_id || '',
-          status: u.status === 'active' ? 'Approved' : (u.status === 'rejected' ? 'Rejected' : 'Pending'),
+          status: u.status === 'active' ? 'Approved' : (u.status === 'rejected' ? 'Rejected' : u.status === 'suspended' ? 'suspended' : 'Pending'),
+          suspension_reason: (u as any).suspension_reason || null,
           barangayId: u.tenant_id || meta.barangayId || '',
           dateRegistered: u.created_at?.split('T')[0] || meta.dateRegistered || new Date().toISOString().split('T')[0],
           registeredRole,
@@ -997,4 +1002,101 @@ router.get(
     );
   }
 );
+// POST /api/users/upload-avatar
+router.post('/upload-avatar', authenticateUser, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { base64, mime_type } = req.body;
+    if (!base64 || !mime_type) { sendError(res, 'Missing image data.', 400); return; }
+    const user = (req as AuthRequest).user!;
+    
+    const buffer = Buffer.from(base64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+    const fileExt = mime_type.split('/')[1] || 'jpg';
+    const fileName = user.id + '-' + Date.now() + '.' + fileExt;
+
+    const { error: uploadErr } = await supabaseAdmin.storage
+      .from('avatars')
+      .upload(fileName, buffer, { contentType: mime_type, upsert: true });
+
+    if (uploadErr) { sendError(res, 'Failed to upload avatar: ' + uploadErr.message, 500); return; }
+
+    const { data: publicUrlData } = supabaseAdmin.storage.from('avatars').getPublicUrl(fileName);
+    const avatarUrl = publicUrlData.publicUrl;
+
+    const { error: dbErr } = await supabaseAdmin.from('users').update({ avatar_url: avatarUrl }).eq('id', user.id);
+    if (dbErr) { sendError(res, 'Failed to save avatar URL: ' + dbErr.message, 500); return; }
+
+    sendSuccess(res, { avatar_url: avatarUrl }, 'Avatar updated successfully.');
+  } catch (err: any) {
+    sendError(res, err.message || 'Upload failed.', 500);
+  }
+});
+
 export default router;
+// PATCH /api/users/:id/status - Admin updates user status (e.g., active, suspended)
+router.patch(
+  '/:id/status',
+  authenticateUser,
+  requireActiveUser,
+  requireRoles('BARANGAY_ADMIN', 'SUPER_ADMIN'),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const targetId = String(req.params.id);
+      const { status } = req.body;
+      
+      if (!['active', 'suspended', 'pending', 'rejected'].includes(status)) {
+        sendError(res, 'Invalid status value.', 400);
+        return;
+      }
+
+      const updates: any = { status, updated_at: new Date().toISOString() };
+      if (status === 'active') {
+        updates.suspension_reason = null; // Clear the reason upon reactivation
+      }
+
+      const { error } = await supabaseAdmin.from('users').update(updates).eq('id', targetId);
+      
+      if (error) {
+        sendError(res, `Failed to update user status: ${error.message}`, 500);
+        return;
+      }
+
+      // If reactivating, also update auth metadata if needed
+      if (status === 'active') {
+        await supabaseAdmin.auth.admin.updateUserById(targetId, { ban_duration: 'none' });
+      }
+
+      sendSuccess(res, { id: targetId, status }, `User status updated to ${status}.`);
+    } catch (err: any) {
+      sendError(res, err.message || 'Internal server error', 500);
+    }
+  }
+);
+
+// GET /api/users/suspended - Fetch all suspended users (Chairperson only)
+router.get('/suspended', authenticateUser, requireActiveUser, requireRoles('BARANGAY_ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    const user = (req as AuthRequest).user!;
+    let query = supabaseAdmin.from('users').select('id, email, full_name, status, suspension_reason, tenant_id').eq('status', 'suspended');
+    
+    if (user.role !== 'SUPER_ADMIN') {
+      query = query.eq('tenant_id', user.tenant_id);
+    }
+    
+    const { data, error } = await query;
+    if (error) { sendError(res, error.message, 500); return; }
+    sendSuccess(res, data || [], 'Suspended users retrieved.');
+  } catch (err: any) {
+    sendError(res, err.message, 500);
+  }
+});
+
+router.patch('/:id/status', authenticateUser, requireActiveUser, requireRoles('BARANGAY_ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { status } = req.body;
+    const updates: any = { status, updated_at: new Date().toISOString() };
+    if (status === 'active') updates.suspension_reason = null;
+    const { error } = await supabaseAdmin.from('users').update(updates).eq('id', String(req.params.id));
+    if (error) { sendError(res, error.message, 500); return; }
+    sendSuccess(res, { id: req.params.id, status }, 'Status updated.');
+  } catch (err: any) { sendError(res, err.message, 500); }
+});

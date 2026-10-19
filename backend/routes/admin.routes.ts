@@ -171,7 +171,7 @@ router.post(
           targetUserId = inviteData.user.id;
           inviteMethod = 'email_invitation';
         } else {
-          const tempPassword = `KabisigChairperson${new Date().getFullYear()}!`;
+          const tempPassword = 'Kb' + Math.random().toString(36).slice(-6) + 'A!1';
           const { data: createData, error: createErr } = await supabaseAdmin.auth.admin.createUser({
             email: cleanEmail,
             password: tempPassword,
@@ -297,7 +297,7 @@ router.post(
       } else {
         // Fallback for environments without active SMTP mailers:
         // Create user with standard initial credentials so testing never halts
-        const tempPassword = `KabisigChairperson${new Date().getFullYear()}!`;
+        const tempPassword = 'Kb' + Math.random().toString(36).slice(-6) + 'A!1';
         const { data: createData, error: createErr } = await supabaseAdmin.auth.admin.createUser({
           email: cleanEmail,
           password: tempPassword,
@@ -539,7 +539,7 @@ router.post(
           targetUserId = inviteData.user.id;
           inviteMethod = 'email_invitation';
         } else {
-          const tempPassword = 'KabisigOfficial' + new Date().getFullYear() + '!';
+          const tempPassword = 'Kb' + Math.random().toString(36).slice(-6) + 'A!1';
           const { data: createData, error: createErr } = await supabaseAdmin.auth.admin.createUser({
             email: cleanEmail,
             password: tempPassword,
@@ -642,7 +642,7 @@ router.post(
         targetUserId = inviteData.user.id;
         inviteMethod = 'email_invitation';
       } else {
-        const tempPassword = 'KabisigOfficial' + new Date().getFullYear() + '!';
+        const tempPassword = 'Kb' + Math.random().toString(36).slice(-6) + 'A!1';
         const { data: createData, error: createErr } = await supabaseAdmin.auth.admin.createUser({
           email: cleanEmail,
           password: tempPassword,
@@ -676,6 +676,26 @@ router.post(
         updated_at: new Date().toISOString(),
       }, { onConflict: 'id' });
       if (insertUserErr) { sendError(res, 'Failed to pre-set SK Official record: ' + insertUserErr.message, 500); return; }
+    }
+
+    const { data: authUserData, error: authUserError } = await supabaseAdmin.auth.admin.getUserById(targetUserId);
+    if (authUserError || !authUserData.user) {
+      sendError(res, 'Failed to load invited SK Official auth account: ' + (authUserError?.message || 'User not found.'), 500);
+      return;
+    }
+
+    const { error: metadataUpdateError } = await supabaseAdmin.auth.admin.updateUserById(targetUserId, {
+      user_metadata: {
+        ...(authUserData.user.user_metadata || {}),
+        tenant_id: barangay_id,
+        role_id: 3,
+        role: 'SK Official',
+        official_role,
+      },
+    });
+    if (metadataUpdateError) {
+      sendError(res, 'Failed to save SK Official role assignment: ' + metadataUpdateError.message, 500);
+      return;
     }
 
     let actionLink = '';
@@ -738,16 +758,18 @@ const ClearRestrictionSchema = z.object({
 router.get(
   '/restrictions',
   authenticateUser,
-  requireRoles('SUPER_ADMIN'),
+  requireRoles('SUPER_ADMIN', 'BARANGAY_ADMIN'),
   async (req: Request, res: Response): Promise<void> => {
     const { active_only } = req.query;
 
+    const authUser = (req as any).user;
     let q = supabaseAdmin
       .from('account_restrictions')
       .select('id, user_id, tenant_id, restriction_type, reason, detection_details, admin_id, admin_notes, expires_at, is_active, review_history, created_at, updated_at')
       .order('created_at', { ascending: false })
       .limit(200);
 
+    if (authUser && authUser.role_id === 2) q = q.eq('tenant_id', authUser.tenant_id);
     if (active_only === 'true') q = q.eq('is_active', true);
 
     const { data: rows, error } = await q;
@@ -777,7 +799,7 @@ router.get(
 router.patch(
   '/restrictions/:id/clear',
   authenticateUser,
-  requireRoles('SUPER_ADMIN'),
+  requireRoles('SUPER_ADMIN', 'BARANGAY_ADMIN'),
   async (req: Request, res: Response): Promise<void> => {
     const restrictionId = String(req.params.id || '');
     if (!restrictionId) { sendError(res, 'Restriction ID is required.', 400); return; }
@@ -792,10 +814,12 @@ router.patch(
     const admin = authReq.user;
     if (!admin) { sendError(res, 'Authentication required.', 401); return; }
 
-    const { data: restriction, error: rErr } = await supabaseAdmin
+    let rQuery = supabaseAdmin
       .from('account_restrictions')
       .select('id, user_id, tenant_id, restriction_type, review_history')
-      .eq('id', restrictionId)
+      .eq('id', restrictionId);
+    if (admin.role_id === 2) rQuery = rQuery.eq('tenant_id', admin.tenant_id);
+    const { data: restriction, error: rErr } = await rQuery
       .single();
 
     if (rErr || !restriction) { sendError(res, 'Restriction not found.', 404); return; }
@@ -906,10 +930,26 @@ router.post(
     }
 
     // 3. Demote outgoing Chairperson → SK Official FIRST (release DB constraint)
+    // Decision 2 & 3: Map exit reason to role, and enforce 7-Kagawad cap
+    let targetRoleId = 3; // Default to SK Kagawad
+    if (reason === 'End of Term') {
+      targetRoleId = 4; // Revert to Youth Constituent
+    } else {
+      const { data: kagawads } = await supabaseAdmin
+        .from('users')
+        .select('id')
+        .eq('tenant_id', barangay_id)
+        .eq('role_id', 3)
+        .eq('status', 'active');
+      if (kagawads && kagawads.length >= 7) {
+        sendError(res, 'Cannot demote Chairperson: Barangay already has 7 active SK Kagawads. Reassign or remove a Kagawad first.', 409, { code: 'KAGAWAD_CAPACITY_REACHED' });
+        return;
+      }
+    }
     const { error: demoteErr } = await supabaseAdmin
       .from('users')
       .update({
-        role_id: 3,
+        role_id: targetRoleId,
         status: 'active',
         updated_at: new Date().toISOString(),
       })
@@ -972,7 +1012,7 @@ router.post(
           successorUserId = inviteData.user.id;
           successorInviteMethod = 'email_invitation';
         } else {
-          const tempPassword = 'KabisigChairperson' + new Date().getFullYear() + '!';
+          const tempPassword = 'Kb' + Math.random().toString(36).slice(-6) + 'A!1';
           const { data: createData, error: createErr } = await supabaseAdmin.auth.admin.createUser({
             email: cleanSuccessorEmail,
             password: tempPassword,
@@ -1184,4 +1224,47 @@ router.post(
     }, `Chairperson invitation for ${pendingChair.email} cancelled. Barangay ${barangay.name} is now open for a new assignment.`);
   }
 );
+
+// PATCH /api/admin/users/:id/email - SA manually updates a user's email
+router.patch('/users/:id/email', authenticateUser, requireRoles('SUPER_ADMIN'), async (req: Request, res: Response): Promise<void> => {
+  const userId = String(req.params.id || '');
+  const { email } = req.body;
+  if (!email || !email.includes('@')) { sendError(res, 'Valid email required', 400); return; }
+  const cleanEmail = email.trim().toLowerCase();
+  const admin = (req as AuthRequest).user!;
+
+  const { data: existing } = await supabaseAdmin.from('users').select('id').eq('email', cleanEmail).maybeSingle();
+  if (existing && existing.id !== userId) { sendError(res, 'Email already in use by another account.', 409); return; }
+
+  const { error: authErr } = await supabaseAdmin.auth.admin.updateUserById(userId, { email: cleanEmail });
+  if (authErr) { sendError(res, 'Failed to update Auth: ' + authErr.message, 500); return; }
+
+  const { error: dbErr } = await supabaseAdmin.from('users').update({ email: cleanEmail }).eq('id', userId);
+  if (dbErr) { sendError(res, 'Failed to update DB: ' + dbErr.message, 500); return; }
+
+  await recordAuditLog({ tenantId: null, userId: admin.id, action: 'UPDATE_USER_EMAIL', entityName: 'users', entityId: userId, details: { new_email: cleanEmail }, ipAddress: req.ip || null });
+  sendSuccess(res, { id: userId, email: cleanEmail }, 'Email updated successfully.');
+});
+
+// POST /api/users/request-email-change - Notifies Super Admin
+router.post('/request-email-change', authenticateUser, async (req: Request, res: Response): Promise<void> => {
+  const { new_email } = req.body;
+  if (!new_email || !new_email.includes('@')) { sendError(res, 'Valid email required', 400); return; }
+  const cleanEmail = new_email.trim().toLowerCase();
+  const user = (req as AuthRequest).user!;
+
+  const { data: sa } = await supabaseAdmin.from('users').select('id').eq('role_id', 1).limit(1).maybeSingle();
+  if (!sa) { sendError(res, 'Super Admin not found.', 500); return; }
+
+  await supabaseAdmin.from('notifications').insert({
+    user_id: sa.id,
+    tenant_id: user.tenant_id,
+    title: 'Email Change Request',
+    message: user.full_name + ' (' + user.email + ') requested to change email to ' + cleanEmail + '. Go to Admin Panel to update.',
+    type: 'EMAIL_CHANGE_REQUEST',
+    is_read: false
+  });
+
+  sendSuccess(res, null, 'Request sent to Super Admin.');
+});
 export default router;

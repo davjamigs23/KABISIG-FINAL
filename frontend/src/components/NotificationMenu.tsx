@@ -15,12 +15,13 @@ export interface NotificationMenuItem {
 }
 
 interface NotificationMenuProps {
+  userRole?: string;
   supplementalItems?: NotificationMenuItem[];
   onNavigate?: (link: string) => void;
   buttonClassName?: string;
 }
 
-export default function NotificationMenu({ supplementalItems = [], onNavigate, buttonClassName = '' }: NotificationMenuProps) {
+export default function NotificationMenu({  supplementalItems = [], onNavigate, buttonClassName = '' , userRole }: NotificationMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<SystemNotification[]>([]);
 
@@ -50,18 +51,38 @@ export default function NotificationMenu({ supplementalItems = [], onNavigate, b
   const unreadCount = notifications.filter(item => !item.is_read).length + supplementalItems.filter(item => !item.is_read && item.countInBadge !== false).length;
   const items: NotificationMenuItem[] = [...supplementalItems, ...notifications];
 
+    const filteredItems = (items || []).filter((item: any) => {
+    if (item.is_read && !item.onSelect) return false;
+    if (!userRole) return true;
+    const r = String(userRole).toLowerCase();
+    const text = String((item.title || '') + ' ' + (item.message || '')).toLowerCase();
+    if (r.includes('secretary')) return text.includes('doc') || text.includes('resolution') || text.includes('file');
+    if (r.includes('treasurer')) return text.includes('budget') || text.includes('expense') || text.includes('financ');
+    if (r.includes('kagawad')) return text.includes('program') || text.includes('attendance') || text.includes('event');
+    return true;
+  });
+
   const handleSelect = (item: NotificationMenuItem) => {
+    // 1. Mark as read first so it disappears
+    if (!item.is_read) {
+      setNotifications(previous => previous.map(notification => notification.id === item.id ? { ...notification, is_read: true } : notification));
+      void kabisigApi.markNotificationRead(item.id);
+    }
+
     if (item.onSelect) {
       item.onSelect();
       setIsOpen(false);
       return;
     }
 
-    if (!item.is_read) {
-      setNotifications(previous => previous.map(notification => notification.id === item.id ? { ...notification, is_read: true } : notification));
-      void kabisigApi.markNotificationRead(item.id);
+    if (item.link) { onNavigate?.(item.link); } else {
+      const txt = String(item.title + ' ' + item.message).toLowerCase();
+      if (txt.includes('doc')) onNavigate?.('/documents');
+      else if (txt.includes('budget') || txt.includes('expense')) onNavigate?.('/budget');
+      else if (txt.includes('program')) onNavigate?.('/programs');
+      else if (txt.includes('user') || txt.includes('regist')) onNavigate?.('/registrations');
+      else onNavigate?.('/dashboard');
     }
-    if (item.link) onNavigate?.(item.link);
     setIsOpen(false);
   };
 
@@ -97,7 +118,7 @@ export default function NotificationMenu({ supplementalItems = [], onNavigate, b
             </div>
           </div>
           <div className="max-h-[min(70vh,40rem)] overflow-y-auto px-4">
-            {items.map(item => (
+            {filteredItems.map(item => (
               <button
                 key={item.id}
                 type="button"
@@ -113,7 +134,7 @@ export default function NotificationMenu({ supplementalItems = [], onNavigate, b
                 {!item.is_read && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-blue-600" aria-label="Unread" />}
               </button>
             ))}
-            {items.length === 0 && <p className="py-6 text-center text-xs text-slate-500">You&apos;re all caught up.</p>}
+            {filteredItems.length === 0 && <p className="py-6 text-center text-xs text-slate-500">You&apos;re all caught up.</p>}
           </div>
         </div>
       )}

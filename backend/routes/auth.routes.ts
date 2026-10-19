@@ -19,6 +19,69 @@ const ROLE_IDS = {
   VIEWER: 5,
 };
 
+type SKOfficialRole = 'SK Kagawad' | 'SK Secretary' | 'SK Treasurer';
+
+function parseSKOfficialRole(value: unknown): SKOfficialRole | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toLowerCase();
+  if (normalized.includes('secretary')) return 'SK Secretary';
+  if (normalized.includes('treasurer')) return 'SK Treasurer';
+  if (normalized.includes('kagawad')) return 'SK Kagawad';
+  return null;
+}
+
+async function resolveSKOfficialRole(userId: string, authUser: {
+  user_metadata?: Record<string, unknown>;
+  app_metadata?: Record<string, unknown>;
+}): Promise<SKOfficialRole | null> {
+  const { data: assignment, error: assignmentError } = await supabaseAdmin
+    .from('audit_logs')
+    .select('details')
+    .eq('entity_name', 'users')
+    .eq('entity_id', userId)
+    .in('action', ['INVITE_SK_OFFICIAL', 'SK_OFFICIAL_PASSWORD_SETUP'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (assignmentError) {
+    console.warn('Could not recover SK Official position from assignment history:', assignmentError.message);
+  }
+
+  const details = assignment?.details;
+  const recordedRole = details && typeof details === 'object'
+    ? parseSKOfficialRole((details as Record<string, unknown>).official_role)
+    : null;
+  const metadataRole = parseSKOfficialRole(authUser.user_metadata?.official_role)
+    || parseSKOfficialRole(authUser.app_metadata?.official_role)
+    || parseSKOfficialRole(authUser.user_metadata?.official_position)
+    || parseSKOfficialRole(authUser.user_metadata?.role);
+  const officialRole = recordedRole || metadataRole;
+
+  if (!officialRole) return null;
+
+  if (
+    authUser.user_metadata?.official_role !== officialRole
+    || authUser.app_metadata?.official_role !== officialRole
+  ) {
+    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+      user_metadata: {
+        ...(authUser.user_metadata || {}),
+        official_role: officialRole,
+      },
+      app_metadata: {
+        ...(authUser.app_metadata || {}),
+        official_role: officialRole,
+      },
+    });
+    if (updateError) {
+      console.warn('Could not persist recovered SK Official position:', updateError.message);
+    }
+  }
+
+  return officialRole;
+}
+
 const CANONICAL_BARANGAY_REGISTRY: Record<string, { name: string; district: 'District 1' | 'District 2' }> = {
   'a0111111-1111-4000-8000-000000000001': { name: 'Bagumbayan Norte', district: 'District 1' },
   'a0111111-1111-4000-8000-000000000002': { name: 'Bagumbayan Sur', district: 'District 1' },
@@ -639,13 +702,38 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
+  // Block suspended users from logging in
+  const { data: userStatus } = await supabaseAdmin
+    .from('users')
+    .select('status, suspension_reason')
+    .eq('id', data.user.id)
+    .single();
+
+  if (userStatus?.status === 'suspended') {
+    sendError(res, `Your account is suspended. Reason: ${userStatus.suspension_reason || 'Violation of guidelines'}. Please contact the SK Chairperson to appeal.`, 403);
+    return;
+  }
+
   const { data: profile } = await supabaseAdmin
     .from('users')
     .select('*, roles(role_name), barangay(name), resident_profile!resident_profile_user_id_fkey(*)')
     .eq('id', data.user.id)
     .single();
 
-  const userMeta = data.user.user_metadata || {};
+  const userMeta = { ...(data.user.user_metadata || {}) };
+  if (profile?.role_id === ROLE_IDS.SK_OFFICIAL) {
+    const officialRole = await resolveSKOfficialRole(data.user.id, data.user);
+    if (!officialRole) {
+      sendError(
+        res,
+        'Your SK Official position is not configured. Please contact the SK Federation President to correct your account assignment.',
+        403,
+        { code: 'OFFICIAL_ROLE_UNCONFIGURED' }
+      );
+      return;
+    }
+    userMeta.official_role = officialRole;
+  }
   const enrichedUser = {
     ...(profile || data.user),
     user_metadata: userMeta,
@@ -680,8 +768,7 @@ router.post('/forgot-password', async (req: Request, res: Response): Promise<voi
     sendError(res, error.message, 400);
     return;
   }
-
-  sendSuccess(res, null, 'Password reset instructions sent to your email.');
+    sendSuccess(res, null, 'Password reset instructions sent to your email.');
 });
 
 // POST /api/auth/register-official
@@ -807,9 +894,12 @@ router.post('/setup-chairperson-password', async (req: Request, res: Response): 
   let userId: string;
   let tenantId = existingUser?.tenant_id || existingAuthUser?.user_metadata?.tenant_id;
 
-  // If tenantId is not resolved yet, default to Barangay Abella
+  // SECURITY (per manuscript 3.3.2 RBAC + rules file SA-only official creation):
+  // Previously defaulted to Barangay Abella when no invite existed, allowing anyone
+  // with a valid email to self-create as Chairperson. Now reject without a valid invite.
   if (!tenantId) {
-    tenantId = 'b0222222-2222-4000-8000-000000000012';
+    sendError(res, 'No Chairperson invitation found for this email. Contact the SK Federation President.', 403);
+    return;
   }
 
   const resolvedName = resolveName({
@@ -826,7 +916,9 @@ router.post('/setup-chairperson-password', async (req: Request, res: Response): 
     placeholders: ['Pending Chairperson', 'Pending Invitation'],
     fallback: { first_name: 'SK', last_name: 'Chairperson' },
   });
-  const cleanFullName = resolvedName.full_name || 'Hon. SK Chairperson';
+  // Rule #1 (Hon. scope): Chairpersons always carry the Honorific.
+  const _baseChairName = resolvedName.full_name || 'SK Chairperson';
+  const cleanFullName = _baseChairName.startsWith('Hon.') ? _baseChairName : 'Hon. ' + _baseChairName;
 
   if (existingAuthUser) {
     userId = existingAuthUser.id;
@@ -1051,7 +1143,12 @@ router.post('/setup-official-password', async (req: Request, res: Response): Pro
   });
   const cleanFullName = resolvedName.full_name || 'SK Official';
 
-  const displayName = cleanFullName.startsWith('Hon.') ? cleanFullName : 'Hon. ' + cleanFullName;
+  // Honorific scope: only SK Kagawad among SK_OFFICIAL sub-roles.
+  // Chairperson (role_id=2) is handled separately in barangay.routes.ts.
+  const _isKagawadRole = String(official_role || '').toLowerCase().includes('kagawad');
+  const displayName = _isKagawadRole
+    ? (cleanFullName.startsWith('Hon.') ? cleanFullName : 'Hon. ' + cleanFullName)
+    : cleanFullName.replace(/^Hon\.\s+/, '');
 
   const userMetadata = {
     tenant_id: tenantId,
@@ -1194,7 +1291,20 @@ router.get('/me', authenticateUser, async (req: Request, res: Response): Promise
     .single();
 
   const { data: authData } = await supabaseAdmin.auth.admin.getUserById(user.id);
-  const userMeta = authData?.user?.user_metadata || {};
+  const userMeta = { ...(authData?.user?.user_metadata || {}) };
+  if (profile?.role_id === ROLE_IDS.SK_OFFICIAL && authData?.user) {
+    const officialRole = await resolveSKOfficialRole(user.id, authData.user);
+    if (!officialRole) {
+      sendError(
+        res,
+        'Your SK Official position is not configured. Please contact the SK Federation President to correct your account assignment.',
+        403,
+        { code: 'OFFICIAL_ROLE_UNCONFIGURED' }
+      );
+      return;
+    }
+    userMeta.official_role = officialRole;
+  }
 
   sendSuccess(res, { ...(profile || user), user_metadata: userMeta }, 'User profile retrieved.');
 });

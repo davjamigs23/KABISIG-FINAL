@@ -21,6 +21,7 @@ import OfficialPages from './components/OfficialPages';
 import YouthPages from './components/YouthPages';
 import ViewerPages from './components/ViewerPages';
 import { detectScheduleConflicts } from './lib/intelligence';
+import { resolveUserRole } from './lib/role-routing';
 import { 
   BarangayTenant, 
   Program, 
@@ -253,13 +254,23 @@ export default function App() {
             );
             return;
           }
+          const restoredRole = resolveUserRole(user);
+          if (!restoredRole) {
+            kabisigApi.logout();
+            setCurrentUser(null);
+            setCurrentTenant(null);
+            setCurrentYouth(null);
+            setCurrentRole(null);
+            setPublicView('landing');
+            alert('Your account role or SK Official position is not configured. Please contact your SK Federation President.');
+            return;
+          }
           setCurrentUser(user);
           setCurrentEmail(user.email || '');
-          const roleId = user.role_id;
-          if (roleId === 1) {
-            setCurrentRole('Super Admin');
-          } else if (roleId === 2) {
-            setCurrentRole('Barangay Admin');
+          if (restoredRole === 'Super Admin') {
+            setCurrentRole(restoredRole);
+          } else if (restoredRole === 'Barangay Admin') {
+            setCurrentRole(restoredRole);
             if (user.tenant_id) {
               const bgy = tenants.find(t => t.id === user.tenant_id) || NAGA_BARANGAYS.find(t => t.id === user.tenant_id);
               if (bgy) {
@@ -269,15 +280,12 @@ export default function App() {
                 });
               }
             }
-          } else if (roleId === 3) {
-            const registeredRole = user.user_metadata?.official_role || user.user_metadata?.role || user.official_position || user.role;
-            setCurrentRole(
-              registeredRole === 'SK Secretary'
-                ? 'SK Secretary'
-                : registeredRole === 'SK Treasurer'
-                  ? 'SK Treasurer'
-                  : 'SK Kagawad'
-            );
+          } else if (
+            restoredRole === 'SK Kagawad' ||
+            restoredRole === 'SK Secretary' ||
+            restoredRole === 'SK Treasurer'
+          ) {
+            setCurrentRole(restoredRole);
             if (user.tenant_id) {
               const bgy = tenants.find(t => t.id === user.tenant_id) || NAGA_BARANGAYS.find(t => t.id === user.tenant_id);
               if (bgy) {
@@ -287,8 +295,8 @@ export default function App() {
                 });
               }
             }
-          } else if (roleId === 4) {
-            setCurrentRole('Youth Constituent');
+          } else if (restoredRole === 'Youth Constituent') {
+            setCurrentRole(restoredRole);
             if (user.tenant_id) {
               const bgy = tenants.find(t => t.id === user.tenant_id) || NAGA_BARANGAYS.find(t => t.id === user.tenant_id);
               if (bgy) {
@@ -324,7 +332,7 @@ export default function App() {
               guardianContact: meta.guardianContact || '',
               profilePic: meta.profilePic,
               qrCode: resident.qr_code_url || meta.qrCode,
-              status: user.status === 'active' ? 'Approved' : (user.status === 'rejected' ? 'Rejected' : 'Pending'),
+              status: user.status === 'active' ? 'Approved' : (user.status === 'rejected' ? 'Rejected' : user.status === 'suspended' ? 'suspended' : 'Pending'),
               barangayId: user.tenant_id || '',
               dateRegistered: user.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
               registeredRole: 'Youth Constituent',
@@ -459,7 +467,7 @@ export default function App() {
     let isMounted = true;
     setYouthProfilesLoading(true);
     setYouthProfilesError(null);
-    kabisigApi.getYouthProfiles().then(({ data, error }) => {
+    kabisigApi.getYouthProfiles(false, 'all').then(({ data, error }) => {
       if (!isMounted) return;
       if (error || data === null) {
         setYouthProfilesError(error || 'Unable to load youth profiles.');
@@ -609,7 +617,7 @@ export default function App() {
           guardianContact: meta.guardianContact || matchedProfile?.guardianContact || '',
           profilePic: meta.profilePic || matchedProfile?.profilePic,
           qrCode: resident.qr_code_url || meta.qrCode || matchedProfile?.qrCode,
-          status: userObj.status === 'active' ? 'Approved' : (userObj.status === 'rejected' ? 'Rejected' : 'Pending'),
+          status: userObj.status === 'active' ? 'Approved' : (userObj.status === 'rejected' ? 'Rejected' : userObj.status === 'suspended' ? 'suspended' : 'Pending'),
           barangayId: userObj.tenant_id || matchedProfile?.barangayId || '',
           dateRegistered: userObj.created_at?.split('T')[0] || matchedProfile?.dateRegistered || new Date().toISOString().split('T')[0],
           registeredRole: 'Youth Constituent',
@@ -1171,6 +1179,7 @@ export default function App() {
       {/* 4. OTHER SK OFFICIALS (KAGAWAD, SECRETARY, TREASURER) PANELS */}
       {(currentRole === 'SK Kagawad' || currentRole === 'SK Secretary' || currentRole === 'SK Treasurer') && (
         <OfficialPages 
+          key={`${currentUser?.id || currentEmail}:${currentRole}`}
           currentRole={currentRole}
           programs={programs}
           youthProfiles={youthProfiles}

@@ -1,3 +1,4 @@
+import { ShieldAlert } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
 import { 
   User, 
@@ -509,6 +510,20 @@ export default function YouthPages({
 
   return (
     <div className="flex flex-col lg:flex-row h-screen bg-[#f8fafc] overflow-hidden font-sans text-slate-800">
+      {/* @ts-ignore */}
+      {currentYouth?.status === 'suspended' && (
+        <div className='fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4'>
+          <div className='bg-white rounded-2xl max-w-md w-full p-6 text-center shadow-2xl'>
+            <div className='w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4'>
+              <ShieldAlert className='w-8 h-8' />
+            </div>
+            <h2 className='text-xl font-extrabold text-slate-900 mb-2'>Account Suspended</h2>
+            {/* @ts-ignore */}
+            <p className='text-sm text-slate-600 mb-6'>{currentYouth?.suspension_reason || 'Violation of community guidelines.'}</p>
+            <button onClick={() => window.location.href = 'mailto:sk@barangay.gov.ph'} className='w-full py-2.5 bg-[#091d64] text-white font-bold rounded-xl text-sm'>Appeal to SK Chairperson</button>
+          </div>
+        </div>
+      )}
       {registrationNotice && (
         <div
           role={registrationNotice.type === 'error' ? 'alert' : 'status'}

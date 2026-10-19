@@ -505,7 +505,7 @@ export function analyzeFeedbackSentiment(content: string, category?: string): 'P
   }
   const normalized = content.toLowerCase();
 
-  const positiveKeywords = [
+  const positiveKeywords = ['like', 'knowledge', 'hope', 'great', 'executed', 'good', 'like', 'knowledge', 'hope', 'great', 'executed', 'good', 
     'good', 'great', 'excellent', 'informative', 'helpful', 'fun', 'awesome', 
     'perfect', 'love', 'thanks', 'supportive', 'active', 'useful', 'learned a lot',
     'nice', 'happy', 'fantastic', 'amazing', 'convenient', 'clean', 'organized'

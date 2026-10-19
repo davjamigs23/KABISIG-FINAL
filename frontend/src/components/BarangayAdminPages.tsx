@@ -1,4 +1,8 @@
 import { formatCurrencyInput } from '../lib/utils';
+import ProfileSettings from './ProfileSettings';
+import RestrictedUsersPanel from './RestrictedUsersPanel';
+import RestrictedUsers from './RestrictedUsers';
+import { formatAuditDetails } from '../lib/auditFormatter';
 import React, { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { 
@@ -161,7 +165,7 @@ export default function BarangayAdminPages({
 }: BarangayAdminPagesProps) {
   const [activeMenu, setActiveMenu] = useState<
     'dashboard' | 'youth' | 'programs' | 'budget' | 'documents' | 'reports' | 'announcements' | 'audit' | 'calendar' | 'facebook_sync' | 'settings' | 'profile'
-  >('dashboard');
+   | 'profile' | 'restrictions'>('dashboard');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [reportSubTab, setReportSubTab] = useState<'executive'|'attendance'|'accomplishments'|'beneficiaries'|'demographics'|'financial'>('attendance');
@@ -178,7 +182,7 @@ export default function BarangayAdminPages({
           const allocated = Number(program.budgetAllocation) || 0;
           const spent = expenses.filter(expense => expense.programId === program.id)
             .reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0) || Number(program.spentBudget) || 0;
-          const rate = allocated > 0 ? ((spent / allocated) * 100).toFixed(1) : '0.0';
+          const rate = allocated > 0 ? ((allocated > 0 ? (allocated > 0 ? (spent / allocated) * 100 : 0) : 0)).toFixed(1) : '0.0';
           return `<tr><td><strong>${program.title}</strong><br><span style="color:#64748b">${program.category}</span></td><td>${program.aipReference || 'Not provided'}</td><td class="text-right">₱${allocated.toLocaleString()}</td><td class="text-right">₱${spent.toLocaleString()}</td><td class="text-right">${rate}%</td><td class="text-center"><span class="badge">${program.status}</span></td></tr>`;
         }).join('')
       : '<tr><td colspan="6" class="text-center">No program records available.</td></tr>';
@@ -1038,7 +1042,7 @@ export default function BarangayAdminPages({
   const totalAllocBudget = budgetScopeAllocated;
   const programAllocationData = budgetPrograms.map((p, idx) => {
     const alloc = p.budgetAllocation || 0;
-    const pct = totalAllocBudget > 0 ? ((alloc / totalAllocBudget) * 100).toFixed(1) : '0';
+    const pct = totalAllocBudget > 0 ? ((totalAllocBudget > 0 ? (totalAllocBudget > 0 ? (alloc / totalAllocBudget) * 100 : 0) : 0)).toFixed(1) : '0';
     return {
       name: p.title,
       value: alloc,
@@ -1052,7 +1056,7 @@ export default function BarangayAdminPages({
       name: 'Unallocated reserve',
       value: unallocatedBudget,
       color: '#cbd5e1',
-      percentage: `${((unallocatedBudget / totalAllocBudget) * 100).toFixed(1)}%`,
+      percentage: `${((totalAllocBudget > 0 ? (totalAllocBudget > 0 ? (unallocatedBudget / totalAllocBudget) * 100 : 0) : 0)).toFixed(1)}%`,
     }] : []),
   ];
 
@@ -1244,7 +1248,7 @@ return (
               </div>
             </div>
             <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-2">
-              <button onClick={() => setViewingProgram(null)} className="px-4 py-2 text-xs font-bold border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50">Close</button>
+              <button onClick={() => setViewingProgram(null)} className="px-4 py-2 text-xs font-bold border border-slate-200 rounded-lg text-slate-600 max-w-md whitespace-normal break-words hover:bg-slate-50">Close</button>
               <button onClick={() => { const p = viewingProgram; setViewingProgram(null); if (p) openProgramEditor(p); }} className="px-4 py-2 text-xs font-bold bg-[#091d64] hover:bg-[#061344] text-white rounded-lg">Edit Program</button>
             </div>
           </div>
@@ -1480,6 +1484,13 @@ return (
               <SettingsIcon className={`w-4.5 h-4.5 ${activeMenu === 'settings' ? 'text-[#091d64]' : 'text-slate-400'}`} />
               Settings
             </button>
+            <button
+              onClick={() => { setActiveMenu('restrictions'); setIsMobileMenuOpen(false); }}
+              className="w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-3 text-slate-600 max-w-md whitespace-normal break-words hover:bg-slate-50 hover:text-[#091d64]"
+            >
+              <ShieldAlert className="w-4 h-4 text-slate-400" />
+              Restricted Users
+            </button>
 
             <button
               onClick={() => setActiveMenu('audit')}
@@ -1535,7 +1546,7 @@ return (
           </div>
 
           <div className="flex items-center gap-5">
-            <NotificationMenu
+            <NotificationMenu userRole={currentUser?.official_role}
               supplementalItems={[
                 ...pendingRegistrations.map(profile => ({
                   id: `registration-${profile.id}`,
@@ -1587,10 +1598,11 @@ return (
               }}
             />
 
-            <UserMenu 
+            <UserMenu avatarUrl={currentUser?.avatar_url} 
               userName={currentUser?.full_name || (currentBarangay?.chairperson && currentBarangay.chairperson !== 'Unassigned' ? currentBarangay.chairperson : 'SK Chairperson')}
               role="SK Chairperson"
               onLogout={onLogout}
+              onNavigateProfile={() => setActiveMenu('profile')}
             />
           </div>
         </header>
@@ -1599,6 +1611,12 @@ return (
         <div className="flex-grow p-3.5 sm:p-6 lg:p-8 pb-24 sm:pb-8 overflow-y-auto bg-[#f8fafc]">
           
           {/* 1. DASHBOARD VIEW */}
+          {activeMenu === 'profile' && (
+            <ProfileSettings />
+          )}
+          {activeMenu === 'restrictions' && (
+            <RestrictedUsersPanel />
+          )}
           {activeMenu === 'dashboard' && (
             <div className="space-y-6">
               
@@ -1929,7 +1947,7 @@ return (
                 </div>
               </div>
 
-                <div className="overflow-x-auto border border-slate-100 rounded-lg">
+                <div className="w-full overflow-x-auto border border-slate-100 rounded-lg">
                   <table className="w-full text-left text-xs text-slate-600">
                     <thead className="bg-slate-50 text-[10px] text-slate-500 font-extrabold uppercase border-b border-slate-100">
                       <tr>
@@ -1961,7 +1979,7 @@ return (
                             <span className="block font-bold text-slate-700">{p.educationalLevel}</span>
                             <span className="text-[9px] text-amber-600 font-bold block mt-0.5">{p.scholarStatus}</span>
                           </td>
-                          <td className="px-6 py-4 text-center">
+                          <td className="px-6 py-4 text-center truncate">
                             <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
                               p.status === 'Approved' ? 'bg-green-100 text-green-800' :
                               p.status === 'Pending' ? 'bg-amber-100 text-amber-800' :
@@ -1970,7 +1988,7 @@ return (
                               {p.status}
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-center">
+                          <td className="px-6 py-4 text-center truncate">
                             <button 
                               onClick={() => setInspectProfile(p)}
                               className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-extrabold rounded-lg flex items-center gap-1 mx-auto transition-colors cursor-pointer"
@@ -2161,7 +2179,7 @@ return (
                       <h4 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">{editingProgram ? 'Edit Program' : 'Create New Program'}</h4>
                       <button 
                         onClick={() => setShowCreateProgDrawer(false)}
-                        className="p-1 hover:bg-slate-50 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                        className="p-1 hover:bg-slate-50 text-slate-400 hover:text-slate-600 max-w-md whitespace-normal break-words rounded-lg cursor-pointer"
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -2212,32 +2230,27 @@ return (
                         </div>
                       </div>
 
-                      {/* SECTION: Budget & Slots */}
+                      {/* SECTION: Program Capacity */}
                       <div className="space-y-3 pt-2">
-                        <p className="text-[10px] font-bold text-[#091d64] uppercase tracking-widest border-b border-slate-100 pb-1">Budget & Slots</p>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Budget Allocation</label>
-                            <div className="relative">
-                              <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-bold">₱</span>
-                              <input type="text" inputMode="decimal" value={newProgForm.budgetAllocation == null ? '' : newProgForm.budgetAllocation.toLocaleString('en-PH')} onChange={(e) => { const raw = e.target.value.replace(/[^0-9.]/g, '' ); setNewProgForm({...newProgForm, budgetAllocation: raw === '' ? null : Number(raw)}); }} placeholder="0" className="w-full border border-slate-200 rounded-lg pl-7 pr-3 p-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/30 font-semibold" />
-                            </div>
-                          </div>
-                          <div>
-                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Max Slots <span className="text-rose-500">*</span></label>
-                            <input type="number" min="1" required value={newProgForm.maxParticipants || ''} onChange={(e) => setNewProgForm({ ...newProgForm, maxParticipants: Number(e.target.value) || 0 })} placeholder="e.g. 50" className="w-full border border-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/30 font-semibold" />
-                          </div>
-                        </div>
+                        <p className="text-[10px] font-bold text-[#091d64] uppercase tracking-widest border-b border-slate-100 pb-1">Program Capacity</p>
                         <div>
-                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">AIP Reference Code</label>
-                          <input type="text" value={newProgForm.aipReference} onChange={(e) => setNewProgForm({ ...newProgForm, aipReference: e.target.value })} placeholder="e.g. AIP-2026-001" className="w-full border border-slate-200 rounded-lg p-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
-                          <p className="text-[10px] text-slate-400 mt-1">Optional. Link this program to its Annual Investment Program line.</p>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Maximum Slots <span className="text-rose-500">*</span></label>
+                          <input
+                            type="number"
+                            min="1"
+                            required
+                            value={newProgForm.maxParticipants || ''}
+                            onChange={(e) => setNewProgForm({ ...newProgForm, maxParticipants: Number(e.target.value) || 0 })}
+                            placeholder="e.g. 50"
+                            className="w-full border border-slate-200 rounded-lg p-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/30 font-semibold"
+                          />
+                          <p className="text-[10px] text-slate-400 mt-1.5">Maximum number of youth who can register for this program.</p>
                         </div>
                       </div>
 
                       {/* Sticky Footer */}
                       <div className="flex gap-2 pt-3 border-t border-slate-200 sticky bottom-0 bg-white">
-                        <button type="button" onClick={() => { setShowCreateProgDrawer(false); }} className="flex-1 py-2 text-xs border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 font-bold cursor-pointer transition-colors">Cancel</button>
+                        <button type="button" onClick={() => { setShowCreateProgDrawer(false); }} className="flex-1 py-2 text-xs border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 max-w-md whitespace-normal break-words font-bold cursor-pointer transition-colors">Cancel</button>
                         <button type="submit" className="flex-1 py-2 text-xs bg-[#091d64] hover:bg-[#061344] text-white rounded-lg font-bold cursor-pointer transition-colors shadow-sm">{editingProgram ? 'Save Changes' : 'Create Program'}</button>
                       </div>
                     </form>
@@ -2299,7 +2312,7 @@ return (
                     </label>
                     {totalFormError && <p role="alert" className="text-xs font-semibold text-rose-700">{totalFormError}</p>}
                     <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
-                      <button type="button" disabled={isSavingTotal} onClick={() => setShowSetTotal(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 disabled:opacity-50">Cancel</button>
+                      <button type="button" disabled={isSavingTotal} onClick={() => setShowSetTotal(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 max-w-md whitespace-normal break-words disabled:opacity-50">Cancel</button>
                       <button type="submit" disabled={isSavingTotal} className="rounded-lg bg-[#091d64] px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{isSavingTotal ? 'Saving...' : 'Save total budget'}</button>
                     </div>
                   </form>
@@ -2358,7 +2371,7 @@ return (
                     </label>
                     {budgetFormError && <p role="alert" className="text-xs font-semibold text-rose-700">{budgetFormError}</p>}
                     <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
-                      <button type="button" disabled={isSavingBudget} onClick={() => setShowSetBudget(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 disabled:opacity-50">Cancel</button>
+                      <button type="button" disabled={isSavingBudget} onClick={() => setShowSetBudget(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 max-w-md whitespace-normal break-words disabled:opacity-50">Cancel</button>
                       <button type="submit" disabled={isSavingBudget} className="rounded-lg bg-[#091d64] px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{isSavingBudget ? 'Saving...' : 'Save allocation'}</button>
                     </div>
                   </form>
@@ -2387,7 +2400,7 @@ return (
                       {programs.map(program => <option key={program.id} value={program.id}>{program.title}</option>)}
                     </select>
                   </label>
-                  <button type="button" onClick={() => { setBudgetYear(String(new Date().getFullYear())); setBudgetProgramFilter('All Programs'); }} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50">Reset filters</button>
+                  <button type="button" onClick={() => { setBudgetYear(String(new Date().getFullYear())); setBudgetProgramFilter('All Programs'); }} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 max-w-md whitespace-normal break-words hover:bg-slate-50">Reset filters</button>
                 </div>
               </div>
 
@@ -2436,7 +2449,7 @@ return (
                     {budgetAllocations.length === 0 && <p className="text-xs font-semibold text-amber-700">No budget categories are available for FY {budgetYear}. Allocate a budget before recording an expense.</p>}
                     {expenseFormError && <p role="alert" className="text-xs font-semibold text-rose-700">{expenseFormError}</p>}
                     <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
-                      <button type="button" disabled={isSavingExpense} onClick={() => setShowRecordExpense(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 disabled:opacity-50">Cancel</button>
+                      <button type="button" disabled={isSavingExpense} onClick={() => setShowRecordExpense(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 max-w-md whitespace-normal break-words disabled:opacity-50">Cancel</button>
                       <button type="submit" disabled={isSavingExpense || budgetAllocations.length === 0} className="rounded-lg bg-[#091d64] px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{isSavingExpense ? 'Saving...' : 'Save expense'}</button>
                     </div>
                   </form>
@@ -2452,7 +2465,7 @@ return (
                 const displaySpent = useBudgetTable ? (Number(currentBarangay?.spentBudget) || 0) : filteredSpent;
                 const displayBase = useBudgetTable ? barangayTotalBudget : filteredAllocated;
                 const filteredRemaining = Math.max(0, displayBase - displaySpent);
-                const filteredRate = displayBase > 0 ? (displaySpent / displayBase) * 100 : 0;
+                const filteredRate = displayBase > 0 ? (displayBase > 0 ? (displayBase > 0 ? (displaySpent / displayBase) * 100 : 0) : 0) : 0;
                 const overspent = budgetUtilizationTable.filter(row => row.spent > row.allocated && row.allocated > 0);
                                                 return (
                   <>
@@ -2489,7 +2502,7 @@ return (
                       <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-2xs xl:col-span-2">
                         <h4 className="text-sm font-extrabold text-slate-800">Program allocation</h4>
                         <p className="mb-2 text-[10px] text-slate-400">Share of the selected allocation.</p>
-                        {budgetAllocationByProgramData.some(item => item.value > 0) ? <><ResponsiveContainer width="100%" height={190}><PieChart><Pie data={budgetAllocationByProgramData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={78} paddingAngle={3}>{budgetAllocationByProgramData.map(item => <Cell key={item.name} fill={item.color} />)}</Pie><Tooltip formatter={(value: any) => `₱${Number(value).toLocaleString()}`} /></PieChart></ResponsiveContainer><div className="space-y-2">{budgetAllocationByProgramData.slice(0, 6).map(item => <div key={item.name} className="flex items-center justify-between text-[10px] font-semibold text-slate-600"><span className="flex min-w-0 items-center gap-2"><i className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: item.color }} /> <span className="truncate">{item.name}</span></span><span>{item.percentage}</span></div>)}</div></> : <div className="flex h-64 items-center justify-center text-xs font-semibold text-slate-400">No program allocations recorded.</div>}
+                        {budgetAllocationByProgramData.some(item => item.value > 0) ? <><ResponsiveContainer width="100%" height={190}><PieChart><Pie data={budgetAllocationByProgramData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={78} paddingAngle={3}>{budgetAllocationByProgramData.map(item => <Cell key={item.name} fill={item.color} />)}</Pie><Tooltip formatter={(value: any) => `₱${Number(value).toLocaleString()}`} /></PieChart></ResponsiveContainer><div className="space-y-2">{budgetAllocationByProgramData.slice(0, 6).map(item => <div key={item.name} className="flex items-center justify-between text-[10px] font-semibold text-slate-600 max-w-md whitespace-normal break-words"><span className="flex min-w-0 items-center gap-2"><i className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: item.color }} /> <span className="truncate">{item.name}</span></span><span>{item.percentage}</span></div>)}</div></> : <div className="flex h-64 items-center justify-center text-xs font-semibold text-slate-400">No program allocations recorded.</div>}
                       </div>
                     </div>
 
@@ -2531,7 +2544,7 @@ return (
                   </div>
                 </div>
 
-                <div className="overflow-x-auto border border-slate-200/80 rounded-xl shadow-xs">
+                <div className="w-full overflow-x-auto border border-slate-200/80 rounded-xl shadow-xs">
                   <table className="w-full text-left text-xs font-semibold text-slate-600">
                     <thead className="bg-[#091d64] text-[10px] text-white font-extrabold uppercase tracking-widest">
                       <tr>
@@ -2550,7 +2563,7 @@ return (
                           <td className="px-5 py-4 font-mono font-bold text-[#091d64]">
                             {doc.resolutionNumber || doc.id}
                           </td>
-                          <td className="px-5 py-4 font-bold text-slate-900">
+                          <td className="px-5 py-4 font-bold text-slate-900 truncate" title="Document Title">
                             {doc.title}
                           </td>
                           <td className="px-5 py-4">
@@ -2558,10 +2571,10 @@ return (
                               {doc.category}
                             </span>
                           </td>
-                          <td className="px-5 py-4 font-bold text-slate-800">
+                          <td className="px-5 py-4 font-bold text-slate-800 truncate">
                             {doc.uploadedBy}
                           </td>
-                          <td className="px-5 py-4 font-mono text-slate-600">
+                          <td className="px-5 py-4 font-mono text-slate-600 max-w-md whitespace-normal break-words">
                             {doc.uploadedDate}
                           </td>
                           <td className="px-5 py-4 text-center">
@@ -2695,7 +2708,7 @@ return (
                   <button onClick={() => setReportSubTab('demographics')} className={reportSubTab === 'demographics' ? 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-[#091d64] text-white' : 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-slate-50 text-slate-600 hover:bg-slate-100'}>Demographics</button>
                   <button onClick={() => setReportSubTab('financial')} className={reportSubTab === 'financial' ? 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-[#091d64] text-white' : 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-slate-50 text-slate-600 hover:bg-slate-100'}>Financial</button>
                 </div>
-                {reportSubTab === 'attendance' && (<div className="overflow-x-auto border border-slate-100 rounded-xl"><table className="w-full text-left text-xs"><thead className="bg-[#091d64] text-white text-[10px] font-bold uppercase"><tr><th className="px-4 py-3">Program</th><th className="px-4 py-3 text-right">Registered</th><th className="px-4 py-3 text-right">Slots</th><th className="px-4 py-3 text-right">Fill Rate</th></tr></thead><tbody className="divide-y divide-slate-100">{programs.map(p => { const reg = p.registeredCount || 0; const max = p.maxParticipants || 1; return <tr key={p.id}><td className="px-4 py-3 font-bold">{p.title}</td><td className="px-4 py-3 text-right font-mono">{reg}</td><td className="px-4 py-3 text-right font-mono">{p.maxParticipants || 0}</td><td className="px-4 py-3 text-right font-mono font-bold text-[#091d64]">{((reg / max) * 100).toFixed(0)}%</td></tr>; })}</tbody></table></div>)}
+                {reportSubTab === 'attendance' && (<div className="overflow-x-auto border border-slate-100 rounded-xl"><table className="w-full text-left text-xs"><thead className="bg-[#091d64] text-white text-[10px] font-bold uppercase"><tr><th className="px-4 py-3">Program</th><th className="px-4 py-3 text-right">Registered</th><th className="px-4 py-3 text-right">Slots</th><th className="px-4 py-3 text-right">Fill Rate</th></tr></thead><tbody className="divide-y divide-slate-100">{programs.map(p => { const reg = p.registeredCount || 0; const max = p.maxParticipants || 1; return <tr key={p.id}><td className="px-4 py-3 font-bold">{p.title}</td><td className="px-4 py-3 text-right font-mono">{reg}</td><td className="px-4 py-3 text-right font-mono">{p.maxParticipants || 0}</td><td className="px-4 py-3 text-right font-mono font-bold text-[#091d64]">{((max > 0 ? (max > 0 ? (reg / max) * 100 : 0) : 0)).toFixed(0)}%</td></tr>; })}</tbody></table></div>)}
                 {reportSubTab === 'accomplishments' && (<div className="grid grid-cols-1 sm:grid-cols-3 gap-4"><div className="p-4 bg-emerald-50/60 rounded-xl border border-emerald-100 text-center"><span className="text-2xl font-black text-emerald-800 block">{programs.reduce((s, p) => s + (p.registeredCount || 0), 0)}</span><span className="text-[10px] font-bold text-emerald-600 uppercase block mt-1">Total Registrations</span></div><div className="p-4 bg-blue-50/60 rounded-xl border border-blue-100 text-center"><span className="text-2xl font-black text-[#091d64] block">{programs.filter(p => p.status === 'Completed').length}</span><span className="text-[10px] font-bold text-blue-600 uppercase block mt-1">Completed Programs</span></div><div className="p-4 bg-amber-50/60 rounded-xl border border-amber-100 text-center"><span className="text-2xl font-black text-amber-800 block">{documents.length}</span><span className="text-[10px] font-bold text-amber-600 uppercase block mt-1">Documented Reports</span></div></div>)}
                 {reportSubTab === 'beneficiaries' && (<div className="overflow-x-auto border border-slate-100 rounded-xl"><table className="w-full text-left text-xs"><thead className="bg-[#091d64] text-white text-[10px] font-bold uppercase"><tr><th className="px-4 py-3">Name</th><th className="px-4 py-3">Zone</th><th className="px-4 py-3">Status</th></tr></thead><tbody className="divide-y divide-slate-100">{youthProfiles.slice(0, 50).map(y => <tr key={y.id}><td className="px-4 py-3 font-bold">{y.name}</td><td className="px-4 py-3 text-slate-500">{y.zone}</td><td className="px-4 py-3">{y.status}</td></tr>)}</tbody></table></div>)}
                                 {reportSubTab === 'demographics' && (
@@ -2731,11 +2744,11 @@ return (
                           ) : (
                             <div className="space-y-2">
                               {Object.entries(data).sort((a, b) => b[1] - a[1]).map(([k, v], i) => {
-                                const pct = (v / total) * 100;
+                                const pct = (total > 0 ? (total > 0 ? (v / total) * 100 : 0) : 0);
                                 return (
                                   <div key={k}>
                                     <div className="flex justify-between text-[11px] mb-1">
-                                      <span className="text-slate-600 font-semibold">{k}</span>
+                                      <span className="text-slate-600 max-w-md whitespace-normal break-words font-semibold">{k}</span>
                                       <span className="font-mono font-bold text-[#091d64]">{v} ({pct.toFixed(0)}%)</span>
                                     </div>
                                     <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
@@ -2853,7 +2866,7 @@ return (
                       {isSubmittingAnnouncement ? 'Saving...' : editingAnnouncementId ? 'Update Announcement' : 'Publish Announcement'}
                     </button>
                     {editingAnnouncementId && (
-                      <button type="button" onClick={handleCancelAnnouncementEdit} disabled={isSubmittingAnnouncement} className="rounded-lg border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600 disabled:opacity-50">
+                      <button type="button" onClick={handleCancelAnnouncementEdit} disabled={isSubmittingAnnouncement} className="rounded-lg border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600 max-w-md whitespace-normal break-words disabled:opacity-50">
                         Cancel edit
                       </button>
                     )}
@@ -2884,7 +2897,7 @@ return (
                               </div>
                             </div>
                             <div className="flex shrink-0 gap-1">
-                              <button type="button" aria-label={`Edit ${announcement.title}`} onClick={() => handleEditAnnouncement(announcement)} className="rounded-md border border-slate-200 bg-white p-1.5 text-slate-600 hover:bg-blue-50 hover:text-blue-700">
+                              <button type="button" aria-label={`Edit ${announcement.title}`} onClick={() => handleEditAnnouncement(announcement)} className="rounded-md border border-slate-200 bg-white p-1.5 text-slate-600 max-w-md whitespace-normal break-words hover:bg-blue-50 hover:text-blue-700">
                                 <Pencil className="h-3.5 w-3.5" />
                               </button>
                               <button type="button" aria-label={`Delete ${announcement.title}`} onClick={() => void handleDeleteAnnouncement(announcement)} disabled={mutatingAnnouncementId === announcement.id} className="rounded-md border border-slate-200 bg-white p-1.5 text-rose-600 hover:bg-rose-50 disabled:opacity-50">
@@ -2894,12 +2907,12 @@ return (
                           </div>
                           {announcement.imageUrl && <img src={announcement.imageUrl} alt={`Pubmat for ${announcement.title}`} className="mt-3 max-h-64 w-full rounded-lg border border-slate-200 bg-white object-contain" />}
                           <div className="mt-3 space-y-2 text-[11px]">
-                            <p className="text-slate-600"><span className="font-bold text-slate-700">What:</span> {announcement.what || '—'}</p>
-                            <p className="text-slate-600"><span className="font-bold text-slate-700">Where:</span> {announcement.where || '—'}</p>
-                            <p className="text-slate-600"><span className="font-bold text-slate-700">When:</span> {announcement.when || '—'}</p>
+                            <p className="text-slate-600 max-w-md whitespace-normal break-words"><span className="font-bold text-slate-700">What:</span> {announcement.what || '—'}</p>
+                            <p className="text-slate-600 max-w-md whitespace-normal break-words"><span className="font-bold text-slate-700">Where:</span> {announcement.where || '—'}</p>
+                            <p className="text-slate-600 max-w-md whitespace-normal break-words"><span className="font-bold text-slate-700">When:</span> {announcement.when || '—'}</p>
                             <div className="border-t border-slate-200 pt-2">
                               <p className="font-bold text-slate-700">Body Content</p>
-                              <p className="mt-1 whitespace-pre-line font-medium text-slate-600">{announcement.content}</p>
+                              <p className="mt-1 whitespace-pre-line font-medium text-slate-600 max-w-md whitespace-normal break-words">{announcement.content}</p>
                             </div>
                             {announcement.hashtags && <p className="border-t border-slate-200 pt-2 font-semibold text-blue-700">{announcement.hashtags}</p>}
                           </div>
@@ -2946,7 +2959,7 @@ return (
                       <span className="rounded-full bg-emerald-100 px-3 py-1 text-[10px] font-extrabold text-emerald-800">Active</span>
                     </div>
                   ) : (
-                    <p className="text-xs font-semibold text-slate-600">No Barangay Facebook Page is connected.</p>
+                    <p className="text-xs font-semibold text-slate-600 max-w-md whitespace-normal break-words">No Barangay Facebook Page is connected.</p>
                   )}
                 </div>
 
@@ -3051,7 +3064,7 @@ return (
                             {log.user} ({log.role})
                           </td>
                           <td className="p-3.5 font-mono text-[10px]">{log.action}</td>
-                          <td className="p-3.5 text-slate-600">{log.details}</td>
+                          <td className="p-3.5 text-slate-600 max-w-md whitespace-normal break-words">{formatAuditDetails(log.action, log.details)}</td>
                         </tr>
                       ))}
                       {auditLogs.length === 0 && (
@@ -3102,7 +3115,7 @@ return (
                 </div>
               </div>
 
-              <div className="grid sm:grid-cols-2 gap-4 text-xs font-bold text-slate-600">
+              <div className="grid sm:grid-cols-2 gap-4 text-xs font-bold text-slate-600 max-w-md whitespace-normal break-words">
                 <div>
                   <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Birthdate & calculated age</span>
                   <span className="text-slate-800 block">{inspectProfile.birthdate} ({inspectProfile.age} yrs old)</span>
@@ -3182,7 +3195,7 @@ return (
                     )}
 
                     {youthVerification.verification_notes && (
-                      <p className="text-[11px] text-slate-600 italic border-l-2 border-amber-300 pl-2">
+                      <p className="text-[11px] text-slate-600 max-w-md whitespace-normal break-words italic border-l-2 border-amber-300 pl-2">
                         Review note: {youthVerification.verification_notes}
                       </p>
                     )}
@@ -3203,7 +3216,7 @@ return (
                   <div className="flex justify-end gap-2">
                     <button 
                       onClick={() => setShowRejectField(false)}
-                      className="px-3 py-1 bg-white border border-slate-200 text-slate-600 rounded-md font-bold cursor-pointer"
+                      className="px-3 py-1 bg-white border border-slate-200 text-slate-600 max-w-md whitespace-normal break-words rounded-md font-bold cursor-pointer"
                     >
                       Cancel
                     </button>
@@ -3239,7 +3252,7 @@ return (
               <div className="flex gap-2">
                 <button
                   onClick={() => { setInspectProfile(null); setShowRejectField(false); }}
-                  className="px-4 py-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-bold rounded-lg text-xs cursor-pointer"
+                  className="px-4 py-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 max-w-md whitespace-normal break-words font-bold rounded-lg text-xs cursor-pointer"
                 >
                   Close
                 </button>
@@ -3369,7 +3382,7 @@ return (
                   type="button"
                   disabled={isUploadingDocument}
                   onClick={() => setShowUploadDocModal(false)}
-                  className="px-4 py-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 font-bold rounded-xl text-xs cursor-pointer disabled:opacity-50"
+                  className="px-4 py-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 max-w-md whitespace-normal break-words font-bold rounded-xl text-xs cursor-pointer disabled:opacity-50"
                 >
                   Cancel
                 </button>

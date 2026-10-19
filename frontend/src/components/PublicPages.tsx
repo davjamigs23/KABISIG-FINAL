@@ -29,6 +29,7 @@ import {
 , ArrowLeft} from 'lucide-react';
 import { BarangayTenant, Program, YouthProfile, UserRole } from '../types';
 import { kabisigApi } from '../lib/api';
+import { resolveUserRole } from '../lib/role-routing';
 
 export function validatePassword(password: string) {
   return {
@@ -228,28 +229,23 @@ export default function PublicPages({
         return;
       }
 
-      const dbUser = res.user;
-      const roleId = dbUser?.role_id;
-      let finalRole: UserRole = 'Youth Constituent';
+      const dbUser = await kabisigApi.getCurrentUser();
+      if (!dbUser) {
+        kabisigApi.logout();
+        setLoginError('Your account signed in, but its role profile could not be loaded. Please try again.');
+        return;
+      }
+
+      const finalRole = resolveUserRole(dbUser);
+      if (!finalRole) {
+        kabisigApi.logout();
+        setLoginError('Your account role or SK Official position is not configured. Please contact your SK Federation President.');
+        return;
+      }
       let finalBarangay = dbUser?.tenant_id || '';
 
-      // Direct Role Resolution from Database
-      if (roleId === 1) {
-        finalRole = 'Super Admin';
+      if (finalRole === 'Super Admin') {
         finalBarangay = '';
-      } else if (roleId === 2) {
-        finalRole = 'Barangay Admin';
-      } else if (roleId === 3) {
-        const registeredRole = dbUser?.official_position
-          || dbUser?.user_metadata?.role
-          || dbUser?.role;
-        finalRole = registeredRole === 'SK Secretary'
-          ? 'SK Secretary'
-          : registeredRole === 'SK Treasurer'
-            ? 'SK Treasurer'
-            : 'SK Kagawad';
-      } else {
-        finalRole = 'Youth Constituent';
       }
 
       if (dbUser?.status === 'pending') {
@@ -373,12 +369,13 @@ export default function PublicPages({
       status: 'Pending',
       dateRegistered: new Date().toISOString().split('T')[0],
       profilePic: signUpForm.profilePic,
-      registeredRole: signUpForm.registeredRole,
+      registeredRole: 'Youth Constituent' as any, // forced per rules
       barangayId: resolvedBarangayId
     };
 
     try {
-      const isOfficial = signUpForm.registeredRole !== 'Youth Constituent';
+      // Rules file: only youth can self-register. Officials invited by SA.
+      const isOfficial = false;
       if (isOfficial) {
         const res = await kabisigApi.registerOfficial({
           email: signUpForm.email.trim(),
