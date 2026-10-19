@@ -24,6 +24,7 @@ interface NotificationMenuProps {
 export default function NotificationMenu({  supplementalItems = [], onNavigate, buttonClassName = '' , userRole }: NotificationMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<SystemNotification[]>([]);
+  const [locallyReadIds, setLocallyReadIds] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     let isMounted = true;
@@ -48,11 +49,10 @@ export default function NotificationMenu({  supplementalItems = [], onNavigate, 
     };
   }, []);
 
-  const unreadCount = notifications.filter(item => !item.is_read).length + supplementalItems.filter(item => !item.is_read && item.countInBadge !== false).length;
+  const unreadCount = notifications.filter(item => !item.is_read && !locallyReadIds.has(item.id)).length + supplementalItems.filter(item => !item.is_read && !locallyReadIds.has(item.id) && item.countInBadge !== false).length;
   const items: NotificationMenuItem[] = [...supplementalItems, ...notifications];
 
     const filteredItems = (items || []).filter((item: any) => {
-    if (item.is_read && !item.onSelect) return false;
     if (!userRole) return true;
     const r = String(userRole).toLowerCase();
     const text = String((item.title || '') + ' ' + (item.message || '')).toLowerCase();
@@ -63,8 +63,11 @@ export default function NotificationMenu({  supplementalItems = [], onNavigate, 
   });
 
   const handleSelect = (item: NotificationMenuItem) => {
-    // 1. Mark as read first so it disappears
-    if (!item.is_read) {
+    const isSystemNotification = notifications.some(notification => notification.id === item.id);
+    if (!item.is_read && !locallyReadIds.has(item.id)) {
+      setLocallyReadIds(previous => new Set(previous).add(item.id));
+    }
+    if (isSystemNotification && !item.is_read) {
       setNotifications(previous => previous.map(notification => notification.id === item.id ? { ...notification, is_read: true } : notification));
       void kabisigApi.markNotificationRead(item.id);
     }
@@ -118,22 +121,25 @@ export default function NotificationMenu({  supplementalItems = [], onNavigate, 
             </div>
           </div>
           <div className="max-h-[min(70vh,40rem)] overflow-y-auto px-4">
-            {filteredItems.map(item => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => handleSelect(item)}
-                className="flex w-full items-start justify-between gap-3 border-b border-slate-100 py-3 text-left last:border-b-0 hover:bg-slate-50/60"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className={`block text-xs leading-snug ${item.is_read ? 'font-semibold text-slate-600' : 'font-bold text-slate-800'}`}>{item.title}</span>
-                  <span className="mt-1 block text-xs leading-relaxed text-slate-500">{item.message}</span>
-                  {item.created_at && <span className="mt-1 block text-[10px] text-slate-400">{new Date(item.created_at).toLocaleString()}</span>}
-                </span>
-                {item.actionLabel && <span className="shrink-0 pt-0.5 text-[10px] font-semibold text-blue-700">{item.actionLabel}</span>}
-                {!item.is_read && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-blue-600" aria-label="Unread" />}
-              </button>
-            ))}
+            {filteredItems.map(item => {
+              const isRead = item.is_read || locallyReadIds.has(item.id);
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => handleSelect(item)}
+                  className={`flex w-full items-start justify-between gap-3 border-b border-slate-100 py-3 text-left last:border-b-0 ${isRead ? 'bg-white hover:bg-slate-50/60' : 'bg-slate-100/80 hover:bg-slate-100'}`}
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className={`block text-xs leading-snug ${isRead ? 'font-semibold text-slate-600' : 'font-bold text-slate-800'}`}>{item.title}</span>
+                    <span className="mt-1 block text-xs leading-relaxed text-slate-500">{item.message}</span>
+                    {item.created_at && <span className="mt-1 block text-[10px] text-slate-400">{new Date(item.created_at).toLocaleString()}</span>}
+                  </span>
+                  {item.actionLabel && <span className="shrink-0 pt-0.5 text-[10px] font-semibold text-blue-700">{item.actionLabel}</span>}
+                  {!isRead && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-blue-600" aria-label="Unread" />}
+                </button>
+              );
+            })}
             {filteredItems.length === 0 && <p className="py-6 text-center text-xs text-slate-500">You&apos;re all caught up.</p>}
           </div>
         </div>

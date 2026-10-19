@@ -159,6 +159,7 @@ export default function PublicPages({
   // Sign up state (Multi-step)
   const [signUpStep, setSignUpStep] = useState(1);
   const [signUpBarangayId, setSignUpBarangayId] = useState('');
+  const [birthdateInput, setBirthdateInput] = useState('');
   const [signUpForm, setSignUpForm] = useState({
     firstName: '',
     middleName: '',
@@ -196,16 +197,39 @@ export default function PublicPages({
   ].map((p) => (p || '').trim()).filter(Boolean).join(' ').trim();
 
   const handleBirthdateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const dob = e.target.value;
-    const birthDate = new Date(dob);
-    const difference = Date.now() - birthDate.getTime();
-    const ageDate = new Date(difference);
-    const calculatedAge = Math.abs(ageDate.getUTCFullYear() - 1970);
-    setSignUpForm({
-      ...signUpForm,
-      birthdate: dob,
-      age: isNaN(calculatedAge) ? 0 : calculatedAge
-    });
+    const digits = e.target.value.replace(/\D/g, '').slice(0, 8);
+    const formatted = digits.length > 4
+      ? `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`
+      : digits.length > 2
+        ? `${digits.slice(0, 2)}/${digits.slice(2)}`
+        : digits;
+    setBirthdateInput(formatted);
+
+    if (digits.length !== 8) {
+      setSignUpForm(previous => ({ ...previous, birthdate: '', age: 0 }));
+      return;
+    }
+
+    const month = Number(digits.slice(0, 2));
+    const day = Number(digits.slice(2, 4));
+    const year = Number(digits.slice(4, 8));
+    const birthDate = new Date(year, month - 1, day);
+    if (
+      birthDate.getFullYear() !== year
+      || birthDate.getMonth() !== month - 1
+      || birthDate.getDate() !== day
+    ) {
+      setSignUpForm(previous => ({ ...previous, birthdate: '', age: 0 }));
+      return;
+    }
+
+    const today = new Date();
+    let calculatedAge = today.getFullYear() - year;
+    if (today.getMonth() < month - 1 || (today.getMonth() === month - 1 && today.getDate() < day)) {
+      calculatedAge -= 1;
+    }
+    const isoDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    setSignUpForm(previous => ({ ...previous, birthdate: isoDate, age: calculatedAge }));
   };
 
   const handleSignIn = async () => {
@@ -840,10 +864,10 @@ export default function PublicPages({
                   {signUpStep === 1 && (
                     <>
                       <h2 className="font-sans font-extrabold text-[#091d64] text-lg tracking-[0.1em] uppercase mb-1.5">
-                        CREATE YOUR PROFILE
+                        CREATE YOUTH PROFILE
                       </h2>
                       <p className="text-xs text-slate-500">
-                        Select your role and provide your basic personal details.
+                        Provide your basic personal details to create your youth profile.
                       </p>
                     </>
                   )}
@@ -909,20 +933,6 @@ export default function PublicPages({
                           </select>
                           <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                         </div>
-                      </div>
-
-                      {/* Role Selection */}
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans">
-                          Account Type
-                        </label>
-                        <div className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                          Youth Constituent (KK Member)
-                        </div>
-                        <p className="text-[10px] text-slate-400 mt-1.5 leading-snug">
-                          Only youth residents can self-register. SK Officials are invited by the SK Federation President.
-                        </p>
                       </div>
 
                       {/* Rule #1: Split name fields */}
@@ -1010,9 +1020,14 @@ export default function PublicPages({
                             Birthdate <span className="text-red-500">*</span>
                           </label>
                           <input
-                            type="date"
-                            value={signUpForm.birthdate}
+                            type="text"
+                            inputMode="numeric"
+                            autoComplete="bday"
+                            maxLength={10}
+                            value={birthdateInput}
                             onChange={handleBirthdateChange}
+                            placeholder="MM/DD/YYYY"
+                            aria-label="Birthdate (month, day, year)"
                             className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none"
                             required
                           />
@@ -1036,7 +1051,7 @@ export default function PublicPages({
                               setSignUpForm({...signUpForm, mobile: sanitized});
                             }}
                             className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
-                            placeholder="09123456789 (Numbers only)"
+                            placeholder="Enter mobile number"
                             required
                           />
                           <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -1066,20 +1081,14 @@ export default function PublicPages({
                             Zone / Purok <span className="text-red-500">*</span>
                           </label>
                           <div className="relative w-full">
-                            <select
+                            <input
+                              type="text"
                               value={signUpForm.zone}
                               onChange={(e) => setSignUpForm({...signUpForm, zone: e.target.value})}
-                              className="w-full pl-2 pr-7 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none appearance-none cursor-pointer"
-                            >
-                              <option value="Zone 1">Zone 1</option>
-                              <option value="Zone 2">Zone 2</option>
-                              <option value="Zone 3">Zone 3</option>
-                              <option value="Zone 4">Zone 4</option>
-                              <option value="Zone 5">Zone 5</option>
-                              <option value="Zone 6">Zone 6</option>
-                              <option value="Zone 7">Zone 7</option>
-                            </select>
-                            <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                              className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none"
+                              placeholder="Enter zone / purok"
+                              required
+                            />
                           </div>
                         </div>
                       </div>
@@ -1337,7 +1346,10 @@ export default function PublicPages({
                         if (signUpStep === 1) {
                           if (!signUpForm.registeredRole) { alert('Please select your Desired KABISIG Role.'); return; }
                           if (!signUpForm.firstName.trim() || !signUpForm.lastName.trim()) { alert('First Name and Last Name are required.'); return; }
-                          if (!signUpForm.birthdate) { alert('Birthdate is required.'); return; }
+                          if (!signUpForm.birthdate) {
+                            alert(birthdateInput ? 'Please enter a valid birthdate in MM/DD/YYYY format.' : 'Birthdate is required.');
+                            return;
+                          }
                         }
                         if (signUpStep === 2) {
                           if (!signUpForm.mobile.trim()) { alert('Mobile phone number is required.'); return; }

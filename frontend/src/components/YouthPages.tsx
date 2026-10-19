@@ -774,19 +774,14 @@ export default function YouthPages({
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
                 
                 {/* Horizontal digital ID preview - Refined Premium Design */}
-                <div className="bg-[#091d64] text-white rounded-2xl shadow-xl p-6 border-b-4 border-amber-400 flex flex-col justify-between relative overflow-hidden lg:col-span-1 group transition-all hover:shadow-2xl">
-                  {/* Security Pattern Overlay */}
-                  <div className="absolute inset-0 opacity-10 pointer-events-none">
-                    <div className="absolute inset-0" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '12px 12px' }}></div>
-                  </div>
-                  
+                <div className="bg-white text-slate-800 rounded-2xl shadow-xs p-6 border border-slate-200 flex flex-col justify-between relative overflow-hidden lg:col-span-1 group transition-all hover:shadow-sm">
                   {/* Subtle Philippine Flag Accent */}
-                  <div className="absolute top-0 right-0 w-2 h-full bg-red-600/80 z-20"></div>
-                  <div className="absolute top-0 right-2 w-2 h-full bg-blue-600/80 z-20"></div>
+                  <div className="absolute top-0 right-0 w-1 h-full bg-rose-200 z-20"></div>
+                  <div className="absolute top-0 right-1 w-1 h-full bg-blue-100 z-20"></div>
                   
                   <div className="flex justify-between items-start z-10">
                     <div className="flex items-center gap-3">
-                      <div className="relative w-11 h-11 rounded-full bg-white p-0.5 border-2 border-amber-400 shadow-md flex items-center justify-center overflow-hidden flex-shrink-0">
+                      <div className="relative w-11 h-11 rounded-full bg-white p-0.5 border-2 border-slate-200 shadow-xs flex items-center justify-center overflow-hidden flex-shrink-0">
                         {barangayLogo ? (
                           <img src={barangayLogo} alt={`${resolvedTenant?.name || 'Barangay'} official seal`} className="w-full h-full object-contain" />
                         ) : (
@@ -794,40 +789,36 @@ export default function YouthPages({
                         )}
                       </div>
                       <div>
-                        <span className="text-[8px] font-black text-amber-400 uppercase tracking-widest bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20 inline-block mb-1">
+                        <span className="text-[8px] font-black text-[#091d64] uppercase tracking-widest bg-blue-50 px-2 py-0.5 rounded border border-blue-100 inline-block mb-1">
                           Barangay Official Seal
                         </span>
-                        <h4 className="font-sans font-black text-white text-sm tracking-tight leading-none uppercase">
+                        <h4 className="font-sans font-black text-[#091d64] text-sm tracking-tight leading-none uppercase">
                           BARANGAY {resolvedTenant?.name || 'UNASSIGNED'}
                         </h4>
-                        <span className="text-[8px] text-slate-300 block font-mono font-bold mt-1 uppercase tracking-[0.15em] opacity-90">
+                        <span className="text-[8px] text-slate-500 block font-mono font-bold mt-1 uppercase tracking-[0.15em]">
                           Katipunan ng Kabataan Registry • Naga City
                         </span>
                       </div>
-                    </div>
-                    <div className="bg-amber-400/10 p-1.5 rounded-lg border border-amber-400/20 flex flex-col items-end">
-                      <ShieldCheck className="w-5 h-5 text-amber-400" />
-                      <span className="text-[7px] text-amber-300 font-mono font-bold uppercase mt-0.5">VERIFIED KK</span>
                     </div>
                   </div>
 
                   <div className="flex gap-5 items-center mt-6 z-10">
                     <div className="relative">
                       <ProfileAvatar name={currentYouth.name} src={currentYouth.profilePic} alt={currentYouth.name} className="w-20 h-20 rounded-xl border-2 border-white/20 shadow-lg" />
-                      <div className="absolute -bottom-1 -right-1 bg-green-500 w-4 h-4 rounded-full border-2 border-[#091d64] flex items-center justify-center">
+                      <div className="absolute -bottom-1 -right-1 bg-green-500 w-4 h-4 rounded-full border-2 border-white flex items-center justify-center">
                         <div className="w-1.5 h-1.5 bg-white rounded-full"></div>
                       </div>
                     </div>
                     <div className="flex-1">
-                      <h5 className="font-sans font-black text-base leading-none tracking-tight text-white mb-1.5 uppercase">{currentYouth.name}</h5>
+                      <h5 className="font-sans font-black text-base leading-none tracking-tight text-slate-900 mb-1.5 uppercase">{currentYouth.name}</h5>
                       <div className="space-y-1">
                         <div className="flex items-center gap-1.5">
                           <span className="text-[8px] text-slate-400 font-bold uppercase tracking-widest w-12">Serial:</span>
-                          <span className="text-[10px] text-amber-400 font-mono font-bold">{currentYouth.id}</span>
+                          <span className="text-[10px] text-[#091d64] font-mono font-bold">{currentYouth.id}</span>
                         </div>
                         <div className="flex items-center gap-1.5">
                           <span className="text-[8px] text-slate-400 font-bold uppercase tracking-widest w-12">Address:</span>
-                          <span className="text-[10px] text-slate-200 font-bold">{currentYouth.address}</span>
+                          <span className="text-[10px] text-slate-600 font-bold">{currentYouth.address}</span>
                         </div>
                         <div className="flex items-center gap-1.5">
                           <span className="text-[8px] text-slate-400 font-bold uppercase tracking-widest w-12">Status:</span>
@@ -837,15 +828,15 @@ export default function YouthPages({
                     </div>
                   </div>
 
-                  <div className="flex justify-between items-end mt-6 pt-4 border-t border-white/10 z-10">
+                  <div className="flex justify-between items-end mt-6 pt-4 border-t border-slate-100 z-10">
                     <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-1 text-[9px] text-slate-400 font-bold uppercase tracking-widest">
+                      <div className="flex items-center gap-1 text-[9px] text-slate-500 font-bold uppercase tracking-widest">
                         <Building className="w-3 h-3" /> Naga City LGU
                       </div>
-                      <div className="text-[7px] text-slate-500 font-mono leading-none">SECURE DIGITAL IDENTIFICATION SYSTEM</div>
+                      <div className="text-[7px] text-slate-400 font-mono leading-none">SECURE DIGITAL IDENTIFICATION SYSTEM</div>
                     </div>
                     
-                    <div className="bg-white p-1.5 rounded-lg shadow-inner ring-4 ring-white/5">
+                    <div className="bg-white p-1.5 rounded-lg border border-slate-200 shadow-xs">
                       <QRCodeSVG value={youthQrPayload(currentYouth)} size={52} fgColor="#091d64" />
                     </div>
                   </div>

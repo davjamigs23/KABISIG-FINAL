@@ -1195,7 +1195,7 @@ return (
       )}
 
       {viewingProgram && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setViewingProgram(null)}>
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm" onClick={() => setViewingProgram(null)}>
           <div className="bg-white rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-100" onClick={(e) => e.stopPropagation()}>
             <div className="bg-[#091d64] text-white p-6 flex justify-between items-start">
               <div>
@@ -1247,9 +1247,12 @@ return (
                 <p className="text-slate-700 leading-relaxed whitespace-pre-line">{viewingProgram.description || 'No description provided.'}</p>
               </div>
             </div>
-            <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-2">
-              <button onClick={() => setViewingProgram(null)} className="px-4 py-2 text-xs font-bold border border-slate-200 rounded-lg text-slate-600 max-w-md whitespace-normal break-words hover:bg-slate-50">Close</button>
+            <div className="px-6 py-4 border-t border-slate-100 flex justify-between gap-2">
+              <button onClick={() => { if (window.confirm(`Delete "${viewingProgram.title}"?`)) { void onDeleteProgram(viewingProgram.id); setViewingProgram(null); } }} className="px-4 py-2 text-xs font-bold border border-rose-200 rounded-lg text-rose-600 hover:bg-rose-50">Delete</button>
+              <div className="flex gap-2">
+                <button onClick={() => setViewingProgram(null)} className="px-4 py-2 text-xs font-bold border border-slate-200 rounded-lg text-slate-600 max-w-md whitespace-normal break-words hover:bg-slate-50">Close</button>
               <button onClick={() => { const p = viewingProgram; setViewingProgram(null); if (p) openProgramEditor(p); }} className="px-4 py-2 text-xs font-bold bg-[#091d64] hover:bg-[#061344] text-white rounded-lg">Edit Program</button>
+              </div>
             </div>
           </div>
         </div>
@@ -1733,7 +1736,7 @@ return (
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Quick Actions</span>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <button 
-                    onClick={() => { setActiveMenu('programs'); }}
+                    onClick={() => { setActiveMenu('programs'); openProgramEditor(); }}
                     className="bg-white p-4 rounded-xl border border-slate-100 shadow-2xs hover:shadow-xs hover:border-blue-100 text-left flex items-center gap-4 transition-all cursor-pointer"
                   >
                     <div className="p-3 bg-blue-50 text-[#091d64] rounded-lg">
@@ -1770,94 +1773,6 @@ return (
                       <p className="text-[10px] text-slate-400">Upload and manage documents</p>
                     </div>
                   </button>
-                </div>
-              </div>
-
-              {/* COMPLIANCE & BUDGET ALERTS */}
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-xs">
-                  <div className="flex justify-between items-center mb-4">
-                    <h4 className="text-xs font-black text-[#091d64] uppercase tracking-wider flex items-center gap-2">
-                      <ShieldAlert className="w-4 h-4 text-amber-500" />
-                      Compliance Tracker
-                    </h4>
-                    <span className="text-[9px] bg-amber-50 text-amber-800 font-extrabold px-2 py-0.5 rounded-full">
-                      DILG Statutory Audit
-                    </span>
-                  </div>
-                  <div className="space-y-3 max-h-72 overflow-y-auto">
-                    {complianceIssues.map((issue, idx) => (
-                      <div key={idx} className={`p-3 rounded-lg border flex gap-3 items-start ${
-                        issue.level === 'Urgent' ? 'bg-red-50/50 border-red-100 text-red-950' : 'bg-amber-50/50 border-amber-100 text-amber-950'
-                      }`}>
-                        <div className={`p-1.5 rounded-full mt-0.5 flex-shrink-0 ${issue.level === 'Urgent' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-600'}`}>
-                          <ShieldAlert className="w-3.5 h-3.5" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-bold leading-tight">{issue.message}</p>
-                          <div className="mt-1.5 flex items-center justify-between">
-                            <span className="text-[10px] font-semibold text-slate-500">Action: {issue.action}</span>
-                            <button 
-                              type="button"
-                              onClick={() => {
-                                if (issue.action.includes('Document') || issue.action.includes('Budget')) {
-                                  setActiveMenu('documents');
-                                } else if (issue.action.includes('registration')) {
-                                  setActiveMenu('youth');
-                                } else {
-                                  setActiveMenu('programs');
-                                }
-                              }}
-                              className="text-[9px] text-blue-700 font-extrabold hover:underline cursor-pointer"
-                            >
-                              Resolve &rarr;
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                    {complianceIssues.length === 0 && (
-                      <div className="py-8 text-center text-xs text-slate-400 font-bold">
-                        Zero compliance issues detected. Sangguniang Kabataan fully compliant.
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-xs">
-                  <div className="flex justify-between items-center mb-4">
-                    <h4 className="text-xs font-black text-[#091d64] uppercase tracking-wider flex items-center gap-2">
-                      <Coins className="w-4 h-4 text-[#091d64]" />
-                      Budget Auditor & Alerts
-                    </h4>
-                    <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full ${
-                      budgetAnalytics.consumptionTrend === 'Accelerated' ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'
-                    }`}>
-                      Trend: {budgetAnalytics.consumptionTrend}
-                    </span>
-                  </div>
-                  <div className="space-y-3 max-h-72 overflow-y-auto">
-                    {budgetAlerts.map((alert, idx) => (
-                      <div key={idx} className={`p-3 rounded-lg border flex gap-3 items-start ${
-                        alert.level === 'Critical' ? 'bg-red-50/50 border-red-100' : alert.level === 'Warning' ? 'bg-amber-50/50 border-amber-100' : 'bg-blue-50/50 border-blue-100'
-                      }`}>
-                        <div className={`p-1.5 rounded-full mt-0.5 flex-shrink-0 ${
-                          alert.level === 'Critical' ? 'bg-red-100 text-red-600' : alert.level === 'Warning' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'
-                        }`}>
-                          <AlertTriangle className="w-3.5 h-3.5" />
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-xs font-bold leading-tight text-slate-800">{alert.message}</p>
-                          <span className="text-[8px] text-slate-400 font-mono font-bold block mt-1">Trigger Code: {alert.code}</span>
-                        </div>
-                      </div>
-                    ))}
-                    {budgetAlerts.length === 0 && (
-                      <div className="py-8 text-center text-xs text-slate-400 font-bold">
-                        Budget spend checks successfully completed. No irregularities.
-                      </div>
-                    )}
-                  </div>
                 </div>
               </div>
 
@@ -2087,8 +2002,7 @@ return (
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                <div className="xl:col-span-2 space-y-4">
+              <div className="space-y-4">
                   {progListFilter === 'Calendar' ? (
                     <div className="bg-white rounded-xl border border-slate-100 shadow-2xs p-5">
                       <div className="flex items-center justify-between mb-4">
@@ -2129,42 +2043,24 @@ return (
                       </div>
                     </div>
                   ) : programs.map(p => (
-                    <div key={p.id} className="bg-white rounded-xl border border-slate-100 shadow-2xs p-5 flex flex-col md:flex-row gap-5 items-start justify-between">
-                      <div className="flex gap-4 items-start">
-                        <div className="w-20 h-20 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center flex-shrink-0">
-                          <ClipboardList className="w-8 h-8 text-[#091d64]" />
-                        </div>
-                        <div>
-                          <h4 className="text-base font-extrabold text-[#091d64]">{p.title}</h4>
-                          <div className="flex items-center gap-1 text-slate-400 font-bold text-[10px] mt-1">
-                            <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                            {p.startDate} - {p.endDate}
-                          </div>
-                          <p className="text-xs text-slate-500 font-medium mt-2 leading-relaxed">{p.description}</p>
-                        </div>
-                      </div>
-
-                      <div className="w-full md:w-auto flex md:flex-col items-end justify-between md:justify-center border-t md:border-t-0 pt-4 md:pt-0 mt-4 md:mt-0 gap-4">
-                        <div>
-                          <span className="text-[10px] text-slate-400 block font-bold">Status</span>
-                          <span className="bg-blue-50 text-blue-600 border border-blue-100 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full inline-block mt-0.5">
-                            {p.status}
-                          </span>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-[10px] text-slate-400 block font-bold">Budget</span>
-                          <span className="text-xs font-extrabold text-slate-800 block mt-0.5">₱ {(p.budgetAllocation || 0).toLocaleString()}</span>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-[10px] text-slate-400 block font-bold">Registrations</span>
-                          <span className="text-xs font-extrabold text-slate-800 block mt-0.5">{p.registeredCount || 0} / {p.maxParticipants || 0}</span>
-                        </div>
-                        <div className="flex gap-2">
-                          <button type="button" onClick={() => openProgramEditor(p)} className="px-2 py-1 border rounded text-[10px] font-bold">Edit</button>
-                          <button type="button" onClick={() => { if (window.confirm(`Delete "${p.title}"?`)) void onDeleteProgram(p.id); }} className="px-2 py-1 border border-red-200 text-red-600 rounded text-[10px] font-bold">Delete</button>
-                        </div>
-                      </div>
-                    </div>
+                    <button
+                      type="button"
+                      key={p.id}
+                      onClick={() => openProgramEditor(p, 'view')}
+                      className="flex w-full items-center justify-between gap-4 rounded-xl border border-slate-100 bg-white px-5 py-4 text-left shadow-2xs transition hover:border-blue-200 hover:shadow-sm"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-bold text-[#091d64]">{p.title}</span>
+                        <span className="mt-1 flex items-center gap-1.5 text-[11px] font-medium text-slate-400">
+                          <Calendar className="h-3.5 w-3.5" />
+                          {p.startDate || 'Date not set'}{p.endDate && p.endDate !== p.startDate ? ` – ${p.endDate}` : ''}
+                        </span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-3">
+                        <span className="hidden rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-bold text-blue-700 sm:inline-block">{p.status}</span>
+                        <span className="text-xs font-semibold text-slate-500">{p.category}</span>
+                      </span>
+                    </button>
                   ))}
                   {programs.length === 0 && (
                     <div className="bg-white p-12 text-center rounded-xl border border-slate-100 text-slate-400 font-bold text-xs">
@@ -2174,8 +2070,9 @@ return (
                 </div>
 
                 {showCreateProgDrawer && (
-                  <div className="bg-white rounded-xl border border-slate-100 p-6 shadow-xs h-fit sticky top-6">
-                    <div className="flex justify-between items-center border-b pb-3 mb-4">
+                  <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm" onClick={() => setShowCreateProgDrawer(false)}>
+                    <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-100 bg-white p-6 shadow-2xl" onClick={event => event.stopPropagation()}>
+                    <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
                       <h4 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">{editingProgram ? 'Edit Program' : 'Create New Program'}</h4>
                       <button 
                         onClick={() => setShowCreateProgDrawer(false)}
@@ -2254,9 +2151,9 @@ return (
                         <button type="submit" className="flex-1 py-2 text-xs bg-[#091d64] hover:bg-[#061344] text-white rounded-lg font-bold cursor-pointer transition-colors shadow-sm">{editingProgram ? 'Save Changes' : 'Create Program'}</button>
                       </div>
                     </form>
+                    </div>
                   </div>
                 )}
-              </div>
             </div>
           )}
 
@@ -2377,30 +2274,32 @@ return (
                   </form>
                 </div>
               )}
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0 flex-1">
                   <h3 className="text-xl font-extrabold text-[#091d64]">Budget Management</h3>
-                  <p className="text-xs text-slate-400 mt-1">Live allocation and expenditure view for Barangay {currentBarangay?.name || 'Barangay'}.</p>
+                  <p className="mt-1 text-xs text-slate-400">Live allocation and expenditure view for Barangay {currentBarangay?.name || 'Barangay'}.</p>
+                  <div className="mt-4 flex flex-wrap items-end gap-x-4 gap-y-2">
+                    <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Fiscal year
+                      <select value={budgetYear} onChange={event => setBudgetYear(event.target.value)} className="mt-1 block rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700">
+                        {[...new Set([new Date().getFullYear(), ...programs.map(program => new Date(program.startDate).getFullYear()).filter(Boolean)])].sort().reverse().map(year => <option key={year}>{year}</option>)}
+                      </select>
+                    </label>
+                    <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Program
+                      <select value={budgetProgramFilter} onChange={event => setBudgetProgramFilter(event.target.value)} className="mt-1 block min-w-44 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700">
+                        <option>All Programs</option>
+                        {programs.map(program => <option key={program.id} value={program.id}>{program.title}</option>)}
+                      </select>
+                    </label>
+                    <button type="button" onClick={() => { setBudgetYear(String(new Date().getFullYear())); setBudgetProgramFilter('All Programs'); }} className="px-1 py-1.5 text-[10px] font-semibold text-slate-400 hover:text-[#091d64]">Reset</button>
+                  </div>
                 </div>
-                <button type="button" onClick={() => { setTotalFormError(''); setShowSetTotal(true); }} className="inline-flex items-center justify-center gap-2 rounded-lg bg-amber-400 px-4 py-2.5 text-xs font-bold text-amber-950 hover:bg-amber-300">
-                  <Coins className="h-4 w-4" /> Set total SK budget
-                </button>
-                                <button type="button" onClick={() => { setExpenseFormError(''); setShowRecordExpense(true); }} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#091d64] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#122878]">
-                  <Plus className="h-4 w-4" /> Record expense
-                </button>
-                <div className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Fiscal year
-                    <select value={budgetYear} onChange={event => setBudgetYear(event.target.value)} className="mt-1 block rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold">
-                      {[...new Set([new Date().getFullYear(), ...programs.map(program => new Date(program.startDate).getFullYear()).filter(Boolean)])].sort().reverse().map(year => <option key={year}>{year}</option>)}
-                    </select>
-                  </label>
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Program
-                    <select value={budgetProgramFilter} onChange={event => setBudgetProgramFilter(event.target.value)} className="mt-1 block min-w-52 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold">
-                      <option>All Programs</option>
-                      {programs.map(program => <option key={program.id} value={program.id}>{program.title}</option>)}
-                    </select>
-                  </label>
-                  <button type="button" onClick={() => { setBudgetYear(String(new Date().getFullYear())); setBudgetProgramFilter('All Programs'); }} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 max-w-md whitespace-normal break-words hover:bg-slate-50">Reset filters</button>
+                <div className="grid w-full shrink-0 grid-cols-2 gap-2 sm:w-auto lg:w-[22rem]">
+                  <button type="button" onClick={() => { setTotalFormError(''); setShowSetTotal(true); }} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-amber-400 px-3 py-2.5 text-center text-xs font-bold text-amber-950 hover:bg-amber-300">
+                    <Coins className="h-4 w-4 shrink-0" /> <span>Set total SK budget</span>
+                  </button>
+                  <button type="button" onClick={() => { setExpenseFormError(''); setShowRecordExpense(true); }} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-[#091d64] px-3 py-2.5 text-center text-xs font-bold text-white hover:bg-[#122878]">
+                    <Plus className="h-4 w-4 shrink-0" /> <span>Record expense</span>
+                  </button>
                 </div>
               </div>
 
