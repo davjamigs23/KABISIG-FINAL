@@ -333,6 +333,13 @@ router.post(
     const programId = String(req.params.id || '');
     const user = (req as AuthRequest).user!;
 
+    // STRICT CHECK: Block pending users from registering
+    const { data: profile } = await supabaseAdmin.from('resident_profile').select('verification_status').eq('user_id', user.id).maybeSingle();
+    if (!profile || profile.verification_status?.toLowerCase() !== 'verified') {
+      sendError(res, 'Your account is pending verification. You must wait for the SK Chairperson to approve your ID before registering.', 403);
+      return;
+    }
+
     const { data: program, error: progError } = await supabaseAdmin
       .from('program')
       .select('id, title, tenant_id, total_slots, status')

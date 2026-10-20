@@ -17,6 +17,7 @@ const InventoryItemSchema = z.object({
   unit_cost: z.number().min(0).default(0),
   location: z.string().max(200).optional(),
   description: z.string().max(500).optional(),
+  photo_url: z.string().optional().nullable(),
 });
 
 router.get('/', authenticateUser, async (req: Request, res: Response): Promise<void> => {

@@ -67,7 +67,6 @@ import NotificationMenu from './NotificationMenu';
 import { UserMenu } from './UserMenu';
 import ProfileAvatar from './ProfileAvatar';
 import kabisigApi from '../lib/api';
-
 interface YouthPagesProps {
   currentYouth: YouthProfile;
   programs: Program[];
@@ -84,7 +83,6 @@ interface YouthPagesProps {
   onUpdateYouthProfile?: (updated: YouthProfile) => void;
   onLogout: () => void;
 }
-
 export default function YouthPages({
   currentYouth,
   programs,
@@ -113,9 +111,10 @@ export default function YouthPages({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [programTab, setProgramTab] = useState<'browse' | 'registrations'>('browse');
   const [feedbackTab, setFeedbackTab] = useState<'suggestions' | 'resolutions'>('suggestions');
-
   // Local copy of profile for real-time editing & persistence
   const [youth, setYouth] = useState<YouthProfile>(currentYouth);
+  const [isUploadingProfilePicture, setIsUploadingProfilePicture] = useState(false);
+  const [profilePictureNotice, setProfilePictureNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editForm, setEditForm] = useState<YouthProfile>(currentYouth);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
@@ -132,26 +131,22 @@ export default function YouthPages({
   const [localRegs, setLocalRegs] = useState<Registration[]>(registrations);
   const [registeringProgramId, setRegisteringProgramId] = useState<string | null>(null);
   const [registrationNotice, setRegistrationNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
   // P13: Program budget transparency state
   const [expandedBudget, setExpandedBudget] = useState<string | null>(null);
   const [budgetCache, setBudgetCache] = useState<Record<string, any>>({});
   const [votingResolutionId, setVotingResolutionId] = useState<string | null>(null);
   const [resolutionVoteNotice, setResolutionVoteNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
   const youthQrPayload = (profile: YouthProfile) => profile.userId
     ? JSON.stringify({ user_id: profile.userId })
     : profile.qrCode?.startsWith('KAB-NAGA-')
       ? profile.qrCode
       : profile.id;
-
   useEffect(() => {
     if (currentYouth) {
       setYouth(currentYouth);
       setEditForm(ensureSplitName(currentYouth));
     }
   }, [currentYouth]);
-
   useEffect(() => {
     let isMounted = true;
     kabisigApi.getMyProgramRegistrations().then((rows) => {
@@ -170,48 +165,73 @@ export default function YouthPages({
         };
       }));
     }).catch((error: any) => console.warn('Could not restore program registrations:', error));
-
-    return () => { isMounted = false; };
-  }, [currentYouth.id, currentYouth.name, currentYouth.qrCode]);
-
-  const handleProfilePictureChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !file.type.startsWith('image/')) return;
-
+      const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
     const reader = new FileReader();
-    reader.onload = async () => {
-      const profilePic = typeof reader.result === 'string' ? reader.result : undefined;
-      if (!profilePic) return;
-      const updatedYouth = { ...youth, profilePic };
-      setYouth(updatedYouth);
-      setEditForm((previous) => ({ ...previous, profilePic }));
-      onUpdateYouthProfile?.(updatedYouth);
-
-      try {
-        await kabisigApi.updateProfile({
-          id: updatedYouth.id,
-          email: updatedYouth.email,
-          profilePic,
-        });
-      } catch (err) {
-        console.warn('Failed to persist profile picture in database:', err);
+    reader.onloadend = async () => {
+      const base64 = reader.result as string;
+      const res = await kabisigApi.uploadAvatar(base64, file.type);
+      if (res.success && res.data?.avatar_url) {
+        setYouth(prev => ({ ...prev, profilePic: res.data.avatar_url }));
       }
     };
     reader.readAsDataURL(file);
   };
+  return () => { isMounted = false; };
+  }, [currentYouth.id, currentYouth.name, currentYouth.qrCode]);
+  const handleProfilePictureChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setProfilePictureNotice({ type: 'error', text: 'Choose a JPEG, PNG, or WebP image.' });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setProfilePictureNotice({ type: 'error', text: 'The image must be smaller than 5 MB.' });
+      return;
+    }
 
+    setIsUploadingProfilePicture(true);
+    setProfilePictureNotice(null);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => typeof reader.result === 'string'
+          ? resolve(reader.result)
+          : reject(new Error('The selected image could not be read.'));
+        reader.onerror = () => reject(new Error('The selected image could not be read.'));
+        reader.readAsDataURL(file);
+      });
+      const result = await kabisigApi.uploadAvatar(base64, file.type);
+      if (!result.success || !result.data?.avatar_url) {
+        throw new Error(result.message || 'Profile photo upload failed.');
+      }
+      const updatedYouth = { ...youth, profilePic: result.data.avatar_url };
+      setYouth(updatedYouth);
+      setEditForm((previous) => ({ ...previous, profilePic: result.data.avatar_url }));
+      onUpdateYouthProfile?.(updatedYouth);
+      window.dispatchEvent(new CustomEvent('kabisig:avatar-updated', { detail: { avatar_url: result.data.avatar_url } }));
+      setProfilePictureNotice({ type: 'success', text: 'Profile photo uploaded and saved.' });
+    } catch (error: unknown) {
+      setProfilePictureNotice({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Profile photo upload failed.',
+      });
+    } finally {
+      setIsUploadingProfilePicture(false);
+    }
+  };
   // --- RULE-BASED INTELLIGENCE ENGINE COMPUTATIONS ---
   const myDemographics = classifyDemographics(youth);
   const myEngagement = calculateEngagementScore(youth, localRegs, feedback, resolutions);
   const myRecommendations = recommendPrograms(youth, programs, localRegs);
-
   // Search & Filters
   const [programSearch, setProgramSearch] = useState('');
   const [programCategory, setFilterCategory] = useState('All');
-
   // Interactive Program detail modal
   const [selectedProg, setSelectedProg] = useState<Program | null>(null);
-
   // Civic Forum / Feedback state
   const [feedbackForm, setFeedbackForm] = useState({
     type: 'Suggestion' as 'Suggestion' | 'Complaint' | 'Evaluation' | 'Inquiry',
@@ -219,15 +239,12 @@ export default function YouthPages({
     content: '',
     anonymous: false
   });
-
   const [localFeedback, setLocalFeedback] = useState<FeedbackRecord[]>(feedback);
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const [feedbackNotice, setFeedbackNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-
   useEffect(() => {
     setLocalFeedback(feedback);
   }, [feedback]);
-
   useEffect(() => {
     let isMounted = true;
     const refreshMyFeedback = () => {
@@ -240,6 +257,7 @@ export default function YouthPages({
           title: feed.subject,
           content: feed.message,
           rating: feed.sentiment === 'positive' ? 5 : feed.sentiment === 'negative' ? 1 : 3,
+          sentiment: feed.sentiment,
           anonymous: feed.is_anonymous || false,
           status: feed.status === 'resolved' ? 'Resolved' : feed.status === 'under_review' ? 'Reviewed' : 'Pending',
           dateSubmitted: feed.created_at?.split('T')[0] || '',
@@ -248,21 +266,31 @@ export default function YouthPages({
         })));
       }).catch((error: any) => console.warn('Could not refresh youth feedback history:', error));
     };
-
     const handleVisible = () => {
       if (document.visibilityState === 'visible') refreshMyFeedback();
     };
-
     refreshMyFeedback();
     window.addEventListener('focus', refreshMyFeedback);
     document.addEventListener('visibilitychange', handleVisible);
-    return () => {
+      const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64 = reader.result as string;
+      const res = await kabisigApi.uploadAvatar(base64, file.type);
+      if (res.success && res.data?.avatar_url) {
+        setYouth(prev => ({ ...prev, profilePic: res.data.avatar_url }));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+  return () => {
       isMounted = false;
       window.removeEventListener('focus', refreshMyFeedback);
       document.removeEventListener('visibilitychange', handleVisible);
     };
   }, [youth.id, youth.name]);
-
   // Derived arrays
   const myRegistrations = localRegs.filter(r => r.participantId === youth.userId || r.participantId === youth.id);
   const myFeedback = localFeedback.filter(f => {
@@ -271,7 +299,6 @@ export default function YouthPages({
     if (youth.userId && f.userId) return f.userId === youth.userId;
     return f.submittedBy === youth.name;
   });
-
   // Rule #1: ensure editForm has split fields populated for editing
   const ensureSplitName = (profile: YouthProfile): YouthProfile => {
     if ((profile.first_name && profile.first_name.trim()) || (profile.last_name && profile.last_name.trim())) {
@@ -288,7 +315,6 @@ export default function YouthPages({
     } catch { /* no-op */ }
     finally { setVerificationLoading(false); }
   };
-
   const handleVerificationFile = (file: File | null) => {
     if (!file) {
       setVerificationForm((p) => ({ ...p, file: null }));
@@ -306,7 +332,6 @@ export default function YouthPages({
     setVerificationNotice(null);
     setVerificationForm((p) => ({ ...p, file }));
   };
-
   const handleVerificationSubmit = async () => {
     const { id_type, id_number, file } = verificationForm;
     if (!id_number.trim()) {
@@ -368,27 +393,23 @@ export default function YouthPages({
         calculatedAge = currentYear - birthYear;
       }
     }
-
     const composedName = composeFullName({
       first_name: editForm.first_name,
       middle_name: editForm.middle_name,
       last_name: editForm.last_name,
       suffix: editForm.suffix,
     }) || editForm.name;
-
     const updatedProfile: YouthProfile = {
       ...editForm,
       name: composedName,
       age: calculatedAge
     };
-
     try {
       // Persist profile to Supabase PostgreSQL database via backend API
       const res = await kabisigApi.updateProfile(updatedProfile);
       if (!res.success) {
         throw new Error(res.message || 'The profile could not be saved.');
       }
-
       setYouth(updatedProfile);
       if (onUpdateYouthProfile) {
         onUpdateYouthProfile(updatedProfile);
@@ -402,7 +423,6 @@ export default function YouthPages({
       setIsSavingProfile(false);
     }
   };
-
   const handleRegisterProgramClick = async (progId: string) => {
     // Check if already registered
     const alreadyReg = localRegs.some(r => r.programId === progId && r.participantId === currentYouth.id);
@@ -410,10 +430,8 @@ export default function YouthPages({
       alert('You are already registered for this program.');
       return;
     }
-
     const prog = programs.find(p => p.id === progId);
     if (!prog) return;
-
     setRegisteringProgramId(progId);
     setRegistrationNotice(null);
     try {
@@ -427,7 +445,6 @@ export default function YouthPages({
       setRegisteringProgramId(null);
     }
   };
-
   // P13: Fetch + toggle program budget breakdown
   const toggleBudget = async (progId: string) => {
     if (expandedBudget === progId) { setExpandedBudget(null); return; }
@@ -438,7 +455,6 @@ export default function YouthPages({
       if (data) setBudgetCache(prev => ({ ...prev, [progId]: data }));
     } catch (e) { /* no-op */ }
   };
-
   const handleFeedbackFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!feedbackForm.title.trim() || !feedbackForm.content.trim()) {
@@ -456,7 +472,6 @@ export default function YouthPages({
       });
       const saved = result.data?.feedback;
       if (!result.success || !saved) throw new Error(result.message || 'Feedback could not be saved.');
-
       const sentiment = result.data?.sentiment_analysis?.sentiment;
       const newFeed: FeedbackRecord = {
         id: saved.id,
@@ -465,6 +480,7 @@ export default function YouthPages({
         title: saved.subject,
         content: saved.message,
         rating: sentiment === 'positive' ? 5 : sentiment === 'negative' ? 1 : 3,
+        sentiment,
         anonymous: saved.is_anonymous,
         status: 'Pending',
         dateSubmitted: saved.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
@@ -483,7 +499,6 @@ export default function YouthPages({
       setIsSubmittingFeedback(false);
     }
   };
-
   const handleResolutionVote = async (resId: string, voteType: 'Support' | 'Oppose' | 'Abstain') => {
     if (!currentYouth.userId) {
       setResolutionVoteNotice({ type: 'error', text: 'Your authenticated youth account could not be verified.' });
@@ -494,7 +509,6 @@ export default function YouthPages({
       setResolutionVoteNotice({ type: 'error', text: 'You have already voted in this poll.' });
       return;
     }
-
     setVotingResolutionId(resId);
     setResolutionVoteNotice(null);
     try {
@@ -507,7 +521,19 @@ export default function YouthPages({
       setVotingResolutionId(null);
     }
   };
-
+    const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64 = reader.result as string;
+      const res = await kabisigApi.uploadAvatar(base64, file.type);
+      if (res.success && res.data?.avatar_url) {
+        setYouth(prev => ({ ...prev, profilePic: res.data.avatar_url }));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
   return (
     <div className="flex flex-col lg:flex-row h-screen bg-[#f8fafc] overflow-hidden font-sans text-slate-800">
       {/* @ts-ignore */}
@@ -520,7 +546,7 @@ export default function YouthPages({
             <h2 className='text-xl font-extrabold text-slate-900 mb-2'>Account Suspended</h2>
             {/* @ts-ignore */}
             <p className='text-sm text-slate-600 mb-6'>{currentYouth?.suspension_reason || 'Violation of community guidelines.'}</p>
-            <button onClick={() => window.location.href = 'mailto:sk@barangay.gov.ph'} className='w-full py-2.5 bg-[#091d64] text-white font-bold rounded-xl text-sm'>Appeal to SK Chairperson</button>
+            <button type="button" onClick={() => window.location.href = 'mailto:sk@barangay.gov.ph'} className='w-full py-2.5 bg-[#091d64] text-white font-bold rounded-xl text-sm'>Appeal to SK Chairperson</button>
           </div>
         </div>
       )}
@@ -548,7 +574,6 @@ export default function YouthPages({
           {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
       </div>
-
       {/* MOBILE DRAWER OVERLAY */}
       {isMobileMenuOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 lg:hidden flex flex-col justify-between p-6 animate-in fade-in duration-200">
@@ -568,7 +593,6 @@ export default function YouthPages({
                 <X className="w-6 h-6" />
               </button>
             </div>
-
             <nav className="space-y-2">
               <div className="text-[10px] font-black text-slate-300 uppercase tracking-wider mb-2">
                 Youth Constituent Desk
@@ -603,7 +627,6 @@ export default function YouthPages({
               </button>
             </nav>
           </div>
-
           <div className="pt-4 border-t border-white/10">
             <button
               onClick={onLogout}
@@ -615,7 +638,6 @@ export default function YouthPages({
           </div>
         </div>
       )}
-
       {/* ==================== LEFT SIDEBAR - DESKTOP ONLY ==================== */}
       <aside className="hidden lg:flex w-64 bg-white border-r border-slate-100 flex-col justify-between h-full flex-shrink-0 z-40 shadow-sm">
         <div className="flex flex-col h-full overflow-y-auto">
@@ -625,7 +647,6 @@ export default function YouthPages({
               <KabisigLogo className="w-40" />
             </div>
           </div>
-
           {/* Navigation Links matching Section 2.1 Youth Constituent */}
           <nav className="p-4 space-y-1 flex-1">
             <button
@@ -639,7 +660,6 @@ export default function YouthPages({
               <LayoutDashboard className={`w-4.5 h-4.5 ${activeMenu === 'dashboard' ? 'text-[#091d64]' : 'text-slate-400'}`} />
               Dashboard
             </button>
-
             <button
               onClick={() => setActiveMenu('programs')}
               className={`w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-3 ${
@@ -651,7 +671,6 @@ export default function YouthPages({
               <ClipboardList className={`w-4.5 h-4.5 ${activeMenu === 'programs' || activeMenu === 'registrations' ? 'text-[#091d64]' : 'text-slate-400'}`} />
               Programs & Activities
             </button>
-
             <button
               onClick={() => setActiveMenu('feedback')}
               className={`w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-3 ${
@@ -663,7 +682,6 @@ export default function YouthPages({
               <HeartHandshake className={`w-4.5 h-4.5 ${activeMenu === 'feedback' || activeMenu === 'resolutions' ? 'text-[#091d64]' : 'text-slate-400'}`} />
               Boses ng Kabataan
             </button>
-
             <button
               onClick={() => setActiveMenu('profile')}
               className={`w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-3 ${
@@ -675,7 +693,6 @@ export default function YouthPages({
               <User className={`w-4.5 h-4.5 ${activeMenu === 'profile' ? 'text-[#091d64]' : 'text-slate-400'}`} />
               My Profile
             </button>
-
             <div className="pt-4 border-t border-slate-50">
               <button
                 onClick={onLogout}
@@ -688,7 +705,6 @@ export default function YouthPages({
           </nav>
         </div>
       </aside>
-
       {/* ==================== MAIN WORKSPACE ==================== */}
       <div className="flex-1 flex flex-col h-full overflow-hidden">
         
@@ -710,7 +726,6 @@ export default function YouthPages({
               Web-Based Kabataan Information System for Inclusive Governance
             </span>
           </div>
-
           {/* User Profile Block */}
           <div className="flex items-center gap-5">
             <NotificationMenu buttonClassName="p-2 rounded-xl text-slate-500 hover:text-slate-700 hover:bg-slate-100 relative" />
@@ -723,14 +738,12 @@ export default function YouthPages({
             />
           </div>
         </header>
-
         {/* WORKSPACE AREA */}
         <div className="flex-grow p-3.5 sm:p-6 lg:p-8 pb-24 sm:pb-8 overflow-y-auto bg-[#f8fafc]">
           
           {/* ==================== 1. DASHBOARD VIEW (Image 4) ==================== */}
           {activeMenu === 'dashboard' && (
             <div className="space-y-6">
-
               {/* Latest Announcements Preview */}
               <div className="bg-white rounded-xl border border-slate-100 shadow-xs p-4">
                 <div className="flex items-center justify-between mb-4">
@@ -768,7 +781,6 @@ export default function YouthPages({
                   )}
                 </div>
               </div>
-
               
               {/* TOP ROW: DIGITAL YOUTH ID CARD (LEFT) & METRIC BOXES (RIGHT) */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
@@ -801,7 +813,6 @@ export default function YouthPages({
                       </div>
                     </div>
                   </div>
-
                   <div className="flex gap-5 items-center mt-6 z-10">
                     <div className="relative">
                       <ProfileAvatar name={currentYouth.name} src={currentYouth.profilePic} alt={currentYouth.name} className="w-20 h-20 rounded-xl border-2 border-white/20 shadow-lg" />
@@ -827,7 +838,6 @@ export default function YouthPages({
                       </div>
                     </div>
                   </div>
-
                   <div className="flex justify-between items-end mt-6 pt-4 border-t border-slate-100 z-10">
                     <div className="flex flex-col gap-1">
                       <div className="flex items-center gap-1 text-[9px] text-slate-500 font-bold uppercase tracking-widest">
@@ -841,7 +851,6 @@ export default function YouthPages({
                     </div>
                   </div>
                 </div>
-
                 {/* Metric cards grid */}
                 <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
                   
@@ -862,7 +871,6 @@ export default function YouthPages({
                       </p>
                     </div>
                   </div>
-
                   {/* Card 2: Active Programs */}
                   <div className="bg-white rounded-xl border border-slate-100 p-5 shadow-xs flex items-center gap-4 hover:shadow-sm transition-shadow">
                     <div className="w-12 h-12 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
@@ -876,7 +884,6 @@ export default function YouthPages({
                       <p className="text-[10px] text-slate-400 font-semibold mt-1">Available for Registration</p>
                     </div>
                   </div>
-
                   {/* Card 3: My Active Slots */}
                   <div className="bg-white rounded-xl border border-slate-100 p-5 shadow-xs flex items-center gap-4 hover:shadow-sm transition-shadow">
                     <div className="w-12 h-12 rounded-full bg-green-50 text-green-600 flex items-center justify-center flex-shrink-0">
@@ -888,7 +895,6 @@ export default function YouthPages({
                       <p className="text-[10px] text-slate-400 font-semibold mt-1">Confirmed Slots</p>
                     </div>
                   </div>
-
                   {/* Card 4: Resolutions */}
                   <div className="bg-white rounded-xl border border-slate-100 p-5 shadow-xs flex items-center gap-4 hover:shadow-sm transition-shadow">
                     <div className="w-12 h-12 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center flex-shrink-0">
@@ -900,11 +906,8 @@ export default function YouthPages({
                       <p className="text-[10px] text-slate-400 font-semibold mt-1">Pending Resolution Votes</p>
                     </div>
                   </div>
-
                 </div>
-
               </div>
-
               {/* PERSONALIZED KABISIG RULE-BASED HUB (Rule-Based Suite) */}
               <div className="bg-gradient-to-r from-blue-50/50 to-indigo-50/30 rounded-xl border border-blue-100 p-6 space-y-6 text-left">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -930,7 +933,6 @@ export default function YouthPages({
                     </span>
                   </div>
                 </div>
-
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   {/* Demographic Classifications Panel */}
                   <div className="bg-white p-4 rounded-xl border border-blue-50 shadow-2xs space-y-3">
@@ -949,7 +951,6 @@ export default function YouthPages({
                       Categorizations are calculated using official DILG Katipunan ng Kabataan profiling inputs.
                     </p>
                   </div>
-
                   {/* Program Recommendations Panel */}
                   <div className="bg-white p-4 rounded-xl border border-blue-50 shadow-2xs space-y-3 md:col-span-2">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Rule-Based Program Recommendations</span>
@@ -957,7 +958,20 @@ export default function YouthPages({
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {myRecommendations.map((rec, index) => {
                         const isRegistered = myRegistrations.some(reg => reg.programId === rec.program.id);
-                        return (
+                          const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64 = reader.result as string;
+      const res = await kabisigApi.uploadAvatar(base64, file.type);
+      if (res.success && res.data?.avatar_url) {
+        setYouth(prev => ({ ...prev, profilePic: res.data.avatar_url }));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+  return (
                           <div key={index} className="p-3 rounded-lg border border-slate-50 bg-slate-50/50 flex flex-col justify-between">
                             <div>
                               <div className="flex items-center justify-between mb-1">
@@ -971,7 +985,6 @@ export default function YouthPages({
                               <span className="text-[10px] text-[#091d64] font-extrabold block">Rule Match:</span>
                               <span className="text-[10px] text-slate-500 font-medium block mt-0.5 leading-tight">{rec.reason}</span>
                             </div>
-
                             <div className="mt-3 flex justify-end">
                               {!isRegistered ? (
                                 <button
@@ -998,7 +1011,6 @@ export default function YouthPages({
                   </div>
                 </div>
               </div>
-
               {/* UPCOMING BARANGAY PROGRAMS SECTION */}
               <div className="bg-white rounded-xl border border-slate-100 shadow-xs p-4">
                 <div className="flex justify-between items-center mb-6">
@@ -1013,14 +1025,26 @@ export default function YouthPages({
                     Browse Full Registry &rarr;
                   </button>
                 </div>
-
                 <div className="space-y-4 divide-y divide-slate-50">
                   {programs
                     .filter(program => program.status === 'Upcoming' || program.status === 'Ongoing')
                     .slice(0, 3)
                     .map(program => {
                       const alreadyReg = myRegistrations.some(r => r.programId === program.id);
-                      return (
+                        const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64 = reader.result as string;
+      const res = await kabisigApi.uploadAvatar(base64, file.type);
+      if (res.success && res.data?.avatar_url) {
+        setYouth(prev => ({ ...prev, profilePic: res.data.avatar_url }));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+  return (
                       <div key={program.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center py-4 first:pt-0 gap-4">
                         <div className="flex gap-4 items-start">
                           <div className="w-10 h-10 rounded-full bg-blue-50 text-[#091d64] flex items-center justify-center flex-shrink-0">
@@ -1067,11 +1091,8 @@ export default function YouthPages({
                   )}
                 </div>
               </div>
-
-
             </div>
           )}
-
           {/* ==================== 2. PROFILE VIEW (DILG MC No. 2022-033 ANNEX 4 COMPLIANT) ==================== */}
           {activeMenu === 'profile' && (
             <div className="space-y-6 text-left">
@@ -1094,7 +1115,6 @@ export default function YouthPages({
                     </span>
                   </div>
                 </div>
-
                 {/* PROFILE PICTURE & SUMMARY */}
                 <div className="flex flex-col lg:flex-row lg:items-start gap-6 pb-6 border-b border-slate-100">
                   <div className="flex flex-col items-center gap-3 flex-shrink-0">
@@ -1105,9 +1125,14 @@ export default function YouthPages({
                       </div>
                     </div>
                     <label className="cursor-pointer rounded-lg border border-blue-100 bg-blue-50 px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wide text-[#091d64] transition-colors hover:bg-blue-100">
-                      <input type="file" accept="image/*" className="sr-only" onChange={handleProfilePictureChange} />
-                      Upload Photo
+                      <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={handleProfilePictureChange} disabled={isUploadingProfilePicture} />
+                      {isUploadingProfilePicture ? 'Uploading...' : 'Upload Photo'}
                     </label>
+                    {profilePictureNotice && (
+                      <p className={`max-w-48 text-center text-[10px] font-semibold ${profilePictureNotice.type === 'success' ? 'text-emerald-700' : 'text-rose-700'}`}>
+                        {profilePictureNotice.text}
+                      </p>
+                    )}
                   </div>
                   <div className="text-center sm:text-left flex-1 min-w-0">
                     <div className="flex flex-col xl:flex-row xl:items-start justify-between gap-4">
@@ -1125,27 +1150,14 @@ export default function YouthPages({
                           <Building className="w-3.5 h-3.5 text-slate-400" /> {youth.address}, Naga City
                         </p>
                       </div>
-
-                      <button
-                        onClick={() => {
-                          setEditForm(ensureSplitName(youth));
-                          setIsEditModalOpen(true);
-                        }}
-                        className="px-4 py-2 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-xl text-xs transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer self-center xl:self-start flex-shrink-0"
-                      >
-                        <User className="w-4 h-4" />
-                        Edit Profile
-                      </button>
                     </div>
                   </div>
-
                   {/* QR CODE DISPLAY */}
                   <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col items-center gap-1 shadow-2xs self-center lg:self-start flex-shrink-0">
                     <QRCodeSVG value={youthQrPayload(youth)} size={88} fgColor="#091d64" />
                     <span className="text-[9px] font-mono font-bold text-slate-400">Digital ID QR Code</span>
                   </div>
                 </div>
-
                 {/* KK YOUTH PROFILE DATA FIELDS TABLE (DILG MC NO. 2022-033 ANNEX 4) */}
                 <div className="space-y-4">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
@@ -1161,7 +1173,6 @@ export default function YouthPages({
                       </span>
                     </div>
                   </div>
-
                   <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-2xs">
                     <table className="w-full text-left text-xs text-slate-700">
                       <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
@@ -1177,132 +1188,110 @@ export default function YouthPages({
                           <td className="py-2.5 px-4 font-bold text-slate-900">1. Full Name</td>
                           <td className="py-2.5 px-4 font-extrabold text-[#091d64]">{youth.name}</td>
                         </tr>
-
                         {/* 2. Sex */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">2. Sex</td>
                           <td className="py-2.5 px-4 font-bold">{youth.sex || 'Male'}</td>
                         </tr>
-
                         {/* 3. Birthdate */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">3. Birthdate</td>
                           <td className="py-2.5 px-4 font-bold font-mono">{youth.birthdate || '2004-05-12'}</td>
                         </tr>
-
                         {/* 4. Age */}
                         <tr className="hover:bg-slate-50/50 bg-blue-50/20">
                           <td className="py-2.5 px-4 font-bold text-slate-900">4. Age</td>
                           <td className="py-2.5 px-4 font-black text-blue-900">{youth.age} Years Old</td>
                         </tr>
-
                         {/* 5. Civil Status */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">5. Civil Status</td>
                           <td className="py-2.5 px-4 font-bold">{youth.civilStatus || 'Single'}</td>
                         </tr>
-
                         {/* 6. Address */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">6. Address</td>
                           <td className="py-2.5 px-4 font-bold">{youth.address}</td>
                         </tr>
-
                         {/* 7. Zone / Purok */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">7. Zone / Purok</td>
                           <td className="py-2.5 px-4 font-extrabold text-indigo-700">{youth.zone}</td>
                         </tr>
-
                         {/* 8. Contact Number */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">8. Contact Number</td>
                           <td className="py-2.5 px-4 font-bold font-mono">{youth.mobile}</td>
                         </tr>
-
                         {/* 9. Email Address */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">9. Email Address</td>
                           <td className="py-2.5 px-4 font-bold">{youth.email || 'None'}</td>
                         </tr>
-
                         {/* 10. Educational Level */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">10. Educational Level</td>
                           <td className="py-2.5 px-4 font-bold">{youth.educationalLevel}</td>
                         </tr>
-
                         {/* 11. School */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">11. School</td>
                           <td className="py-2.5 px-4 font-bold">{youth.school || 'Ateneo de Naga University'}</td>
                         </tr>
-
                         {/* 12. Course */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">12. Course</td>
                           <td className="py-2.5 px-4 font-bold">{youth.course || 'BS Information Technology'}</td>
                         </tr>
-
                         {/* 13. Year Level */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">13. Year Level</td>
                           <td className="py-2.5 px-4 font-bold">{youth.year || '3rd Year'}</td>
                         </tr>
-
                         {/* 14. Employment Status */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">14. Employment Status</td>
                           <td className="py-2.5 px-4 font-bold">{youth.employmentStatus || 'Student'}</td>
                         </tr>
-
                         {/* 15. Scholar Status */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">15. Scholar Status</td>
                           <td className="py-2.5 px-4 font-bold text-emerald-700">{youth.scholarStatus} {youth.scholarshipType ? `(${youth.scholarshipType})` : ''}</td>
                         </tr>
-
                         {/* 16. Youth Sector */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">16. Youth Sector</td>
                           <td className="py-2.5 px-4 font-bold text-violet-700">{youth.youthSector || 'In-School Youth'}</td>
                         </tr>
-
                         {/* 17. Parent/Guardian Information */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">17. Parent/Guardian Info</td>
                           <td className="py-2.5 px-4 font-bold">
-                            {youth.guardianName} <span className="text-slate-400 text-[11px] font-mono">({youth.guardianContact})</span>
+                            {youth.guardianName || 'Not provided'}{youth.guardianContact ? <span className="text-slate-400 text-[11px] font-mono"> ({youth.guardianContact})</span> : null}
                           </td>
                         </tr>
-
                         {/* 18. Profile Picture */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">18. Profile Picture</td>
                           <td className="py-2.5 px-4 font-bold text-blue-600">Attached / Uploaded</td>
                         </tr>
-
                         {/* 19. Resident ID */}
                         <tr className="hover:bg-slate-50/50 bg-amber-50/20">
                           <td className="py-2.5 px-4 font-bold text-slate-900">19. Resident ID</td>
                           <td className="py-2.5 px-4 font-black font-mono text-amber-700">{youth.id}</td>
                         </tr>
-
                         {/* 20. QR Code */}
                         <tr className="hover:bg-slate-50/50 bg-amber-50/20">
                           <td className="py-2.5 px-4 font-bold text-slate-900">20. QR Code</td>
                           <td className="py-2.5 px-4 font-mono font-bold text-slate-800">{youth.qrCode || `QR-${youth.id}`}</td>
                         </tr>
-
                       </tbody>
                     </table>
                   </div>
                 </div>
-
               </div>
             </div>
           )}
-
           {/* ==================== 3. PROGRAMS VIEW ==================== */}
           {(activeMenu === 'programs' || activeMenu === 'registrations') && (
             <div className="space-y-6">
@@ -1331,7 +1320,6 @@ export default function YouthPages({
                   My Confirmed Participation ({myRegistrations.length})
                 </button>
               </div>
-
               {activeMenu === 'programs' ? (
                 <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-xs">
                   <div className="mb-8">
@@ -1342,7 +1330,20 @@ export default function YouthPages({
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {programs.map(p => {
                       const alreadyReg = myRegistrations.some(r => r.programId === p.id);
-                      return (
+                        const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64 = reader.result as string;
+      const res = await kabisigApi.uploadAvatar(base64, file.type);
+      if (res.success && res.data?.avatar_url) {
+        setYouth(prev => ({ ...prev, profilePic: res.data.avatar_url }));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+  return (
                         <div key={p.id} className="group p-5 border border-slate-100 rounded-2xl bg-white hover:border-[#091d64]/20 hover:shadow-md transition-all flex flex-col justify-between overflow-hidden">
                           <div>
                             <div className="flex justify-between items-start gap-3 mb-2">
@@ -1441,7 +1442,6 @@ export default function YouthPages({
                     <h3 className="font-sans font-bold text-slate-800 text-base">My Confirmed Participation & Event Passes</h3>
                     <p className="text-xs text-slate-400 mt-1">Manage your confirmed event slots. Present your single Digital Youth ID QR code at event entry check-in points.</p>
                   </div>
-
                   {myRegistrations.length === 0 ? (
                     <div className="text-center py-20 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
                       <ClipboardList className="w-12 h-12 text-slate-200 mx-auto mb-4" />
@@ -1478,7 +1478,6 @@ export default function YouthPages({
                               </div>
                             </div>
                           </div>
-
                           <div className="bg-slate-50/60 p-5 flex flex-col items-center justify-center border-l border-slate-100 sm:w-44 text-center gap-1.5">
                             <div className="bg-white p-2 rounded-xl shadow-2xs border border-slate-100">
                               <QRCodeSVG value={youthQrPayload(currentYouth)} size={80} fgColor="#091d64" />
@@ -1493,7 +1492,6 @@ export default function YouthPages({
               )}
             </div>
           )}
-
           {/* ==================== 5. FEEDBACK VIEW ==================== */}
           {(activeMenu === 'feedback' || activeMenu === 'resolutions') && (
             <div className="space-y-6">
@@ -1522,7 +1520,6 @@ export default function YouthPages({
                   Active Community Polls & Resolutions ({resolutions.length})
                 </button>
               </div>
-
               {activeMenu === 'feedback' ? (
                 <>
                   {/* Submission Form */}
@@ -1589,12 +1586,10 @@ export default function YouthPages({
                       </button>
                     </form>
                   </div>
-
                   {/* History List */}
                   <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-xs">
                     <h3 className="text-lg font-extrabold text-[#091d64] mb-2">My Submission History</h3>
                     <p className="text-xs text-slate-400 mb-6">Track the status and responses to the topics you have previously submitted.</p>
-
                     <div className="space-y-3">
                       {myFeedback.map(f => (
                         <div key={f.id} className="p-4 border rounded-xl bg-slate-50/50 border-slate-100">
@@ -1631,7 +1626,6 @@ export default function YouthPages({
                     <h3 className="font-sans font-bold text-slate-800 text-base">SK Legislative Resolution Assembly Polls</h3>
                     <p className="text-xs text-slate-400 mt-1">Review resolutions formulated by Sangguniang Kabataan and exercise your direct voting eligibility.</p>
                   </div>
-
                   {resolutionVoteNotice && (
                     <div role={resolutionVoteNotice.type === 'error' ? 'alert' : 'status'} className={`mb-4 rounded-lg px-3 py-2 text-xs font-semibold ${resolutionVoteNotice.type === 'success' ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'}`}>
                       {resolutionVoteNotice.text}
@@ -1642,7 +1636,6 @@ export default function YouthPages({
                       Polls could not be loaded: {pollsError}
                     </p>
                   )}
-
                   <div className="space-y-4">
                     {resolutions.length === 0 && !pollsError && (
                       <p className="py-8 text-center text-xs text-slate-400">No active polls are available for your barangay yet.</p>
@@ -1678,7 +1671,6 @@ export default function YouthPages({
               )}
             </div>
           )}
-
           {/* ==================== 7. ANNOUNCEMENTS VIEW ==================== */}
           {activeMenu === 'announcements' && (
             <div className="space-y-6">
@@ -1720,7 +1712,6 @@ export default function YouthPages({
               </div>
             </div>
           )}
-
           {/* ==================== 8. SETTINGS VIEW ==================== */}
           {activeMenu === 'settings' && (
             <div className="space-y-6">
@@ -1751,7 +1742,6 @@ export default function YouthPages({
                       </div>
                     </div>
                   </div>
-
                   {/* Scholastic Settings */}
                   <div className="p-4 border border-slate-100 rounded-xl bg-slate-50/50 space-y-4 text-xs font-semibold">
                     <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
@@ -1779,7 +1769,6 @@ export default function YouthPages({
                       </div>
                     </div>
                   </div>
-
                   {/* Privacy & Notification Settings */}
                   <div className="p-4 border border-slate-100 rounded-xl bg-slate-50/50 space-y-3 text-xs font-semibold">
                     <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
@@ -1801,7 +1790,6 @@ export default function YouthPages({
                       <input type="checkbox" defaultChecked className="rounded text-[#091d64] focus:ring-[#091d64] w-4 h-4" />
                     </div>
                   </div>
-
                   {/* Save button */}
                   <div className="text-right">
                     <button 
@@ -1815,9 +1803,7 @@ export default function YouthPages({
               </div>
             </div>
           )}
-
         </div>
-
         {/* EDIT PROFILE MODAL DIALOG */}
         {isEditModalOpen && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
@@ -1838,7 +1824,6 @@ export default function YouthPages({
                   <X className="w-5 h-5" />
                 </button>
               </div>
-
               <form onSubmit={handleSaveProfile} className="space-y-6">
                 
                 {/* SECTION 1: PERSONAL INFORMATION */}
@@ -1857,7 +1842,6 @@ export default function YouthPages({
                         required
                       />
                     </div>
-
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Last Name <span className="text-rose-500">*</span></label>
                       <input 
@@ -1868,7 +1852,6 @@ export default function YouthPages({
                         required
                       />
                     </div>
-
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Middle Name</label>
                       <input 
@@ -1878,7 +1861,6 @@ export default function YouthPages({
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                       />
                     </div>
-
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Suffix</label>
                       <select 
@@ -1895,7 +1877,6 @@ export default function YouthPages({
                         <option value="V">V</option>
                       </select>
                     </div>
-
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Sex</label>
                       <select 
@@ -1907,7 +1888,6 @@ export default function YouthPages({
                         <option value="Female">Female</option>
                       </select>
                     </div>
-
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Birthdate</label>
                       <input 
@@ -1918,7 +1898,6 @@ export default function YouthPages({
                         required
                       />
                     </div>
-
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Civil Status</label>
                       <select 
@@ -1932,7 +1911,6 @@ export default function YouthPages({
                         <option value="Widowed">Widowed</option>
                       </select>
                     </div>
-
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Address (Street & Subdivision)</label>
                       <input 
@@ -1943,7 +1921,6 @@ export default function YouthPages({
                         required
                       />
                     </div>
-
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Zone / Purok</label>
                       <select 
@@ -1962,19 +1939,16 @@ export default function YouthPages({
                     </div>
                   </div>
                 </div>
-
                 {/* SECTION 1.5: IDENTITY VERIFICATION (Panel rec #12) */}
                 <div className="space-y-4">
                   <h4 className="text-xs font-black uppercase text-[#091d64] tracking-wider border-b border-slate-100 pb-1">
                     Identity Verification
                   </h4>
-
                   {verificationLoading && (
                     <div className="p-4 text-center text-slate-400 text-xs">
                       <Loader2 className="w-4 h-4 animate-spin inline mr-2" /> Loading verification status...
                     </div>
                   )}
-
                   {!verificationLoading && verificationStatus && verificationStatus.verification_status && verificationStatus.verification_status !== 'not_submitted' && (
                     <div className={`p-3 rounded-xl border text-xs ${
                       verificationStatus.verification_status === 'verified' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' :
@@ -1992,7 +1966,6 @@ export default function YouthPages({
                       )}
                     </div>
                   )}
-
                   {!verificationLoading && (!verificationStatus || verificationStatus.verification_status !== 'verified') && (
                     <>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -2020,7 +1993,6 @@ export default function YouthPages({
                           />
                         </div>
                       </div>
-
                       <div>
                         <label className="block text-[11px] font-bold text-slate-700 mb-1">Upload ID Image <span className="text-slate-400 font-normal">(JPG / PNG / WEBP, ≤ 5 MB)</span></label>
                         <input
@@ -2035,7 +2007,6 @@ export default function YouthPages({
                           </p>
                         )}
                       </div>
-
                       {verificationNotice && (
                         <div className={`p-3 rounded-xl text-xs border ${
                           verificationNotice.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-200 text-rose-700'
@@ -2043,7 +2014,6 @@ export default function YouthPages({
                           {verificationNotice.text}
                         </div>
                       )}
-
                       <button
                         type="button"
                         onClick={handleVerificationSubmit}
@@ -2054,14 +2024,12 @@ export default function YouthPages({
                       </button>
                     </>
                   )}
-
                   {!verificationLoading && verificationStatus && verificationStatus.verification_status === 'verified' && (
                     <div className="flex items-center gap-2 text-emerald-700 text-xs font-bold">
                       <CheckCircle2 className="w-4 h-4" /> Your identity has been verified.
                     </div>
                   )}
                 </div>
-
                 {/* SECTION 2: CONTACT DETAILS & EMERGENCY CONTACT */}
                 <div className="space-y-4">
                   <h4 className="text-xs font-black uppercase text-[#091d64] tracking-wider border-b border-slate-100 pb-1">
@@ -2078,7 +2046,6 @@ export default function YouthPages({
                         required
                       />
                     </div>
-
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Email Address</label>
                       <input 
@@ -2089,7 +2056,6 @@ export default function YouthPages({
                         required
                       />
                     </div>
-
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Parent / Guardian Name</label>
                       <input 
@@ -2100,7 +2066,6 @@ export default function YouthPages({
                         required
                       />
                     </div>
-
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Parent / Guardian Contact No.</label>
                       <input 
@@ -2113,7 +2078,6 @@ export default function YouthPages({
                     </div>
                   </div>
                 </div>
-
                 {/* SECTION 3: EDUCATIONAL & EMPLOYMENT STATUS */}
                 <div className="space-y-4">
                   <h4 className="text-xs font-black uppercase text-[#091d64] tracking-wider border-b border-slate-100 pb-1">
@@ -2136,7 +2100,6 @@ export default function YouthPages({
                         <option value="None">None</option>
                       </select>
                     </div>
-
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">School / Institution</label>
                       <input 
@@ -2147,7 +2110,6 @@ export default function YouthPages({
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                       />
                     </div>
-
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Course / Degree Program</label>
                       <input 
@@ -2158,7 +2120,6 @@ export default function YouthPages({
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                       />
                     </div>
-
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Year Level</label>
                       <select 
@@ -2176,7 +2137,6 @@ export default function YouthPages({
                         <option value="N/A">N/A</option>
                       </select>
                     </div>
-
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Employment Status</label>
                       <select 
@@ -2191,7 +2151,6 @@ export default function YouthPages({
                         <option value="Working Student">Working Student</option>
                       </select>
                     </div>
-
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Scholarship Status</label>
                       <select 
@@ -2203,7 +2162,6 @@ export default function YouthPages({
                         <option value="Scholar">Scholar / Grantee</option>
                       </select>
                     </div>
-
                     {editForm.scholarStatus === 'Scholar' && (
                       <div className="sm:col-span-2">
                         <label className="block text-[11px] font-bold text-slate-700 mb-1">Scholarship Grant Type / Name</label>
@@ -2216,7 +2174,6 @@ export default function YouthPages({
                         />
                       </div>
                     )}
-
                     <div className="sm:col-span-2">
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Youth Sector</label>
                       <select 
@@ -2234,7 +2191,6 @@ export default function YouthPages({
                     </div>
                   </div>
                 </div>
-
                 {/* FORM BUTTONS */}
                 <div className="flex gap-3 justify-end pt-4 border-t border-slate-100">
                   <button 
@@ -2262,20 +2218,15 @@ export default function YouthPages({
                     )}
                   </button>
                 </div>
-
               </form>
-
             </div>
           </div>
         )}
-
         {/* FOOTER */}
         <footer className="h-12 border-t border-slate-100 bg-white flex items-center justify-center text-[11px] text-slate-400 font-sans tracking-wide flex-shrink-0">
           © 2025 SK Federation Naga City. All rights reserved.
         </footer>
-
       </div>
-
       {/* MOBILE BOTTOM NAVIGATION BAR */}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200/80 px-2 py-1.5 flex justify-around items-center z-40 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
         <button
@@ -2287,7 +2238,6 @@ export default function YouthPages({
           <LayoutDashboard className={`w-5 h-5 ${activeMenu === 'dashboard' ? 'text-[#091d64] scale-110' : 'text-slate-400'} transition-transform`} />
           <span className="text-[10px] mt-0.5 tracking-tight font-sans">Home</span>
         </button>
-
         <button
           onClick={() => setActiveMenu('programs')}
           className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
@@ -2297,7 +2247,6 @@ export default function YouthPages({
           <ClipboardList className={`w-5 h-5 ${activeMenu === 'programs' || activeMenu === 'registrations' ? 'text-[#091d64] scale-110' : 'text-slate-400'} transition-transform`} />
           <span className="text-[10px] mt-0.5 tracking-tight font-sans">Programs</span>
         </button>
-
         <button
           onClick={() => setActiveMenu('feedback')}
           className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
@@ -2307,7 +2256,6 @@ export default function YouthPages({
           <HeartHandshake className={`w-5 h-5 ${activeMenu === 'feedback' || activeMenu === 'resolutions' ? 'text-[#091d64] scale-110' : 'text-slate-400'} transition-transform`} />
           <span className="text-[10px] mt-0.5 tracking-tight font-sans">Civic Desk</span>
         </button>
-
         <button
           onClick={() => setActiveMenu('profile')}
           className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
@@ -2318,7 +2266,6 @@ export default function YouthPages({
           <span className="text-[10px] mt-0.5 tracking-tight font-sans">My ID</span>
         </button>
       </div>
-
     </div>
   );
 }

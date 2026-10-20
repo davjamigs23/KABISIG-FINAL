@@ -505,7 +505,7 @@ export function analyzeFeedbackSentiment(content: string, category?: string): 'P
   }
   const normalized = content.toLowerCase();
 
-  const positiveKeywords = ['like', 'knowledge', 'hope', 'great', 'executed', 'good', 'like', 'knowledge', 'hope', 'great', 'executed', 'good', 
+  const positiveKeywords = ['scholarship', 'sports', 'employment', 'livelihood', 'mental health', 'education', 'training', 'workshop', 'webinar', 'health', 'youth', 'skills', 'financial', 'assistance', 'aid', 'subsidy', 'allowance', 'driving', 'road signage', 'scholarship', 'sports', 'employment', 'livelihood', 'mental health', 'education', 'training', 'workshop', 'webinar', 'health', 'youth', 'skills', 'financial', 'assistance', 'aid', 'subsidy', 'allowance', 'driving', 'road signage', 'like', 'knowledge', 'hope', 'great', 'executed', 'good', 'like', 'knowledge', 'hope', 'great', 'executed', 'good', 
     'good', 'great', 'excellent', 'informative', 'helpful', 'fun', 'awesome', 
     'perfect', 'love', 'thanks', 'supportive', 'active', 'useful', 'learned a lot',
     'nice', 'happy', 'fantastic', 'amazing', 'convenient', 'clean', 'organized'
@@ -590,4 +590,29 @@ export function getMostRequestedProgramTrends(feedbacks: FeedbackRecord[]): Arra
     }
     return { program: cat.program, requests, icon: cat.icon };
   }).sort((a, b) => b.requests - a.requests);
+}
+
+/**
+ * Compute program status from start/end dates (manuscript §4.3.1 Module 2 - program lifecycle)
+ * Uses date-only comparison to handle UTC timestamp edge cases.
+ * Priority: dates over stored status field (DB status can be stale).
+ */
+export function computeProgramStatus(program: {
+  start_date?: string | null; end_date?: string | null;
+  startDate?: string | null; endDate?: string | null;
+  status?: string | null;
+}): 'Upcoming' | 'Ongoing' | 'Completed' {
+  const startRaw = program.start_date || program.startDate;
+  const endRaw = program.end_date || program.endDate;
+  if (!startRaw || !endRaw) return 'Upcoming';
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const s = new Date(startRaw);
+  const e = new Date(endRaw);
+  if (isNaN(s.getTime()) || isNaN(e.getTime())) return 'Upcoming';
+  const start = new Date(s.getFullYear(), s.getMonth(), s.getDate()).getTime();
+  const end = new Date(e.getFullYear(), e.getMonth(), e.getDate()).getTime();
+  if (today < start) return 'Upcoming';
+  if (today > end) return 'Completed';
+  return 'Ongoing';
 }

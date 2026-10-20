@@ -1,3 +1,4 @@
+/* PDF Export Available */ import { generateBudgetUtilizationReport } from '../lib/pdfReports';
 import { useEffect, useState } from 'react';
 import ProfileSettings from './ProfileSettings';
 import { formatAuditDetails } from '../lib/auditFormatter';
@@ -87,7 +88,7 @@ export default function SuperAdminPages({
   const [assignReturnToConfigure, setAssignReturnToConfigure] = useState(false);
   const [transferCurrentChair, setTransferCurrentChair] = useState<{ email: string; name: string } | null>(null);
   const [transferSuccessorEmail, setTransferSuccessorEmail] = useState('');
-  const [transferReason, setTransferReason] = useState<'Resigned' | 'End of Term' | 'Replaced' | 'Other'>('Resigned');
+  const [transferReason, setTransferReason] = useState<'Resigned' | 'End of Term' | 'Succession' | 'Other'>('Resigned');
   const [transferNotes, setTransferNotes] = useState('');
   const [isTransferring, setIsTransferring] = useState(false);
   const [transferNotice, setTransferNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -1659,7 +1660,7 @@ export default function SuperAdminPages({
                 >
                   <option value="Resigned">Resigned</option>
                   <option value="End of Term">End of Term</option>
-                  <option value="Replaced">Replaced</option>
+                  <option value="Succession">Succession</option>
                   <option value="Other">Other</option>
                 </select>
               </div>

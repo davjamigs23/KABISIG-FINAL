@@ -20,7 +20,7 @@ import ChairpersonOnboarding from './components/ChairpersonOnboarding';
 import OfficialPages from './components/OfficialPages';
 import YouthPages from './components/YouthPages';
 import ViewerPages from './components/ViewerPages';
-import { detectScheduleConflicts } from './lib/intelligence';
+import { computeProgramStatus, detectScheduleConflicts } from './lib/intelligence';
 import { resolveUserRole } from './lib/role-routing';
 import { 
   BarangayTenant, 
@@ -63,12 +63,36 @@ export default function App() {
   // --- Client state synchronized with the backend ---
   const [tenants, setTenants] = useState<BarangayTenant[]>(NAGA_BARANGAYS);
   const [programs, setPrograms] = useState<Program[]>([]);
+
+  // Auto-load program registrations for Admin Reports
+  const __programIdsKey = (programs || []).map((p: any) => p.id).join(',');
+  useEffect(() => {
+    if (!programs || programs.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const all: any[] = [];
+      for (const p of programs) {
+        try {
+          const regs = await kabisigApi.getProgramRegistrations(p.id);
+          if (Array.isArray(regs)) {
+            all.push(...regs.map((r: any) => ({ ...r, programId: r.programId || r.program_id || p.id })));
+          }
+        } catch (e) { console.warn('Registration load failed for', p.id, e); }
+      }
+      if (!cancelled) setRegistrations(all);
+    })();
+    return () => { cancelled = true; };
+  }, [__programIdsKey]);
+
+
+
   const [youthProfiles, setYouthProfiles] = useState<YouthProfile[]>([]);
   const [youthProfilesLoading, setYouthProfilesLoading] = useState(false);
   const [youthProfilesError, setYouthProfilesError] = useState<string | null>(null);
   const [youthProfilesRetryCount, setYouthProfilesRetryCount] = useState(0);
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [feedback, setFeedback] = useState<FeedbackRecord[]>([]);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
   const [resolutions, setResolutions] = useState<ResolutionRecord[]>([]);
     const [pollsError, setPollsError] = useState<string | null>(null);
   const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
@@ -83,6 +107,45 @@ export default function App() {
   const [currentYouth, setCurrentYouth] = useState<YouthProfile | null>(null);
   const [currentEmail, setCurrentEmail] = useState<string>('');
   const [authReady, setAuthReady] = useState(false);
+
+  useEffect(() => {
+    const handleAvatarUpdated = (event: Event) => {
+      const avatarUrl = (event as CustomEvent<{ avatar_url?: string }>).detail?.avatar_url;
+      if (!avatarUrl) return;
+      setCurrentUser((previous: any) => previous ? { ...previous, avatar_url: avatarUrl } : previous);
+      setCurrentYouth((previous) => previous ? { ...previous, profilePic: avatarUrl } : previous);
+    };
+    window.addEventListener('kabisig:avatar-updated', handleAvatarUpdated);
+    return () => window.removeEventListener('kabisig:avatar-updated', handleAvatarUpdated);
+  }, []);
+
+  useEffect(() => {
+    if (!currentRole || !currentUser?.id || !kabisigApi.getToken()) return;
+    let isMounted = true;
+    const refreshCurrentProfile = () => {
+      kabisigApi.getCurrentUser().then((profile) => {
+        if (!isMounted || !profile || profile.id !== currentUser.id) return;
+        setCurrentUser(profile);
+        if (profile.avatar_url) {
+          setCurrentYouth((previous) => previous ? { ...previous, profilePic: profile.avatar_url } : previous);
+        }
+      }).catch((error: unknown) => {
+        console.warn('Unable to refresh the signed-in profile:', error);
+      });
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') refreshCurrentProfile();
+    };
+    const intervalId = window.setInterval(refreshCurrentProfile, 60 * 60 * 1000);
+    window.addEventListener('focus', refreshCurrentProfile);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshCurrentProfile);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [currentRole, currentUser?.id]);
 
   useEffect(() => {
     if (!currentRole || !kabisigApi.getToken()) return;
@@ -106,7 +169,9 @@ export default function App() {
         attachments: [],
       })));
     }).catch((error: any) => console.warn('Announcements unavailable:', error?.message || error));
-    return () => { isMounted = false; };
+
+
+  return () => { isMounted = false; };
   }, [currentRole, currentTenant?.id, currentUser?.id]);
 
   // --- VIEWER PORTAL PUBLIC DATA (no auth) ---
@@ -156,7 +221,9 @@ export default function App() {
       })));
     }).catch((e: any) => console.warn('Public expenses failed:', e?.message));
 
-    return () => { isMounted = false; };
+
+
+  return () => { isMounted = false; };
   }, [currentRole]);
 
   // --- PUBLIC PAGES NAVIGATION STATE ---
@@ -174,7 +241,9 @@ export default function App() {
       setPublicView('landing');
     };
     window.addEventListener('kabisig:auth-invalid', invalidateSession);
-    return () => window.removeEventListener('kabisig:auth-invalid', invalidateSession);
+
+
+  return () => window.removeEventListener('kabisig:auth-invalid', invalidateSession);
   }, []);
 
   useEffect(() => {
@@ -265,7 +334,8 @@ export default function App() {
             alert('Your account role or SK Official position is not configured. Please contact your SK Federation President.');
             return;
           }
-          setCurrentUser(user);
+          if (user && user.role_id === 4 && user.full_name) { user.full_name = user.full_name.replace(/^Hon\.\s+/i, ''); }
+        setCurrentUser(user);
           setCurrentEmail(user.email || '');
           if (restoredRole === 'Super Admin') {
             setCurrentRole(restoredRole);
@@ -330,7 +400,7 @@ export default function App() {
               youthSector: meta.youthSector || 'In-School Youth',
               guardianName: meta.guardianName || '',
               guardianContact: meta.guardianContact || '',
-              profilePic: meta.profilePic,
+              profilePic: (user as any)?.avatar_url || meta.profilePic,
               qrCode: resident.qr_code_url || meta.qrCode,
               status: user.status === 'active' ? 'Approved' : (user.status === 'rejected' ? 'Rejected' : user.status === 'suspended' ? 'suspended' : 'Pending'),
               barangayId: user.tenant_id || '',
@@ -360,25 +430,34 @@ export default function App() {
     setExpenses([]);
     if (currentRole !== 'Barangay Admin' && currentRole !== 'SK Chairperson' && currentRole !== 'Super Admin') setYouthProfiles([]);
 
-    kabisigApi.getPrograms().then(progs => {
-      if (!isMounted) return;
-      setPrograms(progs.map((p: any): Program => ({
-        id: p.id,
-        title: p.title,
-        description: p.description || '',
-        startDate: p.start_date ? p.start_date.split('T')[0] : '',
-        endDate: p.end_date ? p.end_date.split('T')[0] : '',
-        location: p.location || '',
-        maxParticipants: Number(p.total_slots) || 0,
-        budgetAllocation: Number(p.budget_allocation) || 0,
-        spentBudget: 0,
-        aipReference: p.aip_reference || '',
-        category: p.category || 'Other',
-        status: p.status === 'upcoming' ? 'Upcoming' : p.status === 'ongoing' ? 'Ongoing' : p.status === 'completed' ? 'Completed' : 'Upcoming',
-        registeredCount: p.program_registrations?.[0]?.count || 0,
-        barangayId: p.tenant_id,
-      })));
-    }).catch(error => console.warn('Unable to load programs for active role:', error));
+    const refreshPrograms = () => {
+      kabisigApi.getPrograms().then(progs => {
+        if (!isMounted) return;
+        setPrograms(progs.map((p: any): Program => ({
+          id: p.id,
+          title: p.title,
+          description: p.description || '',
+          startDate: p.start_date ? p.start_date.split('T')[0] : '',
+          endDate: p.end_date ? p.end_date.split('T')[0] : '',
+          location: p.location || '',
+          maxParticipants: Number(p.total_slots) || 0,
+          budgetAllocation: Number(p.budget_allocation) || 0,
+          spentBudget: 0,
+          aipReference: p.aip_reference || '',
+          category: p.category || 'Other',
+          status: computeProgramStatus(p),
+          registeredCount: p.program_registrations?.[0]?.count || 0,
+          barangayId: p.tenant_id,
+        })));
+      }).catch(error => console.warn('Unable to load programs for active role:', error));
+    };
+    const refreshProgramsWhenVisible = () => {
+      if (document.visibilityState === 'visible') refreshPrograms();
+    };
+    refreshPrograms();
+    const programRefreshInterval = window.setInterval(refreshPrograms, 60000);
+    window.addEventListener('focus', refreshPrograms);
+    document.addEventListener('visibilitychange', refreshProgramsWhenVisible);
 
     kabisigApi.getDocuments().then(docs => {
       if (!isMounted) return;
@@ -425,7 +504,14 @@ export default function App() {
       }).catch(error => console.warn('Unable to load expenses for active role:', error));
     }
 
-    return () => { isMounted = false; };
+
+
+  return () => {
+    isMounted = false;
+    window.clearInterval(programRefreshInterval);
+    window.removeEventListener('focus', refreshPrograms);
+    document.removeEventListener('visibilitychange', refreshProgramsWhenVisible);
+  };
   }, [currentRole, currentTenant?.id]);
 
   // After login, reload barangays with the user's token: the pre-login list hides contact details.
@@ -439,7 +525,9 @@ export default function App() {
         return fresh ? { ...existing, ...fresh, logo: fresh.logo || existing.logo || '' } : existing;
       }));
     }).catch(console.warn);
-    return () => { isMounted = false; };
+
+
+  return () => { isMounted = false; };
   }, [currentUser?.id]);
 
   // Keep currentTenant in step with the live tenants list so budget cards update after expenses or a refetch.
@@ -465,71 +553,128 @@ export default function App() {
     }
 
     let isMounted = true;
-    setYouthProfilesLoading(true);
-    setYouthProfilesError(null);
-    kabisigApi.getYouthProfiles(false, 'all').then(({ data, error }) => {
-      if (!isMounted) return;
-      if (error || data === null) {
-        setYouthProfilesError(error || 'Unable to load youth profiles.');
-        return;
+    let hasLoaded = false;
+    const refreshYouthProfiles = () => {
+      if (!hasLoaded) {
+        setYouthProfilesLoading(true);
+        setYouthProfilesError(null);
       }
-      setYouthProfiles(data);
-    }).catch((error: unknown) => {
-      if (!isMounted) return;
-      const message = error instanceof Error ? error.message : 'Unable to load youth profiles.';
-      setYouthProfilesError(message);
-      console.warn('Unable to refresh youth management records:', message);
-    }).finally(() => {
-      if (isMounted) setYouthProfilesLoading(false);
-    });
-    return () => { isMounted = false; };
+      kabisigApi.getYouthProfiles(false, 'all').then(({ data, error }) => {
+        if (!isMounted) return;
+        if (error || data === null) {
+          setYouthProfilesError(error || 'Unable to load youth profiles.');
+          return;
+        }
+        setYouthProfiles(data);
+        setYouthProfilesError(null);
+      }).catch((error: unknown) => {
+        if (!isMounted) return;
+        const message = error instanceof Error ? error.message : 'Unable to load youth profiles.';
+        setYouthProfilesError(message);
+        console.warn('Unable to refresh youth management records:', message);
+      }).finally(() => {
+        if (isMounted && !hasLoaded) {
+          hasLoaded = true;
+          setYouthProfilesLoading(false);
+        }
+      });
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') refreshYouthProfiles();
+    };
+    refreshYouthProfiles();
+    const intervalId = window.setInterval(refreshYouthProfiles, 60000);
+    window.addEventListener('focus', refreshYouthProfiles);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshYouthProfiles);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
   }, [currentRole, currentTenant?.id, youthProfilesRetryCount]);
 
   useEffect(() => {
     if (!currentRole || currentRole === 'Viewer') return;
     let isMounted = true;
-    kabisigApi.getPolls().then((polls) => {
-      if (!isMounted) return;
-      setResolutions(polls);
-      setPollsError(null);
-    }).catch((error: any) => {
-      if (!isMounted) return;
-      setPollsError(error.message || 'Polls could not be loaded.');
-      console.warn('Unable to load polls for active tenant:', error);
-    });
-    return () => { isMounted = false; };
+    const refreshPolls = () => {
+      kabisigApi.getPolls().then((polls) => {
+        if (!isMounted) return;
+        setResolutions(polls);
+        setPollsError(null);
+      }).catch((error: any) => {
+        if (!isMounted) return;
+        setPollsError(error.message || 'Polls could not be loaded.');
+        console.warn('Unable to load polls for active tenant:', error);
+      });
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') refreshPolls();
+    };
+    refreshPolls();
+    const intervalId = window.setInterval(refreshPolls, 30000);
+    window.addEventListener('focus', refreshPolls);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshPolls);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
   }, [currentRole, currentTenant?.id, currentUser?.id]);
 
   useEffect(() => {
     if (!currentRole || currentRole === 'Viewer' || currentRole === 'Super Admin' || !kabisigApi.getToken()) return;
     let isMounted = true;
-    kabisigApi.getFeedback().then((feeds) => {
-      if (!isMounted) return;
-      setFeedback(feeds.map((f: any): FeedbackRecord => ({
-        id: f.id,
-        userId: f.user_id || undefined,
-        type: f.category || 'General',
-        title: f.subject,
-        content: f.message,
-        rating: f.sentiment === 'positive' ? 5 : f.sentiment === 'negative' ? 1 : 3,
-        anonymous: f.is_anonymous || false,
-        status: f.status === 'resolved' ? 'Resolved' : f.status === 'under_review' ? 'Reviewed' : 'Pending',
-        dateSubmitted: f.created_at ? f.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
-        submittedBy: f.is_anonymous ? 'Anonymous' : f.users?.full_name || 'Youth Constituent',
-        response: f.response || '',
-        residentProfile: f.users?.resident_profile ? {
-          age: f.users.resident_profile.birthdate ? Math.max(15, Math.floor((Date.now() - new Date(f.users.resident_profile.birthdate).getTime()) / (365.25 * 24 * 60 * 60 * 1000))) : undefined,
-          sex: f.users.resident_profile.sex || undefined,
-          address: f.users.resident_profile.address || undefined,
-          educationalLevel: f.users.resident_profile.educational_status || undefined,
-          employmentStatus: f.users.resident_profile.employment_status || undefined,
-          contact: f.users.phone || undefined,
-          email: f.users.email || undefined,
-        } : undefined,
-      })));
-    }).catch(error => console.warn('Unable to load feedback history for active user:', error));
+    const refreshFeedback = () => {
+      kabisigApi.getFeedback().then((feeds) => {
+        if (!isMounted) return;
+        setFeedback(feeds.map((f: any): FeedbackRecord => ({
+          id: f.id,
+          userId: f.user_id || undefined,
+          type: f.category || 'General',
+          title: f.subject,
+          content: f.message,
+          rating: f.sentiment === 'positive' ? 5 : f.sentiment === 'negative' ? 1 : 3,
+          sentiment: f.sentiment,
+          anonymous: f.is_anonymous || false,
+          status: f.status === 'resolved' ? 'Resolved' : f.status === 'under_review' ? 'Reviewed' : 'Pending',
+          dateSubmitted: f.created_at ? f.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+          submittedBy: f.is_anonymous ? 'Anonymous' : f.users?.full_name || 'Youth Constituent',
+          response: f.response || '',
+          residentProfile: f.users?.resident_profile ? {
+            age: f.users.resident_profile.birthdate ? Math.max(15, Math.floor((Date.now() - new Date(f.users.resident_profile.birthdate).getTime()) / (365.25 * 24 * 60 * 60 * 1000))) : undefined,
+            sex: f.users.resident_profile.sex || undefined,
+            address: f.users.resident_profile.address || undefined,
+            educationalLevel: f.users.resident_profile.educational_status || undefined,
+            employmentStatus: f.users.resident_profile.employment_status || undefined,
+            contact: f.users.phone || undefined,
+            email: f.users.email || undefined,
+          } : undefined,
+        })));
+        setFeedbackError(null);
+      }).catch(error => {
+        if (!isMounted) return;
+        setFeedbackError(error instanceof Error ? error.message : 'Feedback could not be loaded.');
+        console.warn('Unable to load feedback history for active user:', error);
+      });
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') refreshFeedback();
+    };
+    refreshFeedback();
+    const intervalId = window.setInterval(refreshFeedback, 30000);
+    window.addEventListener('focus', refreshFeedback);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
 
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshFeedback);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
   }, [currentRole, currentTenant?.id, currentUser?.id]);
 
   // --- AUTH CALLBACKS ---
@@ -541,7 +686,8 @@ export default function App() {
       setCurrentUser(userObj);
     } else {
       kabisigApi.getCurrentUser().then(user => {
-        if (user) setCurrentUser(user);
+        if (user) if (user && user.role_id === 4 && user.full_name) { user.full_name = user.full_name.replace(/^Hon\.\s+/i, ''); }
+        setCurrentUser(user);
       }).catch(console.warn);
     }
     // Check if the user has a registered profile with a pending or rejected status
@@ -615,7 +761,7 @@ export default function App() {
           youthSector: meta.youthSector || matchedProfile?.youthSector || 'In-School Youth',
           guardianName: meta.guardianName || matchedProfile?.guardianName || '',
           guardianContact: meta.guardianContact || matchedProfile?.guardianContact || '',
-          profilePic: meta.profilePic || matchedProfile?.profilePic,
+          profilePic: userObj.avatar_url || meta.profilePic || matchedProfile?.profilePic,
           qrCode: resident.qr_code_url || meta.qrCode || matchedProfile?.qrCode,
           status: userObj.status === 'active' ? 'Approved' : (userObj.status === 'rejected' ? 'Rejected' : userObj.status === 'suspended' ? 'suspended' : 'Pending'),
           barangayId: userObj.tenant_id || matchedProfile?.barangayId || '',
@@ -1002,6 +1148,9 @@ export default function App() {
     return result.data;
   };
 
+
+
+
   return (
     <div className="min-h-screen flex flex-col relative bg-slate-50">
       
@@ -1186,6 +1335,7 @@ export default function App() {
           registrations={registrations}
           documents={documents}
           feedback={feedback}
+          feedbackError={feedbackError}
           resolutions={resolutions}
           pollsError={pollsError}
           expenses={expenses}

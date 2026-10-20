@@ -7,8 +7,53 @@ import { authenticateUser, requireRoles } from '../middleware/auth.js';
 import type { AuthRequest } from '../types/database.types.js';
 import { resolveName } from '../utils/name.js';
 
+// Wrapper: generate invite link via Supabase, then email it via Brevo
+async function inviteWithBrevo(
+  email: string,
+  options: any = {}
+): Promise<{ data: any; error: any }> {
+  const { data, error } = await supabaseAdmin.auth.admin.generateLink({
+    type: 'invite',
+    email,
+    options,
+  });
+  if (!error && data?.properties?.action_link) {
+    const setupLink = data.properties.action_link;
+    const invRole = options?.data?.official_role || options?.data?.role || 'SK Official';
+    const htmlMsg = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;"><h1 style="color: #091d64; margin: 0 0 8px 0;">KABISIG</h1><p style="color: #64748b; font-size: 12px; margin: 0 0 24px 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p><h2 style="color: #091d64;">You are Invited to be ' + invRole + '!</h2><p style="color: #334155; line-height: 1.6;">You have been invited to join the KABISIG System as ' + invRole + '. Click the button below to set up your account password:</p><div style="text-align: center; margin: 24px 0;"><a href="' + setupLink + '" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Set Up Account</a></div><p style="color: #94a3b8; font-size: 11px;">If the button does not work, copy this link: <a href="' + setupLink + '">' + setupLink + '</a></p></div>';
+    await sendEmail(email, 'KABISIG Account Invitation', htmlMsg);
+  }
+  return { data, error };
+}
+
+
+// Helper to send emails via Brevo API
+async function sendEmail(to: string, subject: string, html: string) {
+  try {
+    const apiKey = process.env.BREVO_API_KEY;
+    const senderEmail = process.env.BREVO_SENDER_EMAIL;
+    if (!apiKey || !senderEmail) {
+      console.warn('[EMAIL] SKIPPED. Missing BREVO_API_KEY or BREVO_SENDER_EMAIL in .env');
+      return;
+    }
+    console.log('[EMAIL] Attempting to send to ' + to + '...');
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: { 'api-key': apiKey, 'content-type': 'application/json' },
+      body: JSON.stringify({ sender: { name: 'KABISIG', email: senderEmail }, to: [{ email: to }], subject: subject, htmlContent: html })
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error('[EMAIL] FAILED. Status: ' + res.status + ' Response: ' + errText);
+    } else {
+      console.log('[EMAIL] SUCCESS. Sent to ' + to);
+    }
+  } catch (err) { console.error('[EMAIL] ERROR:', err); }
+}
+
+
 const router = express.Router();
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+const FRONTEND_URL = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
 
 const AssignChairpersonByEmailSchema = z.object({
   email: z.string().email('Valid email address is required'),
@@ -156,7 +201,7 @@ router.post(
 
       if (!existingAuthUser) {
         // Existing public.users row but missing Supabase Auth user: re-invite/create auth account
-        const { data: inviteData, error: inviteErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+        const { data: inviteData, error: inviteErr } = await inviteWithBrevo(
           cleanEmail,
           {
             data: {
@@ -280,7 +325,7 @@ router.post(
       }
     } else {
       // 4. New Chairperson: Trigger Supabase Auth invitation
-      const { data: inviteData, error: inviteErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+      const { data: inviteData, error: inviteErr } = await inviteWithBrevo(
         cleanEmail,
         {
           data: {
@@ -531,7 +576,7 @@ router.post(
     if (existingUser) {
       targetUserId = existingUser.id;
       if (!existingAuthUser) {
-        const { data: inviteData, error: inviteErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(cleanEmail, {
+        const { data: inviteData, error: inviteErr } = await inviteWithBrevo(cleanEmail, {
           data: { tenant_id: barangay_id, role_id: 3, official_role },
           redirectTo: redirectUrl,
         } as any);
@@ -634,7 +679,7 @@ router.post(
         }, { onConflict: 'id' });
       if (insertUserErr) { sendError(res, 'Failed to bind existing auth user: ' + insertUserErr.message, 500); return; }
     } else {
-      const { data: inviteData, error: inviteErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(cleanEmail, {
+      const { data: inviteData, error: inviteErr } = await inviteWithBrevo(cleanEmail, {
         data: { tenant_id: barangay_id, role_id: 3, official_role },
         redirectTo: redirectUrl,
       } as any);
@@ -880,7 +925,7 @@ router.patch(
 const TransferChairmanshipSchema = z.object({
   barangay_id: z.string().uuid('Valid Barangay ID is required'),
   successor_email: z.string().email('Valid successor email is required'),
-  reason: z.enum(['Resigned', 'End of Term', 'Replaced', 'Other']).default('Other'),
+  reason: z.enum(['Resignation', 'End of Term', 'Replaced', 'Succession', 'Other']).default('Other'),
   notes: z.string().max(1000).optional().nullable(),
 });
 
@@ -929,38 +974,33 @@ router.post(
       return;
     }
 
-    // 3. Demote outgoing Chairperson → SK Official FIRST (release DB constraint)
-    // Decision 2 & 3: Map exit reason to role, and enforce 7-Kagawad cap
-    let targetRoleId = 3; // Default to SK Kagawad
-    if (reason === 'End of Term') {
-      targetRoleId = 4; // Revert to Youth Constituent
-    } else {
-      const { data: kagawads } = await supabaseAdmin
+      // 3. Demote outgoing Chairperson -> Youth Constituent (role_id 4) per manuscript.
+      //    Youth Constituents have no capacity limit, so no Kagawad-count check here.
+      //    Verification is reset so the new Chairperson re-approves them as regular youth.
+      // Fetch outgoing name to strip Hon. title
+      const { data: outUser } = await supabaseAdmin.from('users').select('full_name').eq('id', outgoing.id).single();
+      const cleanName = outUser?.full_name?.replace(/^Hon\.\s+/i, '') || outUser?.full_name;
+      
+      const { error: demoteErr } = await supabaseAdmin
         .from('users')
-        .select('id')
-        .eq('tenant_id', barangay_id)
-        .eq('role_id', 3)
-        .eq('status', 'active');
-      if (kagawads && kagawads.length >= 7) {
-        sendError(res, 'Cannot demote Chairperson: Barangay already has 7 active SK Kagawads. Reassign or remove a Kagawad first.', 409, { code: 'KAGAWAD_CAPACITY_REACHED' });
+        .update({ role_id: 4, status: 'active', full_name: cleanName })
+        .eq('id', outgoing.id);
+
+      if (demoteErr) {
+        sendError(res, 'Failed to demote outgoing Chairperson: ' + demoteErr.message, 500);
         return;
       }
-    }
-    const { error: demoteErr } = await supabaseAdmin
-      .from('users')
-      .update({
-        role_id: targetRoleId,
-        status: 'active',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', outgoing.id);
 
-    if (demoteErr) {
-      sendError(res, 'Failed to demote outgoing Chairperson: ' + demoteErr.message, 500);
-      return;
-    }
+      // Reset verification — incoming Chairperson must re-approve them as youth.
+      const { error: verifyResetErr } = await supabaseAdmin
+        .from('resident_profile')
+        .update({ verification_status: 'pending' })
+        .eq('user_id', outgoing.id);
 
-    // 4. Find or create successor
+      if (verifyResetErr) {
+        console.warn('[transfer-chairmanship] verification reset failed for outgoing chairperson:', verifyResetErr);
+      }
+      // 4. Find or create successor
     const { data: successor } = await supabaseAdmin
       .from('users')
       .select('id, email, full_name, first_name, middle_name, last_name, suffix, status, role_id, tenant_id')
@@ -1000,7 +1040,7 @@ router.post(
         successorUserId = existingAuthUser.id;
         successorInviteMethod = 'email_invitation';
       } else {
-        const { data: inviteData, error: inviteErr } = await supabaseAdmin.auth.admin.inviteUserByEmail(
+        const { data: inviteData, error: inviteErr } = await inviteWithBrevo(
           cleanSuccessorEmail,
           {
             data: { tenant_id: barangay_id, role_id: 2 },
@@ -1081,8 +1121,8 @@ router.post(
       incoming_email: cleanSuccessorEmail,
       incoming_full_name: successor?.full_name || 'Pending Invitation',
       reason,
-      notes: notes || null,
-      previous_role_action: 'DEMOTED_TO_SK_OFFICIAL',
+      notes: 'Succession Notes: ' + (notes || 'None') + '. Reason: ' + reason,
+      previous_role_action: 'DEMOTED_TO_YOUTH_CONSTITUENT',
       performed_by: admin.id,
       performed_by_email: admin.email || null,
     });
@@ -1099,7 +1139,7 @@ router.post(
         outgoing_name: outgoing.full_name,
         incoming_email: cleanSuccessorEmail,
         reason,
-        notes: notes || null,
+        notes: 'Succession Notes: ' + (notes || 'None') + '. Reason: ' + reason,
         invitation_method: successorInviteMethod,
       },
       ipAddress: req.ip || null,
@@ -1107,10 +1147,32 @@ router.post(
 
     // 7. Response
     const emailDelivered = successorInviteMethod === 'email_invitation';
+    console.log('[TRANSFER] Preparing to send emails...');
+    try {
+      const outgoingEmail = outgoing.email;
+      const successorEmail = cleanSuccessorEmail;
+      
+      if (outgoingEmail) {
+        console.log('[TRANSFER] Sending demotion email to outgoing: ' + outgoingEmail);
+        const outgoingHtml = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;"><h1 style="color: #091d64; margin: 0 0 8px 0;">KABISIG</h1><p style="color: #64748b; font-size: 12px; margin: 0 0 24px 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p><h2 style="color: #091d64;">Leadership Update</h2><p style="color: #334155; line-height: 1.6;">Your role as SK Chairperson has been successfully transferred.</p><p style="color: #334155; line-height: 1.6;">You have been demoted to <strong>Youth Constituent</strong> and your profile verification is pending re-approval by the incoming Chairperson.</p><div style="text-align: center; margin: 24px 0;"><a href="' + FRONTEND_URL + '" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Log In to KABISIG</a></div><p style="color: #94a3b8; font-size: 11px;">If the button does not work, copy this link: ' + FRONTEND_URL + '</p></div>';
+        await sendEmail(outgoingEmail, 'KABISIG Leadership Update', outgoingHtml);
+      }
+      
+      if (successorEmail) {
+        console.log('[TRANSFER] Sending appointment email to successor: ' + successorEmail);
+        const successHtml = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;"><h1 style="color: #091d64; margin: 0 0 8px 0;">KABISIG</h1><p style="color: #64748b; font-size: 12px; margin: 0 0 24px 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p><h2 style="color: #091d64;">You are Invited to be SK Chairperson!</h2><p style="color: #334155; line-height: 1.6;">You have been appointed as the new SK Chairperson. Please click the button below to set up your account password and complete your profile.</p><div style="text-align: center; margin: 24px 0;"><a href="' + successorLink + '" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Set Up Account</a></div><p style="color: #94a3b8; font-size: 11px;">If the button does not work, copy this link: ' + successorLink + '</p></div>';
+        await sendEmail(successorEmail, 'KABISIG Chairmanship Appointment', successHtml);
+      }
+    } catch (emailErr) {
+      console.error('[TRANSFER] Email dispatch failed:', emailErr);
+    }
+
     sendSuccess(res, {
       barangay_id,
       barangay_name: barangay.name,
       outgoing: {
+        role_id: 4,
+        status: 'pending',
         id: outgoing.id,
         email: outgoing.email,
         full_name: outgoing.full_name,
@@ -1120,13 +1182,15 @@ router.post(
         id: successorUserId,
         email: cleanSuccessorEmail,
         full_name: successor?.full_name || 'Pending Invitation',
+        role_id: 2,
+        status: 'active',
         new_role: 'Barangay Admin',
       },
       setup_url: '',
       action_link: '',
       invitation_method: successorInviteMethod,
       email_delivery: emailDelivered,
-    }, 'Leadership transferred at Barangay ' + barangay.name + '. ' + (outgoing.full_name || outgoing.email) + ' demoted to SK Official; ' + cleanSuccessorEmail + ' is now Chairperson.');
+    }, 'Leadership transferred at Barangay ' + barangay.name + '. ' + (outgoing.full_name || outgoing.email) + ' demoted to Youth Constituent (pending re-approval); ' + cleanSuccessorEmail + ' is now Chairperson.');
   }
 );
 // ============================================================

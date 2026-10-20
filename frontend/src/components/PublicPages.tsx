@@ -345,6 +345,12 @@ export default function PublicPages({
   };
 
   const handleSignUpSubmit = async () => {
+    if (!signUpForm.idFrontFile) {
+      alert("A valid ID is required to register. Please upload your ID to continue.");
+      setSignUpStep(4);
+      return;
+    }
+
     const resolvedBarangayId = signUpBarangayId || barangays[0]?.id || '';
     if (!resolvedBarangayId) {
       alert('Barangay registry is unavailable right now. Please try again later.');

@@ -8,7 +8,7 @@ export default function ProfileSettings() {
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{type: 'success'|'error', text: string} | null>(null);
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
 
   const [form, setForm] = useState({ first_name: '', middle_name: '', last_name: '', suffix: '', email: '' });
 
@@ -52,26 +52,41 @@ export default function ProfileSettings() {
   };
 
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64 = reader.result as string;
-        setPhotoPreview(base64);
-        try {
-          const res = await kabisigApi.uploadAvatar(base64, file.type);
-          if (res.success && res.data?.avatar_url) {
-            setUser({ ...user, avatar_url: res.data.avatar_url });
-            setNotice({ type: 'success', text: 'Profile photo updated successfully!' });
-            setTimeout(() => window.location.reload(), 1000);
-          } else {
-            setNotice({ type: 'error', text: res.message || 'Failed to upload photo.' });
-          }
-        } catch (err: any) {
-          setNotice({ type: 'error', text: err.message || 'Network error uploading photo.' });
-        }
-      };
-      reader.readAsDataURL(file);
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setNotice({ type: 'error', text: 'Choose a JPEG, PNG, or WebP image.' });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setNotice({ type: 'error', text: 'The image must be smaller than 5 MB.' });
+      return;
+    }
+
+    setIsUploadingPhoto(true);
+    setNotice(null);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => typeof reader.result === 'string'
+          ? resolve(reader.result)
+          : reject(new Error('The selected image could not be read.'));
+        reader.onerror = () => reject(new Error('The selected image could not be read.'));
+        reader.readAsDataURL(file);
+      });
+      const res = await kabisigApi.uploadAvatar(base64, file.type);
+      if (!res.success || !res.data?.avatar_url) {
+        throw new Error(res.message || 'Failed to upload photo.');
+      }
+      const avatarUrl = res.data.avatar_url;
+      setUser((previous: any) => previous ? { ...previous, avatar_url: avatarUrl } : previous);
+      window.dispatchEvent(new CustomEvent('kabisig:avatar-updated', { detail: { avatar_url: avatarUrl } }));
+      setNotice({ type: 'success', text: 'Profile photo updated and saved successfully.' });
+    } catch (err: unknown) {
+      setNotice({ type: 'error', text: err instanceof Error ? err.message : 'Network error uploading photo.' });
+    } finally {
+      setIsUploadingPhoto(false);
     }
   };
 
@@ -107,11 +122,11 @@ export default function ProfileSettings() {
           <div className="flex items-center gap-6">
             <div className="relative">
               <div className="w-24 h-24 rounded-full bg-[#091d64] text-white flex items-center justify-center text-4xl font-black shadow-md overflow-hidden border-4 border-white">
-                {photoPreview ? <img src={photoPreview} alt="Profile" className="w-full h-full object-cover" /> : user?.avatar_url ? <img src={user.avatar_url} alt="Profile" className="w-full h-full object-cover" /> : getName().charAt(0)}
+                {user?.avatar_url ? <img src={user.avatar_url} alt="Profile" className="w-full h-full object-cover" /> : getName().charAt(0)}
               </div>
-              <label className="absolute bottom-0 right-0 p-2 bg-amber-400 rounded-full cursor-pointer hover:bg-amber-300 shadow-sm border-2 border-white">
-                <Camera className="w-4 h-4 text-amber-950" />
-                <input type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
+              <label className={`absolute bottom-0 right-0 p-2 bg-amber-400 rounded-full shadow-sm border-2 border-white ${isUploadingPhoto ? 'cursor-wait opacity-60' : 'cursor-pointer hover:bg-amber-300'}`}>
+                {isUploadingPhoto ? <Loader2 className="w-4 h-4 text-amber-950 animate-spin" /> : <Camera className="w-4 h-4 text-amber-950" />}
+                <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handlePhotoChange} disabled={isUploadingPhoto} />
               </label>
             </div>
             <div>

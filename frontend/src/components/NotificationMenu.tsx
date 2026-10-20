@@ -49,18 +49,33 @@ export default function NotificationMenu({  supplementalItems = [], onNavigate, 
     };
   }, []);
 
-  const unreadCount = notifications.filter(item => !item.is_read && !locallyReadIds.has(item.id)).length + supplementalItems.filter(item => !item.is_read && !locallyReadIds.has(item.id) && item.countInBadge !== false).length;
   const items: NotificationMenuItem[] = [...supplementalItems, ...notifications];
 
-    const filteredItems = (items || []).filter((item: any) => {
-    if (!userRole) return true;
+              const filteredItems = (items || []).filter((item: any) => {
+    if (item.is_read && !item.onSelect) return false;
+    if (!userRole) return false;
+    
     const r = String(userRole).toLowerCase();
+    const link = String(item.link || '').toLowerCase();
     const text = String((item.title || '') + ' ' + (item.message || '')).toLowerCase();
-    if (r.includes('secretary')) return text.includes('doc') || text.includes('resolution') || text.includes('file');
-    if (r.includes('treasurer')) return text.includes('budget') || text.includes('expense') || text.includes('financ');
-    if (r.includes('kagawad')) return text.includes('program') || text.includes('attendance') || text.includes('event');
+    
+    // 1. Treasurer sees ONLY budget/expense
+    if (r.includes('treasurer')) return link.includes('budget') || link.includes('expense') || text.includes('budget alert');
+    
+    // 2. Secretary sees ONLY documents
+    if (r.includes('secretary')) return link.includes('document') || link.includes('resolution') || text.includes('document');
+    
+    // 3. Kagawad sees ONLY programs/attendance
+    if (r.includes('kagawad')) return link.includes('program') || link.includes('calendar') || link.includes('attendance') || text.includes('program is coming up');
+    
+    // 4. Chairperson sees ONLY admin/oversight
+    if (r.includes('chair') || r.includes('barangay admin') || r.includes('super')) {
+        return link.includes('user') || link.includes('registration') || text.includes('registration') || text.includes('compliance') || text.includes('approval') || text.includes('pending');
+    }
     return true;
   });
+
+  const unreadCount = filteredItems.filter((item: any) => !item.is_read && !locallyReadIds.has(item.id)).length;
 
   const handleSelect = (item: NotificationMenuItem) => {
     const isSystemNotification = notifications.some(notification => notification.id === item.id);
@@ -78,14 +93,14 @@ export default function NotificationMenu({  supplementalItems = [], onNavigate, 
       return;
     }
 
-    if (item.link) { onNavigate?.(item.link); } else {
-      const txt = String(item.title + ' ' + item.message).toLowerCase();
-      if (txt.includes('doc')) onNavigate?.('/documents');
-      else if (txt.includes('budget') || txt.includes('expense')) onNavigate?.('/budget');
-      else if (txt.includes('program')) onNavigate?.('/programs');
-      else if (txt.includes('user') || txt.includes('regist')) onNavigate?.('/registrations');
-      else onNavigate?.('/dashboard');
-    }
+    const r = String(userRole || "").toLowerCase();
+    // STRICT ROUTING SIGNALS
+    if (r.includes("treasurer")) { onNavigate?.("reports"); }
+    else if (r.includes("secretary")) { onNavigate?.("documents"); }
+    else if (r.includes("kagawad")) { onNavigate?.("programs"); }
+    else if (r.includes("chair") || r.includes("admin")) { onNavigate?.("dashboard"); }
+    else { onNavigate?.("dashboard"); }
+
     setIsOpen(false);
   };
 
@@ -133,7 +148,7 @@ export default function NotificationMenu({  supplementalItems = [], onNavigate, 
                   <span className="min-w-0 flex-1">
                     <span className={`block text-xs leading-snug ${isRead ? 'font-semibold text-slate-600' : 'font-bold text-slate-800'}`}>{item.title}</span>
                     <span className="mt-1 block text-xs leading-relaxed text-slate-500">{item.message}</span>
-                    {item.created_at && <span className="mt-1 block text-[10px] text-slate-400">{new Date(item.created_at).toLocaleString()}</span>}
+                    <span className="mt-1 block text-[10px] text-slate-400">{item.created_at ? new Date(item.created_at).toLocaleString() : 'Just now'}</span>
                   </span>
                   {item.actionLabel && <span className="shrink-0 pt-0.5 text-[10px] font-semibold text-blue-700">{item.actionLabel}</span>}
                   {!isRead && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-blue-600" aria-label="Unread" />}

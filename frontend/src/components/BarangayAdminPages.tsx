@@ -1,4 +1,5 @@
 import { formatCurrencyInput } from '../lib/utils';
+import { generateBudgetUtilizationReport } from '../lib/pdfReports';
 import ProfileSettings from './ProfileSettings';
 import RestrictedUsersPanel from './RestrictedUsersPanel';
 import RestrictedUsers from './RestrictedUsers';
@@ -34,6 +35,7 @@ import {
   Menu,
   ChevronDown,
   ClipboardList,
+  Package,
   Coins,
   Folder,
   BarChart3,
@@ -90,6 +92,29 @@ import { UserMenu } from './UserMenu';
 import NotificationMenu, { NotificationMenuItem } from './NotificationMenu';
 import { DEFAULT_BARANGAY_LOGOS } from '../data';
 import kabisigApi from '../lib/api';
+
+// Distinct calendar colors per program — deterministic hash so colors are consistent across reloads
+const CALENDAR_COLORS: string[] = [
+  'bg-blue-600 hover:bg-blue-700',
+  'bg-emerald-600 hover:bg-emerald-700',
+  'bg-amber-500 hover:bg-amber-600',
+  'bg-rose-600 hover:bg-rose-700',
+  'bg-indigo-600 hover:bg-indigo-700',
+  'bg-purple-600 hover:bg-purple-700',
+  'bg-teal-600 hover:bg-teal-700',
+  'bg-orange-600 hover:bg-orange-700',
+];
+function getProgramCalendarColor(key: string): string {
+  const s = String(key || '');
+  let hash = 0;
+  for (let i = 0; i < s.length; i++) {
+    hash = ((hash << 5) - hash) + s.charCodeAt(i);
+    hash = hash | 0;
+  }
+  const idx = Math.abs(hash) % CALENDAR_COLORS.length;
+  return CALENDAR_COLORS[idx] || 'bg-blue-600 hover:bg-blue-700';
+}
+
 
 function createAnnouncementStorageClient(accessToken: string) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -165,7 +190,9 @@ export default function BarangayAdminPages({
 }: BarangayAdminPagesProps) {
   const [activeMenu, setActiveMenu] = useState<
     'dashboard' | 'youth' | 'programs' | 'budget' | 'documents' | 'reports' | 'announcements' | 'audit' | 'calendar' | 'facebook_sync' | 'settings' | 'profile'
-   | 'profile' | 'restrictions'>('dashboard');
+   | 'profile' | 'inventory' | 'restrictions'>('dashboard');
+  const [inventory, setInventory] = useState<any[]>([]);
+  useEffect(() => { if (activeMenu === 'budget' && inventory.length === 0) { kabisigApi.getInventory().then((rows: any[]) => setInventory(Array.isArray(rows) ? rows : [])).catch(() => {}); } }, [activeMenu, inventory.length]);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [reportSubTab, setReportSubTab] = useState<'executive'|'attendance'|'accomplishments'|'beneficiaries'|'demographics'|'financial'>('attendance');
@@ -182,7 +209,7 @@ export default function BarangayAdminPages({
           const allocated = Number(program.budgetAllocation) || 0;
           const spent = expenses.filter(expense => expense.programId === program.id)
             .reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0) || Number(program.spentBudget) || 0;
-          const rate = allocated > 0 ? ((allocated > 0 ? (allocated > 0 ? (spent / allocated) * 100 : 0) : 0)).toFixed(1) : '0.0';
+          const rate = allocated > 0 ? ((allocated > 0 ? (allocated > 0 ? (allocated > 0 ? (spent / allocated) * 100 : 0) : 0) : 0)).toFixed(1) : '0.0';
           return `<tr><td><strong>${program.title}</strong><br><span style="color:#64748b">${program.category}</span></td><td>${program.aipReference || 'Not provided'}</td><td class="text-right">₱${allocated.toLocaleString()}</td><td class="text-right">₱${spent.toLocaleString()}</td><td class="text-right">${rate}%</td><td class="text-center"><span class="badge">${program.status}</span></td></tr>`;
         }).join('')
       : '<tr><td colspan="6" class="text-center">No program records available.</td></tr>';
@@ -594,8 +621,14 @@ export default function BarangayAdminPages({
   });
 
   // Beneficiary Distribution Audit — computes participation counts to prevent duplicate assistance
+
+  const benefitCategories = ['Education & Scholarship', 'Sports Development', 'Livelihood & Skills', 'Health & Nutrition'];
   const youthProgramCounts = youthProfiles.map(y => {
-    const count = registrations.filter((r: any) => r.participantId === y.id && r.status !== "Rejected").length;
+    const count = registrations.filter((r: any) => {
+      const rIds = [r.participantId, r.userId, r.user_id].filter(Boolean); const yIds = [y.id, y.userId].filter(Boolean); if (rIds.length === 0 || yIds.length === 0 || !rIds.some(function(rid: any) { return yIds.indexOf(rid) >= 0; }) || r.status === "Rejected") return false;
+      const prog = programs.find(p => p.id === r.programId);
+      return prog && benefitCategories.some(cat => prog.category?.toLowerCase().includes(cat.toLowerCase()));
+    }).length;
     return { ...y, programCount: count };
   });
   const underservedYouth = youthProgramCounts.filter(y => y.programCount === 0 && y.status === "Approved");
@@ -1549,12 +1582,12 @@ return (
           </div>
 
           <div className="flex items-center gap-5">
-            <NotificationMenu userRole={currentUser?.official_role}
+            <NotificationMenu userRole="Barangay Admin"
               supplementalItems={[
                 ...pendingRegistrations.map(profile => ({
                   id: `registration-${profile.id}`,
                   title: `Registration request from ${profile.name}`,
-                  message: `Requested role: ${profile.registeredRole || 'Youth Constituent'} · Registered ${profile.dateRegistered}`,
+                  message: `Requested role: ${profile.registeredRole || 'Youth Constituent'} · Registered ${profile.dateRegistered}`, created_at: profile.dateRegistered ? new Date(profile.dateRegistered).toISOString() : new Date().toISOString(),
                   is_read: false,
                   actionLabel: 'Review',
                   onSelect: () => setInspectProfile(profile),
@@ -1594,11 +1627,14 @@ return (
                 ...(complianceIssues.length === 0 ? [{ id: 'compliance-clear', title: 'Compliance is up to date', message: 'No issues were detected by the compliance tracker.', is_read: true, countInBadge: false }] : []),
                 ...(budgetAlerts.length === 0 ? [{ id: 'budget-clear', title: 'Budget checks completed', message: 'No budget irregularities were detected.', is_read: true, countInBadge: false }] : []),
                 ...(overspentBudgetPrograms.length === 0 ? [{ id: 'overspending-clear', title: 'No overspending detected', message: 'All programs are within their allocated budgets.', is_read: true, countInBadge: false }] : []),
-              ] satisfies NotificationMenuItem[]}
+              ].map(item => ({ ...item, created_at: (item as any).created_at || new Date().toISOString() })) satisfies NotificationMenuItem[]}
               onNavigate={link => {
-                if (link.includes('calendar')) setActiveMenu('programs');
-                else if (link.includes('budget')) setActiveMenu('budget');
-              }}
+                const l = link.toLowerCase();
+                if (l.includes('report') || l.includes('budget') || l.includes('expense')) setActiveMenu('reports');
+                else if (l.includes('document') || l.includes('resolution')) setActiveMenu('documents');
+                else if (l.includes('program') || l.includes('calendar') || l.includes('attendance')) setActiveMenu('programs');
+                else setActiveMenu('dashboard');
+                }}
             />
 
             <UserMenu avatarUrl={currentUser?.avatar_url} 
@@ -2031,7 +2067,7 @@ return (
                                   type="button"
                                   key={program.id}
                                   onClick={() => openProgramEditor(program, 'view')}
-                                  className="w-full text-left rounded px-1.5 py-1 text-[9px] font-bold text-white bg-blue-600 hover:bg-blue-700 truncate"
+                                  className={"w-full text-left rounded px-1.5 py-1 text-[9px] font-bold text-white truncate " + getProgramCalendarColor(program.id || program.title || '')}
                                   title={`${program.title} · ${program.category}`}
                                 >
                                   {program.title}
@@ -2293,17 +2329,14 @@ return (
                     <button type="button" onClick={() => { setBudgetYear(String(new Date().getFullYear())); setBudgetProgramFilter('All Programs'); }} className="px-1 py-1.5 text-[10px] font-semibold text-slate-400 hover:text-[#091d64]">Reset</button>
                   </div>
                 </div>
-                <div className="grid w-full shrink-0 grid-cols-2 gap-2 sm:w-auto lg:w-[22rem]">
+                <div className="flex w-full shrink-0 justify-end gap-2 sm:w-auto">
                   <button type="button" onClick={() => { setTotalFormError(''); setShowSetTotal(true); }} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-amber-400 px-3 py-2.5 text-center text-xs font-bold text-amber-950 hover:bg-amber-300">
                     <Coins className="h-4 w-4 shrink-0" /> <span>Set total SK budget</span>
-                  </button>
-                  <button type="button" onClick={() => { setExpenseFormError(''); setShowRecordExpense(true); }} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-[#091d64] px-3 py-2.5 text-center text-xs font-bold text-white hover:bg-[#122878]">
-                    <Plus className="h-4 w-4 shrink-0" /> <span>Record expense</span>
                   </button>
                 </div>
               </div>
 
-              {showRecordExpense && (
+              {false && showRecordExpense && (
                 <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4">
                   <form onSubmit={handleRecordExpense} className="w-full max-w-lg space-y-4 rounded-xl bg-white p-5 shadow-2xl">
                     <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-3">
@@ -2324,19 +2357,14 @@ return (
                         <input required type="date" value={expenseForm.expenseDate} onChange={event => setExpenseForm(previous => ({ ...previous, expenseDate: event.target.value }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800" />
                       </label>
                     </div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Budget category
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Select Program (Budget)
                       <select required value={expenseForm.budgetId} onChange={event => setExpenseForm(previous => ({ ...previous, budgetId: event.target.value }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800">
-                        <option value="">Select a budget category</option>
+                        <option value="">Select a Program to charge this expense to...</option>
                         {budgetAllocations.map(allocation => <option key={allocation.id} value={allocation.id} disabled={Number(allocation.remaining_amount) <= 0}>{allocation.category} · ₱{Number(allocation.remaining_amount || 0).toLocaleString()} remaining</option>)}
                       </select>
                     </label>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Program (optional)
-                        <select value={expenseForm.programId} onChange={event => setExpenseForm(previous => ({ ...previous, programId: event.target.value }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800">
-                          <option value="">Unassigned</option>
-                          {programs.map(program => <option key={program.id} value={program.id}>{program.title}</option>)}
-                        </select>
-                      </label>
+                      
                       <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Tax treatment
                         <select value={expenseForm.taxType} onChange={event => setExpenseForm(previous => ({ ...previous, taxType: event.target.value as typeof expenseForm.taxType }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800">
                           <option value="Exempt">Tax exempt</option>
@@ -2417,6 +2445,25 @@ return (
           )}
 
           {/* 5. DOCUMENTS VIEW */}
+              {activeMenu === 'budget' && (
+                <div className='rounded-xl bg-white p-6 shadow-xs border border-slate-100'>
+                  <h3 className='text-xl font-extrabold text-[#091d64]'>Council Property Inventory (sub-ledger of Budget Management)</h3>
+                  <p className='mt-1 text-xs text-slate-400'>Assets recorded by the SK Treasurer. Read-only for Chairperson oversight.</p>
+                  {inventory.length === 0 ? <p className='py-6 text-center text-xs text-slate-400'>No assets recorded yet.</p> : (
+                    <div className='mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
+                      {inventory.map((item: any) => (
+                        <div key={item.id} className='rounded-xl border border-slate-200 bg-slate-50/60 p-4'>
+                          {item.photo_url && <img src={item.photo_url} alt={item.item_name} className='w-full h-32 object-cover rounded-lg mb-3' />}
+                          <p className='text-sm font-bold text-slate-800'>{item.item_name}</p>
+                          <p className='text-[11px] text-slate-500'>{item.category}</p>
+                          <div className='mt-2 flex items-center justify-between text-[11px]'><span>Qty: {item.quantity ?? 1}</span><span className='px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-bold'>{item.condition}</span></div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
           {activeMenu === 'documents' && (
             <div className="space-y-6 animate-in fade-in duration-200 text-left">
               <div className="bg-white p-6 rounded-xl border border-slate-200/80 shadow-xs space-y-6">
@@ -2433,13 +2480,13 @@ return (
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2.5">
-                    <button 
-                      onClick={() => setShowUploadDocModal(true)}
+              {/* HIDDEN PER MANUSCRIPT: Chairperson cannot upload documents <button 
+                      style={{ display: 'none' }} onClick={() => setShowUploadDocModal(true)}
                       className="px-4 py-2 bg-[#091d64] hover:bg-[#122878] text-white font-extrabold rounded-xl text-xs flex items-center gap-2 shadow-xs transition-all cursor-pointer"
                     >
                       <Upload className="w-4 h-4 text-amber-400" />
                       Upload Official Document
-                    </button>
+                    </button> */}
                   </div>
                 </div>
 
@@ -2587,6 +2634,39 @@ return (
                 <div className="border-b border-slate-100 pb-4 flex justify-between items-start">
                   <div>
                     <span className="px-2.5 py-0.5 bg-blue-50 text-[#091d64] font-black text-[10px] rounded uppercase tracking-wider">GOVERNANCE REPORTS - AYDP ALIGNED</span>
+                    {/* Resolution Tracking — per manuscript §4.3.1 Module 4 */}
+                    {resolutions && resolutions.length > 0 && (
+                      <div className="rounded-xl bg-white p-5 shadow-xs border border-slate-100 mb-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <div>
+                            <h3 className="text-sm font-extrabold text-[#091d64]">Resolution Tracking & Community Votes</h3>
+                            <p className="text-[11px] text-slate-400 mt-0.5">Live support/oppose tallies per §4.3.1 Module 4.</p>
+                          </div>
+                          <span className="text-[10px] font-bold text-slate-500">{resolutions.length} resolution{resolutions.length === 1 ? '' : 's'}</span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {resolutions.map((res: any) => (
+                            <div key={res.id} className="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-[10px] font-mono font-bold text-slate-500">{res.resolutionNumber || 'POLL'}</p>
+                                  <p className="text-xs font-bold text-slate-800 mt-0.5 leading-tight">{res.title || 'Untitled'}</p>
+                                </div>
+                                <span className={res.status === 'Voting Open' ? 'px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-100 text-emerald-700' : 'px-2 py-0.5 rounded-full text-[9px] font-bold bg-slate-200 text-slate-600'}>
+                                  {res.status || 'Unknown'}
+                                </span>
+                              </div>
+                              <div className="mt-2 flex items-center gap-3 text-[10px]">
+                                <span className="font-bold text-emerald-700">👍 {Number(res.votesSupport) || 0} Support</span>
+                                <span className="font-bold text-rose-600">👎 {Number(res.votesOppose) || 0} Oppose</span>
+                              </div>
+                              {res.validityPeriod && <p className="text-[9px] text-slate-400 mt-1">Valid: {res.validityPeriod}</p>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     <h3 className="font-sans font-bold text-slate-900 text-lg mt-1">Executive Reports & Decision Analytics Center</h3>
                     <p className="text-xs text-slate-500 mt-0.5">Live governance database synced across Barangay {currentBarangay?.name || 'Barangay'}.</p>
                   </div>

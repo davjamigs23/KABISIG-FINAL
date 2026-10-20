@@ -544,7 +544,9 @@ class KabisigApiClient {
   async getPrograms(tenantId?: string): Promise<any[]> {
     const url = tenantId ? `/programs?tenant_id=${tenantId}` : '/programs';
     const res = await this.request<any[]>(url, { method: 'GET' });
-    return res.success && res.data ? res.data : [];
+    if (!res.success) throw new Error(res.message || 'Programs could not be loaded.');
+    if (!Array.isArray(res.data)) throw new Error('The programs endpoint returned an invalid response.');
+    return res.data;
   }
 
   async createProgram(programData: any): Promise<{ success: boolean; data?: any; message?: string }> {
@@ -567,7 +569,9 @@ class KabisigApiClient {
 
   async getProgramRegistrations(programId: string): Promise<any[] | null> {
     const res = await this.request<any[]>(`/programs/${encodeURIComponent(programId)}/registrations`, { method: 'GET' });
-    return res.success && Array.isArray(res.data) ? res.data : null;
+    if (!res.success) throw new Error(res.message || 'Program registrations could not be loaded.');
+    if (!Array.isArray(res.data)) throw new Error('The program registrations endpoint returned an invalid response.');
+    return res.data;
   }
 
   async getPolls(): Promise<ResolutionRecord[]> {
@@ -616,7 +620,9 @@ class KabisigApiClient {
 
   async getProgramAttendance(programId: string): Promise<any[] | null> {
     const res = await this.request<any[]>(`/programs/${encodeURIComponent(programId)}/attendance`, { method: 'GET' });
-    return res.success && Array.isArray(res.data) ? res.data : null;
+    if (!res.success) throw new Error(res.message || 'Program attendance could not be loaded.');
+    if (!Array.isArray(res.data)) throw new Error('The program attendance endpoint returned an invalid response.');
+    return res.data;
   }
 
   async updateProgram(id: string, programData: any): Promise<{ success: boolean; data?: any; message?: string }> {
@@ -815,9 +821,10 @@ class KabisigApiClient {
   // --- FEEDBACK ---
   async getFeedback(): Promise<any[]> {
     const res = await this.request<any>('/feedback', { method: 'GET' });
-    if (!res.success || !res.data) return [];
+    if (!res.success || !res.data) throw new Error(res.message || 'Feedback could not be loaded.');
     if (Array.isArray(res.data)) return res.data;
-    return Array.isArray(res.data.feedbacks) ? res.data.feedbacks : [];
+    if (Array.isArray(res.data.feedbacks)) return res.data.feedbacks;
+    throw new Error('The feedback endpoint returned an invalid response.');
   }
 
   async submitFeedback(data: any): Promise<{ success: boolean; data?: any; message?: string }> {

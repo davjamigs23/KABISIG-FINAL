@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import ProfileAvatar from './ProfileAvatar';
 
 interface UserMenuProps {
@@ -10,6 +10,21 @@ interface UserMenuProps {
 }
 
 export function UserMenu({ userName, role, avatarUrl, onNavigateProfile }: UserMenuProps) {
+  const [activeAvatarUrl, setActiveAvatarUrl] = useState(avatarUrl);
+
+  useEffect(() => {
+    setActiveAvatarUrl(avatarUrl);
+  }, [avatarUrl]);
+
+  useEffect(() => {
+    const handleAvatarUpdated = (event: Event) => {
+      const updatedUrl = (event as CustomEvent<{ avatar_url?: string }>).detail?.avatar_url;
+      if (updatedUrl) setActiveAvatarUrl(updatedUrl);
+    };
+    window.addEventListener('kabisig:avatar-updated', handleAvatarUpdated);
+    return () => window.removeEventListener('kabisig:avatar-updated', handleAvatarUpdated);
+  }, []);
+
   const handleClick = () => {
     if (onNavigateProfile) {
       onNavigateProfile();
@@ -27,7 +42,7 @@ export function UserMenu({ userName, role, avatarUrl, onNavigateProfile }: UserM
       >
         <ProfileAvatar
           name={userName}
-          src={avatarUrl}
+          src={activeAvatarUrl}
           alt={userName}
           className={`w-10 h-10 rounded-full border border-slate-100 transition-all ${
             onNavigateProfile ? 'group-hover:border-[#091d64] group-hover:scale-105' : ''
@@ -45,4 +60,3 @@ export function UserMenu({ userName, role, avatarUrl, onNavigateProfile }: UserM
     </div>
   );
 }
-

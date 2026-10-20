@@ -1,7 +1,9 @@
 import express from 'express';
 import type { Request, Response } from 'express';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { supabaseAdmin, recordAuditLog } from '../services/supabase.service.js';
+import { resolveAvatarUrl } from '../services/avatar.service.js';
 import { sendSuccess, sendError } from '../utils/response.js';
 import {authenticateUser, requireActiveUser, requireRoles} from '../middleware/auth.js';
 import type { AuthRequest } from '../types/database.types.js';
@@ -490,9 +492,9 @@ router.get('/profile', authenticateUser, async (req: Request, res: Response): Pr
       youthSector: meta.youthSector || 'In-School Youth',
       guardianName: meta.guardianName || '',
       guardianContact: meta.guardianContact || '',
-      profilePic: meta.profilePic || '',
+      profilePic: await resolveAvatarUrl(dbUser?.avatar_url) || meta.profilePic || '',
       qrCode: resident.qr_code_url || meta.qrCode || resident.digital_youth_id || '',
-      status: dbUser?.status === 'active' ? 'Approved' : (dbUser?.status === 'rejected' ? 'Rejected' : 'Pending'),
+      status: dbUser?.status === 'active' ? 'Approved' : (dbUser?.status === 'rejected' ? 'Rejected' : dbUser?.status === 'suspended' ? 'suspended' : 'Pending'),
       barangayId: dbUser?.tenant_id || meta.barangayId || '',
       dateRegistered: dbUser?.created_at?.split('T')[0] || meta.dateRegistered || new Date().toISOString().split('T')[0],
       registeredRole: 'Youth Constituent',
@@ -508,7 +510,12 @@ router.get('/profile', authenticateUser, async (req: Request, res: Response): Pr
  * GET /api/users/youth-profiles
  * Returns all Katipunan ng Kabataan constituents for a barangay.
  */
-router.get('/youth-profiles', authenticateUser, async (req: Request, res: Response): Promise<void> => {
+router.get(
+  '/youth-profiles',
+  authenticateUser,
+  requireActiveUser,
+  requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'),
+  async (req: Request, res: Response): Promise<void> => {
   try {
     const user = (req as AuthRequest).user!;
     const isSuperAdmin = user.role === 'SUPER_ADMIN';
@@ -583,7 +590,7 @@ router.get('/youth-profiles', authenticateUser, async (req: Request, res: Respon
           youthSector: meta.youthSector || 'In-School Youth',
           guardianName: meta.guardianName || '',
           guardianContact: meta.guardianContact || '',
-          profilePic: meta.profilePic || '',
+          profilePic: await resolveAvatarUrl(u.avatar_url) || meta.profilePic || '',
           qrCode: resident.qr_code_url || meta.qrCode || resident.digital_youth_id || '',
           status: u.status === 'active' ? 'Approved' : (u.status === 'rejected' ? 'Rejected' : u.status === 'suspended' ? 'suspended' : 'Pending'),
           suspension_reason: (u as any).suspension_reason || null,
@@ -598,7 +605,8 @@ router.get('/youth-profiles', authenticateUser, async (req: Request, res: Respon
   } catch (err: any) {
     sendError(res, err.message || 'Error fetching youth profiles', 500);
   }
-});
+  }
+);
 
 /**
  * PUT /api/users/:id/profile
@@ -1006,25 +1014,58 @@ router.get(
 router.post('/upload-avatar', authenticateUser, async (req: Request, res: Response): Promise<void> => {
   try {
     const { base64, mime_type } = req.body;
-    if (!base64 || !mime_type) { sendError(res, 'Missing image data.', 400); return; }
+    const normalizedMimeType = typeof mime_type === 'string' ? mime_type.toLowerCase() : '';
+    const extensionByMimeType: Record<string, string> = {
+      'image/jpeg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp',
+    };
+    const extension = extensionByMimeType[normalizedMimeType];
+    if (typeof base64 !== 'string' || !base64 || !extension) {
+      sendError(res, 'Upload a JPEG, PNG, or WebP image.', 400);
+      return;
+    }
     const user = (req as AuthRequest).user!;
-    
-    const buffer = Buffer.from(base64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
-    const fileExt = mime_type.split('/')[1] || 'jpg';
-    const fileName = user.id + '-' + Date.now() + '.' + fileExt;
+    const imageData = base64.replace(/^data:image\/(?:jpeg|png|webp);base64,/i, '');
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(imageData)) {
+      sendError(res, 'The uploaded image data is invalid.', 400);
+      return;
+    }
+    const buffer = Buffer.from(imageData, 'base64');
+    if (buffer.length === 0 || buffer.length > 5 * 1024 * 1024) {
+      sendError(res, 'The image must be smaller than 5 MB.', 413);
+      return;
+    }
+    const hasValidSignature =
+      (normalizedMimeType === 'image/jpeg' && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) ||
+      (normalizedMimeType === 'image/png' && buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) ||
+      (normalizedMimeType === 'image/webp' && buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP');
+    if (!hasValidSignature) {
+      sendError(res, 'The image contents do not match the selected file type.', 400);
+      return;
+    }
 
+    const fileName = `${user.id}/${randomUUID()}.${extension}`;
     const { error: uploadErr } = await supabaseAdmin.storage
       .from('avatars')
-      .upload(fileName, buffer, { contentType: mime_type, upsert: true });
+      .upload(fileName, buffer, { contentType: normalizedMimeType, upsert: false });
 
     if (uploadErr) { sendError(res, 'Failed to upload avatar: ' + uploadErr.message, 500); return; }
 
-    const { data: publicUrlData } = supabaseAdmin.storage.from('avatars').getPublicUrl(fileName);
-    const avatarUrl = publicUrlData.publicUrl;
+    const { data: updatedUser, error: dbErr } = await supabaseAdmin
+      .from('users')
+      .update({ avatar_url: fileName })
+      .eq('id', user.id)
+      .select('id')
+      .maybeSingle();
+    if (dbErr || !updatedUser) {
+      const { error: cleanupError } = await supabaseAdmin.storage.from('avatars').remove([fileName]);
+      if (cleanupError) console.error('Failed to remove an avatar after its profile update failed:', cleanupError);
+      sendError(res, 'Failed to save avatar URL: ' + (dbErr?.message || 'User profile was not updated.'), 500);
+      return;
+    }
 
-    const { error: dbErr } = await supabaseAdmin.from('users').update({ avatar_url: avatarUrl }).eq('id', user.id);
-    if (dbErr) { sendError(res, 'Failed to save avatar URL: ' + dbErr.message, 500); return; }
-
+    const avatarUrl = await resolveAvatarUrl(fileName);
     sendSuccess(res, { avatar_url: avatarUrl }, 'Avatar updated successfully.');
   } catch (err: any) {
     sendError(res, err.message || 'Upload failed.', 500);
@@ -1051,6 +1092,24 @@ router.patch(
       const updates: any = { status, updated_at: new Date().toISOString() };
       if (status === 'active') {
         updates.suspension_reason = null; // Clear the reason upon reactivation
+      }
+
+      // C1: Cross-tenant guard - Barangay Admins may only modify users in own barangay
+      {
+        const callerRole = (req as any).user?.role;
+        const callerTenant = (req as any).user?.tenant_id;
+        if (callerRole !== 'SUPER_ADMIN') {
+          const { data: targetRow } = await supabaseAdmin
+            .from('users')
+            .select('tenant_id')
+            .eq('id', targetId)
+            .maybeSingle();
+          if (!targetRow) { sendError(res, 'User not found.', 404); return; }
+          if (targetRow.tenant_id !== callerTenant) {
+            sendError(res, 'Forbidden: cannot modify users outside your barangay.', 403);
+            return;
+          }
+        }
       }
 
       const { error } = await supabaseAdmin.from('users').update(updates).eq('id', targetId);
@@ -1095,8 +1154,56 @@ router.patch('/:id/status', authenticateUser, requireActiveUser, requireRoles('B
     const { status } = req.body;
     const updates: any = { status, updated_at: new Date().toISOString() };
     if (status === 'active') updates.suspension_reason = null;
+      // C1: Cross-tenant guard - Barangay Admins may only modify users in own barangay
+      {
+        const callerRole = (req as any).user?.role;
+        const callerTenant = (req as any).user?.tenant_id;
+        if (callerRole !== 'SUPER_ADMIN') {
+          const targetId = String(req.params.id);
+          const { data: targetRow } = await supabaseAdmin
+            .from('users')
+            .select('tenant_id')
+            .eq('id', targetId)
+            .maybeSingle();
+          if (!targetRow) { sendError(res, 'User not found.', 404); return; }
+          if (targetRow.tenant_id !== callerTenant) {
+            sendError(res, 'Forbidden: cannot modify users outside your barangay.', 403);
+            return;
+          }
+        }
+      }
+
     const { error } = await supabaseAdmin.from('users').update(updates).eq('id', String(req.params.id));
     if (error) { sendError(res, error.message, 500); return; }
     sendSuccess(res, { id: req.params.id, status }, 'Status updated.');
   } catch (err: any) { sendError(res, err.message, 500); }
 });
+
+// Helper to send emails via Resend API (or any standard HTTP email provider)
+async function sendEmail(to: string, subject: string, html: string) {
+  try {
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'api-key': process.env.BREVO_API_KEY || '',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        sender: {
+          name: 'KABISIG',
+          email: process.env.BREVO_SENDER_EMAIL || 'noreply@kabisig.com',
+        },
+        to: [{ email: to }],
+        subject: subject,
+        htmlContent: html,
+      }),
+    });
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      console.warn('Brevo email failed:', errorData);
+    }
+  } catch (err) {
+    console.warn('Email delivery failed (network):', err);
+  }
+}

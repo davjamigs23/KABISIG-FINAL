@@ -7,7 +7,7 @@ export type RoleName =
   | 'YOUTH_CONSTITUENT'
   | 'VIEWER';
 
-export type UserStatus = 'pending' | 'active' | 'rejected';
+export type UserStatus = 'pending' | 'active' | 'suspended' | 'rejected';
 export type SexType = 'Male' | 'Female' | 'Other' | 'Prefer not to say';
 export type EducationalStatus =
   | 'Elementary'
@@ -57,6 +57,7 @@ export interface User {
   full_name: string;
   email: string;
   phone: string | null;
+  avatar_url: string | null;
   status: UserStatus;
   approved_by: string | null;
   created_at?: string;

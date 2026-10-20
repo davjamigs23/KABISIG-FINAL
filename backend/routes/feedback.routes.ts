@@ -31,11 +31,25 @@ const NEGATIVE_LEXICON = new Set([
 
 const NEGATORS = new Set(['not', 'no', 'never', 'hindi', 'di', 'wala', 'dae', 'bako']);
 
+const PROGRAM_REQUEST_KEYWORDS: Record<string, string[]> = {
+  'Scholarship': ['scholarship', 'scholar', 'iskolar', 'tuition', 'educational assistance', 'school fees', 'academic grant', 'financial aid'],
+  'Sports': ['sports', 'basketball', 'volleyball', 'soccer', 'football', 'athlete', 'tournament', 'league', 'jersey', 'sports fest', 'sportsfest'],
+  'Employment': ['employment', 'trabaho', 'job', 'hanapbuhay', 'work', 'career', 'internship', 'ojt', 'skills training', 'vocational'],
+  'Livelihood': ['livelihood', 'kabuhayan', 'negosyo', 'business', 'entrepreneur', 'pangkabuhayan', 'sari-sari', 'tindahan'],
+  'Mental Health': ['mental health', 'mental', 'depression', 'anxiety', 'stress', 'counseling', 'psychological', 'wellness', 'kalusugang pag-iisip', 'suicide'],
+  'Environment': ['environment', 'cleanup', 'clean-up', 'tree planting', 'pollution', 'basura', 'waste', 'climate', 'green'],
+  'Health': ['health', 'medical', 'dental', 'checkup', 'check-up', 'vaccine', 'medicine', 'nutrition', 'feeding', 'hospital'],
+  'Education': ['education', 'school', 'tutorial', 'library', 'book', 'classroom', 'teacher', 'student'],
+  'Infrastructure': ['sports complex', 'covered court', 'barangay hall', 'wifi', 'internet', 'facility', 'building'],
+  'Safety': ['safety', 'security', 'crime', 'drug', 'curfew', 'police', 'tanod', 'violence', 'bullying']
+};
+
 export function analyzeSentiment(text: string): {
   sentiment: FeedbackSentiment;
   score: number;
   positiveMatches: string[];
   negativeMatches: string[];
+  programRequests: string[];
 } {
   const words = text
     .toLowerCase()
@@ -46,6 +60,20 @@ export function analyzeSentiment(text: string): {
   let score = 0;
   const positiveMatches: string[] = [];
   const negativeMatches: string[] = [];
+  const programRequests: string[] = [];
+
+  // Program-request detection runs on raw lowercased text so multi-word phrases work
+  const lowerText = text.toLowerCase();
+  for (const [category, keywords] of Object.entries(PROGRAM_REQUEST_KEYWORDS)) {
+    for (const keyword of keywords) {
+      const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const pattern = new RegExp('\\b' + escaped + '\\b', 'i');
+      if (pattern.test(lowerText)) {
+        programRequests.push(category);
+        break;
+      }
+    }
+  }
 
   for (let i = 0; i < words.length; i++) {
     const word = words[i]!;
@@ -75,7 +103,7 @@ export function analyzeSentiment(text: string): {
   if (score > 0) sentiment = 'positive';
   else if (score < 0) sentiment = 'negative';
 
-  return { sentiment, score, positiveMatches, negativeMatches };
+  return { sentiment, score, positiveMatches, negativeMatches, programRequests };
 }
 
 const SubmitFeedbackSchema = z.object({
@@ -148,7 +176,7 @@ router.post(
     .insert([
       {
         tenant_id: user.tenant_id,
-        user_id: is_anonymous ? null : user.id,
+        user_id: user.id,  // always store submitter; anonymity enforced in display layer
         is_anonymous,
         subject,
         message,
@@ -174,6 +202,7 @@ router.post(
       score: sentimentResult.score,
       positive_keywords: sentimentResult.positiveMatches,
       negative_keywords: sentimentResult.negativeMatches,
+      program_requests: sentimentResult.programRequests,
     });
 
   if (analysisError) {
@@ -192,6 +221,7 @@ router.post(
         score: sentimentResult.score,
         positive_keywords: sentimentResult.positiveMatches,
         negative_keywords: sentimentResult.negativeMatches,
+        program_requests: sentimentResult.programRequests,
       },
     },
     'Your voice has been heard! Feedback submitted to Boses ng Kabataan.'
@@ -218,8 +248,7 @@ router.get(
     }
     query = query
       .eq('tenant_id', user.tenant_id)
-      .eq('user_id', user.id)
-      .eq('is_anonymous', false);
+      .eq('user_id', user.id);
   } else if (user.role !== 'SUPER_ADMIN') {
     if (!user.tenant_id) {
       sendError(res, 'Your account is not linked to a barangay.', 403);

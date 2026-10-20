@@ -4,6 +4,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import QRCode from 'qrcode';
 import { supabase, supabaseAdmin, recordAuditLog, canAccessTenant } from '../services/supabase.service.js';
+import { resolveAvatarUrl } from '../services/avatar.service.js';
 import { sendSuccess, sendCreated, sendError } from '../utils/response.js';
 import { authenticateUser, requireRoles } from '../middleware/auth.js';
 import type { AuthRequest } from '../types/database.types.js';
@@ -293,6 +294,32 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
     sendError(res, 'Specified Barangay does not exist in Naga City registry.', 404);
     return;
   }
+
+    // NEW: Manuscript rule - no youth self-registration without an active Chairperson.
+    // Without a Chairperson, no one can review/approve the pending application.
+    const { data: activeChair, error: chairLookupErr } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('role_id', 2)
+      .eq('tenant_id', barangay.id)
+      .eq('status', 'active')
+      .limit(1)
+      .maybeSingle();
+
+    if (chairLookupErr) {
+      sendError(res, 'Failed to verify barangay chairperson: ' + chairLookupErr.message, 500);
+      return;
+    }
+
+    if (!activeChair) {
+      sendError(
+        res,
+        'Registration unavailable: Barangay ' + barangay.name + ' does not yet have an active SK Chairperson. Registration will open once the SK Federation President assigns one.',
+        409,
+        { code: 'BARANGAY_NO_CHAIRPERSON', barangay_id: barangay.id }
+      );
+      return;
+    }
 
   const normalizedEmail = email.trim().toLowerCase();
   const { data: existingUser, error: existingUserError } = await supabaseAdmin
@@ -593,6 +620,15 @@ router.post(
       sendError(res, `Failed to assign Digital Youth ID: ${updateProfileError.message}`, 500);
       return;
     }
+    
+    // --- SEND APPROVAL EMAIL ---
+    const { data: appUser } = await supabaseAdmin.from('users').select('email').eq('id', targetUser.id).single();
+    if (appUser?.email) {
+      const htmlMsg = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;"><div style="background-color: #091d64; padding: 24px; text-align: center;"><h1 style="color: #ffffff; margin: 0; font-size: 24px;">KABISIG</h1><p style="color: #93c5fd; margin: 4px 0 0 0; font-size: 14px;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p></div><div style="padding: 32px; background-color: #ffffff;"><h2 style="color: #10b981; margin-top: 0;">Account Approved!</h2><p style="color: #334155; font-size: 16px; line-height: 1.6;">Hello,</p><p style="color: #334155; font-size: 16px; line-height: 1.6;">We are pleased to inform you that your KABISIG Youth Constituent account has been reviewed and <strong>APPROVED</strong> by your SK Chairperson.</p><p style="color: #334155; font-size: 16px; line-height: 1.6;">You can now log in to access your Digital Youth ID, register for programs, and participate in community polls.</p><div style="text-align: center; margin: 32px 0;"><a href="http://localhost:3000" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Log In to KABISIG</a></div></div><div style="background-color: #f8fafc; padding: 16px; text-align: center; border-top: 1px solid #e2e8f0;"><p style="color: #94a3b8; font-size: 12px; margin: 0;">&copy; 2026 KABISIG. All rights reserved.</p></div></div>';
+      await sendEmail(appUser.email, 'KABISIG Account Approved', htmlMsg);
+    }
+    // ----------------------------
+    
 
     await recordAuditLog({
       tenantId: targetUser.tenant_id,
@@ -668,6 +704,13 @@ router.post(
       sendError(res, `Failed to reject user: ${updateError?.message || 'No user was updated.'}`, 500);
       return;
     }
+    
+    // Send Rejection Email
+    if (rejectedUser.email) {
+      const htmlMsg = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;"><div style="background-color: #091d64; padding: 24px; text-align: center;"><h1 style="color: #ffffff; margin: 0; font-size: 24px;">KABISIG</h1><p style="color: #93c5fd; margin: 4px 0 0 0; font-size: 14px;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p></div><div style="padding: 32px; background-color: #ffffff;"><h2 style="color: #ef4444; margin-top: 0;">Account Update</h2><p style="color: #334155; font-size: 16px; line-height: 1.6;">Hello,</p><p style="color: #334155; font-size: 16px; line-height: 1.6;">We regret to inform you that your KABISIG Youth Constituent account application has been <strong>REJECTED</strong> by your SK Chairperson.</p><p style="color: #334155; font-size: 16px; line-height: 1.6;">This may be due to incomplete information or residency verification issues. Please contact your SK Chairperson directly to appeal or clarify your application.</p></div><div style="background-color: #f8fafc; padding: 16px; text-align: center; border-top: 1px solid #e2e8f0;"><p style="color: #94a3b8; font-size: 12px; margin: 0;">&copy; 2026 KABISIG. All rights reserved.</p></div></div>';
+      await sendEmail(rejectedUser.email, 'KABISIG Account Rejected', htmlMsg);
+    }
+    
 
     await recordAuditLog({
       tenantId: targetUser.tenant_id,
@@ -1306,7 +1349,8 @@ router.get('/me', authenticateUser, async (req: Request, res: Response): Promise
     userMeta.official_role = officialRole;
   }
 
-  sendSuccess(res, { ...(profile || user), user_metadata: userMeta }, 'User profile retrieved.');
+  const avatarUrl = await resolveAvatarUrl(profile?.avatar_url);
+  sendSuccess(res, { ...(profile || user), avatar_url: avatarUrl, user_metadata: userMeta }, 'User profile retrieved.');
 });
 
 // POST /api/auth/logout
@@ -1319,3 +1363,40 @@ router.post('/logout', async (req: Request, res: Response): Promise<void> => {
 });
 
 export default router;
+
+// Helper to send emails via Brevo API
+async function sendEmail(to: string, subject: string, html: string) {
+  try {
+    const apiKey = process.env.BREVO_API_KEY;
+    const senderEmail = process.env.BREVO_SENDER_EMAIL;
+
+    if (!apiKey || !senderEmail) {
+      console.warn("Brevo Config Error: BREVO_API_KEY or BREVO_SENDER_EMAIL is missing in .env.local");
+      return;
+    }
+
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'api-key': apiKey,
+        'content-type': 'application/json',
+        'accept': 'application/json'
+      },
+      body: JSON.stringify({
+        sender: { name: 'KABISIG', email: senderEmail },
+        to: [{ email: to }],
+        subject: subject,
+        htmlContent: html
+      })
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.warn(`Brevo API Error (${res.status}):`, errorText);
+    } else {
+      console.log(`Email successfully sent to ${to}`);
+    }
+  } catch (err) {
+    console.error("Network Error during email send:", err);
+  }
+}

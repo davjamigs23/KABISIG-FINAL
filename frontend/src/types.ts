@@ -175,7 +175,8 @@ export interface FeedbackRecord {
   title: string;
   content: string;
   rating: number; // 1 to 5
-  anonymous: boolean;
+  sentiment?: 'positive' | 'neutral' | 'negative';
+  anonymous?: boolean;
   status: 'Pending' | 'Reviewed' | 'Resolved';
     suspension_reason?: string;
   response?: string;

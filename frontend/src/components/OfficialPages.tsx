@@ -107,6 +107,7 @@ interface OfficialPagesProps {
   registrations: Registration[];
   documents: DocumentRecord[];
   feedback: FeedbackRecord[];
+  feedbackError?: string | null;
   resolutions: ResolutionRecord[];
     pollsError?: string | null;
   expenses: ExpenseRecord[];
@@ -131,6 +132,7 @@ export default function OfficialPages({
   registrations,
   documents,
   feedback,
+  feedbackError = null,
   resolutions,
     pollsError = null,
   expenses,
@@ -272,6 +274,66 @@ export default function OfficialPages({
   const [nagaBarangaySearch, setNagaBarangaySearch] = useState<string>('');
   const [selectedProgramForReport, setSelectedProgramForReport] = useState<string>('');
   const [selectedZoneForReport, setSelectedZoneForReport] = useState<string>('All');
+  const [reportRegistrations, setReportRegistrations] = useState<any[]>([]);
+  const [reportAttendance, setReportAttendance] = useState<any[]>([]);
+  const [reportAttendanceLoading, setReportAttendanceLoading] = useState(false);
+  const [reportAttendanceError, setReportAttendanceError] = useState<string | null>(null);
+  const reportProgramId = programs.some(program => program.id === selectedProgramForReport)
+    ? selectedProgramForReport
+    : programs[0]?.id || '';
+
+  useEffect(() => {
+    if (!reportProgramId) {
+      setReportRegistrations([]);
+      setReportAttendance([]);
+      setReportAttendanceError(null);
+      setReportAttendanceLoading(false);
+      return;
+    }
+    if (reportModuleCategory !== 'attendance') return;
+
+    let isMounted = true;
+    const refreshReportParticipants = () => {
+      setReportAttendanceLoading(true);
+      setReportAttendanceError(null);
+      Promise.all([
+        kabisigApi.getProgramRegistrations(reportProgramId),
+        kabisigApi.getProgramAttendance(reportProgramId),
+      ]).then(([registrations, attendance]) => {
+        if (!isMounted) return;
+        setReportRegistrations(registrations || []);
+        setReportAttendance(attendance || []);
+      }).catch((error: unknown) => {
+        if (!isMounted) return;
+        setReportRegistrations([]);
+        setReportAttendance([]);
+        setReportAttendanceError(error instanceof Error ? error.message : 'Program participants could not be loaded.');
+      }).finally(() => {
+        if (isMounted) setReportAttendanceLoading(false);
+      });
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') refreshReportParticipants();
+    };
+    refreshReportParticipants();
+    const intervalId = window.setInterval(refreshReportParticipants, 30000);
+    window.addEventListener('focus', refreshReportParticipants);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshReportParticipants);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [reportProgramId, reportModuleCategory]);
+
+  const getStoredFeedbackSentiment = (item: FeedbackRecord): 'Positive' | 'Neutral' | 'Negative' => {
+    if (item.sentiment) {
+      return item.sentiment === 'positive' ? 'Positive' : item.sentiment === 'negative' ? 'Negative' : 'Neutral';
+    }
+    return analyzeFeedbackSentiment(item.content, item.type);
+  };
 
   // Sync documents prop to localDocs
   useEffect(() => {
@@ -445,7 +507,7 @@ export default function OfficialPages({
   });
   const [isSavingResolution, setIsSavingResolution] = useState(false);
   const [invForm, setInvForm] = useState({
-    item: '', category: 'Sports Equipment', quantity: 0, condition: 'Good', cost: 0, location: ''
+    item: '', category: 'Sports Equipment', quantity: 0, condition: 'Good', cost: 0, location: '', photo_url: ''
   });
 
   // Rejection Reason state for Secretary validations
@@ -967,6 +1029,7 @@ export default function OfficialPages({
         unit: 'pcs',
         unit_cost: invForm.cost,
         location: invForm.location,
+        photo_url: invForm.photo_url,
       });
       if (!res.success || !res.data) throw new Error(res.message || 'Could not save asset.');
       const row = res.data;
@@ -2838,12 +2901,12 @@ export default function OfficialPages({
 
                     {/* Registered Youth Participant List (Quick Tap) */}
                     <div className="p-4 rounded-xl border border-slate-200 bg-white shadow-sm space-y-3">
-                      <div className="flex justify-between items-center">
+            {/* <div className="flex justify-between items-center">
                         <span className="text-xs font-bold text-slate-800">Registered Participants</span>
                         <span className="text-[10px] font-bold text-slate-400">
                           {selectedProgramRegistrations.length} Registered
                         </span>
-                      </div>
+                      </div> */}
 
                       <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                         {selectedProgramRegistrations.map(r => {
@@ -2953,6 +3016,11 @@ export default function OfficialPages({
               {/* VIEW 1: Boses ng Kabataan Desk */}
               {feedbackSubTab === 'boses' && (
                 <div className="space-y-6">
+                  {feedbackError && (
+                    <div role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-700">
+                      Feedback could not be synchronized: {feedbackError}
+                    </div>
+                  )}
                   {/* Summary Metric Cards */}
                   <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                     <div className="p-4 bg-white rounded-xl border border-slate-100 shadow-2xs">
@@ -2998,8 +3066,8 @@ export default function OfficialPages({
                       <p className="text-[11px] text-slate-500">Automated sentiment categorization using rule-based keyword matching.</p>
                       
                       {(() => {
-                        const positiveCount = localFeedback.filter(f => analyzeFeedbackSentiment(f.content, f.type) === 'Positive').length;
-                        const negativeCount = localFeedback.filter(f => analyzeFeedbackSentiment(f.content, f.type) === 'Negative').length;
+                        const positiveCount = localFeedback.filter(f => getStoredFeedbackSentiment(f) === 'Positive').length;
+                        const negativeCount = localFeedback.filter(f => getStoredFeedbackSentiment(f) === 'Negative').length;
                         const neutralCount = localFeedback.length - positiveCount - negativeCount;
                         const total = localFeedback.length || 1;
                         return (
@@ -3134,7 +3202,7 @@ export default function OfficialPages({
 
                               {/* Rule-Based Sentiment Classification Badge */}
                               {(() => {
-                                const sentiment = analyzeFeedbackSentiment(fb.content, fb.type);
+                                const sentiment = getStoredFeedbackSentiment(fb);
                                 return (
                                   <span className={`px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 ${
                                     sentiment === 'Positive' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
@@ -3838,19 +3906,16 @@ export default function OfficialPages({
                         <div>
                           <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Select Active Youth Program</label>
                           <select 
-                            value={selectedProgramForReport || (programs[0]?.id || '')} 
+                            value={reportProgramId}
                             onChange={(e) => setSelectedProgramForReport(e.target.value)}
                             className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none min-w-[300px]"
+                            disabled={programs.length === 0}
                           >
-                            {programs.filter(p => !p.budgetAllocation).map(p => (
-                              <option key={p.id} value={p.id}>{p.title} ({p.startDate})</option>
-                            ))}
+                            <option value="">-- Select Program --</option>
+                            {programs.map((program) => <option key={program.id} value={program.id}>{program.title}</option>)}
                           </select>
                         </div>
-                        <div className="flex gap-4 text-xs font-bold text-slate-700">
-                          <div><span className="text-slate-400 block text-[10px]">Registered:</span> {programs.find(p => p.id === (selectedProgramForReport || programs[0]?.id))?.registeredCount || 0} Participants</div>
-                          <div><span className="text-slate-400 block text-[10px]">Checked-In Present:</span> {localAttendance.filter(a => a.programId === (selectedProgramForReport || programs[0]?.id)).length} Verified</div>
-                        </div>
+
                       </div>
 
                       <div className="overflow-x-auto border border-slate-100 rounded-xl">
@@ -3859,28 +3924,42 @@ export default function OfficialPages({
                             <tr>
                               <th className="px-5 py-3">#</th>
                               <th className="px-5 py-3">Participant Name</th>
-                              <th className="px-5 py-3 text-center">Status</th>
+                              <th className="px-5 py-3 text-center">Participation</th>
                               <th className="px-5 py-3">Check-In Timestamp</th>
                               <th className="px-5 py-3 text-center">Digital Seal</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 font-medium">
-                            {localAttendance.filter(a => a.programId === (selectedProgramForReport || programs[0]?.id)).map((att, idx) => (
-                              <tr key={att.id} className="hover:bg-slate-50">
+                            {reportAttendanceLoading ? (
+                              <tr><td colSpan={5} className="text-center py-6 text-slate-400 font-bold">Loading registered youth...</td></tr>
+                            ) : reportAttendanceError ? (
+                              <tr><td colSpan={5} className="text-center py-6 text-rose-600 font-bold">{reportAttendanceError}</td></tr>
+                            ) : reportRegistrations.map((registration, idx) => {
+                              const user = Array.isArray(registration.users) ? registration.users[0] : registration.users;
+                              const checkedIn = reportAttendance.find(attendance => attendance.user_id === registration.user_id);
+                              const isPresent = Boolean(checkedIn) || registration.status === 'attended';
+                              const statusLabel = isPresent
+                                ? 'Present'
+                                : registration.status === 'waitlisted'
+                                  ? 'Waitlisted'
+                                  : 'Registered';
+                              return (
+                              <tr key={registration.id} className="hover:bg-slate-50">
                                 <td className="px-5 py-3 font-mono font-bold text-slate-400">{idx + 1}</td>
-                                <td className="px-5 py-3 font-bold text-slate-800">{att.participantName}</td>
+                                <td className="px-5 py-3 font-bold text-slate-800">{user?.full_name || 'Youth Constituent'}</td>
                                 <td className="px-5 py-3 text-center">
-                                  <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 font-extrabold text-[9px] rounded uppercase">{att.status}</span>
+                                  <span className={`px-2 py-0.5 font-extrabold text-[9px] rounded uppercase ${isPresent ? 'bg-emerald-50 text-emerald-700' : statusLabel === 'Waitlisted' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>{statusLabel}</span>
                                 </td>
-                                <td className="px-5 py-3 font-mono text-[11px] text-slate-500">{new Date(att.checkInTime).toLocaleString()}</td>
+                                <td className="px-5 py-3 font-mono text-[11px] text-slate-500">{checkedIn?.checked_in_at ? new Date(checkedIn.checked_in_at).toLocaleString() : 'Not checked in'}</td>
                                 <td className="px-5 py-3 text-center">
                                   <span className="text-[10px] text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded">Verified KK Member</span>
                                 </td>
                               </tr>
-                            ))}
-                            {localAttendance.filter(a => a.programId === (selectedProgramForReport || programs[0]?.id)).length === 0 && (
+                              );
+                            })}
+                            {!reportAttendanceLoading && !reportAttendanceError && reportRegistrations.length === 0 && (
                               <tr>
-                                <td colSpan={5} className="text-center py-6 text-slate-400 font-bold">No checked-in participants recorded for this selected program yet.</td>
+                                <td colSpan={5} className="text-center py-6 text-slate-400 font-bold">No youth registrations are recorded for this program yet.</td>
                               </tr>
                             )}
                           </tbody>
@@ -3901,13 +3980,10 @@ export default function OfficialPages({
                             className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none"
                           >
                             <option value="All">All Zones</option>
-                            <option value="Zone 1">Zone 1</option>
-                            <option value="Zone 2">Zone 2</option>
-                            <option value="Zone 3">Zone 3</option>
-                            <option value="Zone 4">Zone 4</option>
+                            {Array.from(new Set(youthProfiles.map(y => y.zone).filter(Boolean))).sort().map(z => <option key={z} value={z}>{z}</option>)}
                           </select>
                         </div>
-                        <span className="text-xs font-bold text-[#091d64]">Total Matching Members: {localYouthProfiles.filter(y => selectedZoneForReport === 'All' ? true : y.zone === selectedZoneForReport).length}</span>
+
                       </div>
 
                       <div className="overflow-x-auto border border-slate-100 rounded-xl">
@@ -3933,7 +4009,7 @@ export default function OfficialPages({
                                   <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${y.scholarStatus === 'Scholar' ? 'bg-indigo-50 text-[#091d64]' : 'bg-slate-100 text-slate-500'}`}>{y.scholarStatus}</span>
                                 </td>
                                 <td className="px-5 py-3">
-                                  <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${y.status === 'Approved' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{y.status === 'Approved' ? 'Verified Constituent' : 'Pending Verification'}</span>
+                                  <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${y.status === 'Approved' ? 'bg-emerald-50 text-emerald-700' : y.status?.toLowerCase() === 'suspended' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'}`}>{y.status === 'Approved' ? 'Verified Constituent' : (y.status?.toLowerCase() === 'suspended' ? 'Suspended' : 'Pending Verification')}</span>
                                 </td>
                               </tr>
                             ))}
@@ -4304,12 +4380,26 @@ export default function OfficialPages({
                   className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 focus:outline-none focus:ring-1 focus:ring-[#091d64]"
                 >
                   <option value="All">All Demographic Filters</option>
-                  <option value="Zone 1">Zone 1</option>
-                  <option value="Zone 2">Zone 2</option>
-                  <option value="Zone 3">Zone 3</option>
-                  <option value="Zone 4">Zone 4</option>
-                  <option value="Scholar">Scholar Grantees</option>
-                  <option value="Non-Scholar">Non-Scholar</option>
+                  <optgroup label="Scholarship">
+                    <option value="Scholar">Scholar</option>
+                    <option value="Non-Scholar">Non-Scholar</option>
+                    {Array.from(new Set(youthProfiles.map((y: any) => y.scholarStatus).filter(Boolean))).sort().map((s: any) => <option key={s} value={s}>{s}</option>)}
+                  </optgroup>
+                  <optgroup label="Educational Level">
+                    <option value="College">College</option>
+                    <option value="Senior High">Senior High</option>
+                    <option value="Junior High">Junior High</option>
+                    {Array.from(new Set(youthProfiles.map((y: any) => y.educationalLevel).filter(Boolean))).sort().map((z: any) => <option key={z} value={z}>{z}</option>)}
+                  </optgroup>
+                  <optgroup label="Employment Status">
+                    <option value="Employed">Employed</option>
+                    <option value="Unemployed">Unemployed</option>
+                    <option value="Out-of-School Youth">Out-of-School Youth</option>
+                    {Array.from(new Set(youthProfiles.map((y: any) => y.employmentStatus).filter(Boolean))).sort().map((z: any) => <option key={z} value={z}>{z}</option>)}
+                  </optgroup>
+                  <optgroup label="Out-of-School / OSY">
+                    {Array.from(new Set(youthProfiles.map((y: any) => y.youthSector).filter(Boolean))).sort().map((z: any) => <option key={z} value={z}>{z}</option>)}
+                  </optgroup>
                 </select>
               </div>
 
@@ -4791,7 +4881,7 @@ export default function OfficialPages({
                   <p className="text-xs text-slate-400 mt-1">Track physical goods, condition statuses, and storage locations.</p>
                 </div>
                 <button 
-                  onClick={() => { setInvForm({ item: '', category: 'Sports Equipment', quantity: 10, condition: 'Good', cost: 1200, location: 'SK Office' }); setShowInvModal(true); }}
+                  onClick={() => { setInvForm({ item: '', category: 'Sports Equipment', quantity: 10, condition: 'Good', cost: 1200, location: 'SK Office', photo_url: '' }); setShowInvModal(true); }}
                   className="px-4 py-2 bg-[#091d64] hover:bg-opacity-95 text-white font-bold rounded-lg transition-all text-xs flex items-center gap-1.5 cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
@@ -5290,6 +5380,18 @@ export default function OfficialPages({
                 </div>
               </div>
               <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Asset Photo (Optional)</label>
+                <input type="file" accept="image/*" onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => setInvForm({...invForm, photo_url: reader.result as string});
+                    reader.readAsDataURL(file);
+                  }
+                }} className="w-full text-xs" />
+                {invForm.photo_url && <img src={invForm.photo_url} className="mt-2 h-20 w-20 object-cover rounded border" alt="Preview" />}
+              </div>
+              <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Storage Location venue *</label>
                 <input type="text" value={invForm.location} onChange={(e)=>setInvForm({...invForm, location: e.target.value})} className="w-full p-2 border rounded text-xs" required />
               </div>
@@ -5655,10 +5757,7 @@ export default function OfficialPages({
                     onChange={(e) => setYouthEditForm({ ...youthEditForm, zone: e.target.value })} 
                     className="w-full p-2 border border-slate-200 rounded text-xs"
                   >
-                    <option value="Zone 1">Zone 1</option>
-                    <option value="Zone 2">Zone 2</option>
-                    <option value="Zone 3">Zone 3</option>
-                    <option value="Zone 4">Zone 4</option>
+                    {Array.from(new Set(youthProfiles.map(y => y.zone).filter(Boolean))).sort().map(z => <option key={z} value={z}>{z}</option>)}
                   </select>
                 </div>
               </div>
@@ -5783,9 +5882,9 @@ export default function OfficialPages({
               <div className="p-3 bg-slate-50 border border-slate-100 rounded-lg flex justify-between items-center text-[11px]">
                 <span className="text-slate-500">Registry Status:</span>
                 <span className={`px-2 py-0.5 rounded font-black uppercase ${
-                  selectedYouthProfile.status === 'Approved' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+                  selectedYouthProfile.status === 'Approved' ? 'bg-emerald-50 text-emerald-700' : selectedYouthProfile.status?.toLowerCase() === 'suspended' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'
                 }`}>
-                  {selectedYouthProfile.status === 'Approved' ? 'Verified Constituent' : 'Pending Verification'}
+                  {selectedYouthProfile.status === 'Approved' ? 'Verified Constituent' : (selectedYouthProfile.status?.toLowerCase() === 'suspended' ? 'Suspended' : 'Pending Verification')}
                 </span>
               </div>
 
