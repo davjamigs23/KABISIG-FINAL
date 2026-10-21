@@ -171,6 +171,12 @@ router.post(
   const textToAnalyze = `${subject} ${message}`;
   const sentimentResult = analyzeSentiment(textToAnalyze);
 
+  // P12b: bad-word content filter for spam/toxic/sexual terms
+  const BAD_WORD_LEXICON = ['sex', 'fuck', 'shit', 'bobo', 'tanga', 'gago', 'pakyu', 'putangina', 'porn', 'scam', 'junket', 'bitch', 'asshole', 'kupal', 'ulol'];
+  const lowerSubject = (subject || '').toLowerCase();
+  const lowerMessage = (message || '').toLowerCase();
+  const containsBadWords = BAD_WORD_LEXICON.some(w => lowerSubject.includes(w) || lowerMessage.includes(w));
+
   const { data: newFeedback, error } = await supabaseAdmin
     .from('feedback')
     .insert([
@@ -182,7 +188,7 @@ router.post(
         message,
         category,
         sentiment: sentimentResult.sentiment,
-        status: 'submitted',
+        status: containsBadWords ? 'flagged' : 'submitted',
       },
     ])
     .select()
@@ -313,7 +319,7 @@ router.patch(
 
     const { data: existing, error: fetchError } = await supabaseAdmin
       .from('feedback')
-      .select('id, tenant_id, subject')
+      .select('id, tenant_id, subject, user_id')
       .eq('id', id)
       .single();
 
@@ -352,6 +358,20 @@ router.patch(
       details: { subject: existing.subject, status },
       ipAddress: req.ip || null,
     });
+
+    // Notify the youth that their feedback was responded to
+    console.log('NOTIF DEBUG:', existing);
+    if (existing?.user_id) {
+      const { error: notifErr } = await supabaseAdmin.from('notifications').insert({
+        user_id: existing.user_id,
+        tenant_id: existing.tenant_id || user.tenant_id,
+        title: 'SK Responded to Your Feedback',
+        message: 'Your feedback has received an official response from the SK Council.',
+        link: '/youth/feedback',
+        notification_type: 'FEEDBACK_RESPONSE',
+        is_read: false,
+      });
+    }
 
     sendSuccess(res, updated, 'Official response recorded successfully.');
   }

@@ -1,5 +1,18 @@
 import express from 'express';
 import { composeFullName, splitFullName, normalizeSuffix, resolveName } from '../utils/name.js';
+// Helper to send emails via Brevo API
+async function sendEmail(to: string, subject: string, html: string) {
+  try {
+    const apiKey = process.env.BREVO_API_KEY;
+    const senderEmail = process.env.BREVO_SENDER_EMAIL;
+    if (!apiKey || !senderEmail) return;
+    await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: { 'api-key': apiKey, 'content-type': 'application/json' },
+      body: JSON.stringify({ sender: { name: 'KABISIG', email: senderEmail }, to: [{ email: to }], subject: subject, htmlContent: html })
+    });
+  } catch (err) { console.error('[EMAIL] ERROR:', err); }
+}
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import QRCode from 'qrcode';
@@ -180,11 +193,12 @@ const RegisterYouthSchema = z.object({
   last_name: z.string().max(100).optional(),
   suffix: z.string().max(20).optional().nullable(),
   barangay_id: z.string().uuid('Valid Barangay ID is required'),
-  phone: z.string().optional(),
+ phone: z.string().regex(/^09\d{9}$/, 'Phone must be 11 digits starting with 09').optional(),
   profile_pic: z.string().max(2_000_000).optional(),
   birthdate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Birthdate must be formatted as YYYY-MM-DD'),
   sex: z.enum(['Male', 'Female', 'Other', 'Prefer not to say']),
   address: z.string().min(3, 'Address is required'),
+  zone: z.string().max(50).optional(),
   educational_status: z
     .enum(['Elementary', 'High School', 'Vocational', 'College', 'Post-Graduate', 'Out of School Youth'])
     .optional(),
@@ -192,8 +206,10 @@ const RegisterYouthSchema = z.object({
   school: z.string().max(200).optional(),
   course: z.string().max(200).optional(),
   year: z.string().max(50).optional(),
+  guardian_name: z.string().max(200).optional().nullable(),
+  guardian_contact: z.string().max(50).optional().nullable(),
   is_registered_voter: z.boolean().default(false),
-  id_type: z.enum(['Student ID', 'Government ID', 'Barangay Certificate', 'Other']).optional(),
+  id_type: z.enum(["Philippine Passport", "Driver's License", "PRC ID", "UMID", "PhilHealth ID", "SSS ID", "Pag-IBIG ID", "Voter's ID (COMELEC)", "Postal ID", "NBI Clearance", "Police Clearance", "PhilSys National ID", "Student ID", "Barangay Certificate", "Other"]).optional(),
   id_number: z.string().max(100).optional(),
   id_document_name: z.string().max(200).optional(),
   id_document_mime: z.string().regex(/^image\/(jpeg|png|webp)$/).optional(),
@@ -243,6 +259,7 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
     birthdate,
     sex,
     address,
+    zone,
     educational_status,
     employment_status,
     school,
@@ -257,6 +274,8 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
     id_back_document_name,
     id_back_document_mime,
     id_back_document_base64,
+    guardian_name,
+    guardian_contact,
   } = parseResult.data;
 
   const resolvedName = resolveName({
@@ -405,12 +424,15 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
       birthdate,
       sex,
       address,
+      zone: zone || null,
       educational_status: educational_status || null,
       employment_status: employment_status || null,
       school: school || null,
       course: course || null,
       year_level: year || null,
       is_registered_voter,
+      guardian_name: guardian_name || null,
+      guardian_contact: guardian_contact || null,
       digital_youth_id: null,
       qr_code_url: null,
     },
@@ -480,6 +502,16 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
     details: { full_name: resolvedName.full_name, first_name: resolvedName.first_name, last_name: resolvedName.last_name, barangay: barangay.name, age: calculatedAge },
     ipAddress: req.ip || null,
   });
+
+  // Send Registration Success Email
+  try {
+    console.log('[REGISTRATION] Attempting to send email to', email);
+    const emailHtml = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;"><h1 style="color: #091d64; margin: 0 0 8px 0;">KABISIG</h1><p style="color: #64748b; font-size: 12px; margin: 0 0 24px 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p><h2 style="color: #091d64;">Registration Received!</h2><p style="color: #334155; line-height: 1.6;">Your account has been successfully created. It is currently <strong>pending review</strong> by your Barangay SK Chairperson.</p><p style="color: #334155; line-height: 1.6;">You will receive another email once your account is approved. If you have any questions, please contact your local SK Council.</p><div style="text-align: center; margin: 24px 0;"><a href="' + (process.env.FRONTEND_URL || 'http://localhost:3000') + '" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Visit KABISIG</a></div></div>';
+    await sendEmail(email, 'KABISIG Registration Received', emailHtml);
+    console.log('[REGISTRATION] Email sent successfully');
+  } catch (e) {
+    console.error('[REGISTRATION] Failed to send email:', e);
+  }
 
   sendCreated(
     res,
@@ -821,7 +853,7 @@ const RegisterOfficialSchema = z.object({
   full_name: z.string().min(2, 'Full name is required'),
   barangay_id: z.string().uuid('Valid Barangay ID is required'),
   role: z.string().default('SK_OFFICIAL'),
-  phone: z.string().optional(),
+ phone: z.string().regex(/^09\d{9}$/, 'Phone must be 11 digits starting with 09').optional(),
 });
 
 router.post('/register-official', async (_req: Request, res: Response): Promise<void> => {
@@ -1365,38 +1397,3 @@ router.post('/logout', async (req: Request, res: Response): Promise<void> => {
 export default router;
 
 // Helper to send emails via Brevo API
-async function sendEmail(to: string, subject: string, html: string) {
-  try {
-    const apiKey = process.env.BREVO_API_KEY;
-    const senderEmail = process.env.BREVO_SENDER_EMAIL;
-
-    if (!apiKey || !senderEmail) {
-      console.warn("Brevo Config Error: BREVO_API_KEY or BREVO_SENDER_EMAIL is missing in .env.local");
-      return;
-    }
-
-    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
-      method: 'POST',
-      headers: {
-        'api-key': apiKey,
-        'content-type': 'application/json',
-        'accept': 'application/json'
-      },
-      body: JSON.stringify({
-        sender: { name: 'KABISIG', email: senderEmail },
-        to: [{ email: to }],
-        subject: subject,
-        htmlContent: html
-      })
-    });
-
-    if (!res.ok) {
-      const errorText = await res.text();
-      console.warn(`Brevo API Error (${res.status}):`, errorText);
-    } else {
-      console.log(`Email successfully sent to ${to}`);
-    }
-  } catch (err) {
-    console.error("Network Error during email send:", err);
-  }
-}

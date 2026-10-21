@@ -10,7 +10,7 @@ import {
   X, ChevronDown, RefreshCw, Layers, Award, TrendingUp, LogOut, Menu,
   Upload, Image as ImageIcon, Trash2, Mail, Loader2, Settings, AlertCircle,
   Copy, ExternalLink, ShieldAlert
-, ArrowLeft} from 'lucide-react';
+, ArrowLeft, Clock } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
   PieChart, Pie, Cell, Legend
@@ -82,6 +82,19 @@ export default function SuperAdminPages({
   const [chairpersonFilter, setChairpersonFilter] = useState<'All' | 'Assigned' | 'Unassigned'>('All');
   // Panel rec #9: Transfer Leadership modal state
   const [showTransferModal, setShowTransferModal] = useState(false);
+  const [historyBarangay, setHistoryBarangay] = useState<any>(null);
+  const [historyData, setHistoryData] = useState<any[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  const handleOpenHistory = async (b: any) => {
+    setHistoryBarangay(b);
+    setIsLoadingHistory(true);
+    try {
+      const res = await kabisigApi.getTransferHistory(b.id);
+      if (res.success && res.data) setHistoryData(res.data);
+    } catch (e) { console.error(e); }
+    finally { setIsLoadingHistory(false); }
+  };
   const [transferringBarangay, setTransferringBarangay] = useState<BarangayTenant | null>(null);
   const [transferReturnToConfigure, setTransferReturnToConfigure] = useState(false);
   const [cancelInviteReturnToConfigure, setCancelInviteReturnToConfigure] = useState(false);
@@ -1128,25 +1141,30 @@ export default function SuperAdminPages({
                             {/* Status */}
                             <td className="py-3.5 px-4">
                               <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
-                                b.status === 'Active'
+                                b.chairperson !== 'Unassigned' && b.chairperson !== 'Pending Invitation'
                                   ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                   : 'bg-slate-100 text-slate-600 border border-slate-200'
                               }`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${b.status === 'Active' ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
+                                <span className={`w-1.5 h-1.5 rounded-full ${b.chairperson !== 'Unassigned' && b.chairperson !== 'Pending Invitation' ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
                                 {b.status}
                               </span>
                             </td>
 
                             {/* Action */}
-                            <td className="py-3.5 px-4 text-right">
-                              <button
-                                onClick={() => handleEditClick(b)}
-                                className="p-1.5 text-slate-500 hover:text-[#091d64] hover:bg-slate-100 rounded-xl transition-colors border border-slate-200 cursor-pointer"
-                                title="Configure AIP Budget & Settings"
-                              >
-                                <Settings className="w-3.5 h-3.5" />
-                              </button>
-                            </td>
+                              <td className="py-3.5 px-4 text-right">
+                                <div className="flex items-center justify-end gap-1">
+                                  <button onClick={() => handleOpenHistory(b)} className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors" title="View Transfer History">
+                                    <Clock className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleEditClick(b)}
+                                    className="p-1.5 text-slate-500 hover:text-[#091d64] hover:bg-slate-100 rounded-xl transition-colors border border-slate-200 cursor-pointer"
+                                    title="Configure AIP Budget & Settings"
+                                  >
+                                    <Settings className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
                           </tr>
                         );
                       })}
@@ -1583,22 +1601,32 @@ export default function SuperAdminPages({
                 </div>
               )}
 
-              <div className="flex gap-2">
+              {cancelInviteNotice?.type === 'success' ? (
                 <button
                   type="button"
                   onClick={() => { setShowCancelInviteModal(false); setCancellingBarangay(null); if (cancelInviteReturnToConfigure) { setShowModal(true); setCancelInviteReturnToConfigure(false); } }}
-                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs cursor-pointer"
                 >
-                  Keep Invitation
+                  Close
                 </button>
-                <button
-                  type="submit"
-                  disabled={isCancellingInvite}
-                  className="flex-1 py-3 bg-rose-600 hover:bg-rose-500 disabled:opacity-60 text-white font-bold rounded-xl text-xs cursor-pointer"
-                >
-                  {isCancellingInvite ? 'Cancelling...' : 'Cancel Invitation'}
-                </button>
-              </div>
+              ) : (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setShowCancelInviteModal(false); setCancellingBarangay(null); if (cancelInviteReturnToConfigure) { setShowModal(true); setCancelInviteReturnToConfigure(false); } }}
+                    className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
+                  >
+                    Keep Invitation
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isCancellingInvite}
+                    className="flex-1 py-3 bg-rose-600 hover:bg-rose-500 disabled:opacity-60 text-white font-bold rounded-xl text-xs cursor-pointer"
+                  >
+                    {isCancellingInvite ? 'Cancelling...' : 'Cancel Invitation'}
+                  </button>
+                </div>
+              )}
             </form>
           </div>
         </div>
@@ -2186,6 +2214,47 @@ export default function SuperAdminPages({
         </button>
       </div>
 
+      {historyBarangay && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-200">
+            <div className="bg-[#091d64] p-5 text-white flex justify-between items-center">
+              <div>
+                <h3 className="font-sans font-black text-base flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-indigo-200" /> Transfer History
+                </h3>
+                <p className="text-xs text-indigo-100">Barangay {historyBarangay.name}</p>
+              </div>
+              <button onClick={() => setHistoryBarangay(null)} className="text-white/80 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 max-h-[60vh] overflow-y-auto">
+              {isLoadingHistory ? (
+                <p className="text-center text-slate-500 text-sm py-8">Loading history...</p>
+              ) : historyData.length === 0 ? (
+                <p className="text-center text-slate-500 text-sm py-8">No transfer records found for this barangay.</p>
+              ) : (
+                <div className="space-y-4">
+                  {historyData.map((h: any, i: number) => (
+                    <div key={i} className="border border-slate-200 rounded-xl p-4 bg-slate-50">
+                      <div className="flex justify-between items-start mb-2">
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{h.reason}</span>
+                          <p className="font-bold text-slate-800 text-sm mt-1">{h.outgoing_full_name || h.outgoing_email} <span className="font-normal text-slate-400 mx-1">→</span> {h.incoming_full_name || h.incoming_email}</p>
+                        </div>
+                        <span className="text-[10px] font-mono text-slate-400">{new Date(h.created_at).toLocaleDateString()}</span>
+                      </div>
+                      <div className="bg-white border border-slate-100 rounded p-3 text-xs text-slate-600 font-mono mt-2">
+                        {h.notes || 'No additional notes provided.'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

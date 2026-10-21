@@ -254,7 +254,7 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
     const userId = authenticatedUser.id;
     const { data: user, error: userError } = await supabaseAdmin
       .from('users')
-      .select('id, email, tenant_id, full_name, first_name, middle_name, last_name, suffix')
+      .select('id, email, tenant_id, full_name, first_name, middle_name, last_name, suffix, suspension_reason')
       .eq('id', userId)
       .maybeSingle();
 
@@ -334,6 +334,12 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
       address,
       educational_status: normalizedEdu || null,
       employment_status: normalizedEmp || null,
+      guardian_name: body.guardianName !== undefined
+        ? (typeof body.guardianName === 'string' ? body.guardianName.trim() || null : null)
+        : existingProfile?.guardian_name ?? null,
+      guardian_contact: body.guardianContact !== undefined
+        ? (typeof body.guardianContact === 'string' ? body.guardianContact.trim() || null : null)
+        : existingProfile?.guardian_contact ?? null,
       updated_at: new Date().toISOString(),
     };
 
@@ -371,7 +377,7 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
         age: body.age || calculatedAge || prevMeta.age || 20,
         civilStatus: body.civilStatus || prevMeta.civilStatus || 'Single',
         address: body.address || prevMeta.address || address,
-        zone: body.zone || prevMeta.zone || 'Zone 1',
+        zone: body.zone || prevMeta.zone || null,
         mobile: body.mobile || body.phone || prevMeta.mobile || userUpdates.phone,
         email: body.email || dbUser?.email || user.email || prevMeta.email,
         educationalLevel: body.educationalLevel || prevMeta.educationalLevel || normalizedEdu || 'College',
@@ -479,7 +485,7 @@ router.get('/profile', authenticateUser, async (req: Request, res: Response): Pr
       age: meta.age || (resident.birthdate ? calculateAge(resident.birthdate) : 20),
       civilStatus: meta.civilStatus || 'Single',
       address: resident.address || meta.address || '',
-      zone: meta.zone || 'Zone 1',
+      zone: resident.zone || meta.zone || null,
       mobile: dbUser?.phone || meta.mobile || '',
       email: dbUser?.email || meta.email || '',
       educationalLevel: meta.educationalLevel || resident.educational_status || 'College',
@@ -490,8 +496,8 @@ router.get('/profile', authenticateUser, async (req: Request, res: Response): Pr
       scholarStatus: meta.scholarStatus || 'Non-Scholar',
       scholarshipType: meta.scholarshipType || '',
       youthSector: meta.youthSector || 'In-School Youth',
-      guardianName: meta.guardianName || '',
-      guardianContact: meta.guardianContact || '',
+      guardianName: resident.guardian_name || meta.guardianName || '',
+      guardianContact: resident.guardian_contact || meta.guardianContact || '',
       profilePic: await resolveAvatarUrl(dbUser?.avatar_url) || meta.profilePic || '',
       qrCode: resident.qr_code_url || meta.qrCode || resident.digital_youth_id || '',
       status: dbUser?.status === 'active' ? 'Approved' : (dbUser?.status === 'rejected' ? 'Rejected' : dbUser?.status === 'suspended' ? 'suspended' : 'Pending'),
@@ -577,7 +583,7 @@ router.get(
           age: meta.age || (resident.birthdate ? calculateAge(resident.birthdate) : 20),
           civilStatus: meta.civilStatus || 'Single',
           address: resident.address || meta.address || '',
-          zone: meta.zone || 'Zone 1',
+          zone: resident.zone || meta.zone || null,
           mobile: u.phone || meta.mobile || '',
           email: u.email || meta.email || '',
           educationalLevel: meta.educationalLevel || resident.educational_status || 'College',
@@ -588,8 +594,8 @@ router.get(
           scholarStatus: meta.scholarStatus || 'Non-Scholar',
           scholarshipType: meta.scholarshipType || '',
           youthSector: meta.youthSector || 'In-School Youth',
-          guardianName: meta.guardianName || '',
-          guardianContact: meta.guardianContact || '',
+          guardianName: resident.guardian_name || meta.guardianName || '',
+          guardianContact: resident.guardian_contact || meta.guardianContact || '',
           profilePic: await resolveAvatarUrl(u.avatar_url) || meta.profilePic || '',
           qrCode: resident.qr_code_url || meta.qrCode || resident.digital_youth_id || '',
           status: u.status === 'active' ? 'Approved' : (u.status === 'rejected' ? 'Rejected' : u.status === 'suspended' ? 'suspended' : 'Pending'),
@@ -682,6 +688,10 @@ router.put(
         residentPayload.educational_status = body.educationalLevel || body.educational_status || null;
       if (body.employmentStatus !== undefined || body.employment_status !== undefined)
         residentPayload.employment_status = body.employmentStatus || body.employment_status || null;
+      if (body.guardianName !== undefined || body.guardian_name !== undefined)
+        residentPayload.guardian_name = String(body.guardianName ?? body.guardian_name ?? '').trim() || null;
+      if (body.guardianContact !== undefined || body.guardian_contact !== undefined)
+        residentPayload.guardian_contact = String(body.guardianContact ?? body.guardian_contact ?? '').trim() || null;
 
       const { error: profileErr } = await supabaseAdmin
         .from('resident_profile')
@@ -711,8 +721,7 @@ router.put(
 // Panel rec #12: ID-based Profile Verification
 // ============================================================
 
-const ID_TYPES = ['Student ID', 'Government ID', 'Barangay Certificate', 'Other'] as const;
-
+const ID_TYPES = ["Philippine Passport", "Driver's License", "PRC ID", "UMID", "PhilHealth ID", "SSS ID", "Pag-IBIG ID", "Voter's ID (COMELEC)", "Postal ID", "NBI Clearance", "Police Clearance", "PhilSys National ID", "Student ID", "Barangay Certificate", "Other"] as const;
 const UploadVerificationSchema = z.object({
   id_type: z.enum(ID_TYPES),
   id_number: z.string().min(2).max(100),
@@ -944,7 +953,7 @@ router.get(
     // Fetch all SK Officials for this barangay (role_id 2 or 3)
     const { data: officials, error } = await supabaseAdmin
       .from('users')
-      .select('id, email, role_id, status, full_name, first_name, middle_name, last_name, suffix')
+      .select('id, email, role_id, status, full_name, first_name, middle_name, last_name, suffix, suspension_reason')
       .eq('tenant_id', barangayId)
       .in('role_id', [2, 3]);
 
@@ -1072,6 +1081,17 @@ router.post('/upload-avatar', authenticateUser, async (req: Request, res: Respon
   }
 });
 
+
+// POST /api/users/acknowledge-warning - Clears the reactivation warning
+router.post('/acknowledge-warning', authenticateUser, async (req: Request, res: Response): Promise<void> => {
+  const user = (req as AuthRequest).user!;
+  const { error } = await supabaseAdmin
+    .from('users')
+    .update({ suspension_reason: null })
+    .eq('id', user.id);
+  if (error) { sendError(res, error.message, 500); return; }
+  sendSuccess(res, null, 'Warning acknowledged.');
+});
 export default router;
 // PATCH /api/users/:id/status - Admin updates user status (e.g., active, suspended)
 router.patch(
@@ -1091,7 +1111,7 @@ router.patch(
 
       const updates: any = { status, updated_at: new Date().toISOString() };
       if (status === 'active') {
-        updates.suspension_reason = null; // Clear the reason upon reactivation
+        updates.suspension_reason = 'Your account was recently reactivated. Please review the community guidelines.'; // Clear the reason upon reactivation
       }
 
       // C1: Cross-tenant guard - Barangay Admins may only modify users in own barangay
@@ -1113,11 +1133,24 @@ router.patch(
       }
 
       const { error } = await supabaseAdmin.from('users').update(updates).eq('id', targetId);
-      
-      if (error) {
-        sendError(res, `Failed to update user status: ${error.message}`, 500);
-        return;
+
+      // Force verification status update when approving
+      if (status === 'active') {
+        await supabaseAdmin.from('resident_profile').update({ verification_status: 'verified' }).eq('user_id', targetId);
       }
+
+      if (!error && status === 'active') {
+        // Force update verification status to prevent 'pending verification' banner
+        await supabaseAdmin
+          .from('resident_profile')
+          .update({ verification_status: 'verified', verification_reviewed_at: new Date().toISOString() })
+          .eq('user_id', targetId);
+      }
+      
+  if (error) {
+    sendError(res, "Failed to update user status: ${error.message}", 500);
+    return;
+  }
 
       // If reactivating, also update auth metadata if needed
       if (status === 'active') {

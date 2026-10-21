@@ -62,12 +62,18 @@ router.get('/demographics', async (_req: Request, res: Response): Promise<void> 
     return a;
   };
 
+  let pwdCount = 0;
+  let soloParentCount = 0;
+  let scholarCount = 0;
   const sexCounts: Record<string, number> = {};
   const eduCounts: Record<string, number> = {};
   const empCounts: Record<string, number> = {};
   const ageBuckets = { '15-17': 0, '18-24': 0, '25-30': 0 };
 
   for (const p of list as any[]) {
+    if ((p as any).is_pwd || (p as any).youth_sector === 'PWD') pwdCount++;
+    if ((p as any).is_solo_parent || (p as any).youth_sector === 'Solo Parent') soloParentCount++;
+    if ((p as any).scholar_status === 'Scholar') scholarCount++;
     const s = p.sex || 'Unspecified';
     sexCounts[s] = (sexCounts[s] || 0) + 1;
 
@@ -88,6 +94,9 @@ router.get('/demographics', async (_req: Request, res: Response): Promise<void> 
     {
       total_youth: list.length,
       sex_distribution: sexCounts,
+      pwd_count: pwdCount,
+      solo_parent_count: soloParentCount,
+      scholar_count: scholarCount,
       education_distribution: eduCounts,
       employment_distribution: empCounts,
       age_brackets: ageBuckets,
@@ -173,4 +182,30 @@ router.get('/programs/:id/budget', async (req: Request, res: Response): Promise<
   );
 });
 
+
+// GET /api/public/documents — approved FPD documents (no PII)
+router.get('/documents', async (_req: Request, res: Response): Promise<void> => {
+  const { data, error } = await supabaseAdmin
+    .from('documents')
+    .select('*')
+    .eq('status', 'approved')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    sendError(res, `Failed to load public documents: ${error.message}`, 500);
+    return;
+  }
+
+  const publicDocuments = (data || []).map(document => ({
+    id: document.id,
+    title: document.title,
+    category: document.document_type,
+    barangayId: document.tenant_id,
+    uploadedDate: document.created_at?.split('T')[0],
+    created_at: document.created_at,
+    status: document.status,
+  }));
+
+  sendSuccess(res, publicDocuments, 'Public FPD documents retrieved.');
+});
 export default router;

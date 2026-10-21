@@ -15,22 +15,35 @@ export interface NotificationMenuItem {
 }
 
 interface NotificationMenuProps {
+  items?: any[];
   userRole?: string;
   supplementalItems?: NotificationMenuItem[];
   onNavigate?: (link: string) => void;
   buttonClassName?: string;
 }
 
-export default function NotificationMenu({  supplementalItems = [], onNavigate, buttonClassName = '' , userRole }: NotificationMenuProps) {
+export default function NotificationMenu({
+  items: providedItems,
+  supplementalItems = [],
+  onNavigate,
+  buttonClassName = '',
+  userRole,
+}: NotificationMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<SystemNotification[]>([]);
   const [locallyReadIds, setLocallyReadIds] = useState<Set<string>>(() => new Set());
+  const hasProvidedItems = providedItems !== undefined;
 
   useEffect(() => {
+    if (hasProvidedItems || !userRole || userRole === 'Viewer' || !kabisigApi.getToken()) return;
     let isMounted = true;
     const loadNotifications = async () => {
-      const items = await kabisigApi.getNotifications();
-      if (isMounted) setNotifications(items);
+      try {
+        const rows = await kabisigApi.getNotifications();
+        if (isMounted) setNotifications(rows);
+      } catch (error) {
+        if (isMounted) console.warn('Unable to load notifications:', error);
+      }
     };
 
     void loadNotifications();
@@ -47,17 +60,19 @@ export default function NotificationMenu({  supplementalItems = [], onNavigate, 
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, []);
+  }, [hasProvidedItems, userRole]);
 
-  const items: NotificationMenuItem[] = [...supplementalItems, ...notifications];
+  const items: NotificationMenuItem[] = [...supplementalItems, ...(providedItems ?? notifications)];
 
-              const filteredItems = (items || []).filter((item: any) => {
-    if (item.is_read && !item.onSelect) return false;
+  const filteredItems = items.filter((item: any) => {
+    // read items still visible; only unread count uses is_read
     if (!userRole) return false;
     
     const r = String(userRole).toLowerCase();
     const link = String(item.link || '').toLowerCase();
     const text = String((item.title || '') + ' ' + (item.message || '')).toLowerCase();
+    const notificationType = String(item.notification_type || '').toLowerCase();
+    if (notificationType === 'feedback_response' || notificationType.includes('feedback') || text.includes('feedback') || link.includes('feedback')) return true;
     
     // 1. Treasurer sees ONLY budget/expense
     if (r.includes('treasurer')) return link.includes('budget') || link.includes('expense') || text.includes('budget alert');
@@ -78,11 +93,13 @@ export default function NotificationMenu({  supplementalItems = [], onNavigate, 
   const unreadCount = filteredItems.filter((item: any) => !item.is_read && !locallyReadIds.has(item.id)).length;
 
   const handleSelect = (item: NotificationMenuItem) => {
-    const isSystemNotification = notifications.some(notification => notification.id === item.id);
+    const isSystemNotification = notifications.some(notification => notification.id === item.id)
+      || Boolean(providedItems?.some((notification: any) => notification.id === item.id));
     if (!item.is_read && !locallyReadIds.has(item.id)) {
       setLocallyReadIds(previous => new Set(previous).add(item.id));
     }
-    if (isSystemNotification && !item.is_read) {
+    if (item.link && onNavigate) { onNavigate(item.link); }
+      if (isSystemNotification && !item.is_read) {
       setNotifications(previous => previous.map(notification => notification.id === item.id ? { ...notification, is_read: true } : notification));
       void kabisigApi.markNotificationRead(item.id);
     }
@@ -106,6 +123,7 @@ export default function NotificationMenu({  supplementalItems = [], onNavigate, 
 
   const handleMarkAllRead = () => {
     setNotifications(previous => previous.map(item => ({ ...item, is_read: true })));
+    setLocallyReadIds(previous => new Set([...previous, ...items.map(item => item.id)]));
     void kabisigApi.markAllNotificationsRead();
   };
 
@@ -132,7 +150,7 @@ export default function NotificationMenu({  supplementalItems = [], onNavigate, 
             <span className="text-sm font-bold text-slate-800">Notifications</span>
             <div className="flex items-center gap-3">
               <span className="text-xs font-medium text-slate-400">{unreadCount} unread</span>
-              {notifications.some(item => !item.is_read) && <button type="button" onClick={handleMarkAllRead} className="text-[10px] font-semibold text-blue-700 hover:underline">Mark all read</button>}
+              {items.some(item => !item.is_read && !locallyReadIds.has(item.id)) && <button type="button" onClick={handleMarkAllRead} className="text-[10px] font-semibold text-blue-700 hover:underline">Mark all read</button>}
             </div>
           </div>
           <div className="max-h-[min(70vh,40rem)] overflow-y-auto px-4">

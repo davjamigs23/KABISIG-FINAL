@@ -19,7 +19,7 @@ async function inviteWithBrevo(
   });
   if (!error && data?.properties?.action_link) {
     const setupLink = data.properties.action_link;
-    const invRole = options?.data?.official_role || options?.data?.role || 'SK Official';
+    const invRole = options?.data?.official_role || options?.data?.role || (options?.data?.role_id === 2 ? 'SK Chairperson' : 'SK Official');
     const htmlMsg = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;"><h1 style="color: #091d64; margin: 0 0 8px 0;">KABISIG</h1><p style="color: #64748b; font-size: 12px; margin: 0 0 24px 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p><h2 style="color: #091d64;">You are Invited to be ' + invRole + '!</h2><p style="color: #334155; line-height: 1.6;">You have been invited to join the KABISIG System as ' + invRole + '. Click the button below to set up your account password:</p><div style="text-align: center; margin: 24px 0;"><a href="' + setupLink + '" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Set Up Account</a></div><p style="color: #94a3b8; font-size: 11px;">If the button does not work, copy this link: <a href="' + setupLink + '">' + setupLink + '</a></p></div>';
     await sendEmail(email, 'KABISIG Account Invitation', htmlMsg);
   }
@@ -925,7 +925,7 @@ router.patch(
 const TransferChairmanshipSchema = z.object({
   barangay_id: z.string().uuid('Valid Barangay ID is required'),
   successor_email: z.string().email('Valid successor email is required'),
-  reason: z.enum(['Resignation', 'End of Term', 'Replaced', 'Succession', 'Other']).default('Other'),
+  reason: z.enum(['Resignation', 'Resigned', 'Resign', 'End of Term', 'Replaced', 'Succession', 'Other']).default('Other').transform(v => (v === 'Resigned' || v === 'Resign') ? 'Resignation' : v),
   notes: z.string().max(1000).optional().nullable(),
 });
 
@@ -1251,6 +1251,18 @@ router.post(
       return;
     }
 
+    // Cancel any chairperson_transfers records referencing this pending user
+    // Prevents FK constraint violation: chairperson_transfers_incoming_user_id_fkey
+    const { error: transferCleanupErr } = await supabaseAdmin
+      .from('chairperson_transfers')
+      .delete()
+      .or(`incoming_user_id.eq.${pendingChair.id},outgoing_user_id.eq.${pendingChair.id}`);
+
+    if (transferCleanupErr) {
+      sendError(res, 'Failed to clean up chairperson transfer records: ' + transferCleanupErr.message, 500);
+      return;
+    }
+
     try {
       await supabaseAdmin.auth.admin.deleteUser(pendingChair.id);
     } catch (authErr: any) {
@@ -1331,4 +1343,22 @@ router.post('/request-email-change', authenticateUser, async (req: Request, res:
 
   sendSuccess(res, null, 'Request sent to Super Admin.');
 });
+
+// GET /api/admin/chairperson-transfers/:barangayId
+router.get(
+  '/chairperson-transfers/:barangayId',
+  authenticateUser,
+  requireRoles('SUPER_ADMIN'),
+  async (req: Request, res: Response): Promise<void> => {
+    const barangayId = String(req.params.barangayId);
+    const { data, error } = await supabaseAdmin
+      .from('chairperson_transfers')
+      .select('*')
+      .eq('barangay_id', barangayId)
+      .order('created_at', { ascending: false });
+    if (error) { sendError(res, error.message, 500); return; }
+    sendSuccess(res, data || [], 'Transfer history retrieved.');
+  }
+);
+
 export default router;

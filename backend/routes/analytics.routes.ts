@@ -231,6 +231,7 @@ router.get('/barangay', authenticateUser, async (req: Request, res: Response): P
   const { data: feedbacks } = await supabaseAdmin
     .from('feedback')
     .select('sentiment, status, category')
+    .neq('status', 'flagged')
     .eq('tenant_id', tenantId);
 
   const feedbackSummary = {
@@ -342,7 +343,7 @@ router.get(
 
     const { data: allFeedbacks } = await supabaseAdmin
       .from('feedback')
-      .select('sentiment');
+      .select('sentiment').neq('status', 'flagged');
 
     const sentimentOverview = {
       positive: allFeedbacks?.filter((f) => f.sentiment === 'positive').length || 0,

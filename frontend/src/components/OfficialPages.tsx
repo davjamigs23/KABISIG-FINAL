@@ -92,7 +92,7 @@ import { analyzeFeedbackSentiment,
   extractFeedbackKeywords, 
   getMostRequestedProgramTrends,
   recommendPrograms,
-  calculateEngagementScore, detectLowEngagement, detectScheduleConflicts } from '../lib/intelligence';
+  calculateEngagementScore, detectLowEngagement, detectScheduleConflicts, getComplianceIssues } from '../lib/intelligence';
 import { KabisigLogo } from './PublicPages';
 import { UserMenu } from './UserMenu';
 import NotificationMenu from './NotificationMenu';
@@ -121,8 +121,6 @@ interface OfficialPagesProps {
   onAddDocument: (d: DocumentRecord) => void;
   onRegisterAttendance: (record: AttendanceRecord, qrPayload: string) => Promise<AttendanceRecord>;
   onLogout: () => void;
-  onApproveDocument?: (id: string, notes?: string) => Promise<DocumentRecord>;
-  onRejectDocument?: (id: string, notes?: string) => Promise<DocumentRecord>;
 }
 
 export default function OfficialPages({
@@ -145,8 +143,6 @@ export default function OfficialPages({
   onAddExpense,
   onAddDocument,
   onRegisterAttendance,
-  onApproveDocument,
-  onRejectDocument,
   onLogout
 }: OfficialPagesProps) {
   // Navigation active tab (resets to 'dashboard' on role change)
@@ -171,12 +167,13 @@ export default function OfficialPages({
   const [localAttendance, setLocalAttendance] = useState<AttendanceRecord[]>([]);
   const [localResolutions, setLocalResolutions] = useState<any[]>(resolutions);
   const [inventory, setInventory] = useState<any[]>([]);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
     kabisigApi.getInventory().then(rows => {
       if (!isMounted) return;
-      setInventory(rows.map((row: any) => ({ id: row.id, item: row.item_name, category: row.category, condition: row.condition, quantity: Number(row.quantity) || 0, cost: Number(row.unit_cost) || 0, location: row.location || '' })));
+      setInventory(rows.map((row: any) => ({ id: row.id, item: row.item_name, category: row.category, condition: row.condition, quantity: Number(row.quantity) || 0, cost: Number(row.unit_cost) || 0, location: row.location || '', photo_url: row.photo_url || '' })));
     }).catch(() => {});
     return () => { isMounted = false; };
   }, [currentRole]);
@@ -190,7 +187,7 @@ export default function OfficialPages({
   const [selectedFeedback, setSelectedFeedback] = useState<FeedbackRecord | null>(null);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [feedbackResponseText, setFeedbackResponseText] = useState('');
-  const [feedbackStatusChoice, setFeedbackStatusChoice] = useState<'Reviewed' | 'Resolved'>('Reviewed');
+  const [feedbackStatusChoice, setFeedbackStatusChoice] = useState<'Reviewed' | 'Resolved' | 'Dismissed'>('Reviewed');
 
   // --- SK SECRETARY SPECIFIC STATES & REPOSITORY ---
   const [localDocs, setLocalDocs] = useState<DocumentRecord[]>(documents);
@@ -202,9 +199,6 @@ export default function OfficialPages({
   const [showEditDocModal, setShowEditDocModal] = useState<boolean>(false);
   const [selectedDoc, setSelectedDoc] = useState<DocumentRecord | null>(null);
   const [selectedDocumentFile, setSelectedDocumentFile] = useState<File | null>(null);
-  const [showReviewDocModal, setShowReviewDocModal] = useState<boolean>(false);
-  const [reviewNotes, setReviewNotes] = useState('');
-  const [isReviewingDoc, setIsReviewingDoc] = useState(false);
   const [isUploadingDocument, setIsUploadingDocument] = useState(false);
   const [documentUploadError, setDocumentUploadError] = useState('');
 
@@ -261,7 +255,7 @@ export default function OfficialPages({
     first_name: '',     middle_name: '',     last_name: '',     suffix: '',
     email: '',
     mobile: '',
-    zone: 'Zone 1',
+    zone: '',
     educationalLevel: 'College Undergraduate',
     school: '',
     scholarStatus: 'Non-Scholar' as 'Scholar' | 'Non-Scholar' | 'Yes' | 'No'
@@ -1043,7 +1037,7 @@ export default function OfficialPages({
   const handleOpenFeedbackResponse = (fb: FeedbackRecord) => {
     setSelectedFeedback(fb);
     setFeedbackResponseText(fb.response || '');
-    setFeedbackStatusChoice(fb.status === 'Pending' ? 'Reviewed' : fb.status);
+    setFeedbackStatusChoice(fb.status === 'Resolved' || fb.status === 'Dismissed' ? fb.status : 'Reviewed');
     setShowFeedbackModal(true);
   };
 
@@ -1053,7 +1047,7 @@ export default function OfficialPages({
       alert('Please provide an official response for the youth constituent.');
       return;
     }
-    const apiStatus = feedbackStatusChoice === 'Reviewed' ? 'under_review' : 'resolved';
+    const apiStatus = feedbackStatusChoice === 'Reviewed' ? 'under_review' : feedbackStatusChoice === 'Dismissed' ? 'dismissed' : 'resolved';
     const result = await kabisigApi.respondToFeedback(
       selectedFeedback.id,
       feedbackResponseText.trim(),
@@ -1350,6 +1344,7 @@ export default function OfficialPages({
     const matchCat = filterCategory === 'All' ? true : y.zone === filterCategory || y.scholarStatus === filterCategory;
     return matchSearch && matchCat;
   });
+  const complianceIssues = getComplianceIssues(currentRole || 'SK Secretary', localYouthProfiles, programs, localDocs, expenses);
 
   return (
     <div className="flex flex-col lg:flex-row h-screen bg-[#f8fafc] overflow-hidden font-sans text-slate-800">
@@ -1679,9 +1674,9 @@ export default function OfficialPages({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">DILG Compliance</span>
-                          <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded">100% On-Time</span>
+                          <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded">See Reports</span>
                         </div>
-                        <h3 className="text-2xl font-black text-emerald-600 mt-0.5">98.5%</h3>
+                        <h3 className="text-2xl font-black text-emerald-600 mt-0.5">—</h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">RA 10742 & CBYDP Standard</p>
                       </div>
                     </div>
@@ -1739,7 +1734,7 @@ export default function OfficialPages({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Property Roster</span>
-                          <span className="text-[9px] font-bold bg-violet-50 text-violet-700 px-1.5 py-0.2 rounded">100% Serviceable</span>
+                          <span className="text-[9px] font-bold bg-violet-50 text-violet-700 px-1.5 py-0.2 rounded">See Inventory Detail</span>
                         </div>
                         <h3 className="text-2xl font-black text-[#091d64] mt-0.5">{inventory.length} <span className="text-xs font-semibold text-slate-400">Items</span></h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">Barangay Property Assets</p>
@@ -2061,33 +2056,32 @@ export default function OfficialPages({
                             <ShieldCheck className="w-4 h-4 text-[#091d64]" />
                             Compliance Monitor
                           </h4>
-                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">RA 10742</span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${complianceIssues.length ? 'text-amber-800 bg-amber-50' : 'text-emerald-700 bg-emerald-50'}`}>
+                            {complianceIssues.length ? `${complianceIssues.length} issue${complianceIssues.length === 1 ? '' : 's'}` : 'No issues'}
+                          </span>
                         </div>
 
                         <div className="space-y-2 text-xs">
-                          <div className="p-2 rounded-lg bg-emerald-50/50 border border-emerald-100 flex items-start gap-2">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 mt-0.5 flex-shrink-0" />
-                            <div className="min-w-0">
-                              <p className="font-bold text-slate-800">Regular SK Session Minutes</p>
-                              <p className="text-[10px] text-slate-500">Transmitted to Sangguniang Barangay (4/4 Complete)</p>
+                          {complianceIssues.length === 0 ? (
+                            <div className="p-2 rounded-lg bg-emerald-50/50 border border-emerald-100 flex items-start gap-2">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 mt-0.5 flex-shrink-0" />
+                              <div className="min-w-0">
+                                <p className="font-bold text-slate-800">No compliance issues detected</p>
+                                <p className="text-[10px] text-slate-500">The tracker found no outstanding items in the current records.</p>
+                              </div>
                             </div>
-                          </div>
-
-                          <div className="p-2 rounded-lg bg-emerald-50/50 border border-emerald-100 flex items-start gap-2">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 mt-0.5 flex-shrink-0" />
-                            <div className="min-w-0">
-                              <p className="font-bold text-slate-800">CY 2026 ABYIP Resolution</p>
-                              <p className="text-[10px] text-slate-500">DILG Naga City City Endorsement Validated</p>
+                          ) : complianceIssues.map(issue => (
+                            <div
+                              key={issue.code}
+                              className={`p-2 rounded-lg border flex items-start gap-2 ${issue.level === 'Urgent' ? 'bg-rose-50/60 border-rose-100' : issue.level === 'Warning' ? 'bg-amber-50/60 border-amber-100' : 'bg-blue-50/60 border-blue-100'}`}
+                            >
+                              <Clock className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${issue.level === 'Urgent' ? 'text-rose-600' : issue.level === 'Warning' ? 'text-amber-600' : 'text-blue-600'}`} />
+                              <div className="min-w-0">
+                                <p className="font-bold text-slate-800">{issue.message}</p>
+                                <p className="text-[10px] text-slate-500">{issue.level}: {issue.action}</p>
+                              </div>
                             </div>
-                          </div>
-
-                          <div className="p-2 rounded-lg bg-blue-50/50 border border-blue-100 flex items-start gap-2">
-                            <Clock className="w-3.5 h-3.5 text-blue-600 mt-0.5 flex-shrink-0" />
-                            <div className="min-w-0">
-                              <p className="font-bold text-slate-800">Quarterly Youth Accomplishment Report</p>
-                              <p className="text-[10px] text-slate-500">Draft ready for council verification</p>
-                            </div>
-                          </div>
+                          ))}
                         </div>
                       </div>
                     </div>
@@ -2384,6 +2378,7 @@ export default function OfficialPages({
                         onClick={() => {
                           setActiveMenu('reports');
                           setReportModuleCategory('financial');
+                          setTreasurerReportTab('utilization');
                         }}
                         className="px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-lg transition-all flex items-center gap-1.5 border border-white/20 cursor-pointer"
                       >
@@ -2393,6 +2388,7 @@ export default function OfficialPages({
                         onClick={() => {
                           setActiveMenu('reports');
                           setReportModuleCategory('financial');
+                          setTreasurerReportTab('statement');
                         }}
                         className="px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-lg transition-all flex items-center gap-1.5 border border-white/20 cursor-pointer"
                       >
@@ -2460,7 +2456,7 @@ export default function OfficialPages({
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Latest Audit Ledger & VAT Withholding Vouchers</span>
                           <button 
-                            onClick={() => setActiveMenu('finances')}
+                            onClick={() => { setActiveMenu('reports'); setReportModuleCategory('financial'); setTreasurerReportTab('statement'); }}
                             className="text-xs font-bold text-[#091d64] hover:underline flex items-center gap-1 cursor-pointer"
                           >
                             Open Financial Ledger <ArrowRight className="w-3 h-3" />
@@ -2512,7 +2508,7 @@ export default function OfficialPages({
                             <Clock className="w-4 h-4 text-emerald-600" />
                             Statutory COA Deadlines
                           </h4>
-                          <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded">100% On-Time</span>
+                          <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded">See Reports</span>
                         </div>
 
                         <div className="space-y-2 text-xs">
@@ -2520,7 +2516,7 @@ export default function OfficialPages({
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 mt-0.5 flex-shrink-0" />
                             <div>
                               <p className="font-bold text-slate-800">Q2 Financial Performance Report</p>
-                              <p className="text-[10px] text-slate-500">Submitted to COA Resident Auditor</p>
+                              <p className="text-[10px] text-slate-500">View Submission Records</p>
                             </div>
                           </div>
 
@@ -2528,7 +2524,7 @@ export default function OfficialPages({
                             <RefreshCw className="w-3.5 h-3.5 text-blue-600 mt-0.5 flex-shrink-0" />
                             <div>
                               <p className="font-bold text-slate-800">Cash Advances Liquidation</p>
-                              <p className="text-[10px] text-slate-500">0 Overdue liquidations active</p>
+                              <p className="text-[10px] text-slate-500">View Liquidation Records</p>
                             </div>
                           </div>
                         </div>
@@ -2552,7 +2548,12 @@ export default function OfficialPages({
                         <div className="space-y-2 text-xs">
                           {inventory.slice(0, 3).map((item) => (
                             <div key={item.id} className="p-2 rounded-lg border border-slate-100 bg-slate-50/60 flex items-center justify-between">
-                              <div>
+                              <div className="flex items-center gap-2">
+                                {(item as any).photo_url && (
+                                  <button type="button" onClick={() => setPreviewImage((item as any).photo_url)} className="inline-block cursor-pointer hover:opacity-80">
+                                    <img src={(item as any).photo_url} alt={item.item} className="w-10 h-10 rounded object-cover border border-slate-200" />
+                                  </button>
+                                )}
                                 <p className="font-bold text-slate-800">{item.item}</p>
                                 <p className="text-[10px] text-slate-500">Qty: {item.quantity} units ({item.category})</p>
                               </div>
@@ -2755,7 +2756,7 @@ export default function OfficialPages({
                     onChange={(e) => setSelectedProgId(e.target.value)}
                     className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                   >
-                    {programs.filter(p => !p.budgetAllocation).map(p => (
+                    {programs.map(p => (
                       <option key={p.id} value={p.id}>{p.title} ({p.category})</option>
                     ))}
                   </select>
@@ -3169,9 +3170,11 @@ export default function OfficialPages({
                         className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 focus:outline-none focus:ring-1 focus:ring-[#091d64]"
                       >
                         <option value="All">All Statuses</option>
+                        <option value='flagged'>🚩 Flagged (Needs Review)</option>
                         <option value="Pending">Pending</option>
                         <option value="Reviewed">Reviewed</option>
                         <option value="Resolved">Resolved</option>
+                        <option value='Dismissed'>Dismissed (Archive Spam)</option>
                       </select>
                     </div>
                   </div>
@@ -3184,7 +3187,7 @@ export default function OfficialPages({
                           f.content.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           (f.programTitle && f.programTitle.toLowerCase().includes(searchTerm.toLowerCase()));
                         const matchType = feedbackTypeFilter === 'All' ? true : f.type === feedbackTypeFilter;
-                        const matchStatus = feedbackStatusFilter === 'All' ? true : f.status === feedbackStatusFilter;
+                        const matchStatus = feedbackStatusFilter === 'All' ? true : f.status?.toLowerCase() === feedbackStatusFilter.toLowerCase();
                         return matchSearch && matchType && matchStatus;
                       })
                       .map(fb => (
@@ -3199,6 +3202,9 @@ export default function OfficialPages({
                               }`}>
                                 {fb.type}
                               </span>
+                              {fb.status === 'flagged' && (
+                                <span className="ml-1.5 bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-bold px-2 py-0.5 rounded-full inline-block align-middle">🚩 Flagged</span>
+                              )}
 
                               {/* Rule-Based Sentiment Classification Badge */}
                               {(() => {
@@ -3829,7 +3835,7 @@ export default function OfficialPages({
                             `);
                           } else if (reportModuleCategory === 'residents') {
                             const filteredRoster = youthProfiles.filter(y => selectedZoneForReport === 'All' ? true : y.zone === selectedZoneForReport);
-                            const rowsHtml = filteredRoster.map((y, i) => `<tr><td style="text-align:center">${i+1}</td><td><strong>${y.name}</strong></td><td>${y.zone}</td><td>${y.educationalLevel}</td><td>${y.scholarStatus}</td><td>${y.email}</td></tr>`).join('');
+                            const rowsHtml = filteredRoster.map((y, i) => `<tr><td style="text-align:center">${i+1}</td><td><strong>${y.name}</strong></td><td>${y.zone || 'Not Specified'}</td><td>${y.educationalLevel}</td><td>${y.scholarStatus}</td><td>${y.email}</td></tr>`).join('');
                             printOfficialReport(`Katipunan ng Kabataan Constituent Roster - Zone: ${selectedZoneForReport}`, `
                               <h4>Official Youth Masterlist (${filteredRoster.length} Constituents)</h4>
                               <table>
@@ -4002,7 +4008,7 @@ export default function OfficialPages({
                             {localYouthProfiles.filter(y => selectedZoneForReport === 'All' ? true : y.zone === selectedZoneForReport).map(y => (
                               <tr key={y.id} className="hover:bg-slate-50">
                                 <td className="px-5 py-3 font-bold text-slate-800">{y.name}</td>
-                                <td className="px-5 py-3 font-bold text-slate-600">{y.zone}</td>
+                                <td className="px-5 py-3 font-bold text-slate-600">{y.zone || 'Not Specified'}</td>
                                 <td className="px-5 py-3 text-slate-700">{y.educationalLevel}</td>
                                 <td className="px-5 py-3 text-slate-500">{y.school || 'Unspecified Institute'}</td>
                                 <td className="px-5 py-3">
@@ -4026,7 +4032,7 @@ export default function OfficialPages({
                         <div className="p-4 bg-blue-50/50 border border-blue-100 rounded-xl space-y-1">
                           <span className="text-[10px] font-bold text-[#091d64] uppercase">Total Implemented Projects</span>
                           <h4 className="text-xl font-black text-[#091d64]">{programs.length} Active Programs</h4>
-                          <p className="text-[11px] text-slate-500">100% execution alignment with CBYDP 2026-2028 priorities.</p>
+                          <p className="text-[11px] text-slate-500">Execution alignment tracked against CBYDP priorities.</p>
                         </div>
                         <div className="p-4 bg-emerald-50/50 border border-emerald-100 rounded-xl space-y-1">
                           <span className="text-[10px] font-bold text-emerald-700 uppercase">Youth Beneficiaries Reached</span>
@@ -4077,7 +4083,7 @@ export default function OfficialPages({
                       <div className="p-5 border border-slate-100 bg-slate-50/50 rounded-xl space-y-3">
                         <div className="flex justify-between items-center">
                           <h4 className="font-bold text-slate-800 text-sm">DILG IRR RA 10742 Mandatory Compliance Summary</h4>
-                          <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 rounded font-black text-[10px] uppercase">100% Compliant</span>
+                          <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 rounded font-black text-[10px] uppercase">Compliance Tracked</span>
                         </div>
                         <div className="grid md:grid-cols-2 gap-4 text-xs">
                           <div className="p-3 bg-white rounded-lg border border-slate-200/60 space-y-1">
@@ -4351,7 +4357,7 @@ export default function OfficialPages({
                   onClick={() => setSecYouthTab('verified')}
                   className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${secYouthTab === 'verified' ? 'bg-[#091d64] text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
                 >
-                  <ShieldCheck className="w-4 h-4" /> Verified Roster ({localYouthProfiles.filter(p => p.status === 'Approved').length})
+                  <ShieldCheck className="w-4 h-4" /> Verified Roster ({localYouthProfiles.filter(p => (p.status === 'Approved' || p.status?.toLowerCase() === 'suspended')).length})
                 </button>
                 <button
                   onClick={() => setSecYouthTab('pending')}
@@ -4418,7 +4424,7 @@ export default function OfficialPages({
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs font-medium bg-white">
                     {localYouthProfiles
-                      .filter(y => secYouthTab === 'verified' ? y.status === 'Approved' : y.status === 'Pending')
+                      .filter(y => secYouthTab === 'verified' ? (y.status === 'Approved' || y.status?.toLowerCase() === 'suspended') : y.status === 'Pending')
                       .filter(y => {
                         const matchSearch = y.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           y.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -4432,7 +4438,7 @@ export default function OfficialPages({
                             <div className="flex items-center gap-3">
                               <div className="relative">
                                 <ProfileAvatar name={y.name} src={y.profilePic} alt={y.name} className="w-10 h-10 rounded-xl border-2 border-white shadow-xs" />
-                                <div className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-white ${y.status === 'Approved' ? 'bg-emerald-500' : 'bg-amber-500'}`}></div>
+                                <div className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-white ${(y.status === 'Approved' || y.status?.toLowerCase() === 'suspended') ? 'bg-emerald-500' : 'bg-amber-500'}`}></div>
                               </div>
                               <div>
                                 <span className="font-bold text-slate-900 block tracking-tight text-sm">{y.name}</span>
@@ -4445,7 +4451,7 @@ export default function OfficialPages({
                             <span className="text-[11px] text-slate-400 font-semibold block">{y.school || 'Unassigned Institute'}</span>
                           </td>
                           <td className="px-6 py-4 text-center">
-                            <span className="px-2.5 py-1 bg-slate-100 rounded text-slate-700 font-bold text-[10px]">{y.zone}</span>
+                            <span className="px-2.5 py-1 bg-slate-100 rounded text-slate-700 font-bold text-[10px]">{y.zone || 'Not Specified'}</span>
                           </td>
                           <td className="px-6 py-4 text-center">
                             <span className={`px-2.5 py-1 rounded text-[9px] font-black uppercase tracking-tight ${y.scholarStatus === 'Scholar' ? 'bg-indigo-50 text-[#091d64]' : 'bg-slate-50 text-slate-400'}`}>
@@ -4484,7 +4490,7 @@ export default function OfficialPages({
                               }} 
                               className="px-3 py-1.5 bg-[#eff6ff] hover:bg-[#dbeafe] text-[#091d64] font-bold rounded-lg text-xs transition-all flex items-center gap-1 mx-auto"
                             >
-                              <Eye className="w-3.5 h-3.5" /> View / Edit
+                              <Eye className="w-3.5 h-3.5" /> View Details
                             </button>
                           </td>
                         </tr>
@@ -4552,7 +4558,7 @@ export default function OfficialPages({
                           <span className="text-[10px] text-slate-400 font-semibold block">{y.school || 'Unspecified school'}</span>
                         </td>
                         <td className="px-6 py-4 text-center">
-                          <span className="px-2 py-1 bg-slate-100 rounded text-slate-700 font-bold text-[10px]">{y.zone}</span>
+                          <span className="px-2 py-1 bg-slate-100 rounded text-slate-700 font-bold text-[10px]">{y.zone || 'Not Specified'}</span>
                         </td>
                         <td className="px-6 py-4 text-center font-mono text-[11px] text-slate-500 font-bold italic">{y.dateRegistered}</td>
                         <td className="px-6 py-4">
@@ -4893,6 +4899,7 @@ export default function OfficialPages({
                 <table className="w-full text-left text-sm text-slate-600">
                   <thead className="bg-[#091d64] text-[10px] text-white font-bold uppercase tracking-widest">
                     <tr>
+                        <th className="px-6 py-4 w-12">Photo</th>
                       <th className="px-6 py-4">Property item</th>
                       <th className="px-6 py-4">Category Group</th>
                       <th className="px-6 py-4 text-center">Qty</th>
@@ -4904,6 +4911,15 @@ export default function OfficialPages({
                   <tbody className="divide-y divide-slate-100 text-xs font-medium bg-white">
                     {inventory.map(item => (
                       <tr key={item.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-6 py-4">
+                          {(item as any).photo_url ? (
+                            <button type="button" onClick={() => setPreviewImage((item as any).photo_url)} className="inline-block cursor-pointer hover:opacity-80">
+                              <img src={(item as any).photo_url} alt={item.item} className="w-10 h-10 rounded object-cover border border-slate-200" />
+                            </button>
+                          ) : (
+                            <span className="text-slate-300 text-[10px]">No image</span>
+                          )}
+                        </td>
                         <td className="px-6 py-4 font-bold text-slate-800 tracking-tight">{item.item}</td>
                         <td className="px-6 py-4 text-slate-500 font-semibold">{item.category}</td>
                         <td className="px-6 py-4 text-center font-black text-slate-700">{item.quantity}</td>
@@ -5431,6 +5447,7 @@ export default function OfficialPages({
                 >
                   <option value="Reviewed">Under Review (Acknowledged & Processing)</option>
                   <option value="Resolved">Resolved (Official Action Completed)</option>
+                  <option value="Dismissed">Dismissed (Archive Spam/Flagged)</option>
                 </select>
               </div>
 
@@ -5449,77 +5466,6 @@ export default function OfficialPages({
               <div className="flex justify-end gap-2 border-t pt-4">
                 <button onClick={() => setShowFeedbackModal(false)} className="px-4 py-2 border rounded text-xs">Close</button>
                 <button onClick={handleSaveFeedbackResponse} className="px-5 py-2 bg-[#091d64] text-white rounded font-bold text-xs">Post Official Response</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 7. View Document Details Modal */}
-      {showReviewDocModal && selectedDoc && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4">
-          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
-            <div className="flex items-start justify-between p-6 border-b border-slate-100">
-              <div>
-                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">{selectedDoc.category}</span>
-                <h3 className="font-sans font-bold text-lg mt-2 leading-snug text-slate-900">{selectedDoc.title}</h3>
-                <p className="text-xs text-slate-500 mt-1 font-mono">Tracking No: {selectedDoc.resolutionNumber || selectedDoc.id}</p>
-              </div>
-              <button onClick={() => { setShowReviewDocModal(false); setSelectedDoc(null); }} className="text-slate-400 hover:text-slate-700 p-1 rounded-lg">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-xs">
-                <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Uploaded By</span>
-                  <span className="font-bold text-slate-800 block mt-1">{selectedDoc.uploadedBy}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Uploaded Date</span>
-                  <span className="font-bold text-slate-800 block mt-1">{selectedDoc.uploadedDate}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Designated Approver</span>
-                  <span className="font-bold text-[#091d64] block mt-1">{selectedDoc.designatedApprover || currentTenant?.chairperson || 'SK Chairperson'}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Current Status</span>
-                  <span className="font-bold text-amber-700 block mt-1">{selectedDoc.status}</span>
-                </div>
-              </div>
-
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Description</span>
-                <p className="text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-200 leading-relaxed text-xs">{selectedDoc.description || 'No description provided.'}</p>
-              </div>
-
-              <div className="flex items-center justify-between gap-3 p-3 bg-blue-50/60 border border-blue-100 rounded-lg">
-                <div className="text-xs">
-                  <p className="font-bold text-[#091d64]">Attached File</p>
-                  <p className="text-slate-500 text-[10px]">{(selectedDoc as any).fileUrl ? 'File ready to preview' : 'No file attached'}</p>
-                </div>
-                <button type="button" onClick={() => {
-                  const url = (selectedDoc as any).fileUrl;
-                  if (url) { window.open(url, '_blank'); return; }
-                  alert('No file attached to this document.');
-                }} className="px-4 py-2 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-lg text-xs flex items-center gap-1.5">
-                  <Eye className="w-4 h-4" /> View Original File
-                </button>
-              </div>
-
-              <div>
-                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">Review Notes</label>
-                <textarea value={reviewNotes} onChange={(e) => setReviewNotes(e.target.value)} rows={3} className="w-full p-2.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#091d64]" placeholder="Optional notes for the document author..." />
-              </div>
-            </div>
-
-            <div className="flex justify-between items-center border-t border-slate-100 p-4 bg-slate-50">
-              <button onClick={() => { setShowReviewDocModal(false); setSelectedDoc(null); }} className="px-4 py-2 border border-slate-200 bg-white rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">Close</button>
-              <div className="flex gap-2">
-                <button onClick={async () => { if (!onRejectDocument || !selectedDoc) return; setIsReviewingDoc(true); try { await onRejectDocument(selectedDoc.id, reviewNotes || 'Rejected by reviewer.'); setShowReviewDocModal(false); setSelectedDoc(null); } catch (err: any) { alert((err && err.message) ? err.message : 'Reject failed.'); } finally { setIsReviewingDoc(false); } }} disabled={isReviewingDoc || !onRejectDocument} className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"><X className="w-4 h-4" /> Reject</button>
-                <button onClick={async () => { if (!onApproveDocument || !selectedDoc) return; setIsReviewingDoc(true); try { await onApproveDocument(selectedDoc.id, reviewNotes || 'Approved.'); setShowReviewDocModal(false); setSelectedDoc(null); } catch (err: any) { alert((err && err.message) ? err.message : 'Approve failed.'); } finally { setIsReviewingDoc(false); } }} disabled={isReviewingDoc || !onApproveDocument} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"><CheckCircle2 className="w-4 h-4" /> Approve</button>
               </div>
             </div>
           </div>
@@ -5686,7 +5632,7 @@ export default function OfficialPages({
         </div>
       )}
 
-      {/* 10. View / Edit Katipunan Constituent Profile Modal */}
+      {/* 10. View Details Katipunan Constituent Profile Modal */}
       {showYouthDetailModal && selectedYouthProfile && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-left">
@@ -5708,7 +5654,7 @@ export default function OfficialPages({
                 <div className="col-span-2 grid grid-cols-2 gap-2">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">First Name *</label>
-                    <input 
+                    <input readOnly 
                       type="text" 
                       value={youthEditForm.first_name || ''} 
                       onChange={(e) => setYouthEditForm({ ...youthEditForm, first_name: e.target.value })} 
@@ -5717,7 +5663,7 @@ export default function OfficialPages({
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Last Name *</label>
-                    <input 
+                    <input readOnly 
                       type="text" 
                       value={youthEditForm.last_name || ''} 
                       onChange={(e) => setYouthEditForm({ ...youthEditForm, last_name: e.target.value })} 
@@ -5726,7 +5672,7 @@ export default function OfficialPages({
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Middle Name</label>
-                    <input 
+                    <input readOnly 
                       type="text" 
                       value={youthEditForm.middle_name || ''} 
                       onChange={(e) => setYouthEditForm({ ...youthEditForm, middle_name: e.target.value })} 
@@ -5735,7 +5681,7 @@ export default function OfficialPages({
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Suffix</label>
-                    <select 
+                    <select disabled 
                       value={youthEditForm.suffix || ''} 
                       onChange={(e) => setYouthEditForm({ ...youthEditForm, suffix: e.target.value })} 
                       className="w-full p-2 border border-slate-200 rounded text-xs focus:ring-1 focus:ring-[#091d64]" 
@@ -5752,8 +5698,8 @@ export default function OfficialPages({
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Barangay Zone *</label>
-                  <select 
-                    value={youthEditForm.zone} 
+                  <select disabled 
+                    value={youthEditForm.zone || ''} 
                     onChange={(e) => setYouthEditForm({ ...youthEditForm, zone: e.target.value })} 
                     className="w-full p-2 border border-slate-200 rounded text-xs"
                   >
@@ -5765,7 +5711,7 @@ export default function OfficialPages({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Email Address *</label>
-                  <input 
+                  <input readOnly 
                     type="email" 
                     value={youthEditForm.email} 
                     onChange={(e) => setYouthEditForm({ ...youthEditForm, email: e.target.value })} 
@@ -5774,7 +5720,7 @@ export default function OfficialPages({
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Mobile Contact *</label>
-                  <input 
+                  <input readOnly 
                     type="text" 
                     value={youthEditForm.mobile} 
                     onChange={(e) => setYouthEditForm({ ...youthEditForm, mobile: e.target.value })} 
@@ -5786,7 +5732,7 @@ export default function OfficialPages({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Educational Level</label>
-                  <input 
+                  <input readOnly 
                     type="text" 
                     value={youthEditForm.educationalLevel} 
                     onChange={(e) => setYouthEditForm({ ...youthEditForm, educationalLevel: e.target.value })} 
@@ -5795,7 +5741,7 @@ export default function OfficialPages({
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Scholarship Status</label>
-                  <select 
+                  <select disabled 
                     value={youthEditForm.scholarStatus} 
                     onChange={(e) => setYouthEditForm({ ...youthEditForm, scholarStatus: e.target.value as any })} 
                     className="w-full p-2 border border-slate-200 rounded text-xs"
@@ -5808,7 +5754,7 @@ export default function OfficialPages({
 
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">School / University Institute</label>
-                <input 
+                <input readOnly 
                   type="text" 
                   value={youthEditForm.school} 
                   onChange={(e) => setYouthEditForm({ ...youthEditForm, school: e.target.value })} 
@@ -5918,7 +5864,7 @@ export default function OfficialPages({
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div className="p-4 bg-blue-50/60 border border-blue-100 rounded-xl space-y-1">
                   <span className="text-[10px] font-bold text-[#091d64] uppercase block">Total Verified Youth</span>
-                  <h4 className="text-2xl font-black text-[#091d64]">{localYouthProfiles.filter(p => p.status === 'Approved').length}</h4>
+                  <h4 className="text-2xl font-black text-[#091d64]">{localYouthProfiles.filter(p => (p.status === 'Approved' || p.status?.toLowerCase() === 'suspended')).length}</h4>
                   <span className="text-[10px] text-slate-400 block">Active KK Roster</span>
                 </div>
                 <div className="p-4 bg-indigo-50/60 border border-indigo-100 rounded-xl space-y-1">
@@ -5953,9 +5899,9 @@ export default function OfficialPages({
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium">
                       {['Zone 1', 'Zone 2', 'Zone 3', 'Zone 4'].map(z => {
-                        const zoneCount = localYouthProfiles.filter(y => y.zone === z && y.status === 'Approved').length;
+                        const zoneCount = localYouthProfiles.filter(y => y.zone === z && (y.status === 'Approved' || y.status?.toLowerCase() === 'suspended')).length;
                         const zoneScholars = localYouthProfiles.filter(y => y.zone === z && y.scholarStatus === 'Scholar').length;
-                        const total = localYouthProfiles.filter(y => y.status === 'Approved').length || 1;
+                        const total = localYouthProfiles.filter(y => (y.status === 'Approved' || y.status?.toLowerCase() === 'suspended')).length || 1;
                         const pct = ((zoneCount / total) * 100).toFixed(1);
                         return (
                           <tr key={z} className="hover:bg-slate-50">
@@ -6033,6 +5979,17 @@ export default function OfficialPages({
         )}
       </div>
 
+      {/* INVENTORY LIGHTBOX MODAL */}
+      {previewImage && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="relative max-w-4xl w-full max-h-[90vh] flex flex-col items-center">
+            <button onClick={() => setPreviewImage(null)} className="absolute -top-12 right-0 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors cursor-pointer">
+              <X className="w-6 h-6" />
+            </button>
+            <img src={previewImage} alt="Asset Preview" className="max-w-full max-h-[85vh] rounded-xl shadow-2xl object-contain bg-white" />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

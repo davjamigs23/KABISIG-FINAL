@@ -52,9 +52,9 @@ interface ViewerPagesProps {
   programs: Program[];
   youthProfiles?: YouthProfile[];
   documents?: DocumentRecord[];
-  resolutions: ResolutionRecord[];
-  expenses: ExpenseRecord[];
-  announcements: AnnouncementRecord[];
+  resolutions: ResolutionRecord[] | undefined;
+  expenses: ExpenseRecord[] | undefined;
+  announcements: AnnouncementRecord[] | undefined;
   onLogout: () => void;
   onNavigateSignUp?: () => void;
 }
@@ -64,9 +64,9 @@ export default function ViewerPages({
   programs,
   youthProfiles = [],
   documents = [],
-  resolutions,
-  expenses,
-  announcements,
+  resolutions = [],
+  expenses = [],
+  announcements = [],
   onLogout,
   onNavigateSignUp
 }: ViewerPagesProps) {
@@ -221,19 +221,38 @@ export default function ViewerPages({
   const femaleCount = youthProfiles.filter(p => p.sex === 'Female').length;
   const scholarCount = youthProfiles.filter(p => p.scholarStatus === 'Scholar').length;
 
-  const genderDemographicData = publicDemographics ? Object.entries(publicDemographics.sex_distribution || {}).map(([k, v]: any) => ({ name: k, value: v, color: k === 'Male' ? '#091d64' : k === 'Female' ? '#d32f2f' : '#94a3b8' })) : [];
+  const _demoRaw = (publicDemographics as any)?.data?.data
+    ?? (publicDemographics as any)?.data
+    ?? publicDemographics;
+  const _genderSource = _demoRaw?.sex_distribution ?? _demoRaw?.sexCounts;
+  const _genderMap = _genderSource && typeof _genderSource === 'object' && !Array.isArray(_genderSource)
+    ? _genderSource
+    : {};
+  const genderDemographicData = Object.entries(_genderMap)
+    .map(([name, count]) => ({
+      name,
+      value: Number(count),
+      color: name === 'Male' ? '#091d64' : name === 'Female' ? '#d32f2f' : '#94a3b8',
+    }))
+    .filter(entry => Number.isFinite(entry.value) && entry.value >= 0);
 
   const highSchoolCount = youthProfiles.filter(p => p.educationalLevel === 'High School' || p.educationalLevel === 'Junior High' || p.educationalLevel === 'Senior High').length;
   const collegeCount = youthProfiles.filter(p => p.educationalLevel === 'College' || p.educationalLevel === 'Vocational').length;
   const outOfSchoolCount = youthProfiles.filter(p => p.educationalLevel === 'Out of School Youth' || p.employmentStatus === 'Unemployed').length;
 
-  const educationDemographicData = publicDemographics ? Object.entries(publicDemographics.education_distribution || {}).map(([k, v]: any) => ({ name: k, value: v })) : [];
+  const _educationSource = _demoRaw?.education_distribution ?? _demoRaw?.eduCounts;
+  const _educationMap = _educationSource && typeof _educationSource === 'object' && !Array.isArray(_educationSource)
+    ? _educationSource
+    : {};
+  const educationDemographicData = Object.entries(_educationMap)
+    .map(([name, count]) => ({ name, value: Number(count) }))
+    .filter(entry => Number.isFinite(entry.value) && entry.value >= 0);
 
   // Consistently sort barangays alphabetically
   const sortedTenants = [...tenants].sort((a, b) => a.name.localeCompare(b.name));
 
   // Recharts Chart F1: City-Wide budget comparison
-  const cityWideBarData = sortedTenants.slice(0, 7).map(t => ({
+  const cityWideBarData = sortedTenants.map(t => ({
     name: t.name,
     budget: t.totalBudget,
     spent: t.spentBudget

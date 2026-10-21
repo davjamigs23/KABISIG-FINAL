@@ -213,7 +213,7 @@ export function detectLowEngagement(
   return profiles
     .filter(p => p.status === 'Approved')
     .map(p => {
-      const pRegs = registrations.filter(r => r.participantId === p.id);
+      const pRegs = registrations.filter(r => r.participantId === p.userId || r.participantId === p.id);
       const attendanceCount = pRegs.filter(r => r.status === 'Completed').length;
       
       // Compute proxy score if engagementScore is undefined
@@ -411,6 +411,7 @@ export function monitorBudgets(
  * Tracks documentation lapses, approval pile-ups, and pending clearances.
  */
 export function getComplianceIssues(
+  role: string,
   profiles: YouthProfile[],
   programs: Program[],
   documents: DocumentRecord[],
@@ -432,19 +433,16 @@ export function getComplianceIssues(
   // Check B: Completed programs missing reports (Accomplishment/Liquidation)
   const completedPrograms = programs.filter(p => p.status === 'Completed');
   for (const prog of completedPrograms) {
-    const hasAccomplishment = documents.some(
-      doc => doc.category === 'Accomplishment' && 
-      (doc.title.toLowerCase().includes(prog.title.toLowerCase()) || doc.description.toLowerCase().includes(prog.title.toLowerCase()))
-    );
-    const hasLiquidation = documents.some(
-      doc => doc.category === 'Liquidation' && 
-      (doc.title.toLowerCase().includes(prog.title.toLowerCase()) || doc.description.toLowerCase().includes(prog.title.toLowerCase()))
-    );
+    const matchesProgram = (doc: DocumentRecord) =>
+      doc.title.toLowerCase().includes(prog.title.toLowerCase()) ||
+      (doc.description || '').toLowerCase().includes(prog.title.toLowerCase());
+    const hasAccomplishment = documents.some(doc => doc.category === 'Accomplishment' && matchesProgram(doc));
+    const hasLiquidation = documents.some(doc => doc.category === 'Liquidation' && matchesProgram(doc));
 
     if (!hasAccomplishment) {
       issues.push({
         level: 'Warning',
-        code: `MISSING_ACCOMPLISHMENT_${prog.id}`,
+        code: `MISSING_DOCUMENT_ACCOMPLISHMENT_${prog.id}`,
         message: `Missing Document: No accomplishment report uploaded for the completed program "${prog.title}".`,
         action: 'Draft and upload Accomplishment Report'
       });
@@ -484,7 +482,12 @@ export function getComplianceIssues(
     });
   }
 
-  return issues;
+  return issues.filter(issue => {
+    const r = (role || '').toLowerCase();
+    if (r.includes('treasurer')) return issue.code.includes('LIQUIDATION') || issue.code.includes('EXPENSE');
+    if (r.includes('secretary')) return issue.code.includes('DOCUMENT') || issue.code.includes('RESOLUTION');
+    return true;
+  });
 }
 
 /**

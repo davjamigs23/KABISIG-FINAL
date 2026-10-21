@@ -64,28 +64,6 @@ export default function App() {
   const [tenants, setTenants] = useState<BarangayTenant[]>(NAGA_BARANGAYS);
   const [programs, setPrograms] = useState<Program[]>([]);
 
-  // Auto-load program registrations for Admin Reports
-  const __programIdsKey = (programs || []).map((p: any) => p.id).join(',');
-  useEffect(() => {
-    if (!programs || programs.length === 0) return;
-    let cancelled = false;
-    (async () => {
-      const all: any[] = [];
-      for (const p of programs) {
-        try {
-          const regs = await kabisigApi.getProgramRegistrations(p.id);
-          if (Array.isArray(regs)) {
-            all.push(...regs.map((r: any) => ({ ...r, programId: r.programId || r.program_id || p.id })));
-          }
-        } catch (e) { console.warn('Registration load failed for', p.id, e); }
-      }
-      if (!cancelled) setRegistrations(all);
-    })();
-    return () => { cancelled = true; };
-  }, [__programIdsKey]);
-
-
-
   const [youthProfiles, setYouthProfiles] = useState<YouthProfile[]>([]);
   const [youthProfilesLoading, setYouthProfilesLoading] = useState(false);
   const [youthProfilesError, setYouthProfilesError] = useState<string | null>(null);
@@ -99,6 +77,7 @@ export default function App() {
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [announcements, setAnnouncements] = useState<AnnouncementRecord[]>([]);
   const [auditLogs, setAuditLogs] = useState<SystemAuditLog[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
 
   // --- AUTHENTICATED USER SESSION ---
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -107,6 +86,62 @@ export default function App() {
   const [currentYouth, setCurrentYouth] = useState<YouthProfile | null>(null);
   const [currentEmail, setCurrentEmail] = useState<string>('');
   const [authReady, setAuthReady] = useState(false);
+
+  // Program registrations and notifications are private and must only load for authenticated roles.
+  const programIdsKey = programs.map(program => program.id).join(',');
+  useEffect(() => {
+    if (!currentRole || currentRole === 'Viewer' || currentRole === 'Youth Constituent' || !currentUser?.id || !kabisigApi.getToken() || !programIdsKey) {
+      setRegistrations([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const all: any[] = [];
+      for (const programId of programIdsKey.split(',')) {
+        try {
+          const rows = await kabisigApi.getProgramRegistrations(programId);
+          if (Array.isArray(rows)) {
+            all.push(...rows.map((row: any) => ({
+              ...row,
+              programId: row.programId || row.program_id || programId,
+            })));
+          }
+        } catch (error) {
+          console.warn('Registration load failed for', programId, error);
+        }
+      }
+      if (!cancelled) setRegistrations(all);
+    })();
+    return () => { cancelled = true; };
+  }, [programIdsKey, currentRole, currentUser?.id]);
+
+  useEffect(() => {
+    if (!currentRole || currentRole === 'Viewer' || !currentUser?.id || !kabisigApi.getToken()) {
+      setNotifications([]);
+      return;
+    }
+    let isMounted = true;
+    const refreshNotifications = () => {
+      kabisigApi.getNotifications().then(items => {
+        if (isMounted) setNotifications(items);
+      }).catch(error => {
+        if (isMounted) console.warn('Unable to load notifications:', error);
+      });
+    };
+    refreshNotifications();
+    const intervalId = window.setInterval(refreshNotifications, 30000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') refreshNotifications();
+    };
+    window.addEventListener('focus', refreshNotifications);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshNotifications);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [currentRole, currentUser?.id]);
 
   useEffect(() => {
     const handleAvatarUpdated = (event: Event) => {
@@ -120,12 +155,18 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!currentRole || !currentUser?.id || !kabisigApi.getToken()) return;
+    if (!currentRole || currentRole === 'Viewer' || !currentUser?.id || !kabisigApi.getToken()) return;
     let isMounted = true;
     const refreshCurrentProfile = () => {
       kabisigApi.getCurrentUser().then((profile) => {
         if (!isMounted || !profile || profile.id !== currentUser.id) return;
         setCurrentUser(profile);
+        const verificationStatus = profile.resident_profile?.verification_status;
+        if (verificationStatus) {
+          setCurrentYouth(previous => previous?.userId === profile.id
+            ? { ...previous, verificationStatus }
+            : previous);
+        }
         if (profile.avatar_url) {
           setCurrentYouth((previous) => previous ? { ...previous, profilePic: profile.avatar_url } : previous);
         }
@@ -136,6 +177,7 @@ export default function App() {
     const refreshWhenVisible = () => {
       if (document.visibilityState === 'visible') refreshCurrentProfile();
     };
+    refreshCurrentProfile();
     const intervalId = window.setInterval(refreshCurrentProfile, 60 * 60 * 1000);
     window.addEventListener('focus', refreshCurrentProfile);
     document.addEventListener('visibilitychange', refreshWhenVisible);
@@ -148,7 +190,7 @@ export default function App() {
   }, [currentRole, currentUser?.id]);
 
   useEffect(() => {
-    if (!currentRole || !kabisigApi.getToken()) return;
+    if (!currentRole || currentRole === 'Viewer' || !currentUser?.id || !kabisigApi.getToken()) return;
     let isMounted = true;
     kabisigApi.getAnnouncements().then(rows => {
       if (!isMounted) return;
@@ -221,13 +263,11 @@ export default function App() {
       })));
     }).catch((e: any) => console.warn('Public expenses failed:', e?.message));
 
-
-
   return () => { isMounted = false; };
-  }, [currentRole]);
+  }, [currentRole, currentUser?.id]);
 
   // --- PUBLIC PAGES NAVIGATION STATE ---
-  const [publicView, setPublicView] = useState<'landing' | 'login' | 'signup'>('landing');
+  const [publicView, setPublicView] = useState<'landing' | 'login' | 'signup' | 'transparency'>('landing');
 
   // Load 27 permanently seeded Naga City barangays and restore session from backend API
   useEffect(() => {
@@ -287,10 +327,6 @@ export default function App() {
           setAuthReady(true);
         }
       }
-    }).catch(console.warn);
-
-    kabisigApi.getAuditLogs().then((logs) => {
-      if (logs) setAuditLogs(logs);
     }).catch(console.warn);
 
     // Invitation links must never reuse an existing Super Admin/browser session.
@@ -398,11 +434,13 @@ export default function App() {
               scholarStatus: meta.scholarStatus || 'Non-Scholar',
               scholarshipType: meta.scholarshipType || '',
               youthSector: meta.youthSector || 'In-School Youth',
-              guardianName: meta.guardianName || '',
-              guardianContact: meta.guardianContact || '',
+              guardianName: resident.guardian_name || meta.guardianName || '',
+              guardianContact: resident.guardian_contact || meta.guardianContact || '',
               profilePic: (user as any)?.avatar_url || meta.profilePic,
               qrCode: resident.qr_code_url || meta.qrCode,
+              verificationStatus: resident.verification_status || meta.verificationStatus || 'pending',
               status: user.status === 'active' ? 'Approved' : (user.status === 'rejected' ? 'Rejected' : user.status === 'suspended' ? 'suspended' : 'Pending'),
+              suspension_reason: (user as any).suspension_reason || null,
               barangayId: user.tenant_id || '',
               dateRegistered: user.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
               registeredRole: 'Youth Constituent',
@@ -421,6 +459,58 @@ export default function App() {
       setPrograms([]);
       setDocuments([]);
       setExpenses([]);
+      return;
+    }
+
+    if (currentRole === 'Viewer') {
+    kabisigApi.getPublicDocuments().then((docs: any) => setDocuments(docs || [])).catch(() => {});
+      setPrograms([]);
+      setDocuments([]);
+      setResolutions([]);
+      setFeedback([]);
+      setYouthProfiles([]);
+      setExpenses([]);
+      setAnnouncements([]);
+
+      let isMounted = true;
+      const refreshPublicPrograms = () => {
+        kabisigApi.getPublicPrograms().then(rows => {
+          if (!isMounted) return;
+          setPrograms(rows.map((p: any): Program => ({
+            id: p.id,
+            title: p.title,
+            description: p.description || '',
+            startDate: p.start_date ? p.start_date.split('T')[0] : '',
+            endDate: p.end_date ? p.end_date.split('T')[0] : '',
+            location: p.location || '',
+            maxParticipants: Number(p.total_slots) || 0,
+            budgetAllocation: Number(p.budget_allocation) || 0,
+            spentBudget: 0,
+            aipReference: p.aip_reference || '',
+            category: p.category || 'Other',
+            status: computeProgramStatus(p),
+            registeredCount: 0,
+            barangayId: p.tenant_id,
+          })));
+        }).catch(error => console.warn('Unable to load public programs:', error));
+      };
+      refreshPublicPrograms();
+      const intervalId = window.setInterval(refreshPublicPrograms, 60000);
+      return () => {
+        isMounted = false;
+        window.clearInterval(intervalId);
+      };
+    }
+
+    const token = kabisigApi.getToken();
+    if (!currentUser?.id || !token) {
+      setPrograms([]);
+      setDocuments([]);
+      setExpenses([]);
+      setRegistrations([]);
+      setResolutions([]);
+      setFeedback([]);
+      setYouthProfiles([]);
       return;
     }
 
@@ -478,10 +568,9 @@ export default function App() {
       })));
     }).catch(error => console.warn('Unable to load documents for active role:', error));
 
-    if (currentRole !== 'Viewer') {
-      kabisigApi.getExpenses().then(exps => {
-        if (!isMounted) return;
-        setExpenses(exps.map((e: any): ExpenseRecord => ({
+    kabisigApi.getExpenses().then(exps => {
+      if (!isMounted) return;
+      setExpenses(exps.map((e: any): ExpenseRecord => ({
           id: e.id,
           programId: e.program_id || '',
           budgetId: e.budget_id,
@@ -500,9 +589,8 @@ export default function App() {
           status: e.status === 'approved' ? 'Approved' : 'Pending',
           payee: e.payee || e.title,
           barangayId: e.tenant_id,
-        })));
-      }).catch(error => console.warn('Unable to load expenses for active role:', error));
-    }
+      })));
+    }).catch(error => console.warn('Unable to load expenses for active role:', error));
 
 
 
@@ -546,9 +634,11 @@ export default function App() {
       currentRole === 'SK Kagawad' ||
       currentRole === 'SK Secretary' ||
       currentRole === 'SK Treasurer';
-    if (!officialOrAdmin) {
+    const hasToken = Boolean(kabisigApi.getToken());
+    if (!officialOrAdmin || !currentUser?.id || !hasToken) {
       setYouthProfilesLoading(false);
       setYouthProfilesError(null);
+      setYouthProfiles([]);
       return;
     }
 
@@ -593,10 +683,14 @@ export default function App() {
       window.removeEventListener('focus', refreshYouthProfiles);
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
-  }, [currentRole, currentTenant?.id, youthProfilesRetryCount]);
+  }, [currentRole, currentTenant?.id, currentUser?.id, youthProfilesRetryCount]);
 
   useEffect(() => {
-    if (!currentRole || currentRole === 'Viewer') return;
+    if (!currentRole || currentRole === 'Viewer' || !currentUser?.id || !kabisigApi.getToken()) {
+      setResolutions([]);
+      setPollsError(null);
+      return;
+    }
     let isMounted = true;
     const refreshPolls = () => {
       kabisigApi.getPolls().then((polls) => {
@@ -626,7 +720,7 @@ export default function App() {
   }, [currentRole, currentTenant?.id, currentUser?.id]);
 
   useEffect(() => {
-    if (!currentRole || currentRole === 'Viewer' || currentRole === 'Super Admin' || !kabisigApi.getToken()) return;
+    if (!currentRole || currentRole === 'Viewer' || currentRole === 'Super Admin' || !currentUser?.id || !kabisigApi.getToken()) return;
     let isMounted = true;
     const refreshFeedback = () => {
       kabisigApi.getFeedback().then((feeds) => {
@@ -640,7 +734,7 @@ export default function App() {
           rating: f.sentiment === 'positive' ? 5 : f.sentiment === 'negative' ? 1 : 3,
           sentiment: f.sentiment,
           anonymous: f.is_anonymous || false,
-          status: f.status === 'resolved' ? 'Resolved' : f.status === 'under_review' ? 'Reviewed' : 'Pending',
+          status: f.status === 'resolved' ? 'Resolved' : f.status === 'under_review' ? 'Reviewed' : (f.status as any) === 'flagged' ? 'flagged' : (f.status as any) === 'dismissed' ? 'Dismissed' : 'Pending',
           dateSubmitted: f.created_at ? f.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
           submittedBy: f.is_anonymous ? 'Anonymous' : f.users?.full_name || 'Youth Constituent',
           response: f.response || '',
@@ -675,7 +769,30 @@ export default function App() {
       window.removeEventListener('focus', refreshFeedback);
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
+
   }, [currentRole, currentTenant?.id, currentUser?.id]);
+
+  useEffect(() => {
+    const canReadAuditLogs = currentRole === 'Super Admin'
+      || currentRole === 'Barangay Admin'
+      || currentRole === 'SK Chairperson'
+      || currentRole === 'SK Kagawad'
+      || currentRole === 'SK Secretary'
+      || currentRole === 'SK Treasurer';
+    if (!canReadAuditLogs || !currentUser?.id || !kabisigApi.getToken()) return;
+    let isMounted = true;
+    const refreshAuditLogs = () => {
+      kabisigApi.getAuditLogs().then(logs => {
+        if (isMounted && logs) setAuditLogs(logs);
+      }).catch(error => console.warn('Unable to load audit logs:', error));
+    };
+    refreshAuditLogs();
+    const intervalId = window.setInterval(refreshAuditLogs, 30000);
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, [currentRole, currentUser?.id]);
 
   // --- AUTH CALLBACKS ---
   const handleLogin = (role: UserRole | 'Viewer', tenantId: string, emailOrName?: string, userObj?: any) => {
@@ -759,11 +876,13 @@ export default function App() {
           scholarStatus: meta.scholarStatus || matchedProfile?.scholarStatus || 'Non-Scholar',
           scholarshipType: meta.scholarshipType || matchedProfile?.scholarshipType || '',
           youthSector: meta.youthSector || matchedProfile?.youthSector || 'In-School Youth',
-          guardianName: meta.guardianName || matchedProfile?.guardianName || '',
-          guardianContact: meta.guardianContact || matchedProfile?.guardianContact || '',
+          guardianName: resident.guardian_name || meta.guardianName || matchedProfile?.guardianName || '',
+          guardianContact: resident.guardian_contact || meta.guardianContact || matchedProfile?.guardianContact || '',
           profilePic: userObj.avatar_url || meta.profilePic || matchedProfile?.profilePic,
           qrCode: resident.qr_code_url || meta.qrCode || matchedProfile?.qrCode,
+          verificationStatus: resident.verification_status || meta.verificationStatus || matchedProfile?.verificationStatus || 'pending',
           status: userObj.status === 'active' ? 'Approved' : (userObj.status === 'rejected' ? 'Rejected' : userObj.status === 'suspended' ? 'suspended' : 'Pending'),
+          suspension_reason: (userObj as any).suspension_reason || null,
           barangayId: userObj.tenant_id || matchedProfile?.barangayId || '',
           dateRegistered: userObj.created_at?.split('T')[0] || matchedProfile?.dateRegistered || new Date().toISOString().split('T')[0],
           registeredRole: 'Youth Constituent',
@@ -1162,7 +1281,7 @@ export default function App() {
         <LandingPage
           onSignIn={() => setPublicView('login')}
           onCreateAccount={() => setPublicView('signup')}
-          onTransparencyPortal={() => { setCurrentUser(null); setCurrentEmail('viewer@kabisig.ph'); setCurrentRole('Viewer'); }}
+          onTransparencyPortal={() => { kabisigApi.logout(); setCurrentRole('Viewer'); setCurrentUser(null); setCurrentYouth(null); setCurrentEmail('viewer@kabisig.ph'); }}
         />
       )}
 
@@ -1172,7 +1291,7 @@ export default function App() {
           programs={programs}
           activeTab={publicView}
           setActiveTab={(tab) => setPublicView(tab === '_landing' ? 'landing' : (tab as any))}
-          onLogin={(email, role, tenantId, userObj) => { if (role === 'Viewer') { setCurrentUser(null); setCurrentEmail('viewer@kabisig.ph'); setCurrentRole('Viewer'); setPublicView('login'); return; } handleLogin(role, tenantId || '', email, userObj); }}
+          onLogin={(email, role, tenantId, userObj) => { if (role === 'Viewer') { kabisigApi.logout(); setCurrentUser(null); setCurrentYouth(null); setCurrentEmail('viewer@kabisig.ph'); setCurrentRole('Viewer'); setPublicView('login'); return; } handleLogin(role, tenantId || '', email, userObj); }}
           onSignUp={(partialProfile) => {
             const completeProfile: YouthProfile = {
               id: `SK-2026-${Math.floor(100 + Math.random() * 900)}`,
@@ -1355,6 +1474,7 @@ export default function App() {
       {/* 5. YOUTH CONSTITUENT PANELS */}
       {currentRole === 'Youth Constituent' && currentYouth && (
         <YouthPages 
+          notifications={notifications}
           currentYouth={currentYouth}
           programs={programs}
           registrations={registrations}

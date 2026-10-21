@@ -82,6 +82,7 @@ interface YouthPagesProps {
   onVoteResolution: (rId: string, voteType: 'Support' | 'Oppose' | 'Abstain') => Promise<ResolutionRecord>;
   onUpdateYouthProfile?: (updated: YouthProfile) => void;
   onLogout: () => void;
+  notifications?: any[];
 }
 export default function YouthPages({
   currentYouth,
@@ -97,12 +98,14 @@ export default function YouthPages({
   onSubmitFeedback,
   onVoteResolution,
   onUpdateYouthProfile,
-  onLogout
+  onLogout,
+  notifications = [],
 }: YouthPagesProps) {
   const resolvedTenant = currentTenant?.id === currentYouth.barangayId
     ? currentTenant
     : tenants.find(tenant => tenant.id === currentYouth.barangayId) || currentTenant;
   const barangayLogo = resolvedTenant?.logo || DEFAULT_BARANGAY_LOGOS[resolvedTenant?.name || ''] || '';
+  const isVerificationPending = (currentYouth.verificationStatus || 'pending').toLowerCase() !== 'verified';
   // Navigation inside Youth Portal corresponding exactly to Image 4 Sidebar:
   // 'dashboard' | 'profile' | 'programs' | 'registrations' | 'feedback' | 'resolutions' | 'announcements' | 'settings'
   const [activeMenu, setActiveMenu] = useState<
@@ -481,20 +484,31 @@ export default function YouthPages({
         content: saved.message,
         rating: sentiment === 'positive' ? 5 : sentiment === 'negative' ? 1 : 3,
         sentiment,
-        anonymous: saved.is_anonymous,
+        anonymous: (saved as any).is_anonymous ?? (saved as any).feedback?.is_anonymous ?? false,
         status: 'Pending',
         dateSubmitted: saved.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
-        submittedBy: saved.is_anonymous ? 'Anonymous' : currentYouth.name,
+        submittedBy: ((saved as any).is_anonymous ?? (saved as any).feedback?.is_anonymous) ? 'Anonymous' : currentYouth.name,
       };
       onSubmitFeedback(newFeed);
       setLocalFeedback(previous => [newFeed, ...previous.filter(item => item.id !== newFeed.id)]);
       setFeedbackForm({ type: 'Suggestion', title: '', content: '', anonymous: false });
+      const wasFlagged = (saved as any).status === 'flagged';
       setFeedbackNotice({
-        type: 'success',
-        text: `Feedback saved. Sentiment analysis: ${sentiment || 'neutral'}.`,
+        type: wasFlagged ? 'error' : 'success',
+        text: wasFlagged
+          ? 'Feedback received, but it contains sensitive language and has been flagged for manual review by the SK Kagawad.'
+          : 'Feedback saved. Sentiment analysis: ' + (sentiment || 'neutral') + '.',
       });
     } catch (error: any) {
-      setFeedbackNotice({ type: 'error', text: error.message || 'Feedback could not be saved.' });
+      const _msg = error.message || 'Feedback could not be saved.';
+      setFeedbackNotice({ type: 'error', text: _msg });
+      if (_msg.toLowerCase().includes('temporarily suspended') || _msg.toLowerCase().includes('permanently restricted')) {
+        setTimeout(() => {
+          try { kabisigApi.logout(); } catch (e) {}
+          try { localStorage.clear(); sessionStorage.clear(); } catch (e) {}
+          window.location.href = '/';
+        }, 3000);
+      }
     } finally {
       setIsSubmittingFeedback(false);
     }
@@ -534,6 +548,17 @@ export default function YouthPages({
     };
     reader.readAsDataURL(file);
   };
+  useEffect(() => {
+    if (currentYouth?.status === 'suspended') {
+      const timer = setTimeout(() => {
+        try { kabisigApi.logout(); } catch (e) {}
+        try { localStorage.clear(); sessionStorage.clear(); } catch (e) {}
+        window.location.href = '/';
+      }, 5000); // Auto-logout after 5 seconds of seeing the message
+      return () => clearTimeout(timer);
+    }
+  }, [currentYouth?.status]);
+
   return (
     <div className="flex flex-col lg:flex-row h-screen bg-[#f8fafc] overflow-hidden font-sans text-slate-800">
       {/* @ts-ignore */}
@@ -546,7 +571,37 @@ export default function YouthPages({
             <h2 className='text-xl font-extrabold text-slate-900 mb-2'>Account Suspended</h2>
             {/* @ts-ignore */}
             <p className='text-sm text-slate-600 mb-6'>{currentYouth?.suspension_reason || 'Violation of community guidelines.'}</p>
-            <button type="button" onClick={() => window.location.href = 'mailto:sk@barangay.gov.ph'} className='w-full py-2.5 bg-[#091d64] text-white font-bold rounded-xl text-sm'>Appeal to SK Chairperson</button>
+            <button type="button" onClick={() => {
+              if (confirm('Submit appeal to the SK Chairperson? You will be signed out after.')) {
+                try { kabisigApi.logout(); } catch (e) { console.error(e); }
+                try { localStorage.clear(); sessionStorage.clear(); } catch (e) { console.error(e); }
+                setTimeout(() => window.location.href = '/', 300);
+              }
+            }} className="w-full py-2.5 bg-[#091d64] hover:bg-[#0a2578] text-white font-bold rounded-xl text-sm transition-colors">
+              Appeal to SK Chairperson
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* @ts-ignore */}
+      {currentYouth?.status === 'Approved' && currentYouth?.suspension_reason && (
+        <div className='fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4'>
+          <div className='bg-white rounded-2xl max-w-md w-full p-6 text-center shadow-2xl'>
+            <div className='w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4'>
+              <ShieldAlert className='w-8 h-8' />
+            </div>
+            <h2 className='text-xl font-extrabold text-slate-900 mb-2'>Account Reactivated</h2>
+            {/* @ts-ignore */}
+            <p className='text-sm text-slate-600 mb-6'>{currentYouth?.suspension_reason}</p>
+            <button type="button" onClick={async () => {
+              try {
+                await kabisigApi.acknowledgeWarning();
+                window.location.reload();
+              } catch (e) { window.location.reload(); }
+            }} className='w-full py-2.5 bg-[#091d64] hover:bg-[#0a2578] text-white font-bold rounded-xl text-sm transition-colors'>
+              I Understand
+            </button>
           </div>
         </div>
       )}
@@ -728,7 +783,17 @@ export default function YouthPages({
           </div>
           {/* User Profile Block */}
           <div className="flex items-center gap-5">
-            <NotificationMenu buttonClassName="p-2 rounded-xl text-slate-500 hover:text-slate-700 hover:bg-slate-100 relative" />
+            <NotificationMenu 
+  userRole="Youth Constituent" 
+  items={notifications || []} 
+  buttonClassName="p-2 rounded-xl text-slate-500 hover:text-slate-700 hover:bg-slate-100 relative"
+  onNavigate={(link) => {
+    if (link.includes('feedback')) setActiveMenu('feedback');
+    else if (link.includes('program')) setActiveMenu('programs');
+    else if (link.includes('profile')) setActiveMenu('profile');
+    else setActiveMenu('dashboard');
+  }}
+/>
             <UserMenu 
               userName={currentYouth.name}
               role="KK Registered Youth"
@@ -744,6 +809,11 @@ export default function YouthPages({
           {/* ==================== 1. DASHBOARD VIEW (Image 4) ==================== */}
           {activeMenu === 'dashboard' && (
             <div className="space-y-6">
+              {isVerificationPending && (
+                <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  Your account is pending verification. Your dashboard will update when your resident profile is verified.
+                </div>
+              )}
               {/* Latest Announcements Preview */}
               <div className="bg-white rounded-xl border border-slate-100 shadow-xs p-4">
                 <div className="flex items-center justify-between mb-4">
@@ -833,7 +903,9 @@ export default function YouthPages({
                         </div>
                         <div className="flex items-center gap-1.5">
                           <span className="text-[8px] text-slate-400 font-bold uppercase tracking-widest w-12">Status:</span>
-                          <span className="text-[9px] text-green-400 font-extrabold uppercase tracking-tight">Verified Resident</span>
+                          <span className={`text-[9px] font-extrabold uppercase tracking-tight ${isVerificationPending ? 'text-amber-600' : 'text-green-600'}`}>
+                            {isVerificationPending ? 'Pending Verification' : 'Verified Resident'}
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -1559,6 +1631,7 @@ export default function YouthPages({
                           </select>
                         </div>
                       </div>
+                      <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-left"><div className="flex items-start gap-2"><span className="text-amber-600 text-base leading-none mt-0.5">⚠️</span><div><p className="text-[11px] font-extrabold text-amber-800 uppercase tracking-wider">Community Guidelines</p><p className="text-[11px] text-amber-700 leading-relaxed mt-1">Boses ng Kabataan is a safe space for youth voices. Please avoid profanity, spam, sexual content, or personal attacks. Flagged submissions are reviewed by the SK Kagawad before publishing.</p></div></div></div>
                       <div>
                         <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1.5">Topic/Subject Title</label>
                         <input 
@@ -1598,6 +1671,11 @@ export default function YouthPages({
                               <span className="bg-blue-50 text-[#091d64] border border-blue-50 text-[10px] font-bold px-2 py-0.5 rounded-full inline-block">
                                 {f.type}
                               </span>
+                              {(((f as any).is_anonymous === true || (f as any).anonymous === true || f.submittedBy === 'Anonymous')) && (
+                                <span className="ml-2 bg-purple-50 text-purple-700 border border-purple-200 text-[10px] font-bold px-2 py-0.5 rounded-full inline-block align-middle">
+                                  Anonymous
+                                </span>
+                              )}
                               <h4 className="text-sm font-extrabold text-slate-800 mt-1.5">{f.title}</h4>
                             </div>
                             <span className="bg-amber-50 text-amber-700 text-[10px] font-bold px-2.5 py-0.5 rounded border border-amber-200">
@@ -1976,9 +2054,21 @@ export default function YouthPages({
                             onChange={(e) => setVerificationForm({ ...verificationForm, id_type: e.target.value })}
                             className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                           >
-                            <option value="Student ID">Student ID</option>
-                            <option value="Government ID">Government ID</option>
-                            <option value="Barangay Certificate">Barangay Certificate</option>
+                      <option value="Philippine Passport">Philippine Passport</option>
+                      <option value="Driver's License">Driver's License</option>
+                      <option value="PRC ID">PRC ID</option>
+                      <option value="UMID">UMID</option>
+                      <option value="PhilHealth ID">PhilHealth ID</option>
+                      <option value="SSS ID">SSS ID</option>
+                      <option value="Pag-IBIG ID">Pag-IBIG ID</option>
+                      <option value="Voter's ID (COMELEC)">Voter's ID (COMELEC)</option>
+                      <option value="Postal ID">Postal ID</option>
+                      <option value="NBI Clearance">NBI Clearance</option>
+                      <option value="Police Clearance">Police Clearance</option>
+                      <option value="PhilSys National ID">PhilSys National ID</option>
+                      <option value="Student ID">Student ID</option>
+                      <option value="Barangay Certificate">Barangay Certificate</option>
+                      <option value="Other">Other</option>
                             <option value="Other">Other</option>
                           </select>
                         </div>
@@ -2224,7 +2314,7 @@ export default function YouthPages({
         )}
         {/* FOOTER */}
         <footer className="h-12 border-t border-slate-100 bg-white flex items-center justify-center text-[11px] text-slate-400 font-sans tracking-wide flex-shrink-0">
-          © 2025 SK Federation Naga City. All rights reserved.
+          © {new Date().getFullYear()} SK Federation Naga City. All rights reserved.
         </footer>
       </div>
       {/* MOBILE BOTTOM NAVIGATION BAR */}

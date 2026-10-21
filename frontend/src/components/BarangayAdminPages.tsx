@@ -643,7 +643,7 @@ export default function BarangayAdminPages({
   const budgetAlertSignature = budgetAlerts
     .map(alert => `${alert.code}:${alert.level}:${alert.message}`)
     .join('|');
-  const complianceIssues = getComplianceIssues(localProfiles, programs, documents, expenses);
+  const complianceIssues = getComplianceIssues('SK Chairperson', localProfiles, programs, documents, expenses);
   const lowEngagementItems = detectLowEngagement(localProfiles, registrations);
   const complianceIssueSignature = complianceIssues
     .map(issue => `${issue.code}:${issue.level}:${issue.message}`)
@@ -1592,18 +1592,6 @@ return (
                   actionLabel: 'Review',
                   onSelect: () => setInspectProfile(profile),
                 })),
-                ...complianceIssues.map(issue => ({
-                  id: `compliance-${issue.code}`,
-                  title: issue.message.includes(':') ? issue.message.slice(0, issue.message.indexOf(':')) : 'Compliance notice',
-                  message: `${issue.message.includes(':') ? issue.message.slice(issue.message.indexOf(':') + 1).trim() : issue.message} Recommended action: ${issue.action}`,
-                  is_read: false,
-                  actionLabel: 'Resolve',
-                  onSelect: () => {
-                    if (issue.action.includes('Document') || issue.action.includes('Budget')) setActiveMenu('documents');
-                    else if (issue.action.includes('registration')) setActiveMenu('youth');
-                    else setActiveMenu('programs');
-                  },
-                })),
                 {
                   id: 'budget-trend',
                   title: `Budget spending trend: ${budgetAnalytics.consumptionTrend}`,
@@ -1866,7 +1854,7 @@ return (
                     {underservedYouth.slice(0, 8).map(y => (
                       <div key={y.id} className="flex justify-between items-center text-xs py-1.5 border-b border-slate-50">
                         <span className="font-bold text-slate-700 truncate">{y.name}</span>
-                        <span className="text-[10px] text-slate-400 font-mono flex-shrink-0 ml-2">{y.zone}</span>
+                        <span className="text-[10px] text-slate-400 font-mono flex-shrink-0 ml-2">{y.zone || 'Not Specified'}</span>
                       </div>
                     ))}
                     {underservedYouth.length === 0 && (
@@ -1924,7 +1912,7 @@ return (
                             {p.age} yrs / <span className="text-slate-500 font-semibold">{p.sex}</span>
                           </td>
                           <td className="px-6 py-4 font-semibold text-slate-500">
-                            {p.address} ({p.zone})
+                            {p.address} ({p.zone || 'Not Specified'})
                           </td>
                           <td className="px-6 py-4">
                             <span className="block font-bold text-slate-700">{p.educationalLevel}</span>
@@ -2689,7 +2677,7 @@ return (
                 </div>
                 {reportSubTab === 'attendance' && (<div className="overflow-x-auto border border-slate-100 rounded-xl"><table className="w-full text-left text-xs"><thead className="bg-[#091d64] text-white text-[10px] font-bold uppercase"><tr><th className="px-4 py-3">Program</th><th className="px-4 py-3 text-right">Registered</th><th className="px-4 py-3 text-right">Slots</th><th className="px-4 py-3 text-right">Fill Rate</th></tr></thead><tbody className="divide-y divide-slate-100">{programs.map(p => { const reg = p.registeredCount || 0; const max = p.maxParticipants || 1; return <tr key={p.id}><td className="px-4 py-3 font-bold">{p.title}</td><td className="px-4 py-3 text-right font-mono">{reg}</td><td className="px-4 py-3 text-right font-mono">{p.maxParticipants || 0}</td><td className="px-4 py-3 text-right font-mono font-bold text-[#091d64]">{((max > 0 ? (max > 0 ? (reg / max) * 100 : 0) : 0)).toFixed(0)}%</td></tr>; })}</tbody></table></div>)}
                 {reportSubTab === 'accomplishments' && (<div className="grid grid-cols-1 sm:grid-cols-3 gap-4"><div className="p-4 bg-emerald-50/60 rounded-xl border border-emerald-100 text-center"><span className="text-2xl font-black text-emerald-800 block">{programs.reduce((s, p) => s + (p.registeredCount || 0), 0)}</span><span className="text-[10px] font-bold text-emerald-600 uppercase block mt-1">Total Registrations</span></div><div className="p-4 bg-blue-50/60 rounded-xl border border-blue-100 text-center"><span className="text-2xl font-black text-[#091d64] block">{programs.filter(p => p.status === 'Completed').length}</span><span className="text-[10px] font-bold text-blue-600 uppercase block mt-1">Completed Programs</span></div><div className="p-4 bg-amber-50/60 rounded-xl border border-amber-100 text-center"><span className="text-2xl font-black text-amber-800 block">{documents.length}</span><span className="text-[10px] font-bold text-amber-600 uppercase block mt-1">Documented Reports</span></div></div>)}
-                {reportSubTab === 'beneficiaries' && (<div className="overflow-x-auto border border-slate-100 rounded-xl"><table className="w-full text-left text-xs"><thead className="bg-[#091d64] text-white text-[10px] font-bold uppercase"><tr><th className="px-4 py-3">Name</th><th className="px-4 py-3">Zone</th><th className="px-4 py-3">Status</th></tr></thead><tbody className="divide-y divide-slate-100">{youthProfiles.slice(0, 50).map(y => <tr key={y.id}><td className="px-4 py-3 font-bold">{y.name}</td><td className="px-4 py-3 text-slate-500">{y.zone}</td><td className="px-4 py-3">{y.status}</td></tr>)}</tbody></table></div>)}
+                {reportSubTab === 'beneficiaries' && (<div className="overflow-x-auto border border-slate-100 rounded-xl"><table className="w-full text-left text-xs"><thead className="bg-[#091d64] text-white text-[10px] font-bold uppercase"><tr><th className="px-4 py-3">Name</th><th className="px-4 py-3">Zone</th><th className="px-4 py-3">Status</th></tr></thead><tbody className="divide-y divide-slate-100">{youthProfiles.slice(0, 50).map(y => <tr key={y.id}><td className="px-4 py-3 font-bold">{y.name}</td><td className="px-4 py-3 text-slate-500">{y.zone || 'Not Specified'}</td><td className="px-4 py-3">{y.status}</td></tr>)}</tbody></table></div>)}
                                 {reportSubTab === 'demographics' && (
                   <div className="space-y-4">
                     <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
@@ -3101,7 +3089,7 @@ return (
                 </div>
                 <div>
                   <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Address</span>
-                  <span className="text-slate-800 block">{inspectProfile.address} ({inspectProfile.zone})</span>
+                  <span className="text-slate-800 block">{inspectProfile.address} ({(inspectProfile.zone && inspectProfile.zone.match(/^\d+$/)) ? 'Zone ' + inspectProfile.zone : (inspectProfile.zone || 'Not Specified')})</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Contact & email</span>

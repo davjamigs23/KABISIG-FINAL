@@ -72,6 +72,8 @@ export interface ResidentProfile {
   birthdate: string;
   sex: SexType;
   address: string;
+  guardian_name: string | null;
+  guardian_contact: string | null;
   educational_status: EducationalStatus | null;
   employment_status: EmploymentStatus | null;
   is_registered_voter: boolean;
@@ -161,6 +163,7 @@ export interface InventoryItem {
   unit: string;
   condition: InventoryCondition;
   location: string | null;
+  photo_url: string | null;
   created_at?: string;
   updated_at?: string;
 }

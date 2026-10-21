@@ -207,6 +207,9 @@ class KabisigApiClient {
       body: JSON.stringify({ barangay_id: barangayId }),
     });
   }
+  async getTransferHistory(barangayId: string): Promise<{ success: boolean; data?: any[]; message?: string }> {
+    return await this.request<any[]>('/admin/chairperson-transfers/' + barangayId, { method: 'GET' });
+  }
 
   async completeProfile(data: {
     full_name: string;
@@ -326,6 +329,12 @@ class KabisigApiClient {
       body: JSON.stringify(payload),
     });
   }
+  async getPublicDocuments(): Promise<any[]> {
+    const res = await this.request<any>('/public/documents', { method: 'GET' });
+    const data = (res as any)?.data ?? res;
+    return Array.isArray(data) ? data : [];
+  }
+
   async getPublicDemographics(): Promise<any | null> {
     const res = await this.request<any>('/public/demographics', { method: 'GET' });
     return res.success && res.data ? res.data : null;
@@ -410,6 +419,9 @@ class KabisigApiClient {
     birthdate: string;
     sex: 'Male' | 'Female' | 'Other' | 'Prefer not to say';
     address: string;
+    zone?: string;
+    guardian_name?: string | null;
+    guardian_contact?: string | null;
     educational_status?: string;
     employment_status?: string;
     school?: string;
@@ -859,6 +871,9 @@ class KabisigApiClient {
 
   async requestEmailChange(new_email: string): Promise<{ success: boolean; message?: string }> {
     return await this.request<any>('/users/request-email-change', { method: 'POST', body: JSON.stringify({ new_email }) });
+  }
+  async acknowledgeWarning(): Promise<{ success: boolean; message?: string }> {
+    return await this.request('/users/acknowledge-warning', { method: 'POST' });
   }
   async getProfile(): Promise<{ success: boolean; data?: YouthProfile; message?: string }> {
     return await this.request<YouthProfile>('/users/profile', { method: 'GET' });

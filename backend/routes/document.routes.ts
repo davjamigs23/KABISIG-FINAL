@@ -20,7 +20,7 @@ const CreateDocumentSchema = z.object({
     'Other',
   ]),
   file_url: z.string().url('A valid file URL is required'),
-  status: z.enum(['draft', 'pending_approval']).default('pending_approval'),
+  status: z.enum(['draft', 'pending_approval', 'approved', 'rejected']).default('approved'),
 });
 
 const RejectDocumentSchema = z.object({
@@ -104,6 +104,7 @@ router.post(
     }
 
     const { title, document_type, file_name, content_type, file_base64 } = parsed.data;
+    const status = user.role === 'SK_OFFICIAL' ? 'pending_approval' : 'approved';
     const normalizedContentType = content_type.toLowerCase().split(';')[0]?.trim() || '';
     const extension = file_name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] || '';
     const allowedExtensions = new Set(['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png']);
@@ -141,7 +142,7 @@ router.post(
         title,
         document_type,
         file_url: objectPath,
-        status: 'pending_approval',
+        status,
         submitted_by: user.id,
       })
       .select()
@@ -163,34 +164,41 @@ router.post(
       ipAddress: req.ip || null,
     });
 
-    // Notify all SK Chairpersons in this tenant that a document awaits review
-    try {
-      const { data: chairpersons } = await supabaseAdmin
-        .from('users')
-        .select('id')
-        .eq('tenant_id', tenantId)
-        .eq('role_id', 2);
+    if (status === 'pending_approval') {
+      try {
+        const { data: chairpersons } = await supabaseAdmin
+          .from('users')
+          .select('id')
+          .eq('tenant_id', tenantId)
+          .eq('role_id', 2);
 
-      if (chairpersons && chairpersons.length > 0) {
-        const { error: uploadNotifErr } = await supabaseAdmin
-          .from('notifications')
-          .insert(
-            chairpersons.map((c: any) => ({
-              tenant_id: tenantId,
-              user_id: c.id,
-              title: 'New Document Pending Approval',
-              message: '"' + title + '" (' + document_type + ') was uploaded by ' + (user.full_name || 'SK Secretary') + '. Please review and approve.',
-              notification_type: 'DOCUMENT_APPROVAL',
-              link: '/documents',
-              is_read: false,
-            })),
-          );
-        if (uploadNotifErr) console.warn('Upload notification failed:', uploadNotifErr.message);
+        if (chairpersons && chairpersons.length > 0) {
+          const { error: uploadNotifErr } = await supabaseAdmin
+            .from('notifications')
+            .insert(
+              chairpersons.map((c: any) => ({
+                tenant_id: tenantId,
+                user_id: c.id,
+                title: 'New Document Pending Approval',
+                message: '"' + title + '" (' + document_type + ') was uploaded by ' + (user.full_name || 'SK Secretary') + '. Please review and approve.',
+                notification_type: 'DOCUMENT_APPROVAL',
+                link: '/documents',
+                is_read: false,
+              })),
+            );
+          if (uploadNotifErr) console.warn('Upload notification failed:', uploadNotifErr.message);
+        }
+      } catch (notifErr: any) {
+        console.warn('Upload notification error:', notifErr?.message || notifErr);
       }
-    } catch (notifErr: any) {
-      console.warn('Upload notification error:', notifErr?.message || notifErr);
     }
-    sendCreated(res, newDoc, `Document "${title}" uploaded and submitted for approval.`);
+    sendCreated(
+      res,
+      newDoc,
+      status === 'approved'
+        ? `Document "${title}" uploaded and published.`
+        : `Document "${title}" uploaded and submitted for approval.`
+    );
   }
 );
 
@@ -314,7 +322,10 @@ router.post(
     }
 
     const user = (req as AuthRequest).user!;
-    const { title, document_type, file_url, status } = parseResult.data;
+    const { title, document_type, file_url } = parseResult.data;
+    const status = user.role === 'SK_OFFICIAL'
+      ? (parseResult.data.status === 'draft' ? 'draft' : 'pending_approval')
+      : parseResult.data.status;
 
     const tenantId = user.tenant_id;
     if (!tenantId) {

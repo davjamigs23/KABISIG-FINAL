@@ -169,9 +169,11 @@ export default function PublicPages({
     birthdate: '',
     age: 0,
     mobile: '',
+    guardianName: '',
+    guardianContact: '',
     email: '',
     address: '',
-    zone: 'Zone 1',
+    zone: '',
     school: '',
     educationalLevel: 'College' as any,
     course: '',
@@ -388,6 +390,8 @@ export default function PublicPages({
       birthdate: signUpForm.birthdate,
       age: signUpForm.age,
       mobile: signUpForm.mobile,
+      guardianName: signUpForm.guardianName.trim(),
+      guardianContact: signUpForm.guardianContact.trim(),
       email: signUpForm.email,
       address: signUpForm.address,
       zone: signUpForm.zone,
@@ -467,10 +471,13 @@ export default function PublicPages({
           suffix: signUpForm.suffix.trim() || null,
           barangay_id: resolvedBarangayId,
           phone: signUpForm.mobile.trim(),
+          guardian_name: signUpForm.guardianName.trim(),
+          guardian_contact: signUpForm.guardianContact.trim(),
           profile_pic: typeof signUpForm.profilePic === 'string' ? signUpForm.profilePic : undefined,
           birthdate: signUpForm.birthdate,
           sex: signUpForm.sex,
-          address: `${signUpForm.address}, ${signUpForm.zone}`,
+      address: signUpForm.address,
+      zone: signUpForm.zone,
           educational_status: educationalStatus,
           employment_status: employmentStatus,
           school: signUpForm.school,
@@ -817,6 +824,33 @@ export default function PublicPages({
         )}
 
         {/* YOUTH SIGN UP MULTI-STEP PAGE */}
+        {activeTab === 'transparency' && (
+          <div className="min-h-screen bg-slate-50 p-8">
+            <div className="max-w-6xl mx-auto space-y-6">
+              <div className="text-center mb-8">
+                <h1 className="text-3xl font-black text-[#091d64]">Public Transparency Portal</h1>
+                <p className="text-slate-500 mt-2">Access public records, budget summaries, and SK programs.</p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                  <h3 className="font-bold text-slate-800 mb-2">Budget Transparency</h3>
+                  <p className="text-xs text-slate-500">View public expenses, itemized budgets, and COA-ready reports.</p>
+                </div>
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                  <h3 className="font-bold text-slate-800 mb-2">SK Programs</h3>
+                  <p className="text-xs text-slate-500">Browse active programs, schedules, and accomplishment reports.</p>
+                </div>
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                  <h3 className="font-bold text-slate-800 mb-2">Announcements</h3>
+                  <p className="text-xs text-slate-500">Read official SK announcements and public advisories.</p>
+                </div>
+              </div>
+              <div className="text-center pt-8">
+                <button onClick={() => setActiveTab('home')} className="px-6 py-2 bg-[#091d64] text-white rounded-lg font-bold text-sm">Back to Landing Page</button>
+              </div>
+            </div>
+          </div>
+        )}
         {activeTab === 'signup' && (
           <section className="relative min-h-screen flex flex-col items-center justify-center bg-white px-4 py-12">
             <DecorativeBackground />
@@ -1014,7 +1048,6 @@ export default function PublicPages({
                             >
                               <option value="Male">Male</option>
                               <option value="Female">Female</option>
-                              <option value="Other">Other</option>
                               <option value="Prefer not to say">Prefer not to say</option>
                             </select>
                             <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -1051,7 +1084,7 @@ export default function PublicPages({
                         <div className="relative w-full">
                           <input
                             type="tel"
-                            value={signUpForm.mobile}
+                            value={signUpForm.mobile} maxLength={11}
                             onChange={(e) => {
                               const sanitized = e.target.value.replace(/[^0-9+\s()-]/g, '');
                               setSignUpForm({...signUpForm, mobile: sanitized});
@@ -1096,6 +1129,36 @@ export default function PublicPages({
                               required
                             />
                           </div>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans">
+                            Parent / Guardian Name <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={signUpForm.guardianName}
+                            onChange={(e) => setSignUpForm(previous => ({ ...previous, guardianName: e.target.value }))}
+                            className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none"
+                            placeholder="Enter parent or guardian name"
+                            maxLength={200}
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans">
+                            Parent / Guardian Contact <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="tel"
+                            value={signUpForm.guardianContact}
+                            onChange={(e) => setSignUpForm(previous => ({ ...previous, guardianContact: e.target.value.replace(/[^0-9+\s()-]/g, '') }))}
+                            className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none"
+                            placeholder="Enter contact number"
+                            maxLength={50}
+                            required
+                          />
                         </div>
                       </div>
                     </div>
@@ -1269,9 +1332,20 @@ export default function PublicPages({
                               onChange={(e) => setSignUpForm({ ...signUpForm, idType: e.target.value })}
                               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#091d64] cursor-pointer"
                             >
-                              <option value="Student ID">Student ID</option>
-                              <option value="Government ID">Government ID</option>
-                              <option value="Barangay Certificate">Barangay Certificate</option>
+                      <option value="Philippine Passport">Philippine Passport</option>
+                      <option value="Driver's License">Driver's License</option>
+                      <option value="PRC ID">PRC ID</option>
+                      <option value="UMID">UMID</option>
+                      <option value="PhilHealth ID">PhilHealth ID</option>
+                      <option value="SSS ID">SSS ID</option>
+                      <option value="Pag-IBIG ID">Pag-IBIG ID</option>
+                      <option value="Voter's ID (COMELEC)">Voter's ID (COMELEC)</option>
+                      <option value="Postal ID">Postal ID</option>
+                      <option value="NBI Clearance">NBI Clearance</option>
+                      <option value="Police Clearance">Police Clearance</option>
+                      <option value="PhilSys National ID">PhilSys National ID</option>
+                      <option value="Student ID">Student ID</option>
+                      <option value="Barangay Certificate">Barangay Certificate</option>
                               <option value="Other">Other</option>
                             </select>
                           </div>
@@ -1279,7 +1353,7 @@ export default function PublicPages({
                             <label className="block text-[10px] font-bold text-slate-700 mb-1">ID Number</label>
                             <input
                               type="text"
-                              value={signUpForm.idNumber}
+                              value={signUpForm.idNumber} required
                               onChange={(e) => setSignUpForm({ ...signUpForm, idNumber: e.target.value })}
                               placeholder="e.g. 2024-12345"
                               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#091d64]"
@@ -1345,7 +1419,11 @@ export default function PublicPages({
                     </div>
                   )}
 
-                  {signUpStep < 4 ? (
+{signUpStep < 4 ? (
+              <div className="flex gap-2">
+                {signUpStep > 1 && (
+                  <button type="button" onClick={() => setSignUpStep(signUpStep - 1)} className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors">Back</button>
+                )}
                     <button
                       type="button"
                       onClick={() => {
@@ -1360,8 +1438,10 @@ export default function PublicPages({
                         if (signUpStep === 2) {
                           if (!signUpForm.mobile.trim()) { alert('Mobile phone number is required.'); return; }
                           if (/[a-zA-Z]/i.test(signUpForm.mobile)) { alert('Mobile phone number can only contain numbers and cannot accept alphabetic letters.'); return; }
-                          if (signUpForm.mobile.replace(/[^0-9]/g, '').length < 10) { alert('Please enter a valid mobile number (at least 10 digits).'); return; }
+      if (!/^09\d{9}$/.test(signUpForm.mobile.trim())) { alert('Mobile number must be exactly 11 digits starting with 09 (e.g., 09171234567).'); return; }
                           if (!signUpForm.address.trim()) { alert('Street address is required.'); return; }
+                          if (!signUpForm.guardianName.trim()) { alert('Parent or guardian name is required.'); return; }
+                          if (!signUpForm.guardianContact.trim()) { alert('Parent or guardian contact number is required.'); return; }
                         }
                         if (signUpStep === 3) {
                           if (!signUpForm.educationalLevel.trim()) { alert('Status is required.'); return; }
@@ -1372,7 +1452,7 @@ export default function PublicPages({
                     >
                       Continue
                     </button>
-                  ) : (
+                  </div>) : (
                     <button
                       type="button"
                       disabled={isSubmittingSignUp || !signUpForm.agreeTerms}

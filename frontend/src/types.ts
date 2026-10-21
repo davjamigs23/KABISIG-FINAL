@@ -70,6 +70,7 @@ export interface YouthProfile {
 
   // System metadata
   status: 'Pending' | 'Approved' | 'Rejected' | 'suspended';
+  verificationStatus?: string;
     suspension_reason?: string;
   rejectionReason?: string;
   dateRegistered: string;
@@ -177,7 +178,7 @@ export interface FeedbackRecord {
   rating: number; // 1 to 5
   sentiment?: 'positive' | 'neutral' | 'negative';
   anonymous?: boolean;
-  status: 'Pending' | 'Reviewed' | 'Resolved';
+  status: 'Pending' | 'Reviewed' | 'Resolved' | 'Dismissed' | 'flagged';
     suspension_reason?: string;
   response?: string;
   residentProfile?: {
