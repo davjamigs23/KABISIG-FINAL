@@ -875,6 +875,9 @@ class KabisigApiClient {
   async acknowledgeWarning(): Promise<{ success: boolean; message?: string }> {
     return await this.request('/users/acknowledge-warning', { method: 'POST' });
   }
+  async getComplianceRecords(): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request<any>('/compliance', { method: 'GET' });
+  }
   async getProfile(): Promise<{ success: boolean; data?: YouthProfile; message?: string }> {
     return await this.request<YouthProfile>('/users/profile', { method: 'GET' });
   }

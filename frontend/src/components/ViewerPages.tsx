@@ -259,10 +259,10 @@ export default function ViewerPages({
   }));
 
   // Recharts Pie Chart F2: Category expense allocations
-  const suppliesSpent = expenses.filter(e => e.category === 'Supplies').reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
-  const honorariumSpent = expenses.filter(e => e.category === 'Honorarium').reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
+  const suppliesSpent = expenses.filter(e => (e.category || '').toLowerCase().includes('supplies')).reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
+  const honorariumSpent = expenses.filter(e => (e.category || '').toLowerCase().includes('honorarium')).reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
   const foodSpent = expenses.filter(e => e.category === 'Food & Catering').reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
-  const transportSpent = expenses.filter(e => e.category === 'Travel & Transport').reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
+  const transportSpent = expenses.filter(e => (e.category || '').toLowerCase().includes('transport') || (e.category || '').toLowerCase().includes('travel')).reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
 
   const expenseCategoriesData = [
     { name: 'Supplies', value: suppliesSpent, color: '#1a237e' },
@@ -274,7 +274,7 @@ export default function ViewerPages({
   // FPD Compliance Documents list from live documents
   const fpdDocuments = documents.length > 0 ? documents.map(d => ({
     title: d.title,
-    category: d.category || 'Compliance',
+    category: (d as any).document_type || (d as any).category || 'Compliance',
     barangay: tenants.find(t => t.id === d.barangayId)?.name || 'Naga City',
     date: d.uploadedDate || d.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
     status: d.status || 'Compliant'
@@ -841,7 +841,7 @@ export default function ViewerPages({
                         <p className="text-xs text-slate-500 mt-0.5">Pursuant to DILG Joint Memorandum Circular & Republic Act 10742 (SK Reform Act)</p>
                       </div>
                       <button
-                        onClick={() => alert('Downloading complete SK Full Public Disclosure ZIP archive...')}
+                        onClick={() => { if (fpdDocuments.length === 0) { alert("No documents to download."); return; } const rows = fpdDocuments.map(function(d) { return [d.title, d.category, d.barangay, d.date, d.status].map(function(v) { return String(v || "").replace(/,/g, ";"); }).join(","); }); const csv = "Title,Type,Barangay,Date,Status\n" + rows.join("\n"); const blob = new Blob([csv], { type: "text/csv" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "SK_FPD_Compliance_Report.csv"; a.click(); URL.revokeObjectURL(url); }}
                         className="px-4 py-2 bg-[#091d64] text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs hover:bg-[#122878] transition-colors cursor-pointer"
                       >
                         <Download className="w-3.5 h-3.5 text-amber-400" /> Download All FPD Files

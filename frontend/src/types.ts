@@ -46,6 +46,8 @@ export interface YouthProfile {
   birthdate: string; // Birthdate (Required)
   age: number; // Age (Auto-calculated from birthdate)
   civilStatus?: 'Single' | 'Married' | 'Widowed' | 'Separated' | 'Single Parent'; // Civil Status (Required)
+  isPwd?: boolean;
+  isSoloParent?: boolean;
   address: string; // Complete residential address (Required)
   zone: string; // Zone/Purok (Required)
   mobile: string; // Contact Number (Required)

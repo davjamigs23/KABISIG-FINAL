@@ -19,7 +19,7 @@ async function inviteWithBrevo(
   });
   if (!error && data?.properties?.action_link) {
     const setupLink = data.properties.action_link;
-    const invRole = options?.data?.official_role || options?.data?.role || (options?.data?.role_id === 2 ? 'SK Chairperson' : 'SK Official');
+    const invRole = options?.data?.role_id === 2 ? 'SK Chairperson' : (options?.data?.official_role || options?.data?.role || 'SK Official');
     const htmlMsg = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;"><h1 style="color: #091d64; margin: 0 0 8px 0;">KABISIG</h1><p style="color: #64748b; font-size: 12px; margin: 0 0 24px 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p><h2 style="color: #091d64;">You are Invited to be ' + invRole + '!</h2><p style="color: #334155; line-height: 1.6;">You have been invited to join the KABISIG System as ' + invRole + '. Click the button below to set up your account password:</p><div style="text-align: center; margin: 24px 0;"><a href="' + setupLink + '" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Set Up Account</a></div><p style="color: #94a3b8; font-size: 11px;">If the button does not work, copy this link: <a href="' + setupLink + '">' + setupLink + '</a></p></div>';
     await sendEmail(email, 'KABISIG Account Invitation', htmlMsg);
   }

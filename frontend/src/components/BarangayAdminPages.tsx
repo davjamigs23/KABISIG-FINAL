@@ -5,6 +5,8 @@ import RestrictedUsersPanel from './RestrictedUsersPanel';
 import RestrictedUsers from './RestrictedUsers';
 import { formatAuditDetails } from '../lib/auditFormatter';
 import React, { useEffect, useState } from 'react';
+import { CartesianGrid } from 'recharts';
+import { FolderClosed } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { 
   Building2, 
@@ -61,7 +63,7 @@ import {
   HelpCircle,
   TrendingUpIcon,
   Trash2
-, AlertCircle, Loader2} from 'lucide-react';
+, AlertCircle, Loader2, ShieldCheck, AlertOctagon, Info } from 'lucide-react';
 import { 
   BarChart, 
   Bar, 
@@ -192,6 +194,7 @@ export default function BarangayAdminPages({
     'dashboard' | 'youth' | 'programs' | 'budget' | 'documents' | 'reports' | 'announcements' | 'audit' | 'calendar' | 'facebook_sync' | 'settings' | 'profile'
    | 'profile' | 'inventory' | 'restrictions'>('dashboard');
   const [inventory, setInventory] = useState<any[]>([]);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   useEffect(() => { if (activeMenu === 'budget' && inventory.length === 0) { kabisigApi.getInventory().then((rows: any[]) => setInventory(Array.isArray(rows) ? rows : [])).catch(() => {}); } }, [activeMenu, inventory.length]);
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -1645,161 +1648,126 @@ return (
             <RestrictedUsersPanel />
           )}
           {activeMenu === 'dashboard' && (
-            <div className="space-y-6">
+            <div className="space-y-6 animate-in fade-in duration-200 text-left">
               
-              {/* METRICS CARDS */}
-              <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
-                
-                {/* CARD 1: BARANGAY IDENTITY */}
-                <div className="bg-white rounded-xl shadow-xs border border-slate-100 p-4 flex items-center gap-3.5">
-                  <div className="w-16 h-16 rounded-2xl bg-white flex items-center justify-center border border-slate-200/80 p-1.5 flex-shrink-0 shadow-2xs overflow-hidden">
-                    {barangayLogo ? (
-                      <img 
-                        src={barangayLogo} 
-                        alt={`Barangay ${currentBarangay?.name} Official Seal`} 
-                        className="w-full h-full object-contain" 
-                      />
-                    ) : (
-                      <Building2 className="w-8 h-8 text-[#091d64]" />
-                    )}
-                  </div>
+              {/* 1. TOP 4 METRIC CARDS (Matching Kagawad Layout) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-xs flex justify-between items-center">
                   <div>
-                    <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100">
-                      Official Seal
-                    </span>
-                    <h3 className="font-extrabold text-sm text-[#091d64] leading-tight mt-1">Barangay {currentBarangay?.name || 'Barangay'}</h3>
-                    <p className="text-[10px] text-slate-400 font-medium">Naga City, Camarines Sur</p>
-                    <p className="text-[9px] text-slate-500 font-mono mt-0.5">SK Council {new Date().getFullYear()}</p>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Youth Population</span>
+                    <span className="text-2xl font-black text-slate-800 mt-1 block">{localProfiles.length}</span>
+                    <span className="text-[10px] text-slate-500 font-medium block mt-1">Ages 15-30</span>
+                  </div>
+                  <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
+                    <Users className="w-5 h-5" />
                   </div>
                 </div>
 
-                {/* CARD 2 */}
-                <div className="bg-white rounded-xl shadow-xs border border-slate-100 p-5 flex flex-col justify-between">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Youth Population</span>
-                    <div className="p-2.5 bg-blue-50 text-[#091d64] rounded-lg">
-                      <Users className="w-4.5 h-4.5" />
-                    </div>
+                <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-xs flex justify-between items-center">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Active Programs</span>
+                    <span className="text-2xl font-black text-slate-800 mt-1 block">{programs.filter(p => p.status === 'Ongoing' || p.status === 'Upcoming').length}</span>
+                    <span className="text-[10px] text-slate-500 font-medium block mt-1">Ongoing Initiatives</span>
                   </div>
-                  <div className="mt-2">
-                    <h4 className="text-2xl font-extrabold text-slate-800 leading-none">{currentBarangay?.youthPopulation || localProfiles.length || 0}</h4>
-                    <span className="text-[10px] text-slate-400 font-medium mt-1 inline-block">Ages 15-30</span>
+                  <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                    <ClipboardList className="w-5 h-5" />
                   </div>
-                  <button 
-                    onClick={() => setActiveMenu('youth')}
-                    className="text-[11px] text-[#091d64] font-bold hover:underline flex items-center gap-1 mt-3"
-                  >
-                    View Details &rarr;
-                  </button>
                 </div>
 
-                {/* CARD 3 */}
-                <div className="bg-white rounded-xl shadow-xs border border-slate-100 p-5 flex flex-col justify-between">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Active Programs</span>
-                    <div className="p-2.5 bg-blue-50 text-[#091d64] rounded-lg">
-                      <ClipboardList className="w-4.5 h-4.5" />
-                    </div>
+                <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-xs flex justify-between items-center">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Budget</span>
+                    <span className="text-2xl font-black text-slate-800 mt-1 block">₱{(programs.reduce((sum: number, p: any) => sum + (Number(p.budgetAllocation) || 0), 0) || 20000).toLocaleString()}</span>
+                    <span className="text-[10px] text-slate-500 font-medium block mt-1">FY 2026 Budget</span>
                   </div>
-                  <div className="mt-2">
-                    <h4 className="text-2xl font-extrabold text-slate-800 leading-none">{programs.length}</h4>
-                    <span className="text-[10px] text-slate-400 font-medium mt-1 inline-block">Ongoing Initiatives</span>
+                  <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center">
+                    <Coins className="w-5 h-5" />
                   </div>
-                  <button 
-                    onClick={() => setActiveMenu('programs')}
-                    className="text-[11px] text-[#091d64] font-bold hover:underline flex items-center gap-1 mt-3"
-                  >
-                    View Programs &rarr;
-                  </button>
                 </div>
 
-                {/* CARD 4 */}
-                <div className="bg-white rounded-xl shadow-xs border border-slate-100 p-5 flex flex-col justify-between">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Budget</span>
-                    <div className="p-2.5 bg-blue-50 text-[#091d64] rounded-lg">
-                      <Coins className="w-4.5 h-4.5" />
-                    </div>
+                <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-xs flex justify-between items-center">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Pending Approvals</span>
+                    <span className="text-2xl font-black text-slate-800 mt-1 block">{localProfiles.filter(p => p.status === 'Pending').length}</span>
+                    <span className="text-[10px] text-slate-500 font-medium block mt-1">For Your Review</span>
                   </div>
-                  <div className="mt-2">
-                    <h4 className="text-2xl font-extrabold text-slate-800 leading-none">₱ {(currentBarangay?.totalBudget || 0).toLocaleString()}</h4>
-                    <span className="text-[10px] text-slate-400 font-medium mt-1 inline-block">FY {new Date().getFullYear()} Budget</span>
+                  <div className="w-10 h-10 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center">
+                    <AlertCircle className="w-5 h-5" />
                   </div>
-                  <button 
-                    onClick={() => setActiveMenu('budget')}
-                    className="text-[11px] text-[#091d64] font-bold hover:underline flex items-center gap-1 mt-3"
-                  >
-                    View Budget &rarr;
-                  </button>
-                </div>
-
-                {/* CARD 5 */}
-                <div className="bg-white rounded-xl shadow-xs border border-slate-100 p-5 flex flex-col justify-between">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Pending Approvals</span>
-                    <div className="p-2.5 bg-red-50 text-red-500 rounded-lg">
-                      <Clock className="w-4.5 h-4.5" />
-                    </div>
-                  </div>
-                  <div className="mt-2">
-                    <h4 className="text-2xl font-extrabold text-slate-800 leading-none">{pendingRegistrations.length}</h4>
-                    <span className="text-[10px] text-slate-400 font-medium mt-1 inline-block">For Your Review</span>
-                  </div>
-                  <button 
-                    onClick={() => setActiveMenu('youth')}
-                    className="text-[11px] text-red-600 font-bold hover:underline flex items-center gap-1 mt-3"
-                  >
-                    Review Now &rarr;
-                  </button>
-                </div>
-
-              </div>
-
-              {/* QUICK ACTIONS */}
-              <div className="space-y-2">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Quick Actions</span>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <button 
-                    onClick={() => { setActiveMenu('programs'); openProgramEditor(); }}
-                    className="bg-white p-4 rounded-xl border border-slate-100 shadow-2xs hover:shadow-xs hover:border-blue-100 text-left flex items-center gap-4 transition-all cursor-pointer"
-                  >
-                    <div className="p-3 bg-blue-50 text-[#091d64] rounded-lg">
-                      <Plus className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h5 className="text-xs font-bold text-slate-800">Create Program</h5>
-                      <p className="text-[10px] text-slate-400">Add a new program or activity</p>
-                    </div>
-                  </button>
-
-                  <button 
-                    onClick={() => setActiveMenu('youth')}
-                    className="bg-white p-4 rounded-xl border border-slate-100 shadow-2xs hover:shadow-xs hover:border-blue-100 text-left flex items-center gap-4 transition-all cursor-pointer"
-                  >
-                    <div className="p-3 bg-blue-50 text-[#091d64] rounded-lg">
-                      <Users className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h5 className="text-xs font-bold text-slate-800">View Registrations</h5>
-                      <p className="text-[10px] text-slate-400">Manage youth registrations</p>
-                    </div>
-                  </button>
-
-                  <button 
-                    onClick={() => setActiveMenu('documents')}
-                    className="bg-white p-4 rounded-xl border border-slate-100 shadow-2xs hover:shadow-xs hover:border-blue-100 text-left flex items-center gap-4 transition-all cursor-pointer"
-                  >
-                    <div className="p-3 bg-blue-50 text-[#091d64] rounded-lg">
-                      <Folder className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h5 className="text-xs font-bold text-slate-800">Manage Documents</h5>
-                      <p className="text-[10px] text-slate-400">Upload and manage documents</p>
-                    </div>
-                  </button>
                 </div>
               </div>
 
+              {/* 2. HERO BANNER */}
+              <div className="bg-[#091d64] text-white p-6 rounded-2xl shadow-md flex flex-col md:flex-row justify-between md:items-center gap-4 relative overflow-hidden">
+                <div className="absolute right-0 top-0 opacity-10">
+                  <Building2 className="w-48 h-48 -mt-8 -mr-8" />
+                </div>
+                <div className="relative z-10">
+                  <span className="bg-[#00b050] text-white text-[10px] font-black px-2 py-1 rounded mb-2 inline-block tracking-wider uppercase">Local Youth Development Council</span>
+                  <h2 className="text-2xl font-black mb-1">Barangay {currentBarangay?.name || 'San Francisco'} Dashboard</h2>
+                  <p className="text-sm text-blue-100 max-w-xl">Manage youth registrations, monitor program participation, and oversee barangay SK initiatives.</p>
+                </div>
+              </div>
+
+              {/* 3. TWO COLUMN LAYOUT (Chart & Alerts) */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                
+                {/* LEFT COLUMN: CHART */}
+                <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-slate-100 shadow-xs">
+                  <div className="flex justify-between items-center mb-6">
+                    <div>
+                      <h3 className="font-bold text-slate-800 text-sm">Program Participation & Budget Allocation</h3>
+                      <p className="text-xs text-slate-400 mt-0.5">Real-time registration counts against maximum target participant limits.</p>
+                    </div>
+                  </div>
+                  <div className="h-72 w-full min-w-0">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                      <BarChart data={programs.slice(0, 5).map(p => ({ name: p.title.substring(0, 15) + '...', registered: p.registeredCount || 0, capacity: p.maxParticipants || 10 }))} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                        <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                        <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ fontSize: '12px', borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                        <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
+                        <Bar dataKey="capacity" name="Target Capacity" fill="#94a3b8" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="registered" name="Registered Youth" fill="#091d64" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* RIGHT COLUMN: ALERTS & QUICK ACTIONS */}
+                <div className="space-y-6">
+                  
+                  {/* Rule-Based Budget Alerts */}
+                  <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-xs">
+                    <div className="flex items-center gap-2 mb-4">
+                      <ShieldCheck className="w-4 h-4 text-[#091d64]" />
+                      <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Compliance Alerts</h3>
+                    </div>
+                    <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1 custom-scrollbar">
+                      {budgetAlerts.length === 0 ? (
+                        <div className="flex items-center gap-3 p-3 bg-emerald-50 border border-emerald-100 rounded-lg">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <p className="text-[11px] font-bold text-emerald-800">All budgets within limits.</p>
+                        </div>
+                      ) : (
+                        budgetAlerts.map((alert, i) => (
+                          <div key={i} onClick={() => setActiveMenu((alert.code || '').includes('BUDGET') ? 'budget' : (alert.code || '').includes('DOC') ? 'documents' : 'youth')} className="flex items-start gap-2.5 p-3 rounded-lg bg-slate-50 border border-slate-100 cursor-pointer hover:bg-slate-100 transition-colors group">
+                            <span className="text-sm mt-0.5">{alert.level === 'Critical' ? '🚨' : '⚠️'}</span>
+                            <div>
+                              <p className="text-[11px] font-bold text-slate-800 leading-snug">{alert.message}</p>
+                              <p className="text-[10px] text-slate-400 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">Go to fix →</p>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Quick Actions */}
+
+                </div>
+              </div>
             </div>
           )}
 
@@ -2437,11 +2405,21 @@ return (
                 <div className='rounded-xl bg-white p-6 shadow-xs border border-slate-100'>
                   <h3 className='text-xl font-extrabold text-[#091d64]'>Council Property Inventory (sub-ledger of Budget Management)</h3>
                   <p className='mt-1 text-xs text-slate-400'>Assets recorded by the SK Treasurer. Read-only for Chairperson oversight.</p>
+                  {previewImage && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                      <div className="relative max-w-4xl w-full max-h-[90vh] flex flex-col items-center">
+                        <button onClick={() => setPreviewImage(null)} className="absolute -top-12 right-0 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full cursor-pointer">
+                          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                        <img src={previewImage} alt="Asset Preview" className="max-w-full max-h-[85vh] rounded-xl shadow-2xl object-contain bg-white" />
+                      </div>
+                    </div>
+                  )}
                   {inventory.length === 0 ? <p className='py-6 text-center text-xs text-slate-400'>No assets recorded yet.</p> : (
                     <div className='mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
                       {inventory.map((item: any) => (
                         <div key={item.id} className='rounded-xl border border-slate-200 bg-slate-50/60 p-4'>
-                          {item.photo_url && <img src={item.photo_url} alt={item.item_name} className='w-full h-32 object-cover rounded-lg mb-3' />}
+                          {item.photo_url && <img src={item.photo_url} alt={item.item_name} className='w-full h-32 object-cover rounded-lg mb-3 cursor-pointer hover:opacity-80 transition-opacity' onClick={() => setPreviewImage(item.photo_url)} />}
                           <p className='text-sm font-bold text-slate-800'>{item.item_name}</p>
                           <p className='text-[11px] text-slate-500'>{item.category}</p>
                           <div className='mt-2 flex items-center justify-between text-[11px]'><span>Qty: {item.quantity ?? 1}</span><span className='px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-bold'>{item.condition}</span></div>
@@ -3114,6 +3092,16 @@ return (
                 <div>
                   <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Registration status</span>
                   <span className="text-slate-800 block">{inspectProfile.status} · Registered {inspectProfile.dateRegistered || 'date unavailable'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Marital Status</span>
+                  <span className="text-slate-800 block">{inspectProfile.civilStatus || 'Single'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Special Category</span>
+                  <span className="text-slate-800 block">
+                    {[inspectProfile.isPwd ? 'PWD' : null, inspectProfile.isSoloParent ? 'Solo Parent' : null].filter(Boolean).join(' / ') || 'None'}
+                  </span>
                 </div>
               </div>
 

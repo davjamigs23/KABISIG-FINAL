@@ -23,7 +23,8 @@ import announcementRoutes from './routes/announcement.routes.js';
 import socialRoutes from './routes/social.routes.js';
 import publicRoutes from './routes/public.routes.js';
 import inventoryRoutes from './routes/inventory.routes.js';
-import notificationsRoutes from './routes/notifications.routes.js';
+import notificationsRoutes from './routes/notifications.routes.js'
+import complianceRoutes from './routes/compliance.routes.js';
 import { supabase } from './services/supabase.service.js';
 import { startProgramReminderScheduler } from './services/program-reminder.service.js';
 import { sendError, sendSuccess } from './utils/response.js';
@@ -38,8 +39,12 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'http://localhost:5173',
-  'http://127.0.0.1:5173'
-];
+  'http://127.0.0.1:5173',
+  process.env.FRONTEND_URL,
+].filter((o): o is string => Boolean(o));
+
+const isVercelOrigin = (o: string) =>
+  /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(o);
 
 // CORS Configuration with Credentials and Header Allowlist
 app.use(
@@ -47,7 +52,7 @@ app.use(
     origin: (origin, callback) => {
       // Allow requests with no origin (like mobile apps, curl, or Postman)
       const isLocalDevelopmentOrigin = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin || '');
-      if (!origin || allowedOrigins.includes(origin) || isLocalDevelopmentOrigin) {
+      if (!origin || allowedOrigins.includes(origin) || isLocalDevelopmentOrigin || isVercelOrigin(origin || '')) {
         callback(null, true);
       } else {
         callback(new Error(`CORS blocked request from origin: ${origin}`));
@@ -101,7 +106,8 @@ app.use('/api/budget', budgetRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/analytics', analyticsRoutes);
-app.use('/api/notifications', notificationsRoutes);
+app.use('/api/notifications', notificationsRoutes)
+app.use('/api/compliance', complianceRoutes);
 app.use('/api/polls', pollRoutes);
 app.use('/api/announcements', announcementRoutes);
 app.use('/api/social', socialRoutes);

@@ -187,7 +187,13 @@ export default function PublicPages({
     idType: 'Student ID' as string,
     idNumber: '',
     idFrontFile: null as File | null,
-    idBackFile: null as File | null
+    idBackFile: null as File | null,
+    educational_status: '',
+    employment_status: '',
+    scholar_status: 'Non-Scholar',
+    is_pwd: false,
+    is_solo_parent: false,
+        marital_status: 'Single',
   });
 
   // Rule #1: compose display name from split fields
@@ -968,7 +974,9 @@ export default function PublicPages({
                           >
                             <option value=""></option>
                             {barangays.map(b => (
-                              <option key={b.id} value={b.id}>Barangay {b.name}</option>
+                              <option key={b.id} value={b.id} disabled={!b.chairperson || b.chairperson === 'Unassigned'}>
+                                {b.name} {(!b.chairperson || b.chairperson === 'Unassigned') ? '(No Chairperson Yet)' : ''}
+                              </option>
                             ))}
                           </select>
                           <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -1082,17 +1090,14 @@ export default function PublicPages({
                           Mobile Phone Number <span className="text-red-500">*</span>
                         </label>
                         <div className="relative w-full">
-                          <input
-                            type="tel"
-                            value={signUpForm.mobile} maxLength={11}
-                            onChange={(e) => {
-                              const sanitized = e.target.value.replace(/[^0-9+\s()-]/g, '');
-                              setSignUpForm({...signUpForm, mobile: sanitized});
-                            }}
-                            className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
-                            placeholder="Enter mobile number"
-                            required
-                          />
+                      <input
+                        type="tel"
+                        maxLength={11}
+                        className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
+                        value={signUpForm.mobile}
+                        onChange={(e) => setSignUpForm({ ...signUpForm, mobile: e.target.value.replace(/[^0-9]/g, '') })}
+                        placeholder="09171234567"
+                      />
                           <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                         </div>
                       </div>
@@ -1150,15 +1155,14 @@ export default function PublicPages({
                           <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans">
                             Parent / Guardian Contact <span className="text-red-500">*</span>
                           </label>
-                          <input
-                            type="tel"
-                            value={signUpForm.guardianContact}
-                            onChange={(e) => setSignUpForm(previous => ({ ...previous, guardianContact: e.target.value.replace(/[^0-9+\s()-]/g, '') }))}
-                            className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none"
-                            placeholder="Enter contact number"
-                            maxLength={50}
-                            required
-                          />
+                      <input
+                        type="tel"
+                        maxLength={11}
+                        className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none"
+                        value={signUpForm.guardianContact}
+                        onChange={(e) => setSignUpForm({ ...signUpForm, guardianContact: e.target.value.replace(/[^0-9]/g, '') })}
+                        placeholder="09171234567"
+                      />
                         </div>
                       </div>
                     </div>
@@ -1167,24 +1171,50 @@ export default function PublicPages({
                   {signUpStep === 3 && (
                     <div className="space-y-4">
                       <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans">
-                          Status <span className="text-red-500">*</span>
-                        </label>
-                        <div className="relative w-full">
-                          <select 
-                            value={signUpForm.educationalLevel}
-                            onChange={(e) => setSignUpForm({...signUpForm, educationalLevel: e.target.value as any})}
-                            className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none appearance-none cursor-pointer"
-                          >
-                            <option value="High School">High School</option>
-                            <option value="College">College Student</option>
-                            <option value="Vocational">Vocational</option>
-                            <option value="Employed">Employed / Working</option>
-                            <option value="Unemployed">Unemployed</option>
-                            <option value="Out of School Youth">Out of School</option>
-                          </select>
-                          <ChevronDown className="w-4 h-4 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                        </div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans">Educational Attainment <span className="text-red-500">*</span></label>
+<select value={signUpForm.educational_status || ''} onChange={(e) => setSignUpForm({...signUpForm, educational_status: e.target.value})} className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none appearance-none cursor-pointer" required>
+  <option value="" disabled>Select Educational Level</option>
+  <option value="Elementary">Elementary</option>
+  <option value="High School">High School (Junior/Senior)</option>
+  <option value="College">College</option>
+  <option value="Vocational">Vocational / Tech-Voc</option>
+  <option value="Post-Graduate">Post-Graduate</option>
+  <option value="Out of School Youth">Out of School Youth</option>
+</select>
+
+<label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans mt-4">Employment Status <span className="text-red-500">*</span></label>
+<select value={signUpForm.employment_status || ''} onChange={(e) => setSignUpForm({...signUpForm, employment_status: e.target.value})} className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none appearance-none cursor-pointer" required>
+  <option value="" disabled>Select Employment Status</option>
+  <option value="Student">Student</option>
+  <option value="Employed">Employed</option>
+  <option value="Self-Employed">Self-Employed</option>
+  <option value="Unemployed">Unemployed</option>
+</select>
+
+<label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans mt-4">Scholarship Status <span className="text-red-500">*</span></label>
+<select value={signUpForm.scholar_status || 'Non-Scholar'} onChange={(e) => setSignUpForm({...signUpForm, scholar_status: e.target.value})} className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none appearance-none cursor-pointer" required>
+  <option value="Non-Scholar">Non-Scholar</option>
+  <option value="Scholar">Scholar / Grantee</option>
+</select>
+
+<label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans mt-4">Marital Status <span className="text-red-500">*</span></label>
+<select value={signUpForm.marital_status || 'Single'} onChange={(e) => setSignUpForm({...signUpForm, marital_status: e.target.value})} className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none appearance-none cursor-pointer" required>
+  <option value="Single">Single</option>
+  <option value="Married">Married</option>
+  <option value="Widowed">Widowed</option>
+  <option value="Separated">Separated</option>
+</select>
+
+<div className="mt-5 flex gap-6">
+  <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+    <input type="checkbox" checked={signUpForm.is_pwd || false} onChange={e => setSignUpForm({...signUpForm, is_pwd: e.target.checked})} className="w-4 h-4 rounded border-slate-300 text-[#091d64] focus:ring-[#091d64]" />
+    Person with Disability (PWD)
+  </label>
+  <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+    <input type="checkbox" checked={signUpForm.is_solo_parent || false} onChange={e => setSignUpForm({...signUpForm, is_solo_parent: e.target.checked})} className="w-4 h-4 rounded border-slate-300 text-[#091d64] focus:ring-[#091d64]" />
+    Solo Parent
+  </label>
+</div>
                       </div>
 
                       <div>

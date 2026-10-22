@@ -32,7 +32,7 @@ export default function NotificationMenu({
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<SystemNotification[]>([]);
   const [locallyReadIds, setLocallyReadIds] = useState<Set<string>>(() => new Set());
-  const hasProvidedItems = providedItems !== undefined;
+  const hasProvidedItems = Array.isArray(providedItems) && providedItems.length > 0;
 
   useEffect(() => {
     if (hasProvidedItems || !userRole || userRole === 'Viewer' || !kabisigApi.getToken()) return;
@@ -62,7 +62,7 @@ export default function NotificationMenu({
     };
   }, [hasProvidedItems, userRole]);
 
-  const items: NotificationMenuItem[] = [...supplementalItems, ...(providedItems ?? notifications)];
+  const items: NotificationMenuItem[] = [...supplementalItems, ...(hasProvidedItems ? (providedItems as any[]) : notifications)];
 
   const filteredItems = items.filter((item: any) => {
     // read items still visible; only unread count uses is_read
@@ -71,6 +71,11 @@ export default function NotificationMenu({
     const r = String(userRole).toLowerCase();
     const link = String(item.link || '').toLowerCase();
     const text = String((item.title || '') + ' ' + (item.message || '')).toLowerCase();
+
+    // BLOCK generic system auto-alerts from appearing in the bell
+    if (text.includes('no pending validations') || text.includes('no overspending detected') || text.includes('budget spending trend')) {
+      return false;
+    }
     const notificationType = String(item.notification_type || '').toLowerCase();
     if (notificationType === 'feedback_response' || notificationType.includes('feedback') || text.includes('feedback') || link.includes('feedback')) return true;
     

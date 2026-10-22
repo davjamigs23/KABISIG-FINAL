@@ -386,7 +386,7 @@ export function monitorBudgets(
     } else if (actualSpent >= prog.budgetAllocation * 0.9) {
       alerts.push({
         level: 'Warning',
-        message: `Budget Cap reached: Program "${prog.title}" has consumed ${(actualSpent / prog.budgetAllocation * 100).toFixed(0)}% of its ₱${prog.budgetAllocation.toLocaleString()} limit.`,
+        message: `Budget Cap reached: Program "${prog.title}" has consumed ${prog.budgetAllocation > 0 ? Math.round((actualSpent / prog.budgetAllocation) * 100) : (actualSpent > 0 ? 100 : 0)}% of its ₱${prog.budgetAllocation.toLocaleString()} limit.`,
         code: `PROG_HIGH_SPENT_${prog.id}`
       });
     }

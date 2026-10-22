@@ -209,6 +209,10 @@ const RegisterYouthSchema = z.object({
   guardian_name: z.string().max(200).optional().nullable(),
   guardian_contact: z.string().max(50).optional().nullable(),
   is_registered_voter: z.boolean().default(false),
+  scholar_status: z.string().optional(),
+  is_pwd: z.boolean().default(false),
+  is_solo_parent: z.boolean().default(false),
+  marital_status: z.enum(['Single', 'Married', 'Widowed', 'Separated']).optional().default('Single'),
   id_type: z.enum(["Philippine Passport", "Driver's License", "PRC ID", "UMID", "PhilHealth ID", "SSS ID", "Pag-IBIG ID", "Voter's ID (COMELEC)", "Postal ID", "NBI Clearance", "Police Clearance", "PhilSys National ID", "Student ID", "Barangay Certificate", "Other"]).optional(),
   id_number: z.string().max(100).optional(),
   id_document_name: z.string().max(200).optional(),
@@ -276,6 +280,9 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
     id_back_document_base64,
     guardian_name,
     guardian_contact,
+    marital_status,
+    is_pwd,
+    is_solo_parent,
   } = parseResult.data;
 
   const resolvedName = resolveName({
@@ -433,6 +440,9 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
       is_registered_voter,
       guardian_name: guardian_name || null,
       guardian_contact: guardian_contact || null,
+      marital_status: marital_status || 'Single',
+      is_pwd: is_pwd || false,
+      is_solo_parent: is_solo_parent || false,
       digital_youth_id: null,
       qr_code_url: null,
     },

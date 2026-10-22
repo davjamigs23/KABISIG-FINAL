@@ -1831,7 +1831,7 @@ export default function YouthPages({
                         <span className="text-slate-400 block mb-1 text-[10px] uppercase tracking-wider">Scholar State</span>
                         <select className="border border-slate-200 rounded p-1.5 text-xs bg-white w-full font-bold">
                           <option>Naga City SK Educational Aid Beneficiary</option>
-                          <option>Non-Scholar</option>
+                          <option>{youth.scholarStatus || "Non-Scholar"}</option>
                           <option>Working Student</option>
                         </select>
                       </div>

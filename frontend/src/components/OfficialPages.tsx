@@ -166,7 +166,31 @@ export default function OfficialPages({
   // --- Local UI state mirrors backend-backed shared records ---
   const [localAttendance, setLocalAttendance] = useState<AttendanceRecord[]>([]);
   const [localResolutions, setLocalResolutions] = useState<any[]>(resolutions);
-  const [inventory, setInventory] = useState<any[]>([]);
+    const [inventory, setInventory] = useState<any[]>([]);
+  const [complianceRecords, setComplianceRecords] = useState<any[]>([]);
+  const [complianceStats, setComplianceStats] = useState<any>({ total: 0, completed_count: 0, overdue_count: 0, on_time_percent: null });
+  const [complianceAutoDetected, setComplianceAutoDetected] = useState<any>({ q2_report_count: 0, liquidation_count: 0 });
+  useEffect(() => {
+    let isMounted = true;
+    const fetchCompliance = () => {
+      kabisigApi.getComplianceRecords().then((res: any) => {
+        console.log("COMPLIANCE API RESPONSE:", res);
+        if (!isMounted) return;
+        const responseData = (res as any)?.data;
+        const payload = responseData?.records || responseData?.auto_detected
+          ? responseData
+          : responseData?.data ?? responseData ?? res;
+        if (payload?.records) setComplianceRecords(payload.records);
+        if (payload?.stats) setComplianceStats(payload.stats);
+        if (payload?.auto_detected) setComplianceAutoDetected(payload.auto_detected);
+      }).catch(error => {
+        console.error('Failed to fetch compliance records:', error);
+      });
+    };
+    fetchCompliance();
+    const interval = setInterval(fetchCompliance, 30000); // 30 seconds
+    return () => { isMounted = false; clearInterval(interval); };
+  }, []);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -2111,7 +2135,9 @@ export default function OfficialPages({
                         <h4 className="text-xl font-black text-[#091d64]">
                           {youthProfiles.filter(y => y.educationalLevel?.includes('College') || y.educationalLevel?.includes('High') || y.educationalLevel?.includes('Elementary') || y.school).length}
                         </h4>
-                        <span className="text-[9px] font-bold text-blue-700 bg-blue-100/60 px-1.5 py-0.2 rounded inline-block">72% of Total</span>
+                        <span className="text-[9px] font-bold text-blue-700 bg-blue-100/60 px-1.5 py-0.2 rounded inline-block">
+                          {youthProfiles.length > 0 ? Math.round((youthProfiles.filter(y => y.educationalLevel?.includes('College') || y.educationalLevel?.includes('High') || y.educationalLevel?.includes('Elementary') || y.school).length / youthProfiles.length) * 100) : 0}% of Total
+                        </span>
                       </div>
 
                       <div className="p-3.5 rounded-xl border border-amber-100 bg-amber-50/30 text-center space-y-1">
@@ -2140,13 +2166,13 @@ export default function OfficialPages({
 
                       <div className="p-3.5 rounded-xl border border-purple-100 bg-purple-50/30 text-center space-y-1">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">PWD Youth</span>
-                        <h4 className="text-xl font-black text-purple-600">1</h4>
+                        <h4 className="text-xl font-black text-purple-600">{youthProfiles.filter(y => y.isPwd).length}</h4>
                         <span className="text-[9px] font-bold text-purple-700 bg-purple-100/60 px-1.5 py-0.2 rounded inline-block">Special Needs</span>
                       </div>
 
                       <div className="p-3.5 rounded-xl border border-rose-100 bg-rose-50/30 text-center space-y-1">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Solo Parents</span>
-                        <h4 className="text-xl font-black text-rose-600">1</h4>
+                        <h4 className="text-xl font-black text-rose-600">{youthProfiles.filter(y => y.isSoloParent).length}</h4>
                         <span className="text-[9px] font-bold text-rose-700 bg-rose-100/60 px-1.5 py-0.2 rounded inline-block">Assistance Eligible</span>
                       </div>
                     </div>
@@ -2377,7 +2403,7 @@ export default function OfficialPages({
                       <button 
                         onClick={() => {
                           setActiveMenu('reports');
-                          setReportModuleCategory('financial');
+                          setReportModuleCategory('compliance');
                           setTreasurerReportTab('utilization');
                         }}
                         className="px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-lg transition-all flex items-center gap-1.5 border border-white/20 cursor-pointer"
@@ -2387,7 +2413,7 @@ export default function OfficialPages({
                       <button 
                         onClick={() => {
                           setActiveMenu('reports');
-                          setReportModuleCategory('financial');
+                          setReportModuleCategory('compliance');
                           setTreasurerReportTab('statement');
                         }}
                         className="px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-lg transition-all flex items-center gap-1.5 border border-white/20 cursor-pointer"
@@ -2456,7 +2482,7 @@ export default function OfficialPages({
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Latest Audit Ledger & VAT Withholding Vouchers</span>
                           <button 
-                            onClick={() => { setActiveMenu('reports'); setReportModuleCategory('financial'); setTreasurerReportTab('statement'); }}
+                            onClick={() => { setActiveMenu('reports'); setReportModuleCategory('compliance'); setTreasurerReportTab('statement'); }}
                             className="text-xs font-bold text-[#091d64] hover:underline flex items-center gap-1 cursor-pointer"
                           >
                             Open Financial Ledger <ArrowRight className="w-3 h-3" />
@@ -2508,7 +2534,7 @@ export default function OfficialPages({
                             <Clock className="w-4 h-4 text-emerald-600" />
                             Statutory COA Deadlines
                           </h4>
-                          <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded">See Reports</span>
+                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${complianceStats.on_time_percent !== null && complianceStats.on_time_percent >= 80 ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{complianceStats.on_time_percent !== null ? `${complianceStats.on_time_percent}% On-Time` : "No Data"}</span>
                         </div>
 
                         <div className="space-y-2 text-xs">
@@ -2516,7 +2542,7 @@ export default function OfficialPages({
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 mt-0.5 flex-shrink-0" />
                             <div>
                               <p className="font-bold text-slate-800">Q2 Financial Performance Report</p>
-                              <p className="text-[10px] text-slate-500">View Submission Records</p>
+                              <p className="text-[10px] text-slate-500">{complianceAutoDetected.q2_report_count > 0 ? `Submitted (${complianceAutoDetected.q2_report_count} files)` : "Not Yet Submitted"}</p>
                             </div>
                           </div>
 
@@ -2524,7 +2550,7 @@ export default function OfficialPages({
                             <RefreshCw className="w-3.5 h-3.5 text-blue-600 mt-0.5 flex-shrink-0" />
                             <div>
                               <p className="font-bold text-slate-800">Cash Advances Liquidation</p>
-                              <p className="text-[10px] text-slate-500">View Liquidation Records</p>
+                              <p className="text-[10px] text-slate-500">{complianceStats.overdue_count > 0 ? `${complianceStats.overdue_count} Overdue` : (complianceAutoDetected.liquidation_count > 0 ? `${complianceAutoDetected.liquidation_count} Submitted` : "No Liquidations Uploaded")}</p>
                             </div>
                           </div>
                         </div>
@@ -5762,6 +5788,16 @@ export default function OfficialPages({
                 />
               </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Marital Status</label>
+                  <input readOnly type="text" value={selectedYouthProfile.civilStatus || 'Single'} className="w-full p-2 border border-slate-200 rounded text-xs" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Special Category</label>
+                  <input readOnly type="text" value={[selectedYouthProfile.isPwd ? 'PWD' : null, selectedYouthProfile.isSoloParent ? 'Solo Parent' : null].filter(Boolean).join(' / ') || 'None'} className="w-full p-2 border border-slate-200 rounded text-xs" />
+                </div>
+              </div>
               {/* Panel rec #12: ID verification preview (view-only for SK Officials) */}
               <div className="p-4 border border-slate-200 rounded-lg space-y-3">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2">
