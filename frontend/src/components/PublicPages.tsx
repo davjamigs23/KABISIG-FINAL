@@ -359,7 +359,7 @@ export default function PublicPages({
       return;
     }
 
-    const resolvedBarangayId = signUpBarangayId || barangays[0]?.id || '';
+    const resolvedBarangayId = signUpBarangayId || '';
     if (!resolvedBarangayId) {
       alert('Barangay registry is unavailable right now. Please try again later.');
       return;
@@ -486,6 +486,10 @@ export default function PublicPages({
       zone: signUpForm.zone,
           educational_status: educationalStatus,
           employment_status: employmentStatus,
+          scholar_status: signUpForm.scholar_status || 'Non-Scholar',
+          marital_status: signUpForm.marital_status || 'Single',
+          is_pwd: signUpForm.is_pwd || false,
+          is_solo_parent: signUpForm.is_solo_parent || false,
           school: signUpForm.school,
           course: signUpForm.course,
           year: signUpForm.year,
@@ -968,11 +972,11 @@ export default function PublicPages({
                         </div>
                         <div className="relative w-full">
                           <select 
-                            value={signUpBarangayId}
+                            value={signUpBarangayId || ""}
                             onChange={(e) => setSignUpBarangayId(e.target.value)}
                             className="w-full pl-3.5 pr-10 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors font-bold cursor-pointer appearance-none"
                           >
-                            <option value=""></option>
+                            <option value="">Select a Barangay</option>
                             {barangays.map(b => (
                               <option key={b.id} value={b.id} disabled={!b.chairperson || b.chairperson === 'Unassigned'}>
                                 {b.name} {(!b.chairperson || b.chairperson === 'Unassigned') ? '(No Chairperson Yet)' : ''}

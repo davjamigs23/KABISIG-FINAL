@@ -336,7 +336,7 @@ router.post(
     // STRICT CHECK: Block pending users from registering
     const { data: profile } = await supabaseAdmin.from('resident_profile').select('verification_status').eq('user_id', user.id).maybeSingle();
     if (!profile || profile.verification_status?.toLowerCase() !== 'verified') {
-      sendError(res, 'Your account is pending verification. You must wait for the SK Chairperson to approve your ID before registering.', 403);
+      sendError(res, 'Your uploaded ID is currently under review. You will be able to register once the SK Chairperson approves it.', 403);
       return;
     }
 

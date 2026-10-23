@@ -115,6 +115,20 @@ class KabisigApiClient {
       });
 
       const json = await response.json().catch(() => ({}));
+      
+      if (!response.ok) {
+        let errorMsg = json.message || 'Request failed';
+        if (json.data && typeof json.data === 'object') {
+          const firstError = Object.values(json.data)[0];
+          if (Array.isArray(firstError) && firstError.length > 0) {
+            errorMsg = firstError[0] as string;
+          } else if (typeof firstError === 'string') {
+            errorMsg = firstError;
+          }
+        }
+        throw new Error(errorMsg);
+      }
+      
       if (response.status === 401 && !endpoint.includes('/auth/login')) {
         this.setToken(null);
         if (!this.invalidating && typeof window !== 'undefined') {
@@ -266,7 +280,7 @@ class KabisigApiClient {
   }
 
   // Panel rec #12: ID-based Profile Verification
-  async uploadVerification(payload: { id_type: string; id_number: string; file_base64: string; file_name: string; mime_type: string }): Promise<{ success: boolean; data?: any; message?: string }> {
+  async uploadVerification(payload: { id_type: string; id_number: string; file_base64: string; file_name: string; mime_type: string; back_file_base64?: string; back_file_name?: string; back_mime_type?: string }): Promise<{ success: boolean; data?: any; message?: string }> {
     return await this.request<any>('/users/verification/upload', {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -275,6 +289,13 @@ class KabisigApiClient {
 
   async getVerificationStatus(): Promise<{ success: boolean; data?: any; message?: string }> {
     return await this.request<any>('/users/verification/status', { method: 'GET' });
+  }
+
+  async updateVerificationStatus(userId: string, status: string): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request<any>('/users/verification/' + userId, {
+      method: 'PATCH',
+      body: JSON.stringify({ status })
+    });
   }
 
   async getUserVerification(userId: string): Promise<{ success: boolean; data?: any; message?: string }> {
@@ -424,6 +445,10 @@ class KabisigApiClient {
     guardian_contact?: string | null;
     educational_status?: string;
     employment_status?: string;
+    scholar_status?: string;
+    marital_status?: string;
+    is_pwd?: boolean;
+    is_solo_parent?: boolean;
     school?: string;
     course?: string;
     year?: string;

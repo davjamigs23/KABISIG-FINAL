@@ -436,7 +436,7 @@ export function getComplianceIssues(
     const matchesProgram = (doc: DocumentRecord) =>
       doc.title.toLowerCase().includes(prog.title.toLowerCase()) ||
       (doc.description || '').toLowerCase().includes(prog.title.toLowerCase());
-    const hasAccomplishment = documents.some(doc => doc.category === 'Accomplishment' && matchesProgram(doc));
+    const hasAccomplishment = documents.some(doc => (doc.category === 'Accomplishment' || doc.title?.toLowerCase().includes('accomplishment') || (doc as any).document_type === 'Other') && matchesProgram(doc));
     const hasLiquidation = documents.some(doc => doc.category === 'Liquidation' && matchesProgram(doc));
 
     if (!hasAccomplishment) {

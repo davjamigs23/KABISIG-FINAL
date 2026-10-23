@@ -3141,12 +3141,41 @@ return (
                           {String(youthVerification.verification_status).replace("_", " ")}
                         </span>
                       </div>
+                      {youthVerification.verification_status === "submitted" && (youthVerification as any).is_demoted_chair && (
+                        <div className="flex gap-2 mt-4 pt-4 border-t border-slate-100 col-span-2">
+                          <button onClick={async () => {
+                            const targetId = inspectProfile.userId || inspectProfile.id;
+                            try {
+                              await kabisigApi.updateVerificationStatus(targetId, "verified");
+                              alert("ID Approved successfully!");
+                              setYouthVerification({ ...youthVerification, verification_status: "verified" });
+                            } catch (e: any) { alert(e.message); }
+                          }} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer">Approve ID</button>
+                          <button onClick={async () => {
+                            const targetId = inspectProfile.userId || inspectProfile.id;
+                            try {
+                              await kabisigApi.updateVerificationStatus(targetId, "rejected");
+                              alert("ID Rejected.");
+                              setYouthVerification({ ...youthVerification, verification_status: "rejected" });
+                            } catch (e: any) { alert(e.message); }
+                          }} className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer">Reject ID</button>
+                        </div>
+                      )}
                     </div>
 
-                    {youthVerification.signed_url && (                       <div className="space-y-2">                         <div className="border border-slate-200 rounded-lg overflow-hidden bg-slate-50">                           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2 pt-2">Front Side</p>                           <img src={youthVerification.signed_url} alt="ID Front" className="w-full max-h-64 object-contain bg-white" />                         </div>                         {youthVerification.back_signed_url && (                           <div className="border border-slate-200 rounded-lg overflow-hidden bg-slate-50">                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2 pt-2">Back Side</p>                             <img src={youthVerification.back_signed_url} alt="ID Back" className="w-full max-h-64 object-contain bg-white" />                           </div>                         )}                                                </div>                     )}
-
-                    {!youthVerification.signed_url && youthVerification.has_document && (
-                      <p className="text-[10px] text-slate-400 italic">ID document exists but preview could not be generated.</p>
+                    {youthVerification.signed_url && (
+                      <div className="space-y-2">
+                        <div className="border border-slate-200 rounded-lg overflow-hidden bg-slate-50">
+                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2 pt-2">Front Side</p>
+                          <img src={youthVerification.signed_url} alt="ID Front" className="w-full max-h-64 object-contain bg-white" />
+                        </div>
+                        {youthVerification.back_signed_url && (
+                          <div className="border border-slate-200 rounded-lg overflow-hidden bg-slate-50">
+                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2 pt-2">Back Side</p>
+                            <img src={youthVerification.back_signed_url} alt="ID Back" className="w-full max-h-64 object-contain bg-white" />
+                          </div>
+                        )}
+                      </div>
                     )}
 
                     {youthVerification.verification_notes && (

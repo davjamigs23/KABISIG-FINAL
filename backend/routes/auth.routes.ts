@@ -283,6 +283,7 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
     marital_status,
     is_pwd,
     is_solo_parent,
+    scholar_status,
   } = parseResult.data;
 
   const resolvedName = resolveName({
@@ -387,6 +388,11 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
     return;
   }
 
+  if (authData.user.identities && authData.user.identities.length === 0) {
+    sendError(res, 'This email address is already registered to an existing account. Please use a different email.', 409);
+    return;
+  }
+
   const userId = authData.user.id;
 
   // 4. Create Public User Record
@@ -434,6 +440,7 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
       zone: zone || null,
       educational_status: educational_status || null,
       employment_status: employment_status || null,
+      scholar_status: scholar_status || 'Non-Scholar',
       school: school || null,
       course: course || null,
       year_level: year || null,
@@ -898,7 +905,7 @@ router.get('/check-chairperson-invite', async (req: Request, res: Response): Pro
         isInvitedChairperson: true,
         email: normalizedEmail,
         tenant_id: user.tenant_id,
-        barangay_name: barangayInfo.name || 'Barangay Abella',
+        barangay_name: barangayInfo.name || 'Unknown Barangay',
         full_name: user.full_name,
         status: user.status,
       },
@@ -912,7 +919,7 @@ router.get('/check-chairperson-invite', async (req: Request, res: Response): Pro
   const authUser = authList?.users?.find((u) => u.email?.toLowerCase() === normalizedEmail);
   if (authUser && (authUser.user_metadata?.role_id === 2 || authUser.user_metadata?.role === 'Barangay Admin')) {
     const tenantId = authUser.user_metadata?.tenant_id;
-    let bgyName = 'Barangay Abella';
+    let bgyName = 'Unknown Barangay';
     if (tenantId) {
       const { data: bgy } = await supabaseAdmin.from('barangay').select('name').eq('id', tenantId).maybeSingle();
       if (bgy) bgyName = bgy.name;
@@ -945,7 +952,7 @@ const SetupChairpersonPasswordSchema = z.object({
   middle_name: z.string().max(100).optional().nullable(),
   last_name: z.string().max(100).optional(),
   suffix: z.string().max(20).optional().nullable(),
-  phone: z.string().max(30).optional().nullable(),
+  phone: z.string().regex(/^09\d{9}$/, 'Mobile number must be exactly 11 digits and start with 09').max(30).optional().nullable(),
   birthdate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Birthdate must be formatted as YYYY-MM-DD').optional(),
   sex: z.enum(['Male', 'Female', 'Other', 'Prefer not to say']).optional(),
   address: z.string().min(3).max(500).optional(),

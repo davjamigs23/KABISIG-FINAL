@@ -65,34 +65,33 @@ export default function NotificationMenu({
   const items: NotificationMenuItem[] = [...supplementalItems, ...(hasProvidedItems ? (providedItems as any[]) : notifications)];
 
   const filteredItems = items.filter((item: any) => {
-    // read items still visible; only unread count uses is_read
     if (!userRole) return false;
-    
     const r = String(userRole).toLowerCase();
     const link = String(item.link || '').toLowerCase();
     const text = String((item.title || '') + ' ' + (item.message || '')).toLowerCase();
 
-    // BLOCK generic system auto-alerts from appearing in the bell
-    if (text.includes('no pending validations') || text.includes('no overspending detected') || text.includes('budget spending trend')) {
-      return false;
+    // BLOCK all generic system alerts and budget alerts
+    if (text.includes('budget') || text.includes('expense') || text.includes('invoice') || text.includes('financial') || text.includes('alert') || text.includes('no pending validations') || text.includes('no overspending detected')) return false;
+
+    // 1. Youth Constituent
+    if (r.includes('youth') || r.includes('constituent')) {
+      return link.includes('feedback') || text.includes('feedback') || link.includes('program') || text.includes('program') || text.includes('announcement') || text.includes('outreach');
     }
-    const notificationType = String(item.notification_type || '').toLowerCase();
-    if (notificationType === 'feedback_response' || notificationType.includes('feedback') || text.includes('feedback') || link.includes('feedback')) return true;
-    
-    // 1. Treasurer sees ONLY budget/expense
+
+    // 2. Treasurer
     if (r.includes('treasurer')) return link.includes('budget') || link.includes('expense') || text.includes('budget alert');
     
-    // 2. Secretary sees ONLY documents
+    // 3. Secretary
     if (r.includes('secretary')) return link.includes('document') || link.includes('resolution') || text.includes('document');
     
-    // 3. Kagawad sees ONLY programs/attendance
+    // 4. Kagawad
     if (r.includes('kagawad')) return link.includes('program') || link.includes('calendar') || link.includes('attendance') || text.includes('program is coming up');
     
-    // 4. Chairperson sees ONLY admin/oversight
+    // 5. Chairperson / Super Admin
     if (r.includes('chair') || r.includes('barangay admin') || r.includes('super')) {
         return link.includes('user') || link.includes('registration') || text.includes('registration') || text.includes('compliance') || text.includes('approval') || text.includes('pending');
     }
-    return true;
+    return false;
   });
 
   const unreadCount = filteredItems.filter((item: any) => !item.is_read && !locallyReadIds.has(item.id)).length;
@@ -115,13 +114,6 @@ export default function NotificationMenu({
       return;
     }
 
-    const r = String(userRole || "").toLowerCase();
-    // STRICT ROUTING SIGNALS
-    if (r.includes("treasurer")) { onNavigate?.("reports"); }
-    else if (r.includes("secretary")) { onNavigate?.("documents"); }
-    else if (r.includes("kagawad")) { onNavigate?.("programs"); }
-    else if (r.includes("chair") || r.includes("admin")) { onNavigate?.("dashboard"); }
-    else { onNavigate?.("dashboard"); }
 
     setIsOpen(false);
   };

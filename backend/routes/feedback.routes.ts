@@ -131,6 +131,13 @@ router.post(
 
   const { subject, message, category, is_anonymous } = parseResult.data;
   const user = (req as AuthRequest).user!;
+    // STRICT CHECK: Block pending users from submitting feedback
+    const { data: profile } = await supabaseAdmin.from('resident_profile').select('verification_status').eq('user_id', user.id).maybeSingle();
+    if (!profile || profile.verification_status?.toLowerCase() !== 'verified') {
+      sendError(res, 'Your account is pending verification. You must wait for the SK Chairperson to approve your ID before submitting feedback.', 403);
+      return;
+    }
+
   if (!user.tenant_id) {
     sendError(res, 'Your account is not linked to a barangay.', 403);
     return;

@@ -924,7 +924,7 @@ router.patch(
 // ============================================================
 const TransferChairmanshipSchema = z.object({
   barangay_id: z.string().uuid('Valid Barangay ID is required'),
-  successor_email: z.string().email('Valid successor email is required'),
+  successor_email: z.string().email('Valid successor email is required').optional().nullable(),
   reason: z.enum(['Resignation', 'Resigned', 'Resign', 'End of Term', 'Replaced', 'Succession', 'Other']).default('Other').transform(v => (v === 'Resigned' || v === 'Resign') ? 'Resignation' : v),
   notes: z.string().max(1000).optional().nullable(),
 });
@@ -940,7 +940,7 @@ router.post(
       return;
     }
     const { barangay_id, successor_email, reason, notes } = parseResult.data;
-    const cleanSuccessorEmail = successor_email.trim().toLowerCase();
+    const cleanSuccessorEmail = successor_email ? successor_email.trim().toLowerCase() : null;
     const admin = (req as AuthRequest).user!;
 
     // 1. Verify barangay
@@ -1000,116 +1000,120 @@ router.post(
       if (verifyResetErr) {
         console.warn('[transfer-chairmanship] verification reset failed for outgoing chairperson:', verifyResetErr);
       }
-      // 4. Find or create successor
-    const { data: successor } = await supabaseAdmin
-      .from('users')
-      .select('id, email, full_name, first_name, middle_name, last_name, suffix, status, role_id, tenant_id')
-      .ilike('email', cleanSuccessorEmail)
-      .maybeSingle();
-
-    let successorUserId: string = '';
-    let successorInviteMethod: 'existing_user' | 'email_invitation' | 'temp_credentials' = 'existing_user';
+    // 4. Find or create successor
+    let successorUserId: string | null = null;
+    let successorInviteMethod: 'existing_user' | 'email_invitation' | 'temp_credentials' | 'resignation' = 'resignation';
     let successorLink = '';
-    const redirectUrl = FRONTEND_URL + '/chairperson-setup?invite_email=' + encodeURIComponent(cleanSuccessorEmail) + '&role=chairperson&tenant_id=' + barangay_id;
+    let successor: any = null;
+    const redirectUrl = FRONTEND_URL + '/chairperson-setup?invite_email=' + encodeURIComponent(cleanSuccessorEmail || '') + '&role=chairperson&tenant_id=' + barangay_id;
 
-    if (successor) {
-      // Existing user — promote them
-      const { error: promoteErr } = await supabaseAdmin
+    if (cleanSuccessorEmail) {
+      const { data: successorData } = await supabaseAdmin
         .from('users')
-        .update({
-          tenant_id: barangay_id,
-          role_id: 2,
-          status: 'active',
-          approved_by: admin.id,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', successor.id);
+        .select('id, email, full_name, first_name, middle_name, last_name, suffix, status, role_id, tenant_id')
+        .ilike('email', cleanSuccessorEmail)
+        .maybeSingle();
 
-      if (promoteErr) {
-        sendError(res, 'Failed to promote successor: ' + promoteErr.message, 500);
-        return;
-      }
-      successorUserId = successor.id;
-      successorLink = redirectUrl;
-    } else {
-      // New user — invite
-      const { data: authList } = await supabaseAdmin.auth.admin.listUsers();
-      const existingAuthUser = authList?.users?.find(u => u.email?.toLowerCase() === cleanSuccessorEmail);
+      successor = successorData;
+      successorInviteMethod = 'existing_user';
 
-      if (existingAuthUser) {
-        successorUserId = existingAuthUser.id;
-        successorInviteMethod = 'email_invitation';
+      if (successor) {
+        // Existing user - promote them
+        const { error: promoteErr } = await supabaseAdmin
+          .from('users')
+          .update({
+            tenant_id: barangay_id,
+            role_id: 2,
+            status: 'active',
+            approved_by: admin.id,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', successor.id);
+
+        if (promoteErr) {
+          sendError(res, 'Failed to promote successor: ' + promoteErr.message, 500);
+          return;
+        }
+        successorUserId = successor.id;
+        successorLink = redirectUrl;
       } else {
-        const { data: inviteData, error: inviteErr } = await inviteWithBrevo(
-          cleanSuccessorEmail,
-          {
-            data: { tenant_id: barangay_id, role_id: 2 },
-            redirectTo: redirectUrl,
-          } as any
-        );
+        // New user - invite
+        const { data: authList } = await supabaseAdmin.auth.admin.listUsers();
+        const existingAuthUser = authList?.users?.find(u => u.email?.toLowerCase() === cleanSuccessorEmail);
 
-        if (!inviteErr && inviteData?.user) {
-          successorUserId = inviteData.user.id;
+        if (existingAuthUser) {
+          successorUserId = existingAuthUser.id;
           successorInviteMethod = 'email_invitation';
         } else {
-          const tempPassword = 'Kb' + Math.random().toString(36).slice(-6) + 'A!1';
-          const { data: createData, error: createErr } = await supabaseAdmin.auth.admin.createUser({
-            email: cleanSuccessorEmail,
-            password: tempPassword,
-            email_confirm: true,
-            user_metadata: { tenant_id: barangay_id, role_id: 2 },
-            redirectTo: redirectUrl,
-          } as any);
+          const { data: inviteData, error: inviteErr } = await inviteWithBrevo(
+            cleanSuccessorEmail,
+            {
+              data: { tenant_id: barangay_id, role_id: 2 },
+              redirectTo: redirectUrl,
+            } as any
+          );
 
-          if (createErr || !createData?.user) {
-            sendError(res, 'Failed to initialize successor account: ' + (createErr?.message || 'unknown'), 500);
-            return;
+          if (!inviteErr && inviteData?.user) {
+            successorUserId = inviteData.user.id;
+            successorInviteMethod = 'email_invitation';
+          } else {
+            const tempPassword = 'Kb' + Math.random().toString(36).slice(-6) + 'A!1';
+            const { data: createData, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+              email: cleanSuccessorEmail,
+              password: tempPassword,
+              email_confirm: true,
+              user_metadata: { tenant_id: barangay_id, role_id: 2 },
+              redirectTo: redirectUrl,
+            } as any);
+
+            if (createErr || !createData?.user) {
+              sendError(res, 'Failed to initialize successor account: ' + (createErr?.message || 'unknown'), 500);
+              return;
+            }
+            successorUserId = createData.user.id;
+            successorInviteMethod = 'temp_credentials';
           }
-          successorUserId = createData.user.id;
-          successorInviteMethod = 'temp_credentials';
         }
-      }
 
-      // Insert into public.users
-      const { error: insertErr } = await supabaseAdmin.from('users').upsert({
-        id: successorUserId,
-        tenant_id: barangay_id,
-        role_id: 2,
-        full_name: 'Pending Invitation',
-        first_name: null,
-        middle_name: null,
-        last_name: null,
-        suffix: null,
-        email: cleanSuccessorEmail,
-        phone: null,
-        status: 'active',
-        approved_by: admin.id,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'id' });
-
-      if (insertErr) {
-        sendError(res, 'Failed to pre-set successor record: ' + insertErr.message, 500);
-        return;
-      }
-
-      // Generate setup link
-      try {
-        const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
-          type: 'magiclink',
+        // Insert into public.users
+        const { error: insertErr } = await supabaseAdmin.from('users').upsert({
+          id: successorUserId,
+          tenant_id: barangay_id,
+          role_id: 2,
+          full_name: 'Pending Invitation',
+          first_name: null,
+          middle_name: null,
+          last_name: null,
+          suffix: null,
           email: cleanSuccessorEmail,
-          options: { redirectTo: redirectUrl } as any,
-        });
-        if (linkData?.properties?.action_link) {
-          successorLink = linkData.properties.action_link;
+          phone: null,
+          status: 'active',
+          approved_by: admin.id,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
+
+        if (insertErr) {
+          sendError(res, 'Failed to pre-set successor record: ' + insertErr.message, 500);
+          return;
         }
-      } catch (linkErr) {
-        console.warn('generateLink warning:', linkErr);
-      }
+
+        // Generate setup link
+        try {
+          const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
+            type: 'magiclink',
+            email: cleanSuccessorEmail,
+            options: { redirectTo: redirectUrl } as any,
+          });
+          if (linkData?.properties?.action_link) {
+            successorLink = linkData.properties.action_link;
+          }
+        } catch (linkErr) {
+          console.warn('generateLink warning:', linkErr);
+        }
       if (!successorLink) successorLink = redirectUrl;
+      }
     }
-
-
 
     // 5. Record transfer in audit table
     await supabaseAdmin.from('chairperson_transfers').insert({

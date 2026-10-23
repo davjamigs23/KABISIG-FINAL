@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { supabaseAdmin, recordAuditLog } from '../services/supabase.service.js';
+
 import { resolveAvatarUrl } from '../services/avatar.service.js';
 import { sendSuccess, sendError } from '../utils/response.js';
 import {authenticateUser, requireActiveUser, requireRoles} from '../middleware/auth.js';
@@ -10,6 +11,7 @@ import type { AuthRequest } from '../types/database.types.js';
 import { resolveName } from '../utils/name.js';
 
 const router = express.Router();
+
 
 function calculateAge(birthdateStr: string): number {
   const birthdate = new Date(birthdateStr);
@@ -492,8 +494,8 @@ router.get('/profile', authenticateUser, async (req: Request, res: Response): Pr
       school: resident.school || meta.school || '',
       course: resident.course || meta.course || '',
       year: resident.year_level || meta.year || '',
-      employmentStatus: meta.employmentStatus || resident.employment_status || 'Student',
-      scholarStatus: meta.scholarStatus || 'Non-Scholar',
+      employmentStatus: (resident as any).employment_status || meta.employmentStatus || 'Not Specified',
+      scholarStatus: (resident as any).scholar_status || meta.scholarStatus || 'Not Specified',
       scholarshipType: meta.scholarshipType || '',
       youthSector: meta.youthSector || 'In-School Youth',
           isPwd: (resident as any).is_pwd || false,
@@ -593,8 +595,8 @@ router.get(
           school: resident.school || meta.school || '',
           course: resident.course || meta.course || '',
           year: resident.year_level || meta.year || '1st Year',
-          employmentStatus: meta.employmentStatus || resident.employment_status || 'Student',
-          scholarStatus: meta.scholarStatus || 'Non-Scholar',
+          employmentStatus: (resident as any).employment_status || meta.employmentStatus || 'Not Specified',
+          scholarStatus: (resident as any).scholar_status || meta.scholarStatus || 'Not Specified',
           scholarshipType: meta.scholarshipType || '',
           youthSector: meta.youthSector || 'In-School Youth',
           isPwd: (resident as any).is_pwd || false,
@@ -729,6 +731,9 @@ router.put(
 
 const ID_TYPES = ["Philippine Passport", "Driver's License", "PRC ID", "UMID", "PhilHealth ID", "SSS ID", "Pag-IBIG ID", "Voter's ID (COMELEC)", "Postal ID", "NBI Clearance", "Police Clearance", "PhilSys National ID", "Student ID", "Barangay Certificate", "Other"] as const;
 const UploadVerificationSchema = z.object({
+  id_back_document_base64: z.string().optional(),
+  id_back_document_name: z.string().optional(),
+  id_back_document_mime: z.string().optional(),
   id_type: z.enum(ID_TYPES),
   id_number: z.string().min(2).max(100),
   file_base64: z.string().min(20),
@@ -751,7 +756,7 @@ router.post(
       sendError(res, 'Validation failed', 400, parseResult.error.flatten().fieldErrors);
       return;
     }
-    const { id_type, id_number, file_base64, file_name, mime_type } = parseResult.data;
+    const { id_type, id_number, file_base64, file_name, mime_type, id_back_document_base64, id_back_document_name, id_back_document_mime } = parseResult.data;
     const user = (req as AuthRequest).user!;
 
     if (!user.tenant_id) {
@@ -780,6 +785,7 @@ router.post(
     const ext = allowedExt.includes(extFromName) ? extFromName : (mime_type === 'image/png' ? 'png' : (mime_type === 'image/webp' ? 'webp' : 'jpg'));
     const storagePath = user.id + '/' + Date.now() + '.' + ext;
 
+    let backStoragePath: string | null = null;
     // Upload to bucket
     const { error: uploadErr } = await supabaseAdmin.storage
       .from('verification-ids')
@@ -790,6 +796,24 @@ router.post(
       return;
     }
 
+    if (id_back_document_base64) {
+      try {
+        const backBuffer = Buffer.from(id_back_document_base64, 'base64');
+        const backExtFromName = ((id_back_document_name || '').split('.').pop() || '').toLowerCase();
+        const backExt = allowedExt.includes(backExtFromName) ? backExtFromName : ((id_back_document_mime === 'image/png') ? 'png' : ((id_back_document_mime === 'image/webp') ? 'webp' : 'jpg'));
+        backStoragePath = user.id + '/back-' + Date.now() + '.' + backExt;
+        const { error: backUploadErr } = await supabaseAdmin.storage
+          .from('verification-ids')
+          .upload(backStoragePath, backBuffer, { contentType: id_back_document_mime || 'image/jpeg', upsert: true });
+        if (backUploadErr) {
+          console.warn('Back ID upload failed:', backUploadErr.message);
+          backStoragePath = null;
+        }
+      } catch (e) {
+        console.warn('Back ID parsing failed:', e);
+      }
+    }
+
     // Update resident_profile
     const { error: updateErr } = await supabaseAdmin
       .from('resident_profile')
@@ -797,6 +821,7 @@ router.post(
         id_type,
         id_number,
         id_document_path: storagePath,
+        id_back_document_path: backStoragePath,
         verification_status: 'submitted',
         verification_notes: null,
         verification_reviewed_by: null,
@@ -852,9 +877,16 @@ router.get(
       return;
     }
 
+    const { data: transferRecord } = await supabaseAdmin
+      .from('chairperson_transfers')
+      .select('id')
+      .eq('outgoing_user_id', user.id)
+      .maybeSingle();
+    const isDemotedChair = Boolean(transferRecord);
+
     sendSuccess(
       res,
-      data || { id_type: null, id_number: null, verification_status: 'not_submitted', verification_notes: null, verification_reviewed_at: null },
+      data ? { ...data, is_demoted_chair: isDemotedChair } : { id_type: null, id_number: null, verification_status: 'not_submitted', verification_notes: null, verification_reviewed_at: null, is_demoted_chair: isDemotedChair },
       'Verification status retrieved.'
     );
   }
@@ -919,10 +951,19 @@ router.get(
       }
     }
 
+    // Check if this user is a demoted chair
+    const { data: transferRecord } = await supabaseAdmin
+      .from('chairperson_transfers')
+      .select('id')
+      .eq('outgoing_user_id', targetUserId)
+      .maybeSingle();
+    const isDemotedChair = Boolean(transferRecord);
+
     sendSuccess(
       res,
       {
         user_id: profile.user_id,
+        is_demoted_chair: isDemotedChair,
         full_name: (profile as any).users?.full_name || null,
         email: (profile as any).users?.email || null,
         id_type: profile.id_type,
@@ -938,6 +979,93 @@ router.get(
       },
       'Verification details retrieved.'
     );
+  }
+);
+
+/**
+ * PATCH /api/users/verification/:userId
+ * Chairperson / SK Official approves or rejects a youth's ID.
+ */
+router.patch(
+  '/verification/:userId',
+  authenticateUser,
+  requireActiveUser,
+  requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'),
+  async (req: Request, res: Response): Promise<void> => {
+    const targetUserId = String(req.params.userId);
+    const { status } = req.body;
+    const user = (req as AuthRequest).user!;
+
+    if (!['verified', 'rejected'].includes(status)) {
+      sendError(res, 'Invalid status. Must be "verified" or "rejected".', 400);
+      return;
+    }
+
+    // Tenant check
+    const { data: targetProfile } = await supabaseAdmin
+      .from('resident_profile')
+      .select('tenant_id')
+      .eq('user_id', targetUserId)
+      .maybeSingle();
+
+    if (!targetProfile || (user.role !== 'SUPER_ADMIN' && targetProfile.tenant_id !== user.tenant_id)) {
+      sendError(res, 'You can only verify youth in your barangay.', 403);
+      return;
+    }
+
+    const { error } = await supabaseAdmin
+      .from('resident_profile')
+      .update({
+        verification_status: status,
+        verification_reviewed_by: user.id,
+        verification_reviewed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', targetUserId);
+
+    if (error) {
+      sendError(res, 'Failed to update verification status: ' + error.message, 500);
+      return;
+    }
+
+    // Send email notification to the user
+    try {
+      const { data: targetUser } = await supabaseAdmin
+        .from('users')
+        .select('email, full_name')
+        .eq('id', targetUserId)
+        .single();
+
+      if (targetUser?.email) {
+        const emailHtml = status === 'verified' 
+          ? `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;"><h1 style="color: #091d64; margin: 0 0 8px 0;">KABISIG</h1><p style="color: #64748b; font-size: 12px; margin: 0 0 24px 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p><h2 style="color: #10b981;">ID Verified!</h2><p style="color: #334155; line-height: 1.6;">Your uploaded ID has been successfully verified by your SK Chairperson. You now have full access to the KABISIG system, including program registration and feedback.</p><div style="text-align: center; margin: 24px 0;"><a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Log In to KABISIG</a></div></div>`
+          : `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;"><h1 style="color: #091d64; margin: 0 0 8px 0;">KABISIG</h1><p style="color: #64748b; font-size: 12px; margin: 0 0 24px 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p><h2 style="color: #ef4444;">ID Rejected</h2><p style="color: #334155; line-height: 1.6;">Your uploaded ID was rejected by your SK Chairperson. Please log in to the KABISIG system and upload a clearer valid ID to verify your account.</p><div style="text-align: center; margin: 24px 0;"><a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Log In to KABISIG</a></div></div>`;
+        
+        await sendEmail(targetUser.email, status === 'verified' ? 'KABISIG ID Verified' : 'KABISIG ID Rejected', emailHtml);
+      }
+    } catch (emailErr) {
+      console.error('Failed to send verification status email:', emailErr);
+    }
+    // Send email notification directly via Brevo (Self-contained)
+    try {
+      const { data: targetUser } = await supabaseAdmin
+        .from('users')
+        .select('email, full_name')
+        .eq('id', targetUserId)
+        .single();
+
+      if (targetUser?.email && process.env.BREVO_API_KEY) {
+        const emailHtml = status === 'verified' 
+          ? `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;"><h1 style="color: #091d64; margin: 0 0 8px 0;">KABISIG</h1><p style="color: #64748b; font-size: 12px; margin: 0 0 24px 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p><h2 style="color: #10b981;">ID Verified!</h2><p style="color: #334155; line-height: 1.6;">Your uploaded ID has been successfully verified by your SK Chairperson. You now have full access to the KABISIG system, including program registration and feedback.</p><div style="text-align: center; margin: 24px 0;"><a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Log In to KABISIG</a></div></div>`
+          : `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;"><h1 style="color: #091d64; margin: 0 0 8px 0;">KABISIG</h1><p style="color: #64748b; font-size: 12px; margin: 0 0 24px 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p><h2 style="color: #ef4444;">ID Rejected</h2><p style="color: #334155; line-height: 1.6;">Your uploaded ID was rejected by your SK Chairperson. Please log in to the KABISIG system and upload a clearer valid ID to verify your account.</p><div style="text-align: center; margin: 24px 0;"><a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Log In to KABISIG</a></div></div>`;
+
+        // Duplicate fetch removed. Using sendEmail helper above.
+        console.log(`[EMAIL] Sent ${status} notification to ${targetUser.email}`);
+      }
+    } catch (emailErr) {
+      console.error('Failed to send verification status email:', emailErr);
+    }
+    sendSuccess(res, { verification_status: status }, 'ID verification status updated.');
   }
 );
 /**

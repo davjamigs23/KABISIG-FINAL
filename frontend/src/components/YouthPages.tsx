@@ -105,7 +105,6 @@ export default function YouthPages({
     ? currentTenant
     : tenants.find(tenant => tenant.id === currentYouth.barangayId) || currentTenant;
   const barangayLogo = resolvedTenant?.logo || DEFAULT_BARANGAY_LOGOS[resolvedTenant?.name || ''] || '';
-  const isVerificationPending = (currentYouth.verificationStatus || 'pending').toLowerCase() !== 'verified';
   // Navigation inside Youth Portal corresponding exactly to Image 4 Sidebar:
   // 'dashboard' | 'profile' | 'programs' | 'registrations' | 'feedback' | 'resolutions' | 'announcements' | 'settings'
   const [activeMenu, setActiveMenu] = useState<
@@ -121,8 +120,105 @@ export default function YouthPages({
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editForm, setEditForm] = useState<YouthProfile>(currentYouth);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [showSuccessBanner, setShowSuccessBanner] = useState(false);
+  const [isLoadingStatus, setIsLoadingStatus] = useState(true);
   // Panel rec #12: Identity verification state
-  const [verificationStatus, setVerificationStatus] = useState<any>(null);
+  const [verificationStatus, setVerificationStatus] = useState<any>(
+  currentYouth.verificationStatus ? { verification_status: currentYouth.verificationStatus } : null
+);
+  // Poll verification status every 15 seconds for instant updates
+  useEffect(() => {
+    const fetchVerificationStatus = async () => {
+      try {
+        const res = await kabisigApi.getVerificationStatus();
+        if (res.success && res.data) {
+          setVerificationStatus(res.data);
+          setIsLoadingStatus(false);
+          // One-time success banner for demoted chairs
+          if (res.data.is_demoted_chair && res.data.verification_status === 'verified') {
+            const seenKey = `seen_verify_success_${currentYouth.id}`;
+            if (localStorage.getItem(seenKey) !== 'true') {
+              setShowSuccessBanner(true);
+              localStorage.setItem(seenKey, 'true');
+            }
+          }
+        }
+      } catch (e) {
+        setIsLoadingStatus(false);
+        // Silently fail
+      }
+    };
+
+    fetchVerificationStatus(); // Initial fetch
+    const interval = setInterval(fetchVerificationStatus, 15000);
+    return () => clearInterval(interval);
+  }, []);
+      const currentVerifStatus = (verificationStatus?.verification_status || currentYouth.verificationStatus || (currentYouth as any).verification_status || 'pending').toLowerCase();
+  const isDemotedChair = verificationStatus?.is_demoted_chair === true;
+    const isUnderReview = currentVerifStatus === 'submitted' || currentVerifStatus === 'pending_approval';
+  const isRejected = currentVerifStatus === 'rejected';
+  const isVerificationPending = currentVerifStatus !== 'verified';
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
+  const [idType, setIdType] = useState('PhilSys National ID');
+  const [idNumber, setIdNumber] = useState('');
+  const [frontFile, setFrontFile] = useState<File | null>(null);
+  const [backFile, setBackFile] = useState<File | null>(null);
+  const [uploadingId, setUploadingId] = useState(false);
+
+  const handleIdUpload = async () => {
+    if (!idType || !idNumber.trim() || !frontFile) {
+      alert("Please fill in ID Type, ID Number, and upload the Front Image.");
+      return;
+    }
+    setUploadingId(true);
+    try {
+      const toBase64 = (file: File) => new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = error => reject(error);
+      });
+
+      const frontB64 = await toBase64(frontFile);
+      const backB64 = backFile ? await toBase64(backFile) : undefined;
+
+      const parseBase64 = (dataUrl: string) => {
+        const parts = dataUrl.split(',');
+        const mime = parts[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+        return { base64: parts[1], mime };
+      };
+
+      const frontData = parseBase64(frontB64);
+      const backData = backB64 ? parseBase64(backB64) : null;
+
+      const res = await kabisigApi.uploadVerification({ 
+        id_type: idType, 
+        id_number: idNumber, 
+        file_base64: frontData.base64,
+        file_name: frontFile.name,
+        mime_type: frontData.mime,
+        ...(backData && backFile ? {
+          id_back_document_base64: backData.base64,
+          id_back_document_name: backFile.name,
+          id_back_document_mime: backData.mime
+        } : {})
+      });
+      
+      if (res.success) {
+        alert("ID uploaded successfully! Your Chairperson will review it shortly.");
+        setShowVerifyModal(false);
+        setVerificationStatus({ verification_status: 'submitted' });
+        // Delay reload to allow React state to visually update the banner
+        
+      } else {
+        alert("Upload failed: " + (res.message || "Unknown error"));
+      }
+    } catch (err: any) {
+      alert("Error: " + err.message);
+    } finally {
+      setUploadingId(false);
+    }
+  };
   const [verificationLoading, setVerificationLoading] = useState(false);
   const [verificationForm, setVerificationForm] = useState({
     id_type: 'Student ID',
@@ -315,6 +411,7 @@ export default function YouthPages({
     try {
       const res = await kabisigApi.getVerificationStatus();
       if (res.success) setVerificationStatus(res.data);
+          setIsLoadingStatus(false);
     } catch { /* no-op */ }
     finally { setVerificationLoading(false); }
   };
@@ -456,7 +553,8 @@ export default function YouthPages({
     try {
       const data = await kabisigApi.getPublicProgramBudget(progId);
       if (data) setBudgetCache(prev => ({ ...prev, [progId]: data }));
-    } catch (e) { /* no-op */ }
+    } catch (e) {
+        setIsLoadingStatus(false); /* no-op */ }
   };
   const handleFeedbackFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -504,8 +602,10 @@ export default function YouthPages({
       setFeedbackNotice({ type: 'error', text: _msg });
       if (_msg.toLowerCase().includes('temporarily suspended') || _msg.toLowerCase().includes('permanently restricted')) {
         setTimeout(() => {
-          try { kabisigApi.logout(); } catch (e) {}
-          try { localStorage.clear(); sessionStorage.clear(); } catch (e) {}
+          try { kabisigApi.logout(); } catch (e) {
+        setIsLoadingStatus(false);}
+          try { localStorage.clear(); sessionStorage.clear(); } catch (e) {
+        setIsLoadingStatus(false);}
           window.location.href = '/';
         }, 3000);
       }
@@ -551,8 +651,10 @@ export default function YouthPages({
   useEffect(() => {
     if (currentYouth?.status === 'suspended') {
       const timer = setTimeout(() => {
-        try { kabisigApi.logout(); } catch (e) {}
-        try { localStorage.clear(); sessionStorage.clear(); } catch (e) {}
+        try { kabisigApi.logout(); } catch (e) {
+        setIsLoadingStatus(false);}
+        try { localStorage.clear(); sessionStorage.clear(); } catch (e) {
+        setIsLoadingStatus(false);}
         window.location.href = '/';
       }, 5000); // Auto-logout after 5 seconds of seeing the message
       return () => clearTimeout(timer);
@@ -573,8 +675,10 @@ export default function YouthPages({
             <p className='text-sm text-slate-600 mb-6'>{currentYouth?.suspension_reason || 'Violation of community guidelines.'}</p>
             <button type="button" onClick={() => {
               if (confirm('Submit appeal to the SK Chairperson? You will be signed out after.')) {
-                try { kabisigApi.logout(); } catch (e) { console.error(e); }
-                try { localStorage.clear(); sessionStorage.clear(); } catch (e) { console.error(e); }
+                try { kabisigApi.logout(); } catch (e) {
+        setIsLoadingStatus(false); console.error(e); }
+                try { localStorage.clear(); sessionStorage.clear(); } catch (e) {
+        setIsLoadingStatus(false); console.error(e); }
                 setTimeout(() => window.location.href = '/', 300);
               }
             }} className="w-full py-2.5 bg-[#091d64] hover:bg-[#0a2578] text-white font-bold rounded-xl text-sm transition-colors">
@@ -597,8 +701,9 @@ export default function YouthPages({
             <button type="button" onClick={async () => {
               try {
                 await kabisigApi.acknowledgeWarning();
-                window.location.reload();
-              } catch (e) { window.location.reload(); }
+                
+              } catch (e) {
+        setIsLoadingStatus(false);  }
             }} className='w-full py-2.5 bg-[#091d64] hover:bg-[#0a2578] text-white font-bold rounded-xl text-sm transition-colors'>
               I Understand
             </button>
@@ -660,20 +765,23 @@ export default function YouthPages({
                 Dashboard
               </button>
               <button
+                disabled={isVerificationPending}
                 onClick={() => { setActiveMenu('programs'); setIsMobileMenuOpen(false); }}
-                className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-3 ${activeMenu === 'programs' || activeMenu === 'registrations' ? 'bg-[#091d64] text-white shadow-md' : 'text-slate-200 hover:bg-white/10'}`}
+                className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-3 ${isVerificationPending ? 'opacity-50 cursor-not-allowed' : activeMenu === 'programs' || activeMenu === 'registrations' ? 'bg-[#091d64] text-white shadow-md' : 'text-slate-200 hover:bg-white/10'}`}
               >
                 <ClipboardList className="w-4.5 h-4.5 text-amber-400" />
                 Programs & Activities
               </button>
               <button
+                disabled={isVerificationPending}
                 onClick={() => { setActiveMenu('feedback'); setIsMobileMenuOpen(false); }}
-                className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-3 ${activeMenu === 'feedback' || activeMenu === 'resolutions' ? 'bg-[#091d64] text-white shadow-md' : 'text-slate-200 hover:bg-white/10'}`}
+                className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-3 ${isVerificationPending ? 'opacity-50 cursor-not-allowed' : activeMenu === 'feedback' || activeMenu === 'resolutions' ? 'bg-[#091d64] text-white shadow-md' : 'text-slate-200 hover:bg-white/10'}`}
               >
                 <HeartHandshake className="w-4.5 h-4.5 text-amber-400" />
                 Boses ng Kabataan
               </button>
               <button
+                disabled={isVerificationPending}
                 onClick={() => { setActiveMenu('profile'); setIsMobileMenuOpen(false); }}
                 className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-3 ${activeMenu === 'profile' ? 'bg-[#091d64] text-white shadow-md' : 'text-slate-200 hover:bg-white/10'}`}
               >
@@ -716,9 +824,10 @@ export default function YouthPages({
               Dashboard
             </button>
             <button
+              disabled={isVerificationPending}
               onClick={() => setActiveMenu('programs')}
               className={`w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-3 ${
-                activeMenu === 'programs' || activeMenu === 'registrations' 
+                isVerificationPending ? 'opacity-50 cursor-not-allowed' : activeMenu === 'programs' || activeMenu === 'registrations' 
                   ? 'bg-[#eff6ff] text-[#091d64] shadow-xs' 
                   : 'text-slate-600 hover:bg-slate-50 hover:text-[#091d64]'
               }`}
@@ -727,9 +836,9 @@ export default function YouthPages({
               Programs & Activities
             </button>
             <button
-              onClick={() => setActiveMenu('feedback')}
+              disabled={isVerificationPending} onClick={() => setActiveMenu('feedback')}
               className={`w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-3 ${
-                activeMenu === 'feedback' || activeMenu === 'resolutions' 
+                isVerificationPending ? 'opacity-50 cursor-not-allowed' : activeMenu === 'feedback' || activeMenu === 'resolutions' 
                   ? 'bg-[#eff6ff] text-[#091d64] shadow-xs' 
                   : 'text-slate-600 hover:bg-slate-50 hover:text-[#091d64]'
               }`}
@@ -738,7 +847,7 @@ export default function YouthPages({
               Boses ng Kabataan
             </button>
             <button
-              onClick={() => setActiveMenu('profile')}
+              disabled={isVerificationPending} onClick={() => setActiveMenu('profile')}
               className={`w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-3 ${
                 activeMenu === 'profile' 
                   ? 'bg-[#eff6ff] text-[#091d64] shadow-xs' 
@@ -782,7 +891,7 @@ export default function YouthPages({
             </span>
           </div>
           {/* User Profile Block */}
-          <div className="flex items-center gap-5">
+          <div className={isVerificationPending ? "flex items-center gap-5 opacity-50 pointer-events-none" : "flex items-center gap-5"}>
             <NotificationMenu 
   userRole="Youth Constituent" 
   items={notifications || []} 
@@ -809,9 +918,22 @@ export default function YouthPages({
           {/* ==================== 1. DASHBOARD VIEW (Image 4) ==================== */}
           {activeMenu === 'dashboard' && (
             <div className="space-y-6">
-              {isVerificationPending && (
-                <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                  Your account is pending verification. Your dashboard will update when your resident profile is verified.
+              {!isLoadingStatus && (isVerificationPending || showSuccessBanner) && (
+                <div role="status" className={`rounded-xl border px-4 py-3 text-sm flex flex-col sm:flex-row items-center justify-between gap-3 shadow-sm ${showSuccessBanner ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : isRejected ? 'border-rose-200 bg-rose-50 text-rose-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+                  <span className="font-semibold">
+                    {showSuccessBanner
+                      ? "Your account has been successfully verified! You now have full access to the KABISIG system."
+                      : isRejected
+                      ? "Your uploaded ID was rejected by your SK Chairperson. Please upload a valid ID again to verify your account."
+                      : isUnderReview
+                      ? "Your uploaded ID is currently under review by your SK Chairperson. You will be able to join programs once approved."
+                      : "Your account is pending verification. Please wait for your SK Chairperson to approve your profile."}
+                  </span>
+                  {(isRejected || currentVerifStatus === 'pending' || currentVerifStatus === 'not_submitted') && currentVerifStatus !== 'verified' && (
+                    <button onClick={() => setShowVerifyModal(true)} className={`whitespace-nowrap px-4 py-2 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer ${isRejected ? 'bg-rose-600 hover:bg-rose-700' : 'bg-amber-600 hover:bg-amber-700'}`}>
+                      Upload Valid ID
+                    </button>
+                  )}
                 </div>
               )}
               {/* Latest Announcements Preview */}
@@ -904,7 +1026,7 @@ export default function YouthPages({
                         <div className="flex items-center gap-1.5">
                           <span className="text-[8px] text-slate-400 font-bold uppercase tracking-widest w-12">Status:</span>
                           <span className={`text-[9px] font-extrabold uppercase tracking-tight ${isVerificationPending ? 'text-amber-600' : 'text-green-600'}`}>
-                            {isVerificationPending ? 'Pending Verification' : 'Verified Resident'}
+                            {(verificationStatus?.verification_status === 'submitted' || currentYouth.verificationStatus === 'submitted') ? 'Under Review' : isVerificationPending ? 'Pending Verification' : 'Verified Resident'}
                           </span>
                         </div>
                       </div>
@@ -1091,7 +1213,8 @@ export default function YouthPages({
                     <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Explore scheduled initiatives and secure your slot</p>
                   </div>
                   <button 
-                    onClick={() => setActiveMenu('programs')}
+              disabled={isVerificationPending}
+              onClick={() => setActiveMenu('programs')}
                     className="text-[10px] font-extrabold text-[#091d64] hover:underline bg-blue-50 px-3 py-1 rounded-full cursor-pointer"
                   >
                     Browse Full Registry &rarr;
@@ -1370,9 +1493,10 @@ export default function YouthPages({
               {/* Programs Tab Switcher */}
               <div className="bg-white p-2 rounded-xl border border-slate-100 shadow-xs flex gap-2">
                 <button 
-                  onClick={() => setActiveMenu('programs')}
+              disabled={isVerificationPending}
+              onClick={() => setActiveMenu('programs')}
                   className={`flex-1 py-2.5 px-4 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                    activeMenu === 'programs' 
+                    isVerificationPending ? 'opacity-50 cursor-not-allowed' : activeMenu === 'programs' 
                       ? 'bg-[#091d64] text-white shadow-xs' 
                       : 'text-slate-600 hover:bg-slate-50'
                   }`}
@@ -1519,7 +1643,8 @@ export default function YouthPages({
                       <ClipboardList className="w-12 h-12 text-slate-200 mx-auto mb-4" />
                       <h5 className="text-sm font-bold text-slate-400">No active program slots found</h5>
                       <button 
-                        onClick={() => setActiveMenu('programs')}
+              disabled={isVerificationPending}
+              onClick={() => setActiveMenu('programs')}
                         className="mt-4 px-4 py-2 bg-[#091d64] text-white rounded-lg text-xs font-bold cursor-pointer"
                       >
                         Browse Programs
@@ -1570,9 +1695,9 @@ export default function YouthPages({
               {/* Feedback Sub-Tab Switcher */}
               <div className="bg-white p-2 rounded-xl border border-slate-100 shadow-xs flex gap-2">
                 <button 
-                  onClick={() => setActiveMenu('feedback')}
+              disabled={isVerificationPending} onClick={() => setActiveMenu('feedback')}
                   className={`flex-1 py-2.5 px-4 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                    activeMenu === 'feedback' 
+                    isVerificationPending ? 'opacity-50 cursor-not-allowed' : activeMenu === 'feedback' 
                       ? 'bg-[#091d64] text-white shadow-xs' 
                       : 'text-slate-600 hover:bg-slate-50'
                   }`}
@@ -2329,25 +2454,26 @@ export default function YouthPages({
           <span className="text-[10px] mt-0.5 tracking-tight font-sans">Home</span>
         </button>
         <button
-          onClick={() => setActiveMenu('programs')}
+              disabled={isVerificationPending}
+              onClick={() => setActiveMenu('programs')}
           className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
-            activeMenu === 'programs' || activeMenu === 'registrations' ? 'text-[#091d64] font-extrabold bg-blue-50/80' : 'text-slate-400 font-medium hover:text-slate-600'
+            isVerificationPending ? 'opacity-50 cursor-not-allowed' : activeMenu === 'programs' || activeMenu === 'registrations' ? 'text-[#091d64] font-extrabold bg-blue-50/80' : 'text-slate-400 font-medium hover:text-slate-600'
           }`}
         >
           <ClipboardList className={`w-5 h-5 ${activeMenu === 'programs' || activeMenu === 'registrations' ? 'text-[#091d64] scale-110' : 'text-slate-400'} transition-transform`} />
           <span className="text-[10px] mt-0.5 tracking-tight font-sans">Programs</span>
         </button>
         <button
-          onClick={() => setActiveMenu('feedback')}
+              disabled={isVerificationPending} onClick={() => setActiveMenu('feedback')}
           className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
-            activeMenu === 'feedback' || activeMenu === 'resolutions' ? 'text-[#091d64] font-extrabold bg-blue-50/80' : 'text-slate-400 font-medium hover:text-slate-600'
+            isVerificationPending ? 'opacity-50 cursor-not-allowed' : activeMenu === 'feedback' || activeMenu === 'resolutions' ? 'text-[#091d64] font-extrabold bg-blue-50/80' : 'text-slate-400 font-medium hover:text-slate-600'
           }`}
         >
           <HeartHandshake className={`w-5 h-5 ${activeMenu === 'feedback' || activeMenu === 'resolutions' ? 'text-[#091d64] scale-110' : 'text-slate-400'} transition-transform`} />
           <span className="text-[10px] mt-0.5 tracking-tight font-sans">Civic Desk</span>
         </button>
         <button
-          onClick={() => setActiveMenu('profile')}
+              disabled={isVerificationPending} onClick={() => setActiveMenu('profile')}
           className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
             activeMenu === 'profile' ? 'text-[#091d64] font-extrabold bg-blue-50/80' : 'text-slate-400 font-medium hover:text-slate-600'
           }`}
@@ -2356,6 +2482,65 @@ export default function YouthPages({
           <span className="text-[10px] mt-0.5 tracking-tight font-sans">My ID</span>
         </button>
       </div>
-    </div>
+          {/* VERIFICATION UPLOAD MODAL */}
+      {showVerifyModal && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999] overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-5 my-auto relative">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="font-bold text-slate-800 text-lg">Identity Verification</h3>
+              <button onClick={() => setShowVerifyModal(false)} className="text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-full p-1 transition-colors">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            
+            <div className="space-y-4 text-sm">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">ID Type <span className="text-red-500">*</span></label>
+                <select value={idType} onChange={e => setIdType(e.target.value)} className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-[#091d64] outline-none">
+                  <option value="PhilSys National ID">PhilSys National ID</option>
+                  <option value="Student ID">Student ID</option>
+                  <option value="Barangay Certificate">Barangay Certificate</option>
+                  <option value="Driver's License">Driver's License</option>
+                  <option value="Passport">Passport</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">ID Number <span className="text-red-500">*</span></label>
+                <input type="text" value={idNumber} onChange={e => setIdNumber(e.target.value)} placeholder="Enter ID Number" className="w-full border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-[#091d64] outline-none" />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Front Image (Required)</label>
+                <label className="flex items-center justify-center w-full px-4 py-3 bg-slate-50 hover:bg-slate-100 border-2 border-dashed border-slate-300 rounded-lg cursor-pointer transition-colors">
+                  <span className="text-xs font-bold text-slate-600 truncate max-w-[200px]">
+                    {frontFile ? frontFile.name : "📁 Choose Front Image"}
+                  </span>
+                  <input type="file" accept="image/*" className="hidden" onChange={e => setFrontFile(e.target.files?.[0] || null)} />
+                </label>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Back Image (Optional)</label>
+                <label className="flex items-center justify-center w-full px-4 py-3 bg-slate-50 hover:bg-slate-100 border-2 border-dashed border-slate-300 rounded-lg cursor-pointer transition-colors">
+                  <span className="text-xs font-bold text-slate-600 truncate max-w-[200px]">
+                    {backFile ? backFile.name : "📁 Choose Back Image"}
+                  </span>
+                  <input type="file" accept="image/*" className="hidden" onChange={e => setBackFile(e.target.files?.[0] || null)} />
+                </label>
+              </div>
+            </div>
+
+            <button 
+              onClick={handleIdUpload} 
+              disabled={uploadingId}
+              className="w-full py-3 bg-[#091d64] hover:bg-[#0a2578] text-white font-bold rounded-xl text-sm transition-colors disabled:opacity-50 mt-2 shadow-md"
+            >
+              {uploadingId ? 'Uploading...' : 'Submit ID for Verification'}
+            </button>
+          </div>
+        </div>
+      )}</div>
   );
 }
