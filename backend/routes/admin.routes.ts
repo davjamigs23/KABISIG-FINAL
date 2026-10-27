@@ -76,7 +76,8 @@ router.get(
       .order('created_at', { ascending: false })
       .limit(limit);
 
-    // Tenant scoping: only SUPER_ADMIN sees all tenants
+    // Tenant scoping: Only Super Admin sees all tenants (RLS handles the rest)
+    // The DB enforces tenant isolation automatically for non-SA roles.
     const authReq = req as unknown as { user?: { role?: string; tenant_id?: string } };
     if (authReq.user?.role !== 'SUPER_ADMIN') {
       if (!authReq.user?.tenant_id) {

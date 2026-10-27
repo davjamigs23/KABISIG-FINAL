@@ -521,7 +521,7 @@ export default function OfficialPages({
   const [isSavingAllocate, setIsSavingAllocate] = useState(false);
   const [allocateNotice, setAllocateNotice] = useState('');  const [expenseSaveError, setExpenseSaveError] = useState('');
   const [resForm, setResForm] = useState({
-    title: '', number: '', author: '', endDate: ''
+    title: '', number: '', endDate: ''
   });
   const [isSavingResolution, setIsSavingResolution] = useState(false);
   const [invForm, setInvForm] = useState({
@@ -1018,7 +1018,7 @@ export default function OfficialPages({
       const endDate = new Date(`${resForm.endDate}T23:59:59.999`);
       const result = await kabisigApi.createPoll({
         question: resForm.title.trim(),
-        description: `Resolution Number: ${resForm.number.trim()}\nProposed by: ${resForm.author}`,
+        description: `Resolution Number: ${resForm.number.trim()}\nProposed by: ${currentUser?.full_name || 'SK Kagawad'}`,
         options: ['Support', 'Oppose'],
         start_date: startDate.toISOString(),
         end_date: endDate.toISOString(),
@@ -1027,7 +1027,7 @@ export default function OfficialPages({
 
       setLocalResolutions(prev => [result.data!, ...prev]);
       onAddResolution(result.data);
-      setResForm({ title: '', number: '', author: currentUser?.full_name || '', endDate: '' });
+      setResForm({ title: '', number: '', endDate: '' });
       setShowResModal(false);
     } catch (error: any) {
       alert(error.message || 'Resolution poll could not be saved.');
@@ -3335,7 +3335,7 @@ export default function OfficialPages({
                       <p className="text-xs text-slate-400 mt-1">Author, catalog, and track municipal legislative submissions for youth development.</p>
                     </div>
                     <button 
-                      onClick={() => { setResForm({ title: '', number: '', author: currentUser?.full_name || '', endDate: '' }); setShowResModal(true); }}
+                      onClick={() => { setResForm({ title: '', number: '', endDate: '' }); setShowResModal(true); }}
                       className="px-4 py-2 bg-[#091d64] hover:bg-opacity-95 text-white font-bold rounded-lg transition-all text-xs flex items-center gap-1.5 cursor-pointer"
                     >
                       <Plus className="w-4 h-4" />
@@ -3350,7 +3350,7 @@ export default function OfficialPages({
                         <tr>
                           <th className="px-6 py-3">Res. Number</th>
                           <th className="px-6 py-3">Resolution Title</th>
-                          <th className="px-6 py-3">Author</th>
+                          
                           <th className="px-6 py-3 text-center">Legislation Status</th>
                           <th className="px-6 py-3 text-center">Votes Support</th>
                         </tr>
@@ -3360,7 +3360,7 @@ export default function OfficialPages({
                           <tr key={r.id}>
                             <td className="px-6 py-4 font-mono font-bold text-[#091d64]">{r.resolutionNumber || r.number || ''}</td>
                             <td className="px-6 py-4 text-slate-800 leading-normal font-semibold max-w-sm">{r.title}</td>
-                            <td className="px-6 py-4 text-slate-500">{r.author || ''}</td>
+                            
                             <td className="px-6 py-4 text-center">
                               <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${r.status === 'Approved' ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700 animate-pulse'}`}>
                                 {r.status}
@@ -4225,7 +4225,7 @@ export default function OfficialPages({
                 <div className="relative flex-grow">
                   <input 
                     type="text" 
-                    placeholder="Search documents by title, resolution number, or author..."
+                    placeholder="Search documents by title or resolution number..."
                     value={docSearchQuery}
                     onChange={(e) => setDocSearchQuery(e.target.value)}
                     className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-xs bg-white focus:outline-none focus:ring-1 focus:ring-[#091d64]"
@@ -5346,7 +5346,7 @@ export default function OfficialPages({
           <div className="bg-white rounded-xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-left text-xs font-semibold">
             <div className="bg-[#091d64] text-white p-6 border-b border-slate-100">
               <h3 className="font-sans font-bold text-lg">Draft Council Legislation</h3>
-              <p className="text-xs text-slate-300 mt-1">Specify resolution number and author listings for official voting tracks.</p>
+              <p className="text-xs text-slate-300 mt-1">Specify resolution number for official voting tracks.</p>
             </div>
             <div className="p-6 space-y-4">
               <div>
