@@ -446,25 +446,45 @@ export default function PublicPages({
           employmentStatus = 'Student';
         }
 
-        const _readB64 = (file: File) =>
-          new Promise<string>((resolve, reject) => {
+        const _compressAndReadB64 = (file: File): Promise<string> => {
+          return new Promise((resolve, reject) => {
             const reader = new FileReader();
-            reader.onload = () => {
-              const result = reader.result as string;
-              const commaIdx = result.indexOf(',');
-              resolve(commaIdx >= 0 ? result.substring(commaIdx + 1) : result);
+            reader.onload = (e) => {
+              const img = new Image();
+              img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const MAX_WIDTH = 800;
+                const MAX_HEIGHT = 800;
+                let width = img.width;
+                let height = img.height;
+                if (width > height) {
+                  if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
+                } else {
+                  if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
+                }
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                if (ctx) ctx.drawImage(img, 0, 0, width, height);
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.7); // 70% quality
+                const commaIdx = dataUrl.indexOf(',');
+                resolve(commaIdx >= 0 ? dataUrl.substring(commaIdx + 1) : dataUrl);
+              };
+              img.onerror = reject;
+              img.src = e.target?.result as string;
             };
             reader.onerror = reject;
             reader.readAsDataURL(file);
           });
+        };
 
         let _idFrontBase64: string | undefined = undefined;
         if (signUpForm.idFrontFile) {
-          _idFrontBase64 = await _readB64(signUpForm.idFrontFile as File);
+          _idFrontBase64 = await _compressAndReadB64(signUpForm.idFrontFile as File);
         }
         let _idBackBase64: string | undefined = undefined;
         if (signUpForm.idBackFile) {
-          _idBackBase64 = await _readB64(signUpForm.idBackFile as File);
+          _idBackBase64 = await _compressAndReadB64(signUpForm.idBackFile as File);
         }
 
         const res = await kabisigApi.registerYouth({
