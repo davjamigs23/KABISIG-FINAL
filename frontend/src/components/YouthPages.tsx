@@ -732,7 +732,7 @@ export default function YouthPages({
       )}
       
       {/* MOBILE TOP HEADER BAR */}
-      <div className="lg:hidden bg-[#091d64]/95 backdrop-blur-md text-white px-4 py-3 flex justify-between items-center sticky top-0 z-50 shadow-lg border-b border-white/10">
+      <div className="lg:hidden bg-[#091d64]/95 backdrop-blur-md text-white px-4 py-2 flex justify-between items-center sticky top-0 z-50 shadow-lg border-b border-white/10">
         <div className="flex items-center gap-2">
           <div className="w-24 bg-white/10 rounded p-1">
             <KabisigLogo className="w-24" />
@@ -775,7 +775,7 @@ export default function YouthPages({
               </button>
               <button onClick={() => { setActiveMenu('directory'); setIsMobileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-3 ${activeMenu === 'directory' ? 'bg-[#091d64] text-white shadow-md' : 'text-slate-200 hover:bg-white/10'}`}>
                 <Users className="w-4.5 h-4.5 text-amber-400" />
-                Barangay Directory
+                Youth Roster
               </button>
               <button onClick={() => { setActiveMenu('programs'); setIsMobileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-3 ${activeMenu === 'programs' || activeMenu === 'registrations' ? 'bg-[#091d64] text-white shadow-md' : 'text-slate-200 hover:bg-white/10'}`}>
                 <ClipboardList className="w-4.5 h-4.5 text-amber-400" />
@@ -819,7 +819,7 @@ export default function YouthPages({
             </button>
             <button onClick={() => setActiveMenu('directory')} className={`w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-3 ${activeMenu === 'directory' ? 'bg-[#eff6ff] text-[#091d64] shadow-xs' : 'text-slate-600 hover:bg-slate-50 hover:text-[#091d64]'}`}>
               <Users className={`w-4.5 h-4.5 ${activeMenu === 'directory' ? 'text-[#091d64]' : 'text-slate-400'}`} />
-              Barangay Directory
+              Youth Roster
             </button>
             <button onClick={() => setActiveMenu('programs')} className={`w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-3 ${activeMenu === 'programs' || activeMenu === 'registrations' ? 'bg-[#eff6ff] text-[#091d64] shadow-xs' : 'text-slate-600 hover:bg-slate-50 hover:text-[#091d64]'}`}>
               <ClipboardList className={`w-4.5 h-4.5 ${activeMenu === 'programs' || activeMenu === 'registrations' ? 'text-[#091d64]' : 'text-slate-400'}`} />
@@ -1464,7 +1464,7 @@ export default function YouthPages({
           {activeMenu === 'directory' && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-slate-800">Barangay Youth Directory</h2>
+                <h2 className="text-xl font-bold text-slate-800">Katipunan ng Kabataan Roster</h2>
               </div>
               <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
                 <table className="w-full text-left text-xs">
@@ -1472,7 +1472,7 @@ export default function YouthPages({
                     <tr>
                       <th className="px-4 py-3">Name</th>
                       <th className="px-4 py-3">Zone</th>
-                      <th className="px-4 py-3">Joined Programs</th>
+                      <th className="px-4 py-3">Participated Programs</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">

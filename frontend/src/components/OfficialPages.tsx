@@ -2300,7 +2300,7 @@ export default function OfficialPages({
                                 content={({ active, payload }) => {
                                   if (active && payload && payload.length) {
                                     const data = payload[0].payload;
-                                    const util = ((data.actual / data.allocated) * 100).toFixed(1);
+                                    const util = data.allocated > 0 ? ((data.actual / data.allocated) * 100).toFixed(1) : '0.0';
                                     return (
                                       <div className="bg-slate-900 text-white p-3 rounded-lg shadow-lg text-xs space-y-1">
                                         <p className="font-bold uppercase tracking-wider text-amber-400">{data.program}</p>
@@ -3426,7 +3426,7 @@ export default function OfficialPages({
                                   content={({ active, payload }) => {
                                     if (active && payload && payload.length) {
                                       const data = payload[0].payload;
-                                      const util = ((data.actual / data.allocated) * 100).toFixed(1);
+                                      const util = data.allocated > 0 ? ((data.actual / data.allocated) * 100).toFixed(1) : '0.0';
                                       return (
                                         <div className="bg-slate-900 text-white p-3 rounded-lg shadow-lg text-xs space-y-1">
                                           <p className="font-bold uppercase tracking-wider text-amber-400">{data.program}</p>
