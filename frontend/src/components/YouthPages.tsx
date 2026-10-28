@@ -765,39 +765,27 @@ export default function YouthPages({
                 <X className="w-6 h-6" />
               </button>
             </div>
-            <nav className="space-y-2">
+                        <nav className="space-y-2">
               <div className="text-[10px] font-black text-slate-300 uppercase tracking-wider mb-2">
                 Youth Constituent Desk
               </div>
-              <button
-                onClick={() => { setActiveMenu('dashboard'); setIsMobileMenuOpen(false); }}
-                className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-3 ${activeMenu === 'dashboard' ? 'bg-[#091d64] text-white shadow-md' : 'text-slate-200 hover:bg-white/10'}`}
-              >
-                <Users className="w-4.5 h-4.5 text-amber-400" />
-                Barangay Directory
+              <button onClick={() => { setActiveMenu('dashboard'); setIsMobileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-3 ${activeMenu === 'dashboard' ? 'bg-[#091d64] text-white shadow-md' : 'text-slate-200 hover:bg-white/10'}`}>
+                <LayoutDashboard className="w-4.5 h-4.5 text-amber-400" />
                 Dashboard
               </button>
-              <button
-                disabled={isVerificationPending}
-                onClick={() => { setActiveMenu('programs'); setIsMobileMenuOpen(false); }}
-                className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-3 ${isVerificationPending ? 'opacity-50 cursor-not-allowed' : activeMenu === 'programs' || activeMenu === 'registrations' ? 'bg-[#091d64] text-white shadow-md' : 'text-slate-200 hover:bg-white/10'}`}
-              >
+              <button onClick={() => { setActiveMenu('directory'); setIsMobileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-3 ${activeMenu === 'directory' ? 'bg-[#091d64] text-white shadow-md' : 'text-slate-200 hover:bg-white/10'}`}>
+                <Users className="w-4.5 h-4.5 text-amber-400" />
+                Barangay Directory
+              </button>
+              <button onClick={() => { setActiveMenu('programs'); setIsMobileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-3 ${activeMenu === 'programs' || activeMenu === 'registrations' ? 'bg-[#091d64] text-white shadow-md' : 'text-slate-200 hover:bg-white/10'}`}>
                 <ClipboardList className="w-4.5 h-4.5 text-amber-400" />
                 Programs & Activities
               </button>
-              <button
-                disabled={isVerificationPending}
-                onClick={() => { setActiveMenu('feedback'); setIsMobileMenuOpen(false); }}
-                className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-3 ${isVerificationPending ? 'opacity-50 cursor-not-allowed' : activeMenu === 'feedback' || activeMenu === 'resolutions' ? 'bg-[#091d64] text-white shadow-md' : 'text-slate-200 hover:bg-white/10'}`}
-              >
+              <button onClick={() => { setActiveMenu('feedback'); setIsMobileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-3 ${activeMenu === 'feedback' || activeMenu === 'resolutions' ? 'bg-[#091d64] text-white shadow-md': 'text-slate-200 hover:bg-white/10'}`}>
                 <HeartHandshake className="w-4.5 h-4.5 text-amber-400" />
                 Boses ng Kabataan
               </button>
-              <button
-                disabled={isVerificationPending}
-                onClick={() => { setActiveMenu('profile'); setIsMobileMenuOpen(false); }}
-                className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-3 ${activeMenu === 'profile' ? 'bg-[#091d64] text-white shadow-md' : 'text-slate-200 hover:bg-white/10'}`}
-              >
+              <button onClick={() => { setActiveMenu('profile'); setIsMobileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-3 ${activeMenu === 'profile' ? 'bg-[#091d64] text-white shadow-md' : 'text-slate-200 hover:bg-white/10'}`}>
                 <User className="w-4.5 h-4.5 text-amber-400" />
                 My KK Profile & Digital ID
               </button>
@@ -824,65 +812,29 @@ export default function YouthPages({
             </div>
           </div>
           {/* Navigation Links matching Section 2.1 Youth Constituent */}
-          <nav className="p-4 space-y-1 flex-1">
-            <button
-              onClick={() => setActiveMenu('directory')}
-              className={`w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-3 ${activeMenu === 'directory' ? 'bg-[#eff6ff] text-[#091d64] shadow-xs' : 'text-slate-600 hover:bg-slate-50 hover:text-[#091d64]'}`}
-            >
+                    <nav className="p-4 space-y-1 flex-1">
+            <button onClick={() => setActiveMenu('dashboard')} className={`w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-3 ${activeMenu === 'dashboard' ? 'bg-[#eff6ff] text-[#091d64] shadow-xs' : 'text-slate-600 hover:bg-slate-50 hover:text-[#091d64]'}`}>
+              <LayoutDashboard className={`w-4.5 h-4.5 ${activeMenu === 'dashboard' ? 'text-[#091d64]' : 'text-slate-400'}`} />
+              Dashboard
+            </button>
+            <button onClick={() => setActiveMenu('directory')} className={`w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-3 ${activeMenu === 'directory' ? 'bg-[#eff6ff] text-[#091d64] shadow-xs' : 'text-slate-600 hover:bg-slate-50 hover:text-[#091d64]'}`}>
               <Users className={`w-4.5 h-4.5 ${activeMenu === 'directory' ? 'text-[#091d64]' : 'text-slate-400'}`} />
               Barangay Directory
             </button>
-            <button
-              onClick={() => setActiveMenu('dashboard')}
-              className={`w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-3 ${
-                activeMenu === 'dashboard' 
-                  ? 'bg-[#eff6ff] text-[#091d64] shadow-xs' 
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-[#091d64]'
-              }`}
-            >
-                <Users className="w-4.5 h-4.5 text-amber-400" />
-                Barangay Directory
-              Dashboard
-            </button>
-            <button
-              disabled={isVerificationPending}
-              onClick={() => setActiveMenu('programs')}
-              className={`w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-3 ${
-                isVerificationPending ? 'opacity-50 cursor-not-allowed' : activeMenu === 'programs' || activeMenu === 'registrations' 
-                  ? 'bg-[#eff6ff] text-[#091d64] shadow-xs' 
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-[#091d64]'
-              }`}
-            >
+            <button onClick={() => setActiveMenu('programs')} className={`w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-3 ${activeMenu === 'programs' || activeMenu === 'registrations' ? 'bg-[#eff6ff] text-[#091d64] shadow-xs' : 'text-slate-600 hover:bg-slate-50 hover:text-[#091d64]'}`}>
               <ClipboardList className={`w-4.5 h-4.5 ${activeMenu === 'programs' || activeMenu === 'registrations' ? 'text-[#091d64]' : 'text-slate-400'}`} />
               Programs & Activities
             </button>
-            <button
-              disabled={isVerificationPending} onClick={() => setActiveMenu('feedback')}
-              className={`w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-3 ${
-                isVerificationPending ? 'opacity-50 cursor-not-allowed' : activeMenu === 'feedback' || activeMenu === 'resolutions' 
-                  ? 'bg-[#eff6ff] text-[#091d64] shadow-xs' 
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-[#091d64]'
-              }`}
-            >
+            <button onClick={() => setActiveMenu('feedback')} className={`w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-3 ${activeMenu === 'feedback' || activeMenu === 'resolutions' ? 'bg-[#eff6ff] text-[#091d64] shadow-xs' : 'text-slate-600 hover:bg-slate-50 hover:text-[#091d64]'}`}>
               <HeartHandshake className={`w-4.5 h-4.5 ${activeMenu === 'feedback' || activeMenu === 'resolutions' ? 'text-[#091d64]' : 'text-slate-400'}`} />
               Boses ng Kabataan
             </button>
-            <button
-              disabled={isVerificationPending} onClick={() => setActiveMenu('profile')}
-              className={`w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-3 ${
-                activeMenu === 'profile' 
-                  ? 'bg-[#eff6ff] text-[#091d64] shadow-xs' 
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-[#091d64]'
-              }`}
-            >
+            <button onClick={() => setActiveMenu('profile')} className={`w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-3 ${activeMenu === 'profile' ? 'bg-[#eff6ff] text-[#091d64] shadow-xs' : 'text-slate-600 hover:bg-slate-50 hover:text-[#091d64]'}`}>
               <User className={`w-4.5 h-4.5 ${activeMenu === 'profile' ? 'text-[#091d64]' : 'text-slate-400'}`} />
               My Profile
             </button>
             <div className="pt-4 border-t border-slate-50">
-              <button
-                onClick={onLogout}
-                className="w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-3 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
-              >
+              <button onClick={onLogout} className="w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-3 text-rose-600 hover:bg-rose-50 hover:text-rose-700">
                 <LogOut className="w-4 h-4 text-rose-500" />
                 Log Out
               </button>
