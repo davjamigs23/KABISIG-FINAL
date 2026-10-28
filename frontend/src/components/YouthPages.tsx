@@ -732,7 +732,7 @@ export default function YouthPages({
       )}
       
       {/* MOBILE TOP HEADER BAR */}
-      <div className="lg:hidden bg-[#091d64]/95 backdrop-blur-md text-white px-4 py-2 flex justify-between items-center sticky top-0 z-50 shadow-lg border-b border-white/10">
+      <div className="lg:hidden bg-[#091d64]/95 backdrop-blur-md text-white px-4 py-2 flex justify-between items-center sticky top-0 z-50 shadow-sm border-b border-white/10 h-14">
         <div className="flex items-center gap-2">
           <div className="w-20 bg-white rounded p-0.5">
             <KabisigLogo className="w-24" />

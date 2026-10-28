@@ -1218,7 +1218,7 @@ export default function OfficialPages({
     <div className="flex flex-col lg:flex-row h-screen bg-[#f8fafc] overflow-hidden font-sans text-slate-800">
       
       {/* MOBILE TOP HEADER BAR */}
-      <div className="lg:hidden bg-[#091d64] text-white px-4 py-3 flex justify-between items-center sticky top-0 z-30 shadow-md gap-3">
+      <div className="lg:hidden bg-[#091d64]/95 backdrop-blur-md text-white px-4 py-2 flex justify-between items-center sticky top-0 z-50 shadow-sm border-b border-white/10 h-14 gap-3">
         <div className="flex items-center gap-2.5 min-w-0">
           <img src="/images/Kabisig_logo.png" alt="KABISIG" className="h-8 w-auto object-contain shrink-0" />
           <span className="text-[10px] font-bold bg-[#1e3a8a] px-2 py-0.5 rounded text-amber-300 truncate">{currentRole}</span>
@@ -3688,7 +3688,7 @@ export default function OfficialPages({
                       <h3 className="font-sans font-bold text-slate-900 text-lg mt-1">Official Secretariat & Compliance Reports Suite</h3>
                       <p className="text-xs text-slate-500 mt-0.5">Generate, audit, print, and export official KK rosters, program attendance sheets, meeting minutes, and quarterly accomplishment reports.</p>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <button 
                         onClick={() => {
                           if (reportModuleCategory === 'attendance') {

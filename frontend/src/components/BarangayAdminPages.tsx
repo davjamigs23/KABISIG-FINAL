@@ -1295,7 +1295,7 @@ return (
       )}
       
       {/* MOBILE HEADER */}
-      <div className="lg:hidden bg-[#091d64]/95 backdrop-blur-md text-white px-4 py-2 flex justify-between items-center sticky top-0 z-50 shadow-lg border-b border-white/10">
+      <div className="lg:hidden bg-[#091d64]/95 backdrop-blur-md text-white px-4 py-2 flex justify-between items-center sticky top-0 z-50 shadow-sm border-b border-white/10 h-14">
         <div className="flex items-center gap-2.5">
           <KabisigLogo className="scale-75" />
           <span className="text-[10px] font-bold bg-[#1e3a8a] px-2 py-0.5 rounded text-sky-200">Brgy. {currentBarangay?.name}</span>
@@ -2791,19 +2791,21 @@ return (
                     )}
                   </div>
                   {!editingAnnouncementId && (
-                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={annPostToFb}
-                        onChange={(e) => setAnnPostToFb(e.target.checked)}
-                        className="h-4 w-4 rounded border-slate-300 text-[#091d64] focus:ring-[#091d64]"
-                      />
-                      <p className="text-[10px] text-slate-500 mt-1 italic">
-  Note: Facebook integration is not configured. This post will only be published within KABISIG.
-</p>
-<span className="text-xs font-semibold text-slate-700">Also publish to Facebook</span>
-                      <span className="text-[10px] font-medium text-slate-400">(off by default)</span>
-                    </label>
+                    <div className="flex flex-col gap-1 mt-2">
+                      <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={annPostToFb}
+                          onChange={(e) => setAnnPostToFb(e.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300 text-[#091d64] focus:ring-[#091d64]"
+                        />
+                        <span>Also publish to Facebook</span>
+                        <span className="text-[10px] font-medium text-slate-400">(off by default)</span>
+                      </label>
+                      <p className="text-[10px] text-slate-500 italic ml-6">
+                        Note: Facebook integration is not configured. This post will only be published within KABISIG.
+                      </p>
+                    </div>
                   )}
                   <div className="flex flex-wrap gap-2">
                     <button
