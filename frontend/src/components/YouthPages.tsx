@@ -114,10 +114,9 @@ export default function YouthPages({
   useEffect(() => {
     if (activeMenu === 'directory' && youthProfiles.length === 0) {
       kabisigApi.getYouthDirectory()
-        .then(res => {
-          if (res.success && res.data) {
-            setYouthProfiles(res.data);
-          }
+        .then((res: any) => {
+          const rows = Array.isArray(res) ? res : (res && res.data) ? res.data : [];
+          setYouthProfiles(Array.isArray(rows) ? rows : []);
         })
         .catch(err => console.error('Failed to load directory:', err));
     }

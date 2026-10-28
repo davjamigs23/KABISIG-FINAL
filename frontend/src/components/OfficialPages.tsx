@@ -1220,7 +1220,7 @@ export default function OfficialPages({
       {/* MOBILE TOP HEADER BAR */}
       <div className="lg:hidden bg-[#091d64]/95 backdrop-blur-md text-white px-4 py-2 flex justify-between items-center sticky top-0 z-50 shadow-sm border-b border-white/10 h-14 gap-3">
         <div className="flex items-center gap-2.5 min-w-0">
-          <img src="/images/Kabisig_logo.png" alt="KABISIG" className="h-8 w-auto object-contain shrink-0" />
+          <img src="/icon.png" alt="KABISIG" className="h-8 w-auto object-contain shrink-0" />
           <span className="text-[10px] font-bold bg-[#1e3a8a] px-2 py-0.5 rounded text-amber-300 truncate">{currentRole}</span>
         </div>
         <div className="flex items-center gap-2 shrink-0">

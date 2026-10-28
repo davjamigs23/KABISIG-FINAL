@@ -2804,7 +2804,7 @@ return (
                       </label>
                       {!facebookIntegration && (
                       <p className="text-[10px] text-slate-500 italic ml-6">
-                        Note: Facebook integration is not configured. This post will only be published within KABISIG.
+                        Facebook integration is not yet set up for this barangay. Please configure it in Settings, then enable this checkbox to publish. This announcement will be saved only to KABISIG.
                       </p>
                       )}
                     </div>

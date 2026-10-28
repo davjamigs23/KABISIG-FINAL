@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import logoWBg from '../assets/images/Logo w bg.png';
+// Logo served from /public/icon.png (single source of truth)
 import { 
   Building, 
   Users, 
@@ -89,7 +89,7 @@ export function KabisigLogo({ className = "w-28" }: { className?: string }) {
   return (
     <div className={`flex flex-col items-center text-center select-none ${className}`}>
       <img 
-        src={logoWBg.src}
+        src="/icon.png"
         alt="KABISIG Logo" 
         className="w-[220px] max-w-full h-auto object-contain"
         referrerPolicy="no-referrer"

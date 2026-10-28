@@ -24,7 +24,7 @@ const FEATURES = [
   { icon: BarChart3, title: 'Federation Analytics', desc: 'Cross-barangay dashboards for the SK Federation President — youth population, program coverage, and budget utilization across Naga City.' },
 ];
 
-const LOGO_SRC = '/images/Kabisig_logo.png';
+const LOGO_SRC = '/icon.png';
 
 export default function LandingPage({ onSignIn, onCreateAccount, onTransparencyPortal }: LandingPageProps) {
   const [scrolled, setScrolled] = useState(false);
