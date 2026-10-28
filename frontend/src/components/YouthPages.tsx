@@ -720,7 +720,7 @@ export default function YouthPages({
       )}
       
       {/* MOBILE TOP HEADER BAR */}
-      <div className="lg:hidden bg-[#091d64] text-white px-4 py-3 flex justify-between items-center sticky top-0 z-30 shadow-md">
+      <div className="lg:hidden bg-[#091d64]/95 backdrop-blur-md text-white px-4 py-3 flex justify-between items-center sticky top-0 z-50 shadow-lg border-b border-white/10">
         <div className="flex items-center gap-2">
           <div className="w-24 bg-white/10 rounded p-1">
             <KabisigLogo className="w-24" />
@@ -761,7 +761,8 @@ export default function YouthPages({
                 onClick={() => { setActiveMenu('dashboard'); setIsMobileMenuOpen(false); }}
                 className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-3 ${activeMenu === 'dashboard' ? 'bg-[#091d64] text-white shadow-md' : 'text-slate-200 hover:bg-white/10'}`}
               >
-                <Users className="w-4.5 h-4.5 text-amber-400" />`r`n                Barangay Directory`r`n              </button>`r`n              <button onClick={() => { setActiveMenu('directory'); setIsMobileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-3 ${activeMenu === 'directory' ? 'bg-[#091d64] text-white shadow-md' : 'text-slate-200 hover:bg-white/10'}`}>`r`n                <LayoutDashboard className="w-4.5 h-4.5 text-amber-400" />
+                <Users className="w-4.5 h-4.5 text-amber-400" />
+                Barangay Directory
                 Dashboard
               </button>
               <button
@@ -820,7 +821,8 @@ export default function YouthPages({
                   : 'text-slate-600 hover:bg-slate-50 hover:text-[#091d64]'
               }`}
             >
-              <Users className={`w-4.5 h-4.5 text-slate-400`} />`r`n              Barangay Directory`r`n            </button>`r`n            <button onClick={() => setActiveMenu('directory')} className={`w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-3 ${activeMenu === 'directory' ? 'bg-[#eff6ff] text-[#091d64] shadow-xs' : 'text-slate-600 hover:bg-slate-50 hover:text-[#091d64]'}`}>`r`n              <LayoutDashboard className={`w-4.5 h-4.5 ${activeMenu === 'dashboard' ? 'text-[#091d64]' : 'text-slate-400'}`} />
+                <Users className="w-4.5 h-4.5 text-amber-400" />
+                Barangay Directory
               Dashboard
             </button>
             <button

@@ -1295,7 +1295,7 @@ return (
       )}
       
       {/* MOBILE HEADER */}
-      <div className="lg:hidden bg-[#091d64] text-white px-4 py-3 flex justify-between items-center sticky top-0 z-30 shadow-md">
+      <div className="lg:hidden bg-[#091d64]/95 backdrop-blur-md text-white px-4 py-3 flex justify-between items-center sticky top-0 z-50 shadow-lg border-b border-white/10">
         <div className="flex items-center gap-2.5">
           <KabisigLogo className="scale-75" />
           <span className="text-[10px] font-bold bg-[#1e3a8a] px-2 py-0.5 rounded text-sky-200">Brgy. {currentBarangay?.name}</span>
