@@ -109,7 +109,7 @@ export default function YouthPages({
   // 'dashboard' | 'profile' | 'programs' | 'registrations' | 'feedback' | 'resolutions' | 'announcements' | 'settings'
   const [activeMenu, setActiveMenu] = useState<
     'dashboard' | 'programs' | 'registrations' | 'feedback' | 'profile' | 'resolutions' | 'announcements' | 'settings'
-  >('dashboard');
+   | 'directory'>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [programTab, setProgramTab] = useState<'browse' | 'registrations'>('browse');
   const [feedbackTab, setFeedbackTab] = useState<'suggestions' | 'resolutions'>('suggestions');
@@ -761,7 +761,7 @@ export default function YouthPages({
                 onClick={() => { setActiveMenu('dashboard'); setIsMobileMenuOpen(false); }}
                 className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-3 ${activeMenu === 'dashboard' ? 'bg-[#091d64] text-white shadow-md' : 'text-slate-200 hover:bg-white/10'}`}
               >
-                <LayoutDashboard className="w-4.5 h-4.5 text-amber-400" />
+                <Users className="w-4.5 h-4.5 text-amber-400" />`r`n                Barangay Directory`r`n              </button>`r`n              <button onClick={() => { setActiveMenu('directory'); setIsMobileMenuOpen(false); }} className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold flex items-center gap-3 ${activeMenu === 'directory' ? 'bg-[#091d64] text-white shadow-md' : 'text-slate-200 hover:bg-white/10'}`}>`r`n                <LayoutDashboard className="w-4.5 h-4.5 text-amber-400" />
                 Dashboard
               </button>
               <button
@@ -820,7 +820,7 @@ export default function YouthPages({
                   : 'text-slate-600 hover:bg-slate-50 hover:text-[#091d64]'
               }`}
             >
-              <LayoutDashboard className={`w-4.5 h-4.5 ${activeMenu === 'dashboard' ? 'text-[#091d64]' : 'text-slate-400'}`} />
+              <Users className={`w-4.5 h-4.5 text-slate-400`} />`r`n              Barangay Directory`r`n            </button>`r`n            <button onClick={() => setActiveMenu('directory')} className={`w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-3 ${activeMenu === 'directory' ? 'bg-[#eff6ff] text-[#091d64] shadow-xs' : 'text-slate-600 hover:bg-slate-50 hover:text-[#091d64]'}`}>`r`n              <LayoutDashboard className={`w-4.5 h-4.5 ${activeMenu === 'dashboard' ? 'text-[#091d64]' : 'text-slate-400'}`} />
               Dashboard
             </button>
             <button

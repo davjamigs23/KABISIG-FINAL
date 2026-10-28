@@ -50,7 +50,16 @@ export default function SuperAdminPages({
   const [activeMenu, setActiveMenu] = useState<string>('dashboard');
   
   const [currentUser, setCurrentUser] = useState<any>(null);
+  
   useEffect(() => {
+    const handleFocus = () => {
+      // Refetch the federation data when the window regains focus
+      if (typeof onRefreshAuditLogs === 'function') onRefreshAuditLogs();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [onRefreshAuditLogs]);
+useEffect(() => {
     
     let cancelled = false;
     (async () => {
@@ -132,7 +141,16 @@ export default function SuperAdminPages({
   const [roleCapacity, setRoleCapacity] = useState<any>(null);
   const [isLoadingCapacity, setIsLoadingCapacity] = useState(false);
 
+  
   useEffect(() => {
+    const handleFocus = () => {
+      // Refetch the federation data when the window regains focus
+      if (typeof onRefreshAuditLogs === 'function') onRefreshAuditLogs();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [onRefreshAuditLogs]);
+useEffect(() => {
     
     if (!showInviteOfficialModal || !inviteOfficialBarangay?.id) {
       setRoleCapacity(null);
@@ -161,7 +179,16 @@ export default function SuperAdminPages({
     logo: ''
   });
 
+  
   useEffect(() => {
+    const handleFocus = () => {
+      // Refetch the federation data when the window regains focus
+      if (typeof onRefreshAuditLogs === 'function') onRefreshAuditLogs();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [onRefreshAuditLogs]);
+useEffect(() => {
     
     let isMounted = true;
     kabisigApi.getFederationAnalytics().then((analytics) => {
@@ -318,7 +345,16 @@ export default function SuperAdminPages({
     }
   };
 
+  
   useEffect(() => {
+    const handleFocus = () => {
+      // Refetch the federation data when the window regains focus
+      if (typeof onRefreshAuditLogs === 'function') onRefreshAuditLogs();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [onRefreshAuditLogs]);
+useEffect(() => {
     
     if (activeMenu !== 'restrictions') return;
     loadRestrictions();

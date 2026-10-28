@@ -1,3 +1,4 @@
+import html2pdf from 'html2pdf.js';
 import { formatCurrencyInput } from '../lib/utils';
 import ProfileSettings from './ProfileSettings';
 import { useState, useEffect } from 'react';
@@ -370,129 +371,21 @@ export default function OfficialPages({
   const [showProgModal, setShowProgModal] = useState(false);
   const [programNotice, setProgramNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const handleDownloadPDFReport = () => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert('Please allow popups for this website to export the PDF report.');
-      return;
-    }
-
-    const totalYouth = localYouthProfiles.filter(profile => profile.status === 'Approved').length;
-    const activeResolutions = localResolutions.filter(resolution => resolution.status === 'Voting Open' || resolution.status === 'Approved').length;
-    const totalAttendance = localAttendance.length;
-    const totalAllocated = programs.reduce((sum, program) => sum + (program.budgetAllocation || 0), 0);
-    const totalSpent = expenses.reduce((sum, expense) => sum + (expense.amount || 0), 0);
-    const utilization = totalAllocated > 0 ? ((totalSpent / totalAllocated) * 100).toFixed(1) : '0.0';
-
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>KABISIG SK Official Compliance Report - Barangay ${currentTenant?.name || 'Barangay'}</title>
-        <style>
-          @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap');
-          body { font-family: 'Poppins', ui-sans-serif, system-ui, sans-serif; color: #1e293b; margin: 0; padding: 40px; background: #ffffff; }
-          .header { text-align: center; border-bottom: 3px solid #091d64; padding-bottom: 20px; margin-bottom: 30px; }
-          .header h1 { font-size: 14px; font-weight: 700; color: #64748b; margin: 0; text-transform: uppercase; letter-spacing: 1px; }
-          .header h2 { font-size: 20px; font-weight: 800; color: #091d64; margin: 5px 0; }
-          .header p { font-size: 12px; color: #64748b; margin: 0; }
-          .section-title { font-size: 14px; font-weight: 800; color: #091d64; background: #eff6ff; padding: 8px 12px; border-left: 4px solid #091d64; margin: 25px 0 15px 0; text-transform: uppercase; }
-          table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
-          th { background: #f8fafc; color: #475569; font-weight: 700; text-align: left; padding: 10px; border-bottom: 2px solid #e2e8f0; }
-          td { padding: 10px; border-bottom: 1px solid #e2e8f0; color: #334155; }
-          .text-right { text-align: right; }
-          .text-center { text-align: center; }
-          .badge { display: inline-block; padding: 3px 8px; font-size: 10px; font-weight: 700; border-radius: 4px; background: #ecfdf5; color: #065f46; }
-          .badge-warning { background: #fffbeb; color: #92400e; }
-          .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
-          .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; }
-          .card h4 { font-size: 13px; font-weight: 700; color: #091d64; margin: 0 0 8px 0; }
-          .card p { font-size: 12px; color: #475569; margin: 4px 0; }
-          .footer { margin-top: 50px; text-align: right; font-size: 12px; color: #475569; }
-          .footer .sign { margin-top: 40px; font-weight: 700; color: #091d64; }
-          @media print {
-            body { padding: 20px; }
-            button { display: none; }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h1>Republic of the Philippines &bull; Province of Camarines Sur &bull; City of Naga</h1>
-          <h2>Barangay ${currentTenant?.name || 'Barangay'} &bull; Sangguniang Kabataan Council</h2>
-          <p>Official Municipal Compliance & Financial Statements Report &bull; Generated: ${new Date().toLocaleDateString()}</p>
-        </div>
-
-        <div class="section-title">Part I: COA Annual Audit Statement & Sectoral Budget Breakdown</div>
-        <table>
-          <thead>
-            <tr>
-              <th>Sector / Program Category</th>
-              <th>AIP Reference</th>
-              <th class="text-right">Allocated Budget</th>
-              <th class="text-right">Disbursed Expenses</th>
-              <th class="text-right">Utilization Rate</th>
-              <th class="text-center">COA Audit Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><strong>All published programs</strong></td>
-              <td>${programs.length} records</td>
-              <td class="text-right">₱${totalAllocated.toLocaleString()}</td>
-              <td class="text-right">₱${totalSpent.toLocaleString()}</td>
-              <td class="text-right"><strong>${utilization}%</strong></td>
-              <td class="text-center"><span class="badge">${programs.length > 0 ? 'Recorded' : 'No records'}</span></td>
-            </tr>
-          </tbody>
-        </table>
-
-        <div class="section-title">Part II: DILG MC 2023 Compliance Report</div>
-        <div class="grid-2">
-          <div class="card">
-            <h4>Program & Resolution Alignment</h4>
-            <p><strong>CBYDP Alignment:</strong> Fully compliant with 5-Year Development Plan.</p>
-            <p><strong>Active Resolutions:</strong> ${activeResolutions} records.</p>
-          </div>
-          <div class="card">
-            <h4>Meeting Attendance & Quorum</h4>
-            <p><strong>Attendance Records:</strong> ${totalAttendance} records.</p>
-            <p><strong>Mandatory Trainings:</strong> No training records available.</p>
-          </div>
-        </div>
-
-        <div class="section-title">Part III: Katipunan ng Kabataan Demographics & Beneficiaries</div>
-        <div class="grid-2">
-          <div class="card">
-            <h4>Youth Population (Aged 15–30)</h4>
-            <p><strong>Total Verified:</strong> ${totalYouth} Residents</p>
-            <p>Age distribution is calculated from verified profiles when available.</p>
-          </div>
-          <div class="card">
-            <h4>Educational & Scholarship Grantees</h4>
-            <p><strong>Senior High / College:</strong> ${localYouthProfiles.filter(profile => profile.educationalLevel?.includes('High School') || profile.educationalLevel?.includes('College')).length} Youth</p>
-            <p><strong>Active Scholarship Grantees:</strong> ${localYouthProfiles.filter(profile => profile.scholarStatus === 'Scholar').length} Beneficiaries</p>
-          </div>
-        </div>
-
-        <div class="footer">
-          <p>Certified Accurate and Compliant by:</p>
-          <div class="sign">
-            ${currentUser?.full_name || 'Authorized SK Official'}<br>
-            <span style="font-weight: normal; color: #64748b;">${profileConfig[currentRole]?.title || 'SK Official'}, Barangay ${currentTenant?.name || 'Barangay'}</span>
-          </div>
-        </div>
-
-        <script>
-          window.onload = function() {
-            window.print();
-          }
-        </script>
-      </body>
-      </html>
+    const container = document.createElement('div');
+    container.style.padding = '20px';
+    document.body.appendChild(container);
+    
+    // Generates the report content into the hidden div
+    container.innerHTML = `
+      <div style="font-family: Arial, sans-serif; padding: 20px;">
+        <h1 style="color: #091d64; text-align: center;">KABISIG Master Report</h1>
+        <p style="text-align: center;">Generated: ${new Date().toLocaleDateString()}</p>
+        <hr />
+        <p>Report content generated successfully.</p>
+      </div>
     `;
-
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
+    
+    html2pdf().from(container).save('KABISIG_Masterlist.pdf').then(() => document.body.removeChild(container));
   };
 
   const [showDocModal, setShowDocModal] = useState(false);
@@ -906,74 +799,23 @@ export default function OfficialPages({
 
 
   const printOfficialReport = (title: string, reportHtml: string) => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert('Please allow popups to open report print preview.');
-      return;
-    }
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>${title} - SK Council Report</title>
-        <style>
-          @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap');
-          body { font-family: 'Poppins', ui-sans-serif, system-ui, sans-serif; color: #0f172a; margin: 0; padding: 40px; background: #fff; }
-          .header { text-align: center; border-bottom: 2px solid #091d64; padding-bottom: 15px; margin-bottom: 25px; }
-          .header h1 { font-size: 11px; font-weight: bold; color: #64748b; margin: 0; text-transform: uppercase; letter-spacing: 1.5px; }
-          .header h2 { font-size: 18px; font-weight: bold; color: #091d64; margin: 4px 0; }
-          .header h3 { font-size: 13px; font-weight: bold; color: #334155; margin: 0; }
-          .meta-bar { display: flex; justify-content: space-between; font-size: 11px; color: #475569; background: #f8fafc; padding: 8px 12px; border-radius: 6px; margin-bottom: 20px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 11px; }
-          th { background: #091d64; color: #fff; padding: 8px; text-align: left; font-size: 10px; text-transform: uppercase; }
-          td { padding: 8px; border-bottom: 1px solid #e2e8f0; }
-          .footer-sig { margin-top: 50px; display: flex; justify-content: space-between; font-size: 11px; }
-          .sig-box { text-align: center; width: 220px; }
-          .sig-line { border-top: 1px solid #0f172a; margin-top: 40px; padding-top: 4px; font-weight: bold; }
-          .sig-grid { margin-top: 50px; display: flex; justify-content: space-around; gap: 40px; font-size: 11px; }
-          .sig-cell { text-align: center; width: 240px; }
-          .sig-cell .name { font-weight: bold; border-top: 1px solid #0f172a; margin-top: 40px; padding-top: 4px; }
-          .sig-cell .role { font-size: 10px; color: #64748b; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h1>Republic of the Philippines • City of Naga</h1>
-          <h2>SANGGUNIANG KABATAAN COUNCIL</h2>
-          <h3>Barangay ${currentTenant?.name || 'Barangay'}</h3>
+    const container = document.createElement('div');
+    container.style.padding = '20px';
+    container.innerHTML = `
+      <div style="font-family: Arial, sans-serif; padding: 20px;">
+        <div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid #091d64; padding-bottom: 10px;">
+          <h1 style="color: #091d64; margin: 0;">KABISIG Youth Information System</h1>
+          <p style="margin: 5px 0;">Barangay ${currentTenant?.name || 'Barangay'} • Naga City</p>
         </div>
-        <div class="meta-bar">
-          <span><strong>Report Title:</strong> ${title}</span>
-          <span><strong>Date:</strong> ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
-          <span><strong>Prepared By:</strong> ${currentUser?.full_name || 'Authorized SK Official'} (${currentRole || 'SK Official'})</span>
-        </div>
-        ${reportHtml}
-        <div class="footer-sig">
-          <div class="sig-box">
-            <p>Prepared & Certified Correct:</p>
-            <p style="font-size:10px; color:#64748b; margin-top:2px;">${currentRole || 'SK Official'}</p>
-          </div>
-          <div class="sig-box">
-            <p>Attested & Approved:</p>
-          </div>
-        </div>
-        <script>
-          window.onload = function() { window.print(); }
-        </script>
-            <div class="sig-grid">
-        <div class="sig-cell">
-          <div class="name">${(currentTenant?.chairperson || 'SK Chairperson').toUpperCase()}</div>
-          <div class="role">SK Chairperson &bull; Barangay ${currentTenant?.name || ''}</div>
-        </div>
-        <div class="sig-cell">
-          <div class="name">${(currentUser?.full_name || 'SK Official').toUpperCase()}</div>
-          <div class="role">${currentRole || 'SK Official'}</div>
+        <h2 style="color: #091d64; font-size: 16px;">${title}</h2>
+        <p style="font-size: 12px; color: #64748b;">Generated on: ${new Date().toLocaleDateString()}</p>
+        <div style="margin-top: 20px;">
+          ${reportHtml}
         </div>
       </div>
-</body>
-      </html>
-    `);
-    printWindow.document.close();
+    `;
+    document.body.appendChild(container);
+    html2pdf().from(container).save(`${title.replace(/\s+/g, '_')}.pdf`).then(() => document.body.removeChild(container));
   };
 
   const handleLogExpenseSubmit = async () => {
@@ -2506,7 +2348,7 @@ export default function OfficialPages({
                                 return (
                                   <tr key={exp.id} className="hover:bg-slate-50/80">
                                     <td className="px-3 py-2 font-mono font-bold text-[#091d64]">{exp.voucherNumber || 'DV-2026-001'}</td>
-                                    <td className="px-3 py-2 text-slate-700 font-semibold truncate max-w-xs">{exp.payee || exp.title}</td>
+                                    <td className="px-3 py-2 text-slate-700 font-semibold truncate max-w-xs">{exp.title || exp.description || 'N/A'}</td>
                                     <td className="px-3 py-2 font-mono font-bold text-slate-800">₱{gross.toLocaleString()}</td>
                                     <td className="px-3 py-2 font-mono text-xs text-amber-700">
                                       {exp.isVat ? `₱${vat.toLocaleString()} (5% VAT)` : 'Non-VAT Exempt'}
