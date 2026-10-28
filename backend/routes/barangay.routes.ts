@@ -112,32 +112,16 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
   try {
     const { data: barangays, error: bgyError } = await supabaseAdmin
       .from('barangay')
-      .select('id, name, city, district, sk_district, allocated_budget, created_at, updated_at')
+      .select(`
+        id, name, city, district, sk_district, allocated_budget, created_at, updated_at,
+        users(id, full_name, email, phone, status, role_id)
+      `)
       .order('name', { ascending: true });
 
     if (bgyError) {
       sendError(res, `Failed to load barangays: ${bgyError.message}`, 500);
       return;
     }
-
-    // Fetch assigned SK Chairpersons (role_id = 2)
-    const { data: chairpersons } = await supabaseAdmin
-      .from('users')
-      .select('id, full_name, email, phone, tenant_id, status, updated_at')
-      .eq('role_id', 2)
-      .eq('status', 'active')
-      .order('updated_at', { ascending: false });
-
-    const chairMap = new Map<string, { full_name: string; email: string; phone: string | null }>();
-    chairpersons?.forEach((c) => {
-      if (c.tenant_id && !chairMap.has(c.tenant_id)) {
-        chairMap.set(c.tenant_id, {
-          full_name: c.full_name,
-          email: c.email,
-          phone: c.phone,
-        });
-      }
-    });
 
     // Fetch active programs count per barangay
     const { data: programs } = await supabaseAdmin
@@ -151,7 +135,7 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
       }
     });
 
-    // Fetch registered youth population per barangay (users with role_id = 4: YOUTH_CONSTITUENT)
+    // Fetch registered youth population per barangay
     const { data: youthUsers, error: youthUsersError } = await supabaseAdmin
       .from('users')
       .select('tenant_id')
@@ -177,17 +161,17 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
 
     const budgetMap = new Map<string, { allocated: number; spent: number }>();
     budgets?.forEach((b) => {
-      const existing = budgetMap.get(b.tenant_id) || { allocated: 0, spent: 0 };
-      const allocated = Number(b.allocated_amount) || 0;
-      const remaining = Number(b.remaining_amount) || 0;
-      existing.allocated += allocated;
-      existing.spent += (allocated - remaining);
-      budgetMap.set(b.tenant_id, existing);
+      if (b.tenant_id) {
+        const allocated = Number(b.allocated_amount) || 0;
+        const remaining = Number(b.remaining_amount) || 0;
+        budgetMap.set(b.tenant_id, { allocated, spent: allocated - remaining });
+      }
     });
 
-    const enrichedBarangays = (barangays || []).map((b) => {
-      const chair = chairMap.get(b.id);
+    const enrichedBarangays = barangays.map((b: any) => {
+      const chair = (b.users as any[])?.find(u => Number(u.role_id) === 2 && u.status === 'active');
       const budget = budgetMap.get(b.id) || { allocated: 0, spent: 0 };
+      
       return {
         id: b.id,
         name: b.name,
