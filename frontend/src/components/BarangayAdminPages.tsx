@@ -3119,7 +3119,13 @@ return (
                   {youthVerificationLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />}
                 </div>
 
-                {!youthVerificationLoading && (!youthVerification || youthVerification.verification_status === "not_submitted") && (
+                {!youthVerificationLoading && !youthVerification && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800 flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                    <span>Failed to load verification data. Please try again or check the backend logs.</span>
+                  </div>
+                )}
+                {!youthVerificationLoading && youthVerification && youthVerification.verification_status === "not_submitted" && (
                   <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-start gap-2">
                     <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                     <span>This youth has <strong>not submitted an ID</strong>. Approval is blocked until they upload one.</span>

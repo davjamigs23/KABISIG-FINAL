@@ -912,7 +912,7 @@ router.get(
     // Load profile + verify tenant access
     const { data: profile, error } = await supabaseAdmin
       .from('resident_profile')
-      .select('user_id, tenant_id, id_type, id_number, id_document_path, id_back_document_path, verification_status, verification_notes, verification_reviewed_at, users!resident_profile_user_id_fkey!inner(full_name, email)')
+      .select('user_id, tenant_id, id_type, id_number, id_document_path, id_back_document_path, verification_status, verification_notes, verification_reviewed_at')
       .eq('user_id', targetUserId)
       .maybeSingle();
 
@@ -958,14 +958,21 @@ router.get(
       .eq('outgoing_user_id', targetUserId)
       .maybeSingle();
     const isDemotedChair = Boolean(transferRecord);
+    
+    // Safely fetch user data without fragile inner joins
+    const { data: userData } = await supabaseAdmin
+      .from('users')
+      .select('full_name, email')
+      .eq('id', targetUserId)
+      .maybeSingle();
 
     sendSuccess(
       res,
       {
         user_id: profile.user_id,
         is_demoted_chair: isDemotedChair,
-        full_name: (profile as any).users?.full_name || null,
-        email: (profile as any).users?.email || null,
+        full_name: userData?.full_name || null,
+        email: userData?.email || null,
         id_type: profile.id_type,
         id_number: profile.id_number,
         has_document: Boolean(profile.id_document_path),

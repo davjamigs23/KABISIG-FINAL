@@ -1482,9 +1482,15 @@ export default function YouthPages({
                         <td className="px-4 py-3 text-slate-500">{yp.email || 'N/A'}</td>
                         <td className="px-4 py-3 text-slate-500">{yp.zone || 'N/A'}</td>
                         <td className="px-4 py-3 text-slate-500">
-                          {yp.programs && yp.programs.length > 0 
-                            ? yp.programs.join(', ') 
-                            : 'No programs joined yet'}
+                          <div className="flex flex-wrap gap-1 max-w-xs">
+                            {yp.programs && yp.programs.length > 0 
+                              ? yp.programs.map((prog: string, idx: number) => (
+                                  <span key={idx} className="bg-blue-50 text-[#091d64] border border-blue-100 px-2 py-0.5 rounded text-[9px] font-bold uppercase whitespace-nowrap">
+                                    {prog}
+                                  </span>
+                                ))
+                              : <span className="italic text-slate-400">No programs joined</span>}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1584,11 +1590,17 @@ export default function YouthPages({
                               </div>
                             ) : (
                               <button 
-                                disabled={registeringProgramId !== null}
+                                disabled={registeringProgramId !== null || p.status?.toLowerCase() === 'completed' || ((p as any).date && new Date((p as any).date) < new Date()) || ((p as any).startDate && new Date((p as any).startDate) < new Date())}
                                 onClick={() => handleRegisterProgramClick(p.id)}
-                                className="px-5 py-2 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-lg text-xs transition-all transform active:scale-95 shadow-sm cursor-pointer disabled:opacity-60"
+                                className={`px-5 py-2 text-white font-bold rounded-lg text-xs transition-all transform active:scale-95 shadow-sm ${
+                                  (p.status?.toLowerCase() === 'completed' || ((p as any).date && new Date((p as any).date) < new Date()) || ((p as any).startDate && new Date((p as any).startDate) < new Date()))
+                                    ? 'bg-slate-400 cursor-not-allowed opacity-60'
+                                    : 'bg-[#091d64] hover:bg-[#122878] cursor-pointer'
+                                }`}
                               >
-                                {registeringProgramId === p.id ? 'Registering...' : 'Join Program'}
+                                {(p.status?.toLowerCase() === 'completed' || ((p as any).date && new Date((p as any).date) < new Date()) || ((p as any).startDate && new Date((p as any).startDate) < new Date())) 
+                                  ? 'Program Completed' 
+                                  : (registeringProgramId === p.id ? 'Registering...' : 'Join Program')}
                               </button>
                             )}
                           </div>
