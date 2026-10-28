@@ -1,4 +1,4 @@
-import html2pdf from 'html2pdf.js';
+
 import { formatCurrencyInput } from '../lib/utils';
 import ProfileSettings from './ProfileSettings';
 import { useState, useEffect } from 'react';
@@ -370,7 +370,8 @@ export default function OfficialPages({
   // --- MODALS STATE ---
   const [showProgModal, setShowProgModal] = useState(false);
   const [programNotice, setProgramNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const handleDownloadPDFReport = () => {
+  const handleDownloadPDFReport = async () => {
+    const html2pdf = (await import('html2pdf.js')).default;
     const container = document.createElement('div');
     container.style.padding = '20px';
     document.body.appendChild(container);
@@ -798,7 +799,8 @@ export default function OfficialPages({
 
 
 
-  const printOfficialReport = (title: string, reportHtml: string) => {
+  const printOfficialReport = async (title: string, reportHtml: string) => {
+    const html2pdf = (await import('html2pdf.js')).default;
     const container = document.createElement('div');
     container.style.padding = '20px';
     container.innerHTML = `
