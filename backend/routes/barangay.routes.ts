@@ -112,10 +112,7 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
   try {
     const { data: barangays, error: bgyError } = await supabaseAdmin
       .from('barangay')
-      .select(`
-        id, name, city, district, sk_district, allocated_budget, created_at, updated_at,
-        users(id, full_name, email, phone, status, role_id)
-      `)
+      .select('*')
       .order('name', { ascending: true });
 
     if (bgyError) {
@@ -123,7 +120,17 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
       return;
     }
 
-    // Fetch active programs count per barangay
+    const { data: chairpersons } = await supabaseAdmin
+      .from('users')
+      .select('*')
+      .eq('role_id', 2)
+      .eq('status', 'active');
+
+    const chairMap = new Map<string, any>();
+    chairpersons?.forEach((c) => {
+      if (c.tenant_id) chairMap.set(c.tenant_id, c);
+    });
+
     const { data: programs } = await supabaseAdmin
       .from('program')
       .select('tenant_id, status');
@@ -135,28 +142,21 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
       }
     });
 
-    // Fetch registered youth population per barangay
     const { data: youthUsers, error: youthUsersError } = await supabaseAdmin
       .from('users')
       .select('tenant_id')
       .eq('role_id', 4)
       .eq('status', 'active');
-    if (youthUsersError) {
-      console.warn('Unable to load live youth counts for barangays:', youthUsersError.message);
-    }
 
     const youthCountMap = new Map<string, number>();
     youthUsers?.forEach((u) => {
-      if (u.tenant_id) {
-        youthCountMap.set(u.tenant_id, (youthCountMap.get(u.tenant_id) || 0) + 1);
-      }
+      if (u.tenant_id) youthCountMap.set(u.tenant_id, (youthCountMap.get(u.tenant_id) || 0) + 1);
     });
 
-    // Fetch current year budgets
     const currentYear = new Date().getFullYear();
     const { data: budgets } = await supabaseAdmin
       .from('budget')
-      .select('tenant_id, allocated_amount, remaining_amount')
+      .select('*')
       .eq('fiscal_year', currentYear);
 
     const budgetMap = new Map<string, { allocated: number; spent: number }>();
@@ -169,7 +169,7 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
     });
 
     const enrichedBarangays = barangays.map((b: any) => {
-      const chair = (b.users as any[])?.find(u => Number(u.role_id) === 2 && u.status === 'active');
+      const chair = chairMap.get(b.id);
       const budget = budgetMap.get(b.id) || { allocated: 0, spent: 0 };
       
       return {
@@ -184,7 +184,7 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
         youthPopulation: youthCountMap.get(b.id) || 0,
         youthPopulationAvailable: !youthUsersError,
         activePrograms: progCountMap.get(b.id) || 0,
-        totalBudget: ((b as any).allocated_budget && Number((b as any).allocated_budget) > 0) ? Number((b as any).allocated_budget) : budget.allocated,
+        totalBudget: (b.allocated_budget && Number(b.allocated_budget) > 0) ? Number(b.allocated_budget) : budget.allocated,
         allocatedBudget: budget.allocated,
         spentBudget: budget.spent,
         status: 'Active',
@@ -194,7 +194,6 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
     });
 
     enrichedBarangays.sort((a, b) => a.name.localeCompare(b.name));
-
     sendSuccess(res, enrichedBarangays, '27 Naga City barangays retrieved successfully.');
   } catch (err: any) {
     sendError(res, err.message || 'Error fetching barangays', 500);
