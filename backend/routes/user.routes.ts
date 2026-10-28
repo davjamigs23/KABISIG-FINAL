@@ -1394,7 +1394,7 @@ router.get(
     // Fetch users in the same tenant
     const { data: users, error: userErr } = await supabaseAdmin
       .from('users')
-      .select('id, full_name')
+      .select('id, full_name, email')
       .eq('tenant_id', user.tenant_id)
       .eq('role_id', 4) // Only Youths
       .eq('status', 'active');
@@ -1413,12 +1413,27 @@ router.get(
 
     const zoneMap = new Map(profiles?.map(p => [p.user_id, p.zone]) || []);
 
+    // Fetch program registrations for these users
+    const { data: registrations } = await supabaseAdmin
+      .from('program_registrations')
+      .select('user_id, program:program_id(title)')
+      .in('user_id', userIds);
+
+    const programMap = new Map<string, string[]>();
+    registrations?.forEach((r: any) => {
+      if (!programMap.has(r.user_id)) programMap.set(r.user_id, []);
+      // Handle both object and array returns from Supabase
+      const title = r.program?.title || (Array.isArray(r.program) ? r.program[0]?.title : null);
+      if (title) programMap.get(r.user_id)!.push(title);
+    });
+
     // Format the data
     const formatted = users.map((u: any) => ({
       id: u.id,
       name: u.full_name,
+      email: u.email || 'N/A',
       zone: zoneMap.get(u.id) || 'N/A',
-      registeredProgramsCount: 0, // Simplifying for stability
+      programs: programMap.get(u.id) || [],
     }));
 
     sendSuccess(res, formatted, 'Directory retrieved.');
