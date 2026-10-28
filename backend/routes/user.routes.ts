@@ -909,7 +909,7 @@ router.get(
       return;
     }
 
-    // Load profile + verify tenant access
+    // 1. Fetch Profile safely
     const { data: profile, error } = await supabaseAdmin
       .from('resident_profile')
       .select('user_id, tenant_id, id_type, id_number, id_document_path, id_back_document_path, verification_status, verification_notes, verification_reviewed_at')
@@ -925,20 +925,26 @@ router.get(
       return;
     }
 
-    // Tenant scope check — non-Super-Admin must match tenant
     if (requester.role !== 'SUPER_ADMIN' && profile.tenant_id !== requester.tenant_id) {
       sendError(res, 'You can only review youth in your barangay.', 403);
       return;
     }
 
+    // 2. Fetch User info safely (no fragile !inner joins)
+    const { data: userData } = await supabaseAdmin
+      .from('users')
+      .select('full_name, email')
+      .eq('id', targetUserId)
+      .maybeSingle();
+
+    // 3. Generate Signed URLs
     let signedUrl: string | null = null;
     if (profile.id_document_path) {
       const { data: signData, error: signErr } = await supabaseAdmin.storage
         .from('verification-ids')
-        .createSignedUrl(profile.id_document_path, 300); // 5 min
-      if (!signErr && signData) {
-        signedUrl = signData.signedUrl;
-      }
+        .createSignedUrl(profile.id_document_path, 300);
+      if (signErr) console.error("Storage Sign Error (Front):", signErr.message);
+      if (signData) signedUrl = signData.signedUrl;
     }
 
     let backSignedUrl: string | null = null;
@@ -946,31 +952,22 @@ router.get(
       const { data: signData, error: signErr } = await supabaseAdmin.storage
         .from('verification-ids')
         .createSignedUrl((profile as any).id_back_document_path, 300);
-      if (!signErr && signData) {
-        backSignedUrl = signData.signedUrl;
-      }
+      if (signErr) console.error("Storage Sign Error (Back):", signErr.message);
+      if (signData) backSignedUrl = signData.signedUrl;
     }
 
-    // Check if this user is a demoted chair
+    // 4. Check if demoted chair
     const { data: transferRecord } = await supabaseAdmin
       .from('chairperson_transfers')
       .select('id')
       .eq('outgoing_user_id', targetUserId)
-      .maybeSingle();
-    const isDemotedChair = Boolean(transferRecord);
-    
-    // Safely fetch user data without fragile inner joins
-    const { data: userData } = await supabaseAdmin
-      .from('users')
-      .select('full_name, email')
-      .eq('id', targetUserId)
       .maybeSingle();
 
     sendSuccess(
       res,
       {
         user_id: profile.user_id,
-        is_demoted_chair: isDemotedChair,
+        is_demoted_chair: Boolean(transferRecord),
         full_name: userData?.full_name || null,
         email: userData?.email || null,
         id_type: profile.id_type,
