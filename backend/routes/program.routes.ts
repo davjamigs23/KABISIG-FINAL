@@ -488,10 +488,10 @@ router.post('/:id/attendance', authenticateUser, requireActiveUser, requireRoles
     if (existingAttendance) { sendError(res, 'Duplicate check-in: Already marked present.', 400, { attendee_name: attendeeName }); return; }
 
     const { data: registration } = await supabaseAdmin.from('program_registrations').select('id, status').eq('program_id', programId).eq('user_id', resolvedUserId).maybeSingle();
-    if (!registration) { 
-      sendError(res, 'Error: This youth is not registered for this specific program.', 400);
+    if (!registration) {
+      sendError(res, `Error: ${attendeeName} is not registered for this specific program.`, 400, { attendee_name: attendeeName, reason: 'not_registered' });
+      return;
     }
-    if (!registration) { sendError(res, `${attendeeName} is not registered for this program.`, 400, { attendee_name: attendeeName, reason: 'not_registered' }); return; }
 
     const checkInTime = new Date().toISOString();
     const { data: newAttendance, error: attendError } = await supabaseAdmin.from('program_attendance').insert([{

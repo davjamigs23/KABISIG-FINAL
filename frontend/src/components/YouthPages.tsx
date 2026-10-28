@@ -734,7 +734,7 @@ export default function YouthPages({
       {/* MOBILE TOP HEADER BAR */}
       <div className="lg:hidden bg-[#091d64]/95 backdrop-blur-md text-white px-4 py-2 flex justify-between items-center sticky top-0 z-50 shadow-lg border-b border-white/10">
         <div className="flex items-center gap-2">
-          <div className="w-24 bg-white/10 rounded p-1">
+          <div className="w-20 bg-white rounded p-0.5">
             <KabisigLogo className="w-24" />
           </div>
           <span className="text-[10px] font-bold bg-[#1e3a8a] px-2 py-0.5 rounded text-amber-300">Youth Portal</span>
@@ -1471,17 +1471,21 @@ export default function YouthPages({
                   <thead className="bg-[#091d64] text-white font-bold uppercase text-[10px]">
                     <tr>
                       <th className="px-4 py-3">Name</th>
+                      <th className="px-4 py-3">Email</th>
                       <th className="px-4 py-3">Zone</th>
                       <th className="px-4 py-3">Participated Programs</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {youthProfiles?.filter((yp: any) => yp.id !== currentYouth.id).map((yp: any) => (
+                    {youthProfiles?.map((yp: any) => (
                       <tr key={yp.id} className="hover:bg-slate-50">
                         <td className="px-4 py-3 font-bold text-slate-800">{yp.name}</td>
+                        <td className="px-4 py-3 text-slate-500">{yp.email || 'N/A'}</td>
                         <td className="px-4 py-3 text-slate-500">{yp.zone || 'N/A'}</td>
                         <td className="px-4 py-3 text-slate-500">
-                          {yp.registeredProgramsCount || 0} programs joined
+                          {yp.programs && yp.programs.length > 0 
+                            ? yp.programs.join(', ') 
+                            : 'No programs joined yet'}
                         </td>
                       </tr>
                     ))}

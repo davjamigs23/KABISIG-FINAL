@@ -3,37 +3,71 @@ import { supabaseAdmin } from './supabase.service.js';
 export async function checkProgramReminders() {
   try {
     const today = new Date();
-    const next7Days = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
-    const next3Days = new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000);
-    const next1Day = new Date(today.getTime() + 1 * 24 * 60 * 60 * 1000);
     
-    const { data: programs } = await supabaseAdmin.from('program').select('*').in('status', ['upcoming', 'ongoing']);
-    if (!programs) return;
+    // Target dates for 7, 3, and 1 day from now
+    const targets = [
+      { days: 7, date: new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000) },
+      { days: 3, date: new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000) },
+      { days: 1, date: new Date(today.getTime() + 1 * 24 * 60 * 60 * 1000) },
+    ];
+
+    // Get all active programs
+    const { data: programs } = await supabaseAdmin
+      .from('program')
+      .select('*')
+      .in('status', ['upcoming', 'ongoing']);
+
+    if (!programs || programs.length === 0) return;
 
     for (const prog of programs) {
       const start = new Date(prog.start_date);
-      let daysLeft = 0;
-      if (start.toDateString() === next7Days.toDateString()) daysLeft = 7;
-      else if (start.toDateString() === next3Days.toDateString()) daysLeft = 3;
-      else if (start.toDateString() === next1Day.toDateString()) daysLeft = 1;
+      
+      // Check if the program starts on one of our target dates
+      const target = targets.find(t => start.toDateString() === t.date.toDateString());
+      if (!target) continue; // Skip if not a 7-3-1 day
 
-      if (daysLeft > 0) {
-        const { data: regs } = await supabaseAdmin.from('program_registrations').select('user_id').eq('program_id', prog.id);
-        const { data: officials } = await supabaseAdmin.from('users').select('id').eq('tenant_id', prog.tenant_id).in('role_id', [2, 3]);
-        
-        const userIds = [...(regs?.map(r => r.user_id) || []), ...(officials?.map(o => o.id) || [])];
-        
-        const notifications = userIds.map(uid => ({
-          user_id: uid,
-          tenant_id: prog.tenant_id,
-          title: `${daysLeft} Day Reminder: ${prog.title}`,
-          message: `The program "${prog.title}" starts in ${daysLeft} days at ${prog.location}.`,
-          notification_type: `PROGRAM_REMINDER_${prog.id}_${daysLeft}D`,
-          is_read: false
-        }));
+      // Get registered youths
+      const { data: regs } = await supabaseAdmin
+        .from('program_registrations')
+        .select('user_id')
+        .eq('program_id', prog.id);
 
-        if (notifications.length > 0) {
-          await supabaseAdmin.from('notifications').insert(notifications);
+      // Get SK Officials (Chairperson, Kagawad, Secretary, Treasurer)
+      const { data: officials } = await supabaseAdmin
+        .from('users')
+        .select('id')
+        .eq('tenant_id', prog.tenant_id)
+        .in('role_id', [2, 3]); // Role 2 = Chair, Role 3 = Officials
+
+      const userIds = [
+        ...(regs?.map(r => r.user_id) || []),
+        ...(officials?.map(o => o.id) || [])
+      ];
+
+      // Use unique user IDs
+      const uniqueUserIds = [...new Set(userIds)];
+      
+      // Create the notification type string for this specific day
+      const nType = `PROGRAM_REMINDER_${prog.id}_${prog.start_date.split('T')[0]}_${target.days}D`;
+
+      for (const uid of uniqueUserIds) {
+        // Check if this notification already exists to prevent duplicates
+        const { data: existing } = await supabaseAdmin
+          .from('notifications')
+          .select('id')
+          .eq('user_id', uid)
+          .eq('notification_type', nType)
+          .maybeSingle();
+
+        if (!existing) {
+          await supabaseAdmin.from('notifications').insert({
+            user_id: uid,
+            tenant_id: prog.tenant_id,
+            title: `${prog.title.trim()} is coming up`,
+            message: `The program "${prog.title.trim()}" starts in ${target.days} days at ${prog.location}.`,
+            notification_type: nType,
+            is_read: false
+          });
         }
       }
     }
