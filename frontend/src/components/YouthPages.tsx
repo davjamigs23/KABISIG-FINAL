@@ -101,6 +101,7 @@ export default function YouthPages({
   onLogout,
   notifications = [],
 }: YouthPagesProps) {
+  const [youthProfiles, setYouthProfiles] = useState<any[]>([]);
   const resolvedTenant = currentTenant?.id === currentYouth.barangayId
     ? currentTenant
     : tenants.find(tenant => tenant.id === currentYouth.barangayId) || currentTenant;
@@ -109,7 +110,18 @@ export default function YouthPages({
   // 'dashboard' | 'profile' | 'programs' | 'registrations' | 'feedback' | 'resolutions' | 'announcements' | 'settings'
   const [activeMenu, setActiveMenu] = useState<
     'dashboard' | 'programs' | 'registrations' | 'feedback' | 'profile' | 'resolutions' | 'announcements' | 'settings'
-   | 'directory'>('dashboard');
+   | 'directory' | 'directory'>('dashboard');
+  useEffect(() => {
+    if (activeMenu === 'directory' && youthProfiles.length === 0) {
+      kabisigApi.getYouthDirectory()
+        .then(res => {
+          if (res.success && res.data) {
+            setYouthProfiles(res.data);
+          }
+        })
+        .catch(err => console.error('Failed to load directory:', err));
+    }
+  }, [activeMenu, youthProfiles.length]);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [programTab, setProgramTab] = useState<'browse' | 'registrations'>('browse');
   const [feedbackTab, setFeedbackTab] = useState<'suggestions' | 'resolutions'>('suggestions');
@@ -814,6 +826,13 @@ export default function YouthPages({
           {/* Navigation Links matching Section 2.1 Youth Constituent */}
           <nav className="p-4 space-y-1 flex-1">
             <button
+              onClick={() => setActiveMenu('directory')}
+              className={`w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-3 ${activeMenu === 'directory' ? 'bg-[#eff6ff] text-[#091d64] shadow-xs' : 'text-slate-600 hover:bg-slate-50 hover:text-[#091d64]'}`}
+            >
+              <Users className={`w-4.5 h-4.5 ${activeMenu === 'directory' ? 'text-[#091d64]' : 'text-slate-400'}`} />
+              Barangay Directory
+            </button>
+            <button
               onClick={() => setActiveMenu('dashboard')}
               className={`w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-3 ${
                 activeMenu === 'dashboard' 
@@ -1489,6 +1508,37 @@ export default function YouthPages({
               </div>
             </div>
           )}
+          {/* ==================== 2.5 DIRECTORY VIEW ==================== */}
+          {activeMenu === 'directory' && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-slate-800">Barangay Youth Directory</h2>
+              </div>
+              <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-[#091d64] text-white font-bold uppercase text-[10px]">
+                    <tr>
+                      <th className="px-4 py-3">Name</th>
+                      <th className="px-4 py-3">Zone</th>
+                      <th className="px-4 py-3">Joined Programs</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {youthProfiles?.filter((yp: any) => yp.id !== currentYouth.id).map((yp: any) => (
+                      <tr key={yp.id} className="hover:bg-slate-50">
+                        <td className="px-4 py-3 font-bold text-slate-800">{yp.name}</td>
+                        <td className="px-4 py-3 text-slate-500">{yp.zone || 'N/A'}</td>
+                        <td className="px-4 py-3 text-slate-500">
+                          {yp.registeredProgramsCount || 0} programs joined
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {/* ==================== 3. PROGRAMS VIEW ==================== */}
           {(activeMenu === 'programs' || activeMenu === 'registrations') && (
             <div className="space-y-6">

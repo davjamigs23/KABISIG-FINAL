@@ -1374,3 +1374,47 @@ async function sendEmail(to: string, subject: string, html: string) {
     console.warn('Email delivery failed (network):', err);
   }
 }
+
+
+/**
+ * GET /api/users/youth-directory
+ * Returns a list of youths in the same barangay (for the Youth Directory)
+ */
+router.get(
+  '/youth-directory',
+  authenticateUser,
+  requireActiveUser,
+  async (req: Request, res: Response): Promise<void> => {
+    const user = (req as AuthRequest).user!;
+    if (!user.tenant_id) {
+      sendError(res, 'User has no assigned Barangay.', 400);
+      return;
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('users')
+      .select(`
+        id,
+        full_name,
+        resident_profile ( zone ),
+        program_registrations ( count )
+      `)
+      .eq('tenant_id', user.tenant_id)
+      .eq('role_id', 4)
+      .eq('status', 'active');
+
+    if (error) {
+      sendError(res, 'Failed to load directory: ' + error.message, 500);
+      return;
+    }
+
+    const formatted = data.map((u: any) => ({
+      id: u.id,
+      name: u.full_name,
+      zone: u.resident_profile?.[0]?.zone || 'N/A',
+      registeredProgramsCount: u.program_registrations?.[0]?.count || 0,
+    }));
+
+    sendSuccess(res, formatted, 'Directory retrieved.');
+  }
+);

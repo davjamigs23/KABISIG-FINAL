@@ -298,6 +298,10 @@ class KabisigApiClient {
     });
   }
 
+  async getYouthDirectory(): Promise<{ success: boolean; data?: any[]; message?: string }> {
+    return await this.request<any[]>('/users/youth-directory', { method: 'GET' });
+  }
+
   async getUserVerification(userId: string): Promise<{ success: boolean; data?: any; message?: string }> {
     return await this.request<any>('/users/verification/' + userId, { method: 'GET' });
   }
