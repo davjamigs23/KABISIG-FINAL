@@ -1,3 +1,4 @@
+import html2pdf from 'html2pdf.js';
 import { formatCurrencyInput } from '../lib/utils';
 import ProfileSettings from './ProfileSettings';
 import { useState, useEffect } from 'react';
@@ -370,7 +371,7 @@ export default function OfficialPages({
   const [showProgModal, setShowProgModal] = useState(false);
   const [programNotice, setProgramNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const handleDownloadPDFReport = () => {
-    const printWindow = window.open('', '_blank');
+    const printWindow = const container = document.createElement('div'); container.innerHTML = html; document.body.appendChild(container);
     if (!printWindow) {
       alert('Please allow popups for this website to export the PDF report.');
       return;
@@ -477,7 +478,7 @@ export default function OfficialPages({
         <div class="footer">
           <p>Certified Accurate and Compliant by:</p>
           <div class="sign">
-            ${currentUser?.full_name || 'Authorized SK Official'}<br>
+            ${currentUser?.full_name?.replace(/^Hon\.\s+/i, '') || 'Authorized SK Official'}<br>
             <span style="font-weight: normal; color: #64748b;">${profileConfig[currentRole]?.title || 'SK Official'}, Barangay ${currentTenant?.name || 'Barangay'}</span>
           </div>
         </div>
@@ -906,7 +907,7 @@ export default function OfficialPages({
 
 
   const printOfficialReport = (title: string, reportHtml: string) => {
-    const printWindow = window.open('', '_blank');
+    const printWindow = const container = document.createElement('div'); container.innerHTML = html; document.body.appendChild(container);
     if (!printWindow) {
       alert('Please allow popups to open report print preview.');
       return;
@@ -945,7 +946,7 @@ export default function OfficialPages({
         <div class="meta-bar">
           <span><strong>Report Title:</strong> ${title}</span>
           <span><strong>Date:</strong> ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
-          <span><strong>Prepared By:</strong> ${currentUser?.full_name || 'Authorized SK Official'} (${currentRole || 'SK Official'})</span>
+          <span><strong>Prepared By:</strong> ${currentUser?.full_name?.replace(/^Hon\.\s+/i, '') || 'Authorized SK Official'} (${currentRole || 'SK Official'})</span>
         </div>
         ${reportHtml}
         <div class="footer-sig">

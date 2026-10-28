@@ -930,7 +930,7 @@ export default function YouthPages({
                       : "Your account is pending verification. Please wait for your SK Chairperson to approve your profile."}
                   </span>
                   {(isRejected || currentVerifStatus === 'pending' || currentVerifStatus === 'not_submitted') && currentVerifStatus !== 'verified' && (
-                    <button onClick={() => setShowVerifyModal(true)} className={`whitespace-nowrap px-4 py-2 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer ${isRejected ? 'bg-rose-600 hover:bg-rose-700' : 'bg-amber-600 hover:bg-amber-700'}`}>
+                    <button onClick={() => setShowVerifyModal(true)} className={`whitespace-nowrap px-4 py-2 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer bg-rose-600 hover:bg-rose-700`}>
                       Upload Valid ID
                     </button>
                   )}

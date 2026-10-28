@@ -2798,7 +2798,9 @@ return (
                         onChange={(e) => setAnnPostToFb(e.target.checked)}
                         className="h-4 w-4 rounded border-slate-300 text-[#091d64] focus:ring-[#091d64]"
                       />
-                      Also publish to Facebook
+                      Also publish to Facebook</label>
+<p className="text-[10px] text-rose-500 font-bold mt-1">⚠️ Facebook integration is not configured. This post will only be visible in KABISIG.</p>
+<label className='hidden'>
                       <span className="text-[10px] font-medium text-slate-400">(off by default)</span>
                     </label>
                   )}

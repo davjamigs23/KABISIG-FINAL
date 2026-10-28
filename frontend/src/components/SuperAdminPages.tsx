@@ -51,6 +51,7 @@ export default function SuperAdminPages({
   
   const [currentUser, setCurrentUser] = useState<any>(null);
   useEffect(() => {
+    
     let cancelled = false;
     (async () => {
       try {
@@ -132,6 +133,7 @@ export default function SuperAdminPages({
   const [isLoadingCapacity, setIsLoadingCapacity] = useState(false);
 
   useEffect(() => {
+    
     if (!showInviteOfficialModal || !inviteOfficialBarangay?.id) {
       setRoleCapacity(null);
       return;
@@ -160,6 +162,7 @@ export default function SuperAdminPages({
   });
 
   useEffect(() => {
+    
     let isMounted = true;
     kabisigApi.getFederationAnalytics().then((analytics) => {
       if (!isMounted) return;
@@ -316,6 +319,7 @@ export default function SuperAdminPages({
   };
 
   useEffect(() => {
+    
     if (activeMenu !== 'restrictions') return;
     loadRestrictions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
