@@ -285,7 +285,7 @@ export default function BarangayAdminPages({
         <div class="footer">
           <p>Certified Correct & Attested:</p>
           <div class="sign">
-            HON. ${(currentBarangay?.chairperson || 'SK CHAIRPERSON').toUpperCase()} &bull; SK EXECUTIVE BOARD<br>
+            HON. ${(currentBarangay?.chairperson || 'SK CHAIRPERSON').replace(/^Hon\.\s+/i, '').toUpperCase()} &bull; SK EXECUTIVE BOARD<br>
             <span style="font-weight: normal; color: #64748b;">Barangay ${currentBarangay?.name || 'Barangay'}, City of Naga</span>
           </div>
         </div>
