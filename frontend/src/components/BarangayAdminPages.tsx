@@ -2802,9 +2802,11 @@ return (
                         <span>Also publish to Facebook</span>
                         <span className="text-[10px] font-medium text-slate-400">(off by default)</span>
                       </label>
+                      {!facebookIntegration && (
                       <p className="text-[10px] text-slate-500 italic ml-6">
                         Note: Facebook integration is not configured. This post will only be published within KABISIG.
                       </p>
+                      )}
                     </div>
                   )}
                   <div className="flex flex-wrap gap-2">
