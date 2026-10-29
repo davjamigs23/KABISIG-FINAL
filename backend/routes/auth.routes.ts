@@ -394,8 +394,10 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
       }
 
       // 3. Update profile with new info
-      await supabaseAdmin.from('resident_profile').update({
+            await supabaseAdmin.from('resident_profile').update({
         verification_status: 'submitted',
+        id_type: id_type || null,
+        id_number: id_number || null,
         birthdate,
         sex,
         address,
