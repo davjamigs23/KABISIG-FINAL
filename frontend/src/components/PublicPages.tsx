@@ -383,7 +383,7 @@ export default function PublicPages({
 
     const resolvedBarangayId = signUpBarangayId || '';
     if (!resolvedBarangayId) {
-      alert('Barangay registry is unavailable right now. Please try again later.');
+      setCustomError('Please select a Barangay first before proceeding.');
       return;
     }
     if (!signUpForm.registeredRole) {
@@ -1138,7 +1138,7 @@ export default function PublicPages({
                             maxLength={10}
                             value={birthdateInput}
                             onChange={handleBirthdateChange}
-                            placeholder="MM/DD/YYYY"
+                            placeholder="YYYY-MM-DD (e.g. 2004-12-23)"
                             aria-label="Birthdate (month, day, year)"
                             className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none"
                             required
