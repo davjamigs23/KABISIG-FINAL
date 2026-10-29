@@ -488,7 +488,7 @@ export default function App() {
             spentBudget: 0,
             aipReference: p.aip_reference || '',
             category: p.category || 'Other',
-            status: computeProgramStatus(p),
+            status: (String((p as any).status).toLowerCase() === 'completed' ? 'Completed' : computeProgramStatus(p)),
             registeredCount: 0,
             barangayId: p.tenant_id,
           })));
@@ -535,7 +535,7 @@ export default function App() {
           spentBudget: 0,
           aipReference: p.aip_reference || '',
           category: p.category || 'Other',
-          status: computeProgramStatus(p),
+          status: (String((p as any).status).toLowerCase() === 'completed' ? 'Completed' : computeProgramStatus(p)),
           registeredCount: p.program_registrations?.[0]?.count || 0,
           barangayId: p.tenant_id,
         })));

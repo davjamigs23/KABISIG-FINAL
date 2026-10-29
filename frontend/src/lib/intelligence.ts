@@ -608,6 +608,7 @@ export function computeProgramStatus(program: {
   // Respect explicit database status
   if (program.status?.toLowerCase() === 'completed' || program.status?.toLowerCase() === 'done') return 'Completed';
 
+  if (String(program.status).toLowerCase() === 'completed') return 'Completed';
   const startRaw = program.start_date || program.startDate;
   const endRaw = program.end_date || program.endDate;
   if (!startRaw || !endRaw) return 'Upcoming';

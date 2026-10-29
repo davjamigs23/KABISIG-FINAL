@@ -449,7 +449,7 @@ export default function BarangayAdminPages({
     }
     let cancelled = false;
     setYouthVerificationLoading(true);
-    kabisigApi.getUserVerification(inspectProfile.userId || inspectProfile.id).then((res) => {
+    kabisigApi.getUserVerification((inspectProfile as any).user_id || inspectProfile.userId || inspectProfile.id).then((res) => {
       if (!cancelled && res.success) setYouthVerification(res.data);
     }).catch(() => {
       if (!cancelled) setYouthVerification(null);
