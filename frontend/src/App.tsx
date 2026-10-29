@@ -81,7 +81,23 @@ export default function App() {
 
   // --- AUTHENTICATED USER SESSION ---
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const [currentRole, setCurrentRole] = useState<UserRole | 'Viewer' | null>(null);
+    const [currentRole, setCurrentRole] = useState<UserRole | null>(null);
+  // --- GLOBAL ALERT MODAL STATE ---
+  const [globalAlert, setGlobalAlert] = useState<{ title: string, message: string, type: 'error' | 'success' | 'info' } | null>(null);
+
+  useEffect(() => {
+    const originalAlert = window.alert;
+    window.alert = (message: any) => {
+      const msgStr = String(message);
+      const isError = /error|fail|denied|invalid|reject/i.test(msgStr);
+      setGlobalAlert({
+        title: isError ? 'Notice' : 'KABISIG Alert',
+        message: msgStr,
+        type: isError ? 'error' : 'info'
+      });
+    };
+    return () => { window.alert = originalAlert; };
+  }, []);
   const [currentTenant, setCurrentTenant] = useState<BarangayTenant | null>(null);
   const [currentYouth, setCurrentYouth] = useState<YouthProfile | null>(null);
   const [currentEmail, setCurrentEmail] = useState<string>('');
@@ -1520,6 +1536,20 @@ export default function App() {
 
 
 
-    </div>
+          {/* GLOBAL KABISIG ALERT MODAL */}
+      {globalAlert && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl text-center">
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 ${globalAlert.type === 'error' ? 'bg-rose-100 text-rose-600' : 'bg-blue-100 text-blue-600'}`}>
+              <span className="text-xl font-bold">{globalAlert.type === 'error' ? '!' : 'i'}</span>
+            </div>
+            <h3 className="text-lg font-black text-slate-900 mb-2">{globalAlert.title}</h3>
+            <p className="text-xs text-slate-500 mb-6 whitespace-pre-wrap leading-relaxed">{globalAlert.message}</p>
+            <button onClick={() => setGlobalAlert(null)} className="w-full py-3 bg-[#091d64] hover:bg-[#102a83] text-white font-bold rounded-xl text-xs transition-colors cursor-pointer">
+              Okay, I understand
+            </button>
+          </div>
+        </div>
+      )}</div>
   );
 }
