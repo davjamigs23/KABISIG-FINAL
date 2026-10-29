@@ -371,79 +371,50 @@ export default function OfficialPages({
   const [showProgModal, setShowProgModal] = useState(false);
   const [programNotice, setProgramNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const handleDownloadPDFReport = async () => {
+    const html2pdf = (await import('html2pdf.js')).default;
+    
+    let reportTitle = 'Official Report';
+    let tableHeaders = '';
+    let tableRows = '';
+
+    if (reportModuleCategory === 'attendance') {
+      reportTitle = 'Attendance Report';
+      tableHeaders = '<th>Participant</th><th>Program</th><th>Status</th>';
+      tableRows = reportAttendance.map((r: any) => `<tr><td>${r.user?.full_name || 'Youth'}</td><td>${r.program_title || 'Program'}</td><td>${r.status || 'Attended'}</td></tr>`).join('');
+    } else if (reportModuleCategory === 'residents') {
+      reportTitle = 'KK Constituent Masterlist';
+      tableHeaders = '<th>Name</th><th>Zone</th><th>Education</th>';
+      tableRows = localYouthProfiles.map((y: any) => `<tr><td>${y.name}</td><td>${y.zone}</td><td>${y.educationalLevel}</td></tr>`).join('');
+    } else {
+      reportTitle = 'Compliance & Document Report';
+      tableHeaders = '<th>Title</th><th>Type</th><th>Status</th>';
+      tableRows = localDocs.map((d: any) => `<tr><td>${d.title}</td><td>${d.document_type}</td><td>${d.status}</td></tr>`).join('');
+    }
+
     const container = document.createElement('div');
     container.style.padding = '40px';
     container.style.fontFamily = 'Arial, sans-serif';
-    container.style.color = '#0f172a';
-
-    let title = 'KABISIG Official Report';
-    let bodyHtml = '';
-
-    if (reportModuleCategory === 'attendance') {
-      title = 'Program Attendance Report';
-      bodyHtml = `
-        <table style="width:100%; border-collapse: collapse; margin-top: 20px; font-size: 12px;">
-          <thead style="background-color: #091d64; color: white;">
-            <tr><th style="padding:10px; border:1px solid #cbd5e1;">Participant</th><th style="padding:10px; border:1px solid #cbd5e1;">Program</th><th style="padding:10px; border:1px solid #cbd5e1;">Status</th></tr>
-          </thead>
-          <tbody>
-            ${reportAttendance.map((a: any) => `<tr><td style="padding:10px; border:1px solid #cbd5e1;">${a.user?.full_name || 'Youth'}</td><td style="padding:10px; border:1px solid #cbd5e1;">${a.program_title || 'Program'}</td><td style="padding:10px; border:1px solid #cbd5e1;">${a.status || 'Attended'}</td></tr>`).join('') || '<tr><td colspan="3" style="padding:10px; text-align:center;">No data</td></tr>'}
-          </tbody>
-        </table>
-      `;
-    } else if (reportModuleCategory === 'residents') {
-      title = 'KK Constituent Masterlist';
-      bodyHtml = `
-        <table style="width:100%; border-collapse: collapse; margin-top: 20px; font-size: 12px;">
-          <thead style="background-color: #091d64; color: white;">
-            <tr><th style="padding:10px; border:1px solid #cbd5e1;">Name</th><th style="padding:10px; border:1px solid #cbd5e1;">Zone</th><th style="padding:10px; border:1px solid #cbd5e1;">Education</th></tr>
-          </thead>
-          <tbody>
-            ${localYouthProfiles.map((y: any) => `<tr><td style="padding:10px; border:1px solid #cbd5e1;">${y.name}</td><td style="padding:10px; border:1px solid #cbd5e1;">${y.zone}</td><td style="padding:10px; border:1px solid #cbd5e1;">${y.educationalLevel}</td></tr>`).join('') || '<tr><td colspan="3" style="padding:10px; text-align:center;">No data</td></tr>'}
-          </tbody>
-        </table>
-      `;
-    } else {
-      title = 'Official Compliance Report';
-      bodyHtml = `
-        <table style="width:100%; border-collapse: collapse; margin-top: 20px; font-size: 12px;">
-          <thead style="background-color: #091d64; color: white;">
-            <tr><th style="padding:10px; border:1px solid #cbd5e1;">Title</th><th style="padding:10px; border:1px solid #cbd5e1;">Category</th><th style="padding:10px; border:1px solid #cbd5e1;">Status</th></tr>
-          </thead>
-          <tbody>
-            ${localDocs.map((d: any) => `<tr><td style="padding:10px; border:1px solid #cbd5e1;">${d.title}</td><td style="padding:10px; border:1px solid #cbd5e1;">${d.document_type}</td><td style="padding:10px; border:1px solid #cbd5e1;">${d.status}</td></tr>`).join('') || '<tr><td colspan="3" style="padding:10px; text-align:center;">No data</td></tr>'}
-          </tbody>
-        </table>
-      `;
-    }
-
     container.innerHTML = `
-      <div style="text-align: center; margin-bottom: 30px; border-bottom: 3px solid #091d64; padding-bottom: 20px;">
-        <h1 style="color: #091d64; margin: 0; font-size: 24px; font-weight: 900;">KABISIG</h1>
-        <p style="margin: 5px 0 0 0; font-size: 12px; font-weight: bold; color: #091d64;">Barangay ${currentTenant?.name || 'Naga City'} • Naga City</p>
+      <div style="text-align: center; border-bottom: 3px solid #091d64; padding-bottom: 20px; margin-bottom: 20px;">
+        <h1 style="color: #091d64; margin: 0; font-size: 24px;">KABISIG</h1>
+        <p style="margin: 5px 0 0 0; font-size: 14px; color: #475569;">Barangay ${currentTenant?.name || 'Naga City'} • Naga City</p>
       </div>
-      <h2 style="color: #091d64; font-size: 18px; text-transform: uppercase;">${title}</h2>
-      ${bodyHtml}
+      <h2 style="color: #091d64; font-size: 18px; text-transform: uppercase;">${reportTitle}</h2>
+      <table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px;">
+        <thead style="background-color: #091d64; color: white;">
+          <tr>${tableHeaders}</tr>
+        </thead>
+        <tbody style="text-align: left;">
+          ${tableRows || '<tr><td colspan="3" style="text-align: center;">No data available.</td></tr>'}
+        </tbody>
+      </table>
       <div style="margin-top: 40px; font-size: 10px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 10px;">
         Generated on ${new Date().toLocaleString()} • This is a system-generated document.
       </div>
     `;
-    const html2pdf = (await import('html2pdf.js')).default;
-    container.style.padding = '20px';
-    document.body.appendChild(container);
-    
-    // Generates the report content into the hidden div
-    container.innerHTML = `
-      <div style="font-family: Arial, sans-serif; padding: 20px;">
-        <h1 style="color: #091d64; text-align: center;">KABISIG Master Report</h1>
-        <p style="text-align: center;">Generated: ${new Date().toLocaleDateString()}</p>
-        <hr />
-        <p>Report content generated successfully.</p>
-      </div>
-    `;
-    
-    html2pdf().from(container).save('KABISIG_Masterlist.pdf').then(() => document.body.removeChild(container));
-  };
+
+    html2pdf().from(container).save('KABISIG_Report.pdf');
+};;
 
   const [showDocModal, setShowDocModal] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
