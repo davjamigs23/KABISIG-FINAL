@@ -554,9 +554,9 @@ export default function PublicPages({
           
           if (typeof errorData === 'object' && errorData !== null) {
             const fieldErrors = Object.entries(errorData)
-              .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
+              .map(([field, msgs]) => `• ${field.replace(/_/g, ' ').toUpperCase()}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
               .join('\n');
-            if (fieldErrors) errorMessage += `\n\nPlease check your inputs and try again.`;
+            if (fieldErrors) errorMessage += `\n\nPlease fix the following fields:\n${fieldErrors}`;
           } else if (typeof errorData === 'string' && errorData !== 'Unknown error') {
             errorMessage += `\n\n${errorData}`;
           }
