@@ -1544,7 +1544,15 @@ export default function App() {
               <span className="text-xl font-bold">{globalAlert.type === 'error' ? '!' : 'i'}</span>
             </div>
             <h3 className="text-lg font-black text-slate-900 mb-2">{globalAlert.title}</h3>
-            <p className="text-xs text-slate-500 mb-6 whitespace-pre-wrap leading-relaxed">{globalAlert.message}</p>
+            <p className="text-xs text-slate-500 mb-6 whitespace-pre-wrap leading-relaxed">
+              {globalAlert.message.split('\n').map((line, i) => {
+                if (line.startsWith('Reason:')) {
+                  const parts = line.split('Reason:');
+                  return <span key={i} className="block mt-2 text-sm font-bold text-slate-800"><span className="text-rose-600">Reason:</span> {parts[1]}</span>;
+                }
+                return <span key={i} className="block">{line}</span>;
+              })}
+            </p>
             <button onClick={() => setGlobalAlert(null)} className="w-full py-3 bg-[#091d64] hover:bg-[#102a83] text-white font-bold rounded-xl text-xs transition-colors cursor-pointer">
               Okay, I understand
             </button>

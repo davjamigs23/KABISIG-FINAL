@@ -416,6 +416,9 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
         course: course || null,
         year_level: year || null,
         youth_sector: (parseResult.data as any).youth_sector || (educational_status === 'Out of School Youth' ? 'Out-of-School Youth' : 'In-School Youth'),
+        marital_status: marital_status || 'Single',
+        is_pwd: is_pwd || false,
+        is_solo_parent: is_solo_parent || false,
         ...(frontPath ? { id_document_path: frontPath } : {}),
         ...(backPath ? { id_back_document_path: backPath } : {}),
         updated_at: new Date().toISOString()
