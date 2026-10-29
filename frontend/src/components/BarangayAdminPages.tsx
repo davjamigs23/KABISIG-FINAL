@@ -1314,8 +1314,7 @@ return (
           <div className="space-y-6 overflow-y-auto">
             <div className="flex justify-between items-center border-b border-white/10 pb-4">
               <div className="flex items-center gap-3">
-                <img src={currentBarangay?.logo || '/icon.png'} alt="Barangay Logo" className="h-10 w-auto object-contain mr-2" />
-                  <KabisigLogo className="scale-90" />
+                <KabisigLogo className="scale-90" />
               </div>
               <button 
                 onClick={() => setIsMobileMenuOpen(false)}
@@ -1418,8 +1417,7 @@ return (
       <aside className="hidden lg:flex w-64 bg-white border-r border-slate-100 flex-col justify-between h-full flex-shrink-0 z-40 shadow-sm">
         <div className="flex flex-col h-full overflow-y-auto">
           <div className="p-5 border-b border-slate-100 flex flex-col items-center gap-3 bg-gradient-to-b from-blue-50/40 to-transparent">
-            <img src={currentBarangay?.logo || '/icon.png'} alt="Barangay Logo" className="h-10 w-auto object-contain mr-2" />
-                  <KabisigLogo className="scale-90" />
+            <KabisigLogo className="scale-90" />
           </div>
 
           <nav className="p-4 space-y-1 flex-1">

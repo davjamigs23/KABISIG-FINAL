@@ -103,7 +103,7 @@ class KabisigApiClient {
       ...(options.headers as Record<string, string>),
     };
 
-    const token = this.getToken();
+    const token = localStorage.getItem('kabisig_token') || this.getToken();
     if (token) {
       headers.Authorization = "Bearer " + token;
     }
@@ -116,18 +116,7 @@ class KabisigApiClient {
 
       const json = await response.json().catch(() => ({}));
       
-      if (!response.ok) {
-        let errorMsg = json.message || 'Request failed';
-        if (json.data && typeof json.data === 'object') {
-          const firstError = Object.values(json.data)[0];
-          if (Array.isArray(firstError) && firstError.length > 0) {
-            errorMsg = firstError[0] as string;
-          } else if (typeof firstError === 'string') {
-            errorMsg = firstError;
-          }
-        }
-        throw new Error(errorMsg);
-      }
+      
       
       if (response.status === 401 && !endpoint.includes('/auth/login')) {
         this.setToken(null);
