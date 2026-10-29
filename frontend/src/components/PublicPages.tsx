@@ -361,6 +361,16 @@ export default function PublicPages({
 
   const handleSignUpSubmit = async () => {
     if (!signUpForm.educational_status || !signUpForm.employment_status) {
+      alert("Please go back to Step 3 and fill out Educational Attainment and Employment Status.");
+      setSignUpStep(3);
+      return;
+    }
+    if (!signUpForm.educational_status || !signUpForm.employment_status) {
+      alert("Please go back to Step 3 and fill out Educational Attainment and Employment Status.");
+      setSignUpStep(3);
+      return;
+    }
+    if (!signUpForm.educational_status || !signUpForm.employment_status) {
       setCustomError("Please go back to Step 3 and fill out Educational Attainment and Employment Status.");
       setSignUpStep(3);
       return;

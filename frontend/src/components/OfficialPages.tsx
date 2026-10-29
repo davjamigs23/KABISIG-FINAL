@@ -372,47 +372,23 @@ export default function OfficialPages({
   const [programNotice, setProgramNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const handleDownloadPDFReport = async () => {
     const html2pdf = (await import('html2pdf.js')).default;
-    
-    let reportTitle = 'Official Report';
-    let tableHeaders = '';
-    let tableRows = '';
-
-    if (reportModuleCategory === 'attendance') {
-      reportTitle = 'Attendance Report';
-      tableHeaders = '<th>Participant</th><th>Program</th><th>Status</th>';
-      tableRows = reportAttendance.map((r: any) => `<tr><td>${r.user?.full_name || 'Youth'}</td><td>${r.program_title || 'Program'}</td><td>${r.status || 'Attended'}</td></tr>`).join('');
-    } else if (reportModuleCategory === 'residents') {
-      reportTitle = 'KK Constituent Masterlist';
-      tableHeaders = '<th>Name</th><th>Zone</th><th>Education</th>';
-      tableRows = localYouthProfiles.map((y: any) => `<tr><td>${y.name}</td><td>${y.zone}</td><td>${y.educationalLevel}</td></tr>`).join('');
+    let title = reportModuleCategory === 'residents' ? 'KK Constituent Masterlist' : (reportModuleCategory === 'attendance' ? 'Attendance Report' : 'Compliance Report');
+    let rows = '';
+    if (reportModuleCategory === 'residents') {
+      rows = localYouthProfiles.map((y: any) => '<tr><td style="padding:10px; border:1px solid #cbd5e1;">' + y.name + '</td><td style="padding:10px; border:1px solid #cbd5e1;">' + (y.zone || '-') + '</td><td style="padding:10px; border:1px solid #cbd5e1;">' + (y.educationalLevel || '-') + '</td></tr>').join('');
+    } else if (reportModuleCategory === 'attendance') {
+      rows = reportAttendance.map((r: any) => '<tr><td style="padding:10px; border:1px solid #cbd5e1;">' + (r.user?.full_name || 'Youth') + '</td><td style="padding:10px; border:1px solid #cbd5e1;">' + (r.program_title || '-') + '</td><td style="padding:10px; border:1px solid #cbd5e1;">' + (r.status || '-') + '</td></tr>').join('');
     } else {
-      reportTitle = 'Compliance & Document Report';
-      tableHeaders = '<th>Title</th><th>Type</th><th>Status</th>';
-      tableRows = localDocs.map((d: any) => `<tr><td>${d.title}</td><td>${d.document_type}</td><td>${d.status}</td></tr>`).join('');
+      rows = localDocs.map((d: any) => '<tr><td style="padding:10px; border:1px solid #cbd5e1;">' + d.title + '</td><td style="padding:10px; border:1px solid #cbd5e1;">' + d.document_type + '</td><td style="padding:10px; border:1px solid #cbd5e1;">' + d.status + '</td></tr>').join('');
     }
-
     const container = document.createElement('div');
-    container.style.padding = '40px';
-    container.style.fontFamily = 'Arial, sans-serif';
-    container.innerHTML = `
-      <div style="text-align: center; border-bottom: 3px solid #091d64; padding-bottom: 20px; margin-bottom: 20px;">
-        <h1 style="color: #091d64; margin: 0; font-size: 24px;">KABISIG</h1>
-        <p style="margin: 5px 0 0 0; font-size: 14px; color: #475569;">Barangay ${currentTenant?.name || 'Naga City'} • Naga City</p>
-      </div>
-      <h2 style="color: #091d64; font-size: 18px; text-transform: uppercase;">${reportTitle}</h2>
-      <table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px;">
-        <thead style="background-color: #091d64; color: white;">
-          <tr>${tableHeaders}</tr>
-        </thead>
-        <tbody style="text-align: left;">
-          ${tableRows || '<tr><td colspan="3" style="text-align: center;">No records found for this category.</td></tr>'}
-        </tbody>
-      </table>
-      <div style="margin-top: 40px; font-size: 10px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 10px;">
-        Generated on ${new Date().toLocaleString()} • This is a system-generated document.
-      </div>
-    `;
-
+    container.innerHTML = '<div style="text-align:center;border-bottom:3px solid #091d64;padding-bottom:20px;margin-bottom:20px;"><h1 style="color:#091d64;margin:0;font-size:24px;">KABISIG</h1><p style="margin:5px 0 0 0;font-size:14px;color:#475569;">Barangay ' + (currentTenant?.name || 'Naga City') + ' - Naga City</p></div>' +
+      '<h2 style="color:#091d64;font-size:18px;text-transform:uppercase;">' + title + '</h2>' +
+      '<table style="width:100%;border-collapse:collapse;margin-top:10px;font-size:12px;">' +
+      '<thead style="background-color:#091d64;color:white;"><tr><th style="padding:10px;border:1px solid #cbd5e1;">Name</th><th style="padding:10px;border:1px solid #cbd5e1;">Details</th><th style="padding:10px;border:1px solid #cbd5e1;">Status</th></tr></thead>' +
+      '<tbody style="text-align:left;">' + (rows || '<tr><td colspan="3" style="text-align:center;padding:20px;">No records found.</td></tr>') + '</tbody>' +
+      '</table>' +
+      '<div style="margin-top:40px;font-size:10px;color:#94a3b8;text-align:center;border-top:1px solid #e2e8f0;padding-top:10px;">Generated on ' + new Date().toLocaleString() + ' - System-generated document.</div>';
     html2pdf().from(container).save('KABISIG_Report.pdf');
 };;
 
@@ -3052,7 +3028,7 @@ export default function OfficialPages({
                       <select
                         value={feedbackTypeFilter}
                         onChange={(e) => setFeedbackTypeFilter(e.target.value)}
-                        className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 focus:outline-none focus:ring-1 focus:ring-[#091d64]"
+                        className="relative z-50 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 focus:outline-none focus:ring-1 focus:ring-[#091d64]"
                       >
                         <option value="All">All Types</option>
                         <option value="Suggestion">Suggestions</option>
@@ -3064,7 +3040,7 @@ export default function OfficialPages({
                       <select
                         value={feedbackStatusFilter}
                         onChange={(e) => setFeedbackStatusFilter(e.target.value)}
-                        className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 focus:outline-none focus:ring-1 focus:ring-[#091d64]"
+                        className="relative z-50 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 focus:outline-none focus:ring-1 focus:ring-[#091d64]"
                       >
                         <option value="All">All Statuses</option>
                         <option value='flagged'>🚩 Flagged (Needs Review)</option>

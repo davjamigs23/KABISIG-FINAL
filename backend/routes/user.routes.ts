@@ -1395,27 +1395,28 @@ router.get(
       return;
     }
 
-    // Fetch users in the same tenant
+    // Fetch ALL users in the same tenant (including pending/rejected so Admin can review them)
     const { data: users, error: userErr } = await supabaseAdmin
       .from('users')
-      .select('id, full_name, email')
+      .select('id, full_name, email, phone, status, tenant_id, avatar_url')
       .eq('tenant_id', user.tenant_id)
-      .eq('role_id', 4) // Only Youths
-      .eq('status', 'active');
+      .eq('role_id', 4)
+      .in('status', ['active', 'pending', 'rejected']);
 
     if (userErr) {
       sendError(res, 'Failed to load directory: ' + userErr.message, 500);
       return;
     }
 
-    // Fetch zones for these users
     const userIds = users.map(u => u.id);
+
+    // Fetch FULL resident profiles for these users
     const { data: profiles } = await supabaseAdmin
       .from('resident_profile')
-      .select('user_id, zone')
+      .select('*')
       .in('user_id', userIds);
 
-    const zoneMap = new Map(profiles?.map(p => [p.user_id, p.zone]) || []);
+    const profileMap = new Map(profiles?.map((p: any) => [p.user_id, p]) || []);
 
     // Fetch program registrations for these users
     const { data: registrations } = await supabaseAdmin
@@ -1426,19 +1427,45 @@ router.get(
     const programMap = new Map<string, string[]>();
     registrations?.forEach((r: any) => {
       if (!programMap.has(r.user_id)) programMap.set(r.user_id, []);
-      // Handle both object and array returns from Supabase
       const title = r.program?.title || (Array.isArray(r.program) ? r.program[0]?.title : null);
       if (title) programMap.get(r.user_id)!.push(title);
     });
 
-    // Format the data
-    const formatted = users.map((u: any) => ({
-      id: u.id,
-      name: u.full_name,
-      email: u.email || 'N/A',
-      zone: zoneMap.get(u.id) || 'N/A',
-      programs: programMap.get(u.id) || [],
-    }));
+    // Format the data with ALL fields for Admin review
+    const formatted = users.map((u: any) => {
+      const prof = profileMap.get(u.id) || {};
+      return {
+        id: u.id,
+        userId: u.id,
+        name: u.full_name,
+        email: u.email || 'N/A',
+        phone: u.phone || '',
+        status: u.status === 'active' ? 'Approved' : (u.status === 'rejected' ? 'Rejected' : 'Pending'),
+        zone: prof.zone || 'N/A',
+        birthdate: prof.birthdate || '',
+        address: prof.address || '',
+        sex: prof.sex || '',
+        civilStatus: prof.marital_status || 'Single',
+        educationalLevel: prof.educational_status || '',
+        school: prof.school || '',
+        course: prof.course || '',
+        year: prof.year_level || '',
+        yearLevel: prof.year_level || '',
+        employmentStatus: prof.employment_status || '',
+        youthSector: prof.youth_sector || '',
+        scholarStatus: prof.scholar_status || 'Non-Scholar',
+        guardianName: prof.guardian_name || '',
+        guardianContact: prof.guardian_contact || '',
+        isPwd: prof.is_pwd || false,
+        isSoloParent: prof.is_solo_parent || false,
+        idType: prof.id_type || '',
+        idNumber: prof.id_number || '',
+        idDocumentPath: prof.id_document_path || '',
+        verificationStatus: prof.verification_status || 'not_submitted',
+        profilePic: u.avatar_url || '',
+        programs: programMap.get(u.id) || [],
+      };
+    });
 
     sendSuccess(res, formatted, 'Directory retrieved.');
   }
