@@ -18,7 +18,7 @@ export interface AnnouncementPayload {
   };
 }
 
-const CONFIGURED_API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
+const CONFIGURED_API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://kabisig-backend.vercel.app/api';
 
 function resolveApiBaseUrl(): string {
   if (typeof window === 'undefined') return CONFIGURED_API_BASE_URL;
@@ -146,7 +146,7 @@ class KabisigApiClient {
       return {
         success: false,
         message: isConnectionFailed
-          ? 'Backend server is unreachable (Failed to fetch). Please ensure the backend server is running on http://localhost:5000.'
+          ? 'Network error: The KABISIG server is currently unreachable. Please check your internet connection and try again.'
           : (err.message || 'Network connection failed'),
         error: err,
       };
