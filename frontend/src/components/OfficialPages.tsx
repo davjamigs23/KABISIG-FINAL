@@ -392,7 +392,24 @@ export default function OfficialPages({
     }
 
     const htmlContent = `
-      <div style="font-family: sans-serif; padding: 20px;">
+      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #1e293b;">
+        <div style="text-align: center; margin-bottom: 30px; border-bottom: 3px solid #091d64; padding-bottom: 20px;">
+          <img src="https://kabisig-frontend.vercel.app/icon.png" alt="KABISIG Logo" style="height: 60px; margin-bottom: 10px;" />
+          <h1 style="color: #091d64; margin: 0; font-size: 24px; font-weight: 900;">KABISIG</h1>
+          <p style="margin: 5px 0 0 0; font-size: 14px; color: #64748b;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p>
+          <p style="margin: 2px 0 0 0; font-size: 12px; font-weight: bold; color: #091d64;">Barangay ${currentTenant?.name || 'San Francisco'} • Naga City</p>
+        </div>
+        <h2 style="color: #091d64; font-size: 18px; margin-bottom: 20px; text-transform: uppercase;">${reportTitle}</h2>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px;">
+          <thead style="background-color: #091d64; color: white;">
+            <tr>${tableHeaders}</tr>
+          </thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+        <div style="margin-top: 40px; font-size: 10px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 10px;">
+          Generated on ${new Date().toLocaleString()} • This is a system-generated document.
+        </div>
+      </div>
         <h1 style="text-align: center;">Barangay ${currentTenant?.name || ''}</h1>
         <h2 style="text-align: center; color: #091d64;">${reportTitle}</h2>
         <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
@@ -4131,7 +4148,7 @@ export default function OfficialPages({
                   className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 focus:outline-none focus:ring-1 focus:ring-[#091d64]"
                 >
                   <option value="All">All Statuses</option>
-                  <option value="Draft">Draft</option>
+                  
                   <option value="Pending">Pending Review</option>
                   <option value="Approved">Approved / Signed</option>
                   <option value="Rejected">Rejected</option>

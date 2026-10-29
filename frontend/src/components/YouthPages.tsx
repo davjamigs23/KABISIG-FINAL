@@ -2193,7 +2193,7 @@ export default function YouthPages({
                       )}
                     </div>
                   )}
-                  {!verificationLoading && (!verificationStatus || verificationStatus.verification_status !== 'verified') && (
+                  {!verificationLoading && (verificationStatus?.is_demoted_chair && (!verificationStatus || verificationStatus.verification_status !== 'verified')) && (
                     <>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>

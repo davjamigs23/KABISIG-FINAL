@@ -282,6 +282,11 @@ export default function PublicPages({
         finalBarangay = '';
       }
 
+            if (dbUser?.status === 'rejected') {
+        alert('Access Denied!\n\nYour account application was rejected. Please go to the "Create Account" tab to update your information and upload a valid ID again.');
+        setIsLoggingIn(false);
+        return;
+      }
       if (dbUser?.status === 'pending') {
         alert('Access Denied!\n\nYour account is currently PENDING approval by your Sangguniang Kabataan Chairperson.');
         setIsLoggingIn(false);

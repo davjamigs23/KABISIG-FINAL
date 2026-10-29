@@ -384,6 +384,13 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
       return;
     }
 
+    if (existingUser.status === 'rejected') {
+      // Allow rejected users to re-apply by resetting their status to pending
+      await supabaseAdmin.from('users').update({ status: 'pending' }).eq('id', existingUser.id);
+      await supabaseAdmin.from('resident_profile').update({ verification_status: 'submitted' }).eq('user_id', existingUser.id);
+      sendSuccess(res, { id: existingUser.id, status: 'pending' }, 'Rejected account reset to pending. Please sign in to re-upload your ID.');
+      return;
+    }
     const statusMessage = existingUser.status === 'pending'
       ? 'This email already has a pending registration. Please wait for approval or use the existing account.'
       : 'This email is already registered. Please sign in or use a different email address.';
