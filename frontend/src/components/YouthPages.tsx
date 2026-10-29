@@ -1085,10 +1085,15 @@ export default function YouthPages({
                     <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Real-time profile categorization, engagement scoring, and rule-based recommendations</p>
                   </div>
                   
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-bold text-slate-600 flex flex-col">
-                      Engagement Score: <span className="text-[#091d64] font-black">{myEngagement.score}</span>/100 <span className="text-[10px] text-slate-400 font-normal mt-1 block">(How to increase: Join programs, attend events, and participate in surveys)</span> <span className="text-[10px] text-slate-400 font-normal mt-1 block">How to increase: Join programs, attend events, and participate in surveys.</span> <span className="text-[10px] text-slate-400 font-normal ml-1 block">(How to increase: Join programs, attend events, and participate in surveys)</span>
-                    </span>
+                  <div className="flex items-start gap-3">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-xs font-bold text-slate-600">
+                        Engagement Score: <span className="text-[#091d64] font-black">{myEngagement.score}</span>/100
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-medium">
+                        How to increase: Join programs, attend events, and participate in surveys.
+                      </span>
+                    </div>
                     <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase ${
                       myEngagement.classification === 'Highly Active' ? 'bg-emerald-100 text-emerald-800' :
                       myEngagement.classification === 'Active' ? 'bg-blue-100 text-blue-800' :
