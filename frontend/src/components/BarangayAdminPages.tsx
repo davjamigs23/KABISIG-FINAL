@@ -3238,7 +3238,7 @@ return (
             </div>
 
             <div className="p-5 bg-slate-50 border-t flex justify-between items-center">
-              {!showRejectField && (
+              {!showRejectField && inspectProfile.status !== 'Approved' && (
                 <button
                   onClick={() => setShowRejectField(true)}
                   className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-lg text-xs cursor-pointer"
