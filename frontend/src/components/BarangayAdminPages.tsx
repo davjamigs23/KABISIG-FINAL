@@ -1465,7 +1465,7 @@ return (
             </button>
 
             <button
-              onClick={() => setActiveMenu('budget')}
+              onClick={() => { setActiveMenu('budget'); window.scrollTo(0,0); }}
               className={`w-full text-left px-4 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center gap-3 ${
                 activeMenu === 'budget' 
                   ? 'bg-[#eff6ff] text-[#091d64] shadow-xs' 

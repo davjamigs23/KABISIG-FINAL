@@ -177,7 +177,8 @@ export default function PublicPages({
     school: '',
     educationalLevel: 'College' as any,
     course: '',
-    year: '1st Year',
+    year: '',
+    youthSector: '',
     scholarStatus: 'Non-Scholar' as 'Scholar' | 'Non-Scholar',
     password: '',
     confirmPassword: '',
@@ -1247,6 +1248,25 @@ export default function PublicPages({
   <option value="Self-Employed">Self-Employed</option>
   <option value="Unemployed">Unemployed</option>
 </select>
+
+                <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans mt-4">Year Level <span className="text-red-500">*</span></label>
+                <select value={signUpForm.year || ""} onChange={(e) => setSignUpForm({...signUpForm, year: e.target.value})} className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none appearance-none cursor-pointer" required>
+                  <option value="" disabled>Select Year Level</option>
+                  <option value="1st Year">1st Year</option>
+                  <option value="2nd Year">2nd Year</option>
+                  <option value="3rd Year">3rd Year</option>
+                  <option value="4th Year">4th Year</option>
+                  <option value="5th Year">5th Year</option>
+                </select>
+
+                <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans mt-4">Youth Sector <span className="text-red-500">*</span></label>
+                <select value={signUpForm.youthSector || ""} onChange={(e) => setSignUpForm({...signUpForm, youthSector: e.target.value})} className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none appearance-none cursor-pointer" required>
+                  <option value="" disabled>Select Youth Sector</option>
+                  <option value="In-School Youth">In-School Youth</option>
+                  <option value="Out-of-School Youth">Out-of-School Youth</option>
+                  <option value="Working Youth">Working Youth</option>
+                  <option value="Youth with Special Needs">Youth with Special Needs</option>
+                </select>
 
 <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans mt-4">Scholarship Status <span className="text-red-500">*</span></label>
 <select value={signUpForm.scholar_status || 'Non-Scholar'} onChange={(e) => setSignUpForm({...signUpForm, scholar_status: e.target.value})} className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none appearance-none cursor-pointer" required>

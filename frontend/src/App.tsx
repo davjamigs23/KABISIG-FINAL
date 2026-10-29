@@ -429,7 +429,7 @@ export default function App() {
               educationalLevel: meta.educationalLevel || resident.educational_status || 'College',
               school: resident.school || meta.school || '',
               course: resident.course || meta.course || '',
-              youthSector: (resident as any).youth_sector || resident.educational_status || meta.youthSector || '',
+              youthSector: (resident as any).youth_sector || meta.youthSector || '',
               profilePic: user.avatar_url || meta.profilePic || '',
               yearLevel: (resident as any).year_level || meta.yearLevel || '',
               year: resident.year_level || meta.year || '',
