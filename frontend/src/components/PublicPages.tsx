@@ -583,7 +583,7 @@ export default function PublicPages({
             <div className="relative z-10 w-full max-w-[440px] flex flex-col items-center animate-in fade-in zoom-in-95 duration-300">
               <button onClick={() => setActiveTab('_landing')} className="self-start mb-4 inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-[#091d64] cursor-pointer transition-colors"><ChevronLeft className="w-4 h-4" /> Back to Home</button>
               <div className="w-full bg-white rounded-[2rem] border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-8 sm:p-10 flex flex-col items-center">
-                <KabisigLogo className="mb-0" />
+                <div className="flex justify-center mb-4"><img src="/images/kabisig_logo.jpg" alt="KABISIG" className="w-24 h-24 rounded-full object-cover shadow-lg border-2 border-white" /></div>
                 
                 <div className="w-6 h-0.5 bg-amber-400 rounded-full mb-2"></div>
                 
@@ -1427,7 +1427,7 @@ export default function PublicPages({
                             </select>
                           </div>
                           <div>
-                            <label className="block text-[10px] font-bold text-slate-700 mb-1">ID Number</label>
+                            <label className="block text-[10px] font-bold text-slate-700 mb-1">ID Number <span className="text-red-500">*</span></label>
                             <input
                               type="text"
                               value={signUpForm.idNumber} required

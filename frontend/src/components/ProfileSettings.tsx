@@ -163,7 +163,7 @@ export default function ProfileSettings() {
           
           <div className="md:col-span-2">
             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1.5"><Mail className="w-3.5 h-3.5" /> Email Address {Number(user?.role_id) === 1 && <span className="text-rose-500">(Locked)</span>}</label>
-            {isEditing && Number(user?.role_id) === 1 ? <input type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm font-semibold focus:ring-1 focus:ring-[#091d64] outline-none" /> : <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800">{user?.email || '—'}</div>}
+            {isEditing && Number(user?.role_id) === 1 ? <div className="flex flex-col"><input type="email" value={form.email} disabled className="w-full p-3 bg-slate-100 border border-slate-300 rounded-xl text-sm font-semibold text-slate-500 cursor-not-allowed" /><span className="text-[10px] text-slate-400 mt-1">Email changes require Super Admin authorization for accountability.</span></div> : <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800">{user?.email || '—'}</div>}
           </div>
           
           {Number(user?.role_id) !== 1 && (

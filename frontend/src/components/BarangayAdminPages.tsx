@@ -3254,7 +3254,7 @@ return (
                 >
                   Close
                 </button>
-                {inspectProfile.status === 'Pending' && !showRejectField && (
+                {inspectProfile.status === 'Pending' && !showRejectField && youthVerification?.verification_status !== 'verified' && (
                   <button
                     onClick={() => {
                       onApproveYouth(inspectProfile.userId || inspectProfile.id);
