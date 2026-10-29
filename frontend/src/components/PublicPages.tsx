@@ -415,7 +415,16 @@ export default function PublicPages({
     const newProfile: Partial<YouthProfile> = {
       name: signUpFullName || 'Anonymous User',
       sex: signUpForm.sex,
-      birthdate: signUpForm.birthdate,
+      birthdate: (() => {
+            const raw = signUpForm.birthdate;
+            if (!raw) return '';
+            const parts = raw.split(/[\/\-]/);
+            if (parts.length === 3) {
+              if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`; // YYYY-MM-DD
+              if (parts[2].length === 4) return `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`; // MM-DD-YYYY
+            }
+            return raw;
+          })(),
       age: signUpForm.age,
       mobile: signUpForm.mobile,
       guardianName: signUpForm.guardianName.trim(),
@@ -524,7 +533,16 @@ export default function PublicPages({
           guardian_name: signUpForm.guardianName.trim(),
           guardian_contact: signUpForm.guardianContact.trim(),
           profile_pic: typeof signUpForm.profilePic === 'string' ? signUpForm.profilePic : undefined,
-          birthdate: signUpForm.birthdate,
+          birthdate: (() => {
+            const raw = signUpForm.birthdate;
+            if (!raw) return '';
+            const parts = raw.split(/[\/\-]/);
+            if (parts.length === 3) {
+              if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`; // YYYY-MM-DD
+              if (parts[2].length === 4) return `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`; // MM-DD-YYYY
+            }
+            return raw;
+          })(),
           sex: signUpForm.sex,
       address: signUpForm.address,
       zone: signUpForm.zone,

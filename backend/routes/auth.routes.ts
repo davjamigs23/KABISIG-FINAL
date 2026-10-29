@@ -195,7 +195,7 @@ const RegisterYouthSchema = z.object({
   barangay_id: z.string().uuid('Valid Barangay ID is required'),
  phone: z.string().regex(/^09\d{9}$/, 'Phone must be 11 digits starting with 09').optional(),
   profile_pic: z.string().max(2_000_000).optional(),
-  birthdate: z.string().regex(/^\d{2}-\d{2}-\d{4}$/, 'Birthdate must be in MM-DD-YYYY format (e.g., 12-23-2004)'),
+  birthdate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Birthdate must be in YYYY-MM-DD format'),
   sex: z.enum(['Male', 'Female', 'Other', 'Prefer not to say']),
   address: z.string().min(3, 'Address is required'),
   zone: z.string().max(50).optional(),
