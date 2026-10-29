@@ -362,38 +362,17 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
     return;
   }
 
-    if (existingUser) {
+  if (existingUser) {
     if (existingUser.status === 'rejected') {
-      // Allow rejected users to re-apply by resetting their status to pending
-      const { error: updateErr } = await supabaseAdmin
-        .from('users')
-        .update({ status: 'pending' })
-        .eq('id', existingUser!.id);
-
-      if (updateErr) {
-        sendError(res, 'Failed to reactivate rejected account.', 500);
-        return;
-      }
-
-      await supabaseAdmin
-        .from('resident_profile')
-        .update({ verification_status: 'submitted' })
-        .eq('user_id', existingUser!.id);
-
-      sendSuccess(res, { id: existingUser!.id, status: 'pending' }, 'Rejected account reset to pending. Please sign in and upload your ID again.');
-      return;
-    }
-
-    if (existingUser.status === 'rejected') {
-      // Allow rejected users to re-apply by resetting their status to pending
-            // Allow rejected users to re-apply by resetting their status to pending
+      // 1. Reset user status to pending
       await supabaseAdmin.from('users').update({ status: 'pending' }).eq('id', existingUser!.id);
-      
+
+      // 2. Upload new images to Supabase Storage
       let frontPath = null;
       let backPath = null;
-      
+
       if (id_document_base64) {
-        const frontFileName = `${existingUser!.id}/front-${Date.now()}.${(id_document_mime || 'image/jpeg').split('/')[1] || 'jpg'}`;
+        const frontFileName = `${existingUser!.id}/front-${Date.now()}.jpg`;
         const { error: fErr } = await supabaseAdmin.storage
           .from('verification-ids')
           .upload(frontFileName, Buffer.from(id_document_base64, 'base64'), {
@@ -402,9 +381,9 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
           });
         if (!fErr) frontPath = frontFileName;
       }
-      
+
       if (id_back_document_base64) {
-        const backFileName = `${existingUser!.id}/back-${Date.now()}.${(id_back_document_mime || 'image/jpeg').split('/')[1] || 'jpg'}`;
+        const backFileName = `${existingUser!.id}/back-${Date.now()}.jpg`;
         const { error: bErr } = await supabaseAdmin.storage
           .from('verification-ids')
           .upload(backFileName, Buffer.from(id_back_document_base64, 'base64'), {
@@ -414,17 +393,28 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
         if (!bErr) backPath = backFileName;
       }
 
-      await supabaseAdmin.from('resident_profile').update({ 
+      // 3. Update profile with new info
+      await supabaseAdmin.from('resident_profile').update({
         verification_status: 'submitted',
+        birthdate,
+        sex,
+        address,
+        zone: zone || null,
+        educational_status: educational_status || null,
+        employment_status: employment_status || null,
+        school: school || null,
+        course: course || null,
+        year_level: year || null,
+        youth_sector: (parseResult.data as any).youth_sector || (educational_status === 'Out of School Youth' ? 'Out-of-School Youth' : 'In-School Youth'),
         ...(frontPath ? { id_document_path: frontPath } : {}),
-        ...(backPath ? { id_back_document_path: backPath } : {})
+        ...(backPath ? { id_back_document_path: backPath } : {}),
+        updated_at: new Date().toISOString()
       }).eq('user_id', existingUser!.id);
-      
-      sendSuccess(res, { id: existingUser!.id, status: 'pending' }, 'Rejected account reset to pending. Please sign in to re-upload your ID.');
-      return;
-      sendSuccess(res, { id: existingUser!.id, status: 'pending' }, 'Rejected account reset to pending. Please sign in to re-upload your ID.');
+
+      sendSuccess(res, { id: existingUser!.id, status: 'pending' }, 'Registration submitted successfully. Your updated profile is pending review.');
       return;
     }
+
     const statusMessage = existingUser.status === 'pending'
       ? 'This email already has a pending registration. Please wait for approval or use the existing account.'
       : 'This email is already registered. Please sign in or use a different email address.';
