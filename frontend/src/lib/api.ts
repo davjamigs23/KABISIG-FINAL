@@ -34,7 +34,7 @@ function resolveApiBaseUrl(): string {
   }
 }
 
-const API_BASE_URL = resolveApiBaseUrl();
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://kabisig-backend.vercel.app/api';
 
 export interface SystemNotification {
   id: string;
