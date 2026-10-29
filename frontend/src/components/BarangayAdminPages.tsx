@@ -1569,6 +1569,9 @@ return (
                   {activeMenu === 'budget' && 'Budget Monitoring'}
                   {activeMenu === 'documents' && 'Document Repository'}
                   {activeMenu === 'reports' && 'Reports Desk'}
+                  {activeMenu === 'profile' && 'My Profile'}
+                  {activeMenu === 'restrictions' && 'Restricted Users'}
+                  {activeMenu === 'audit' && 'Audit Logs'}
                   {activeMenu === 'announcements' && 'Sangguniang Kabataan Announcements'}
                   {activeMenu === 'settings' && 'System Parameters Settings'}
                 </h1>

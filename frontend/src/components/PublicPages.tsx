@@ -1208,10 +1208,10 @@ export default function PublicPages({
 
                 <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans mt-4">Course / Program</label>
                 <input type="text" value={signUpForm.course || ''} onChange={(e) => setSignUpForm({...signUpForm, course: e.target.value})} placeholder="e.g. BS Information Technology" className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none" />
-                
+
                 <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans mt-4">School / University</label>
                 <input type="text" value={signUpForm.school || ''} onChange={(e) => setSignUpForm({...signUpForm, school: e.target.value})} placeholder="e.g. Naga College Foundation" className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none" />
-                
+
 <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans mt-4">Employment Status <span className="text-red-500">*</span></label>
 <select value={signUpForm.employment_status || ''} onChange={(e) => setSignUpForm({...signUpForm, employment_status: e.target.value})} className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none appearance-none cursor-pointer" required>
   <option value="" disabled>Select Employment Status</option>
@@ -1247,21 +1247,7 @@ export default function PublicPages({
 </div>
                       </div>
 
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans">
-                          School / Institution
-                        </label>
-                        <div className="relative w-full">
-                          <input
-                            type="text"
-                            value={signUpForm.school}
-                            onChange={(e) => setSignUpForm({...signUpForm, school: e.target.value})}
-                            className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none"
-                            placeholder="Enter your school or institution"
-                          />
-                          <BookOpen className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-                        </div>
-                      </div>
+                      
                     </div>
                   )}
 
