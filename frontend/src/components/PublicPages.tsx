@@ -425,11 +425,25 @@ export default function PublicPages({
           role: signUpForm.registeredRole || 'SK_OFFICIAL',
           phone: signUpForm.mobile.trim(),
         });
-        if (!res.success) {
-          const detail = typeof res.error === 'object' && res.error !== null
-            ? Object.entries(res.error).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('; ')
-            : (typeof res.error === 'string' ? res.error : '');
-          alert(`Official registration failed: ${res.message || 'Error occurred.'}${detail ? `\nDetails: ${detail}` : ''}`);
+                if (!res.success) {
+          const errorData = (res as any).details || res.error || {};
+          let errorMessage = res.message || 'Error occurred.';
+          
+          if (typeof errorData === 'object' && errorData !== null) {
+            const fieldErrors = Object.entries(errorData)
+              .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
+              .join('\n');
+            if (fieldErrors) errorMessage += `\n\nPlease fix the following fields:\n${fieldErrors}`;
+          } else if (typeof errorData === 'string' && errorData !== 'Unknown error') {
+            errorMessage += `\n\n${errorData}`;
+          }
+          
+          const isExistingEmail = (res as any).error?.code === 'EMAIL_ALREADY_REGISTERED';
+          if (isExistingEmail) {
+            errorMessage += '\n\nPlease use the Login tab for this account, or register with a different email address.';
+          }
+          
+          alert(errorMessage);
           setIsSubmittingSignUp(false);
           return;
         }
@@ -523,12 +537,25 @@ export default function PublicPages({
           id_back_document_mime: signUpForm.idBackFile ? signUpForm.idBackFile.type : undefined,
           id_back_document_base64: _idBackBase64,
         });
-        if (!res.success) {
-          const detail = typeof res.error === 'object' && res.error !== null
-            ? Object.entries(res.error).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('; ')
-            : (typeof res.error === 'string' ? res.error : '');
-          const isExistingEmail = res.error?.code === 'EMAIL_ALREADY_REGISTERED';
-          alert(`Youth registration failed: ${res.message || 'Error occurred.'}${isExistingEmail ? '\n\nPlease use the Login tab for this account, or register with a different email address.' : ''}${detail && !isExistingEmail ? `\nDetails: ${detail}` : ''}`);
+                if (!res.success) {
+          const errorData = (res as any).details || res.error || {};
+          let errorMessage = res.message || 'Error occurred.';
+          
+          if (typeof errorData === 'object' && errorData !== null) {
+            const fieldErrors = Object.entries(errorData)
+              .map(([field, msgs]) => `${field}: ${Array.isArray(msgs) ? msgs.join(', ') : msgs}`)
+              .join('\n');
+            if (fieldErrors) errorMessage += `\n\nPlease fix the following fields:\n${fieldErrors}`;
+          } else if (typeof errorData === 'string' && errorData !== 'Unknown error') {
+            errorMessage += `\n\n${errorData}`;
+          }
+          
+          const isExistingEmail = (res as any).error?.code === 'EMAIL_ALREADY_REGISTERED';
+          if (isExistingEmail) {
+            errorMessage += '\n\nPlease use the Login tab for this account, or register with a different email address.';
+          }
+          
+          alert(errorMessage);
           setIsSubmittingSignUp(false);
           return;
         }
