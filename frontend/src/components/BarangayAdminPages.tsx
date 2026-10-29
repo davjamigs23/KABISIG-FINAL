@@ -1677,7 +1677,7 @@ return (
                 <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-xs flex justify-between items-center">
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Budget</span>
-                    <span className="text-2xl font-black text-slate-800 mt-1 block">₱{(programs.reduce((sum: number, p: any) => sum + (Number(p.budgetAllocation) || 0), 0) || 20000).toLocaleString()}</span>
+                    <span className="text-2xl font-black text-slate-800 mt-1 block">₱{(currentBarangay?.totalBudget || 0).toLocaleString()}</span>
                     <span className="text-[10px] text-slate-500 font-medium block mt-1">FY 2026 Budget</span>
                   </div>
                   <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center">
