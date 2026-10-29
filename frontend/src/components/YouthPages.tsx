@@ -1590,15 +1590,15 @@ export default function YouthPages({
                               </div>
                             ) : (
                               <button 
-                                disabled={registeringProgramId !== null || p.status?.toLowerCase() === 'completed' || ((p as any).date && new Date((p as any).date) < new Date()) || ((p as any).startDate && new Date((p as any).startDate) < new Date())}
+                                disabled={registeringProgramId !== null || p.status?.toLowerCase() === 'completed' || ((p as any).date && new Date((p as any).date) < new Date()) || ((p as any).endDate && new Date((p as any).endDate) < new Date())}
                                 onClick={() => handleRegisterProgramClick(p.id)}
                                 className={`px-5 py-2 text-white font-bold rounded-lg text-xs transition-all transform active:scale-95 shadow-sm ${
-                                  (p.status?.toLowerCase() === 'completed' || ((p as any).date && new Date((p as any).date) < new Date()) || ((p as any).startDate && new Date((p as any).startDate) < new Date()))
+                                  (p.status?.toLowerCase() === 'completed' || ((p as any).date && new Date((p as any).date) < new Date()) || ((p as any).endDate && new Date((p as any).endDate) < new Date()))
                                     ? 'bg-slate-400 cursor-not-allowed opacity-60'
                                     : 'bg-[#091d64] hover:bg-[#122878] cursor-pointer'
                                 }`}
                               >
-                                {(p.status?.toLowerCase() === 'completed' || ((p as any).date && new Date((p as any).date) < new Date()) || ((p as any).startDate && new Date((p as any).startDate) < new Date())) 
+                                {(p.status?.toLowerCase() === 'completed' || ((p as any).date && new Date((p as any).date) < new Date()) || ((p as any).endDate && new Date((p as any).endDate) < new Date())) 
                                   ? 'Program Completed' 
                                   : (registeringProgramId === p.id ? 'Registering...' : 'Join Program')}
                               </button>
