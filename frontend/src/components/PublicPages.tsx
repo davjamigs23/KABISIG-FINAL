@@ -1138,7 +1138,7 @@ export default function PublicPages({
                             maxLength={10}
                             value={birthdateInput}
                             onChange={handleBirthdateChange}
-                            placeholder="YYYY-MM-DD (e.g. 2004-12-23)"
+                            placeholder="MM-DD-YYYY (e.g. 12-23-2004)"
                             aria-label="Birthdate (month, day, year)"
                             className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none"
                             required
@@ -1594,7 +1594,15 @@ export default function PublicPages({
               <AlertCircle className="w-6 h-6 text-rose-600" />
             </div>
             <h3 className="text-lg font-black text-slate-900 mb-2">Registration Failed</h3>
-            <p className="text-xs text-slate-500 mb-6 whitespace-pre-wrap">{customError}</p>
+            <p className="text-xs text-slate-500 mb-6 whitespace-pre-wrap leading-relaxed text-left">
+              {customError.split('\n').map((line, i) => {
+                if (line.startsWith('Reason:')) {
+                  const parts = line.split('Reason:');
+                  return <span key={i} className="block mt-2 text-sm font-bold text-slate-800"><span className="text-rose-600">Reason:</span> {parts[1]}</span>;
+                }
+                return <span key={i} className="block">{line}</span>;
+              })}
+            </p>
             <button 
               onClick={() => setCustomError(null)}
               className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors"
