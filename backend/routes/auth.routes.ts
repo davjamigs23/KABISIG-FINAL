@@ -365,7 +365,15 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
   if (existingUser) {
     if (existingUser.status === 'rejected') {
       // 1. Reset user status to pending
-      await supabaseAdmin.from('users').update({ status: 'pending' }).eq('id', existingUser!.id);
+      await supabaseAdmin.from('users').update({ 
+        status: 'pending',
+        full_name: full_name || resolvedName.full_name,
+        first_name: first_name || null,
+        middle_name: middle_name || null,
+        last_name: last_name || null,
+        suffix: suffix || null,
+        phone: phone || null
+      }).eq('id', existingUser!.id);
 
       // 2. Upload new images to Supabase Storage
       let frontPath = null;
