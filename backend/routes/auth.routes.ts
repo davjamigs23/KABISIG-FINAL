@@ -806,7 +806,7 @@ router.post(
 
     const { data: rejectedUser, error: updateError } = await supabaseAdmin
       .from('users')
-      .update({ status: 'rejected', updated_at: new Date().toISOString() })
+      .update({ status: 'rejected', rejection_reason: reason, updated_at: new Date().toISOString() })
       .eq('id', targetUser.id)
       .select('id, full_name, email, tenant_id, status')
       .single();
