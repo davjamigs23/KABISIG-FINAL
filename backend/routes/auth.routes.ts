@@ -214,7 +214,7 @@ const RegisterYouthSchema = z.object({
   is_solo_parent: z.boolean().default(false),
   marital_status: z.enum(['Single', 'Married', 'Widowed', 'Separated']).optional().default('Single'),
   id_type: z.enum(["Philippine Passport", "Driver's License", "PRC ID", "UMID", "PhilHealth ID", "SSS ID", "Pag-IBIG ID", "Voter's ID (COMELEC)", "Postal ID", "NBI Clearance", "Police Clearance", "PhilSys National ID", "Student ID", "Barangay Certificate", "Other"]).optional(),
-  id_number: z.string().max(100).optional(),
+  id_number: z.string().min(1, 'ID Number is required').max(100),
   id_document_name: z.string().max(200).optional(),
   id_document_mime: z.string().regex(/^image\/(jpeg|png|webp)$/).optional(),
   id_document_base64: z.string().min(20).optional(),
