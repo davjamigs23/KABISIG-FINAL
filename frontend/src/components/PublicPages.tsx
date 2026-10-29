@@ -160,6 +160,7 @@ export default function PublicPages({
   const [signUpStep, setSignUpStep] = useState(1);
   const [signUpBarangayId, setSignUpBarangayId] = useState('');
   const [birthdateInput, setBirthdateInput] = useState('');
+  const [customError, setCustomError] = useState<string | null>(null);
   const [signUpForm, setSignUpForm] = useState({
     firstName: '',
     middleName: '',
@@ -441,7 +442,7 @@ export default function PublicPages({
             errorMessage += '\n\nPlease use the Login tab for this account, or register with a different email address.';
           }
           
-          alert(errorMessage);
+          setCustomError(errorMessage);
           setIsSubmittingSignUp(false);
           return;
         }
@@ -525,10 +526,10 @@ export default function PublicPages({
           is_registered_voter: true,
           id_type: signUpForm.idFrontFile ? signUpForm.idType : undefined,
           id_number: signUpForm.idFrontFile ? signUpForm.idNumber.trim() : undefined,
+          youth_sector: signUpForm.youthSector || (educationalStatus === 'Out of School Youth' ? 'Out-of-School Youth' : 'In-School Youth'),
           course: signUpForm.course,
           school: signUpForm.school,
           year: signUpForm.year,
-          youth_sector: signUpForm.youthSector,
           id_document_name: signUpForm.idFrontFile ? signUpForm.idFrontFile.name : undefined,
           id_document_mime: signUpForm.idFrontFile ? signUpForm.idFrontFile.type : undefined,
           id_document_base64: _idFrontBase64,
@@ -554,7 +555,7 @@ export default function PublicPages({
             errorMessage += '\n\nPlease use the Login tab for this account, or register with a different email address.';
           }
           
-          alert(errorMessage);
+          setCustomError(errorMessage);
           setIsSubmittingSignUp(false);
           return;
         }
@@ -1248,23 +1249,8 @@ export default function PublicPages({
 </select>
 
                 <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans mt-4">Year Level <span className="text-red-500">*</span></label>
-                <select value={signUpForm.year || ""} onChange={(e) => setSignUpForm({...signUpForm, year: e.target.value})} className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none appearance-none cursor-pointer" required>
-                  <option value="" disabled>Select Year Level</option>
-                  <option value="1st Year">1st Year</option>
-                  <option value="2nd Year">2nd Year</option>
-                  <option value="3rd Year">3rd Year</option>
-                  <option value="4th Year">4th Year</option>
-                  <option value="5th Year">5th Year</option>
-                </select>
+                <input type="text" value={signUpForm.year || ""} onChange={(e) => setSignUpForm({...signUpForm, year: e.target.value})} placeholder="e.g. 1st Year, 4th Year" className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none" required />
 
-                <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans mt-4">Youth Sector <span className="text-red-500">*</span></label>
-                <select value={signUpForm.youthSector || ""} onChange={(e) => setSignUpForm({...signUpForm, youthSector: e.target.value})} className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none appearance-none cursor-pointer" required>
-                  <option value="" disabled>Select Youth Sector</option>
-                  <option value="In-School Youth">In-School Youth</option>
-                  <option value="Out-of-School Youth">Out-of-School Youth</option>
-                  <option value="Working Youth">Working Youth</option>
-                  <option value="Youth with Special Needs">Youth with Special Needs</option>
-                </select>
 
 <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans mt-4">Scholarship Status <span className="text-red-500">*</span></label>
 <select value={signUpForm.scholar_status || 'Non-Scholar'} onChange={(e) => setSignUpForm({...signUpForm, scholar_status: e.target.value})} className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none appearance-none cursor-pointer" required>
@@ -1587,6 +1573,22 @@ export default function PublicPages({
           </section>
         )}
       </main>
-    </div>
+          {customError && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl text-center">
+            <div className="w-12 h-12 bg-rose-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <AlertCircle className="w-6 h-6 text-rose-600" />
+            </div>
+            <h3 className="text-lg font-black text-slate-900 mb-2">Registration Failed</h3>
+            <p className="text-xs text-slate-500 mb-6 whitespace-pre-wrap">{customError}</p>
+            <button 
+              onClick={() => setCustomError(null)}
+              className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition-colors"
+            >
+              Okay, I understand
+            </button>
+          </div>
+        </div>
+      )}</div>
   );
 }
