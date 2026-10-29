@@ -1418,7 +1418,7 @@ export default function YouthPages({
                         {/* 13. Year Level */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">13. Year Level</td>
-                          <td className="py-2.5 px-4 font-bold">{youth.year || '3rd Year'}</td>
+                          <td className="py-2.5 px-4 font-bold">{(youth as any).yearLevel || youth.year || 'Not specified'}</td>
                         </tr>
                         {/* 14. Employment Status */}
                         <tr className="hover:bg-slate-50/50">
