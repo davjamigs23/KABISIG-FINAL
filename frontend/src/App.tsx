@@ -414,7 +414,7 @@ export default function App() {
             }
             const meta = user.user_metadata || {};
             const resident = user.resident_profile || {};
-            const youthFromDb: YouthProfile = {
+            const youthFromDb: any = {
               userId: user.id,
               id: meta.id || resident.digital_youth_id || `SK-2026-${user.id.slice(0, 4)}`,
               name: user.full_name || meta.name || 'Anonymous',
@@ -429,14 +429,15 @@ export default function App() {
               educationalLevel: meta.educationalLevel || resident.educational_status || 'College',
               school: resident.school || meta.school || '',
               course: resident.course || meta.course || '',
+              yearLevel: (resident as any).year_level || meta.yearLevel || '',
+              youthSector: meta.youthSector || 'In-School Youth',
+              profilePic: user.avatar_url || meta.profilePic || '',
               year: resident.year_level || meta.year || '1st Year',
               employmentStatus: meta.employmentStatus || resident.employment_status || 'Student',
               scholarStatus: resident.scholar_status || meta.scholarStatus || 'Non-Scholar',
               scholarshipType: meta.scholarshipType || '',
-              youthSector: meta.youthSector || 'In-School Youth',
               guardianName: resident.guardian_name || meta.guardianName || '',
               guardianContact: resident.guardian_contact || meta.guardianContact || '',
-              profilePic: (user as any)?.avatar_url || meta.profilePic,
               qrCode: resident.qr_code_url || meta.qrCode,
               verificationStatus: resident.verification_status || meta.verificationStatus || 'pending',
               status: user.status === 'active' ? 'Approved' : (user.status === 'rejected' ? 'Rejected' : user.status === 'suspended' ? 'suspended' : 'Pending'),
@@ -856,7 +857,7 @@ export default function App() {
       if (userObj) {
         const meta = userObj.user_metadata || {};
         const resident = userObj.resident_profile || {};
-        const mergedFromDb: YouthProfile = {
+        const mergedFromDb: any = {
           userId: userObj.id,
           id: meta.id || resident.digital_youth_id || matchedProfile?.id || `SK-2026-${userObj.id.slice(0, 4)}`,
           name: userObj.full_name || meta.name || matchedProfile?.name || 'Anonymous',
@@ -875,10 +876,8 @@ export default function App() {
           employmentStatus: meta.employmentStatus || resident.employment_status || matchedProfile?.employmentStatus || 'Student',
           scholarStatus: resident.scholar_status || meta.scholarStatus || matchedProfile?.scholarStatus || 'Non-Scholar',
           scholarshipType: meta.scholarshipType || matchedProfile?.scholarshipType || '',
-          youthSector: meta.youthSector || matchedProfile?.youthSector || 'In-School Youth',
           guardianName: resident.guardian_name || meta.guardianName || matchedProfile?.guardianName || '',
           guardianContact: resident.guardian_contact || meta.guardianContact || matchedProfile?.guardianContact || '',
-          profilePic: userObj.avatar_url || meta.profilePic || matchedProfile?.profilePic,
           qrCode: resident.qr_code_url || meta.qrCode || matchedProfile?.qrCode,
           verificationStatus: resident.verification_status || meta.verificationStatus || matchedProfile?.verificationStatus || 'pending',
           status: userObj.status === 'active' ? 'Approved' : (userObj.status === 'rejected' ? 'Rejected' : userObj.status === 'suspended' ? 'suspended' : 'Pending'),
@@ -1312,7 +1311,6 @@ export default function App() {
               guardianContact: partialProfile.guardianContact || '',
               status: 'Pending',
               dateRegistered: new Date().toISOString().split('T')[0],
-              profilePic: partialProfile.profilePic,
               registeredRole: partialProfile.registeredRole || 'Youth Constituent',
               barangayId: partialProfile.barangayId || '',
               registeredProgramsCount: 0,

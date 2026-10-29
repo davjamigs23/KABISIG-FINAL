@@ -371,6 +371,38 @@ export default function OfficialPages({
   const [showProgModal, setShowProgModal] = useState(false);
   const [programNotice, setProgramNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const handleDownloadPDFReport = async () => {
+    // Determine the title and table headers based on the active tab
+    let reportTitle = 'Official Report';
+    let tableHeaders = '';
+    let tableRows = '';
+
+    if (reportModuleCategory === 'attendance') {
+      reportTitle = 'Attendance Report';
+      tableHeaders = '<th>Participant</th><th>Program</th><th>Status</th>';
+      tableRows = registrations.map((r: any) => `<tr><td>${r.user?.full_name || 'Youth'}</td><td>${programs.find(p => p.id === r.programId)?.title || ''}</td><td>${r.status}</td></tr>`).join('');
+    } else if (reportModuleCategory === 'accomplishment') {
+      reportTitle = 'Accomplishment Report';
+      tableHeaders = '<th>Program Title</th><th>Category</th><th>Participants</th>';
+      tableRows = programs.map(p => `<tr><td>${p.title}</td><td>${p.category}</td><td>${p.registeredCount}</td></tr>`).join('');
+    } else {
+      // Fallback for others
+      reportTitle = reportModuleCategory.toUpperCase() + ' Report';
+      tableHeaders = '<th>Data</th><th>Details</th>';
+      tableRows = '<tr><td>Generated via KABISIG</td><td>System Export</td></tr>';
+    }
+
+    const htmlContent = `
+      <div style="font-family: sans-serif; padding: 20px;">
+        <h1 style="text-align: center;">Barangay ${currentTenant?.name || ''}</h1>
+        <h2 style="text-align: center; color: #091d64;">${reportTitle}</h2>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+          <thead style="background-color: #091d64; color: white;">
+            <tr>${tableHeaders}</tr>
+          </thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </div>
+    `;
     const html2pdf = (await import('html2pdf.js')).default;
     const container = document.createElement('div');
     container.style.padding = '20px';
