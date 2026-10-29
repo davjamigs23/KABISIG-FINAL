@@ -283,7 +283,7 @@ export default function PublicPages({
       }
 
             if (dbUser?.status === 'rejected') {
-        alert('Access Denied!\n\nYour account application was rejected. Please go to the "Create Account" tab to update your information and upload a valid ID again.');
+        alert(`Access Denied!\n\nYour account application was rejected.\nReason: ${dbUser?.rejection_reason || 'No specific reason provided.'}\n\nPlease go to the "Create Account" tab to update your information and upload a valid ID again.`);
         setIsLoggingIn(false);
         return;
       }
