@@ -1440,7 +1440,6 @@ router.get(
         name: u.full_name,
         email: u.email || 'N/A',
         phone: u.phone || '',
-        status: u.status === 'active' ? 'Approved' : (u.status === 'rejected' ? 'Rejected' : 'Pending'),
         zone: prof.zone || 'N/A',
         birthdate: prof.birthdate || '',
         address: prof.address || '',

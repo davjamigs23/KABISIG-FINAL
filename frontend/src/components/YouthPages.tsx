@@ -1423,17 +1423,17 @@ export default function YouthPages({
                         {/* 14. Employment Status */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">14. Employment Status</td>
-                          <td className="py-2.5 px-4 font-bold">{youth.employmentStatus || 'Student'}</td>
+                          <td className="py-2.5 px-4 font-bold">{youth.employmentStatus || 'Not specified'}</td>
                         </tr>
                         {/* 15. Scholar Status */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">15. Scholar Status</td>
-                          <td className="py-2.5 px-4 font-bold text-emerald-700">{youth.scholarStatus} {youth.scholarshipType ? `(${youth.scholarshipType})` : ''}</td>
+                          <td className="py-2.5 px-4 font-bold text-emerald-700">{(youth.scholarStatus || 'Not specified')} {youth.scholarshipType ? `(${youth.scholarshipType})` : ''}</td>
                         </tr>
                         {/* 16. Youth Sector */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">16. Youth Sector</td>
-                          <td className="py-2.5 px-4 font-bold text-violet-700">{youth.youthSector || 'In-School Youth'}</td>
+                          <td className="py-2.5 px-4 font-bold text-violet-700">{youth.youthSector || 'Not specified'}</td>
                         </tr>
                         {/* 17. Parent/Guardian Information */}
                         <tr className="hover:bg-slate-50/50">

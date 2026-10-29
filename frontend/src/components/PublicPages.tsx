@@ -467,17 +467,8 @@ export default function PublicPages({
           return;
         }
       } else {
-        const validEduStatuses = ['Elementary', 'High School', 'Vocational', 'College', 'Post-Graduate', 'Out of School Youth'];
-        const isEdu = validEduStatuses.includes(signUpForm.educationalLevel);
-        const educationalStatus = isEdu ? signUpForm.educationalLevel : undefined;
-        let employmentStatus: 'Employed' | 'Unemployed' | 'Self-Employed' | 'Student' | undefined;
-        if (signUpForm.educationalLevel === 'Employed') {
-          employmentStatus = 'Employed';
-        } else if (signUpForm.educationalLevel === 'Unemployed' || signUpForm.educationalLevel === 'Out of School Youth') {
-          employmentStatus = 'Unemployed';
-        } else {
-          employmentStatus = 'Student';
-        }
+         const educationalStatus = (signUpForm.educational_status || undefined) as 'Elementary' | 'High School' | 'Vocational' | 'College' | 'Post-Graduate' | 'Out of School Youth' | undefined;
+         const employmentStatus = (signUpForm.employment_status || undefined) as 'Employed' | 'Unemployed' | 'Self-Employed' | 'Student' | undefined;
 
         const _compressAndReadB64 = (file: File): Promise<string> => {
           return new Promise((resolve, reject) => {

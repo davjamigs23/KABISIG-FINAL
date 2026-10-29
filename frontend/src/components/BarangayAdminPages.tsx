@@ -618,7 +618,7 @@ export default function BarangayAdminPages({
     const matchesBarangay = isMatchBarangay(profile);
     const matchesSearch = profile.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       profile.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      profile.zone.toLowerCase().includes(searchTerm.toLowerCase());
+      String(profile.zone || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = filterStatus === 'All' ? true : profile.status === filterStatus;
     return matchesBarangay && matchesSearch && matchesStatus;
   });
@@ -1898,7 +1898,7 @@ return (
                           </td>
                           <td className="px-6 py-4 text-center truncate">
                             <button 
-                              onClick={() => { kabisigApi.getYouthDirectory().then(res => { if(res.success && res.data) { const fresh = res.data.find(x => x.id === p.id || x.user_id === (p as any).user_id); if(fresh) setInspectProfile(fresh); else setInspectProfile(p); } else { setInspectProfile(p); } }); }}
+                              onClick={() => { setInspectProfile(null); setTimeout(() => setInspectProfile({...p}), 10); }}
                               className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-extrabold rounded-lg flex items-center gap-1 mx-auto transition-colors cursor-pointer"
                             >
                               <Eye className="w-3.5 h-3.5 text-slate-500" />
@@ -3044,7 +3044,7 @@ return (
 
       {/* INSPECT PROFILE MODAL */}
       {inspectProfile && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+        <div key={`modal-${inspectProfile.userId || inspectProfile.id}-${inspectProfile.name || ''}`} className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200">
             <div className="bg-[#091d64] text-white p-5 border-b-4 border-[#fbbf24] flex items-center justify-between">
               <div>
@@ -3181,7 +3181,7 @@ return (
                       <div className="space-y-2">
                         <div className="border border-slate-200 rounded-lg overflow-hidden bg-slate-50">
                           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2 pt-2">Front Side</p>
-                          <img src={youthVerification.signed_url} alt="ID Front" className="w-full max-h-64 object-contain bg-white" />
+                          <img src={`https://vzmkgnatwqxiukxpqvvy.supabase.co/storage/v1/object/public/verification-ids/${youthVerification.id_document_path}`} alt="ID Front" className="w-full max-h-64 object-contain bg-white" />
                         </div>
                         {youthVerification.back_signed_url && (
                           <div className="border border-slate-200 rounded-lg overflow-hidden bg-slate-50">
@@ -3275,7 +3275,7 @@ return (
 
       {/* UPLOAD DOCUMENT MODAL */}
       {showUploadDocModal && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+        <div key={`modal-${inspectProfile.userId || inspectProfile.id}-${inspectProfile.name || ''}`} className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-xl w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200 text-left">
             <div className="bg-[#091d64] text-white p-5 border-b-4 border-[#fbbf24] flex items-center justify-between">
               <div className="flex items-center gap-2.5">
