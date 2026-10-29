@@ -371,57 +371,64 @@ export default function OfficialPages({
   const [showProgModal, setShowProgModal] = useState(false);
   const [programNotice, setProgramNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const handleDownloadPDFReport = async () => {
-    // Determine the title and table headers based on the active tab
-    let reportTitle = 'Official Report';
-    let tableHeaders = '';
-    let tableRows = '';
+    const container = document.createElement('div');
+    container.style.padding = '40px';
+    container.style.fontFamily = 'Arial, sans-serif';
+    container.style.color = '#0f172a';
+
+    let title = 'KABISIG Official Report';
+    let bodyHtml = '';
 
     if (reportModuleCategory === 'attendance') {
-      reportTitle = 'Attendance Report';
-      tableHeaders = '<th>Participant</th><th>Program</th><th>Status</th>';
-      tableRows = registrations.map((r: any) => `<tr><td>${r.user?.full_name || 'Youth'}</td><td>${programs.find(p => p.id === r.programId)?.title || ''}</td><td>${r.status}</td></tr>`).join('');
-    } else if (reportModuleCategory === 'accomplishment') {
-      reportTitle = 'Accomplishment Report';
-      tableHeaders = '<th>Program Title</th><th>Category</th><th>Participants</th>';
-      tableRows = programs.map(p => `<tr><td>${p.title}</td><td>${p.category}</td><td>${p.registeredCount}</td></tr>`).join('');
+      title = 'Program Attendance Report';
+      bodyHtml = `
+        <table style="width:100%; border-collapse: collapse; margin-top: 20px; font-size: 12px;">
+          <thead style="background-color: #091d64; color: white;">
+            <tr><th style="padding:10px; border:1px solid #cbd5e1;">Participant</th><th style="padding:10px; border:1px solid #cbd5e1;">Program</th><th style="padding:10px; border:1px solid #cbd5e1;">Status</th></tr>
+          </thead>
+          <tbody>
+            ${reportAttendance.map((a: any) => `<tr><td style="padding:10px; border:1px solid #cbd5e1;">${a.user?.full_name || 'Youth'}</td><td style="padding:10px; border:1px solid #cbd5e1;">${a.program_title || 'Program'}</td><td style="padding:10px; border:1px solid #cbd5e1;">${a.status || 'Attended'}</td></tr>`).join('') || '<tr><td colspan="3" style="padding:10px; text-align:center;">No data</td></tr>'}
+          </tbody>
+        </table>
+      `;
+    } else if (reportModuleCategory === 'residents') {
+      title = 'KK Constituent Masterlist';
+      bodyHtml = `
+        <table style="width:100%; border-collapse: collapse; margin-top: 20px; font-size: 12px;">
+          <thead style="background-color: #091d64; color: white;">
+            <tr><th style="padding:10px; border:1px solid #cbd5e1;">Name</th><th style="padding:10px; border:1px solid #cbd5e1;">Zone</th><th style="padding:10px; border:1px solid #cbd5e1;">Education</th></tr>
+          </thead>
+          <tbody>
+            ${localYouthProfiles.map((y: any) => `<tr><td style="padding:10px; border:1px solid #cbd5e1;">${y.name}</td><td style="padding:10px; border:1px solid #cbd5e1;">${y.zone}</td><td style="padding:10px; border:1px solid #cbd5e1;">${y.educationalLevel}</td></tr>`).join('') || '<tr><td colspan="3" style="padding:10px; text-align:center;">No data</td></tr>'}
+          </tbody>
+        </table>
+      `;
     } else {
-      // Fallback for others
-      reportTitle = reportModuleCategory.toUpperCase() + ' Report';
-      tableHeaders = '<th>Data</th><th>Details</th>';
-      tableRows = '<tr><td>Generated via KABISIG</td><td>System Export</td></tr>';
+      title = 'Official Compliance Report';
+      bodyHtml = `
+        <table style="width:100%; border-collapse: collapse; margin-top: 20px; font-size: 12px;">
+          <thead style="background-color: #091d64; color: white;">
+            <tr><th style="padding:10px; border:1px solid #cbd5e1;">Title</th><th style="padding:10px; border:1px solid #cbd5e1;">Category</th><th style="padding:10px; border:1px solid #cbd5e1;">Status</th></tr>
+          </thead>
+          <tbody>
+            ${localDocs.map((d: any) => `<tr><td style="padding:10px; border:1px solid #cbd5e1;">${d.title}</td><td style="padding:10px; border:1px solid #cbd5e1;">${d.document_type}</td><td style="padding:10px; border:1px solid #cbd5e1;">${d.status}</td></tr>`).join('') || '<tr><td colspan="3" style="padding:10px; text-align:center;">No data</td></tr>'}
+          </tbody>
+        </table>
+      `;
     }
 
-    const htmlContent = `
-      <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: #1e293b;">
-        <div style="text-align: center; margin-bottom: 30px; border-bottom: 3px solid #091d64; padding-bottom: 20px;">
-          <img src="https://kabisig-frontend.vercel.app/icon.png" alt="KABISIG Logo" style="height: 60px; margin-bottom: 10px;" />
-          <h1 style="color: #091d64; margin: 0; font-size: 24px; font-weight: 900;">KABISIG</h1>
-          <p style="margin: 5px 0 0 0; font-size: 14px; color: #64748b;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p>
-          <p style="margin: 2px 0 0 0; font-size: 12px; font-weight: bold; color: #091d64;">Barangay ${currentTenant?.name || 'San Francisco'} • Naga City</p>
-        </div>
-        <h2 style="color: #091d64; font-size: 18px; margin-bottom: 20px; text-transform: uppercase;">${reportTitle}</h2>
-        <table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px;">
-          <thead style="background-color: #091d64; color: white;">
-            <tr>${tableHeaders}</tr>
-          </thead>
-          <tbody>${tableRows}</tbody>
-        </table>
-        <div style="margin-top: 40px; font-size: 10px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 10px;">
-          Generated on ${new Date().toLocaleString()} • This is a system-generated document.
-        </div>
+    container.innerHTML = `
+      <div style="text-align: center; margin-bottom: 30px; border-bottom: 3px solid #091d64; padding-bottom: 20px;">
+        <h1 style="color: #091d64; margin: 0; font-size: 24px; font-weight: 900;">KABISIG</h1>
+        <p style="margin: 5px 0 0 0; font-size: 12px; font-weight: bold; color: #091d64;">Barangay ${currentTenant?.name || 'Naga City'} • Naga City</p>
       </div>
-        <h1 style="text-align: center;">Barangay ${currentTenant?.name || ''}</h1>
-        <h2 style="text-align: center; color: #091d64;">${reportTitle}</h2>
-        <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
-          <thead style="background-color: #091d64; color: white;">
-            <tr>${tableHeaders}</tr>
-          </thead>
-          <tbody>${tableRows}</tbody>
-        </table>
+      <h2 style="color: #091d64; font-size: 18px; text-transform: uppercase;">${title}</h2>
+      ${bodyHtml}
+      <div style="margin-top: 40px; font-size: 10px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 10px;">
+        Generated on ${new Date().toLocaleString()} • This is a system-generated document.
       </div>
     `;
     const html2pdf = (await import('html2pdf.js')).default;
-    const container = document.createElement('div');
     container.style.padding = '20px';
     document.body.appendChild(container);
     
@@ -5129,7 +5136,7 @@ export default function OfficialPages({
                 <span className="text-xs font-bold text-slate-700 block">
                   {docForm.fileName ? `Attached: ${docForm.fileName}` : 'Select compliance report attachment'}
                 </span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">PDF, Excel, Word files supported (Max 25MB)</span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">PDF, Excel, Word, JPG, PNG files supported (Max 25MB)</span>
               </div>
               {documentUploadError && <p role="alert" className="text-[11px] font-semibold text-rose-700">{documentUploadError}</p>}
               <div className="flex justify-end gap-2 border-t pt-4">
@@ -5922,3 +5929,4 @@ export default function OfficialPages({
     </div>
   );
 }
+
