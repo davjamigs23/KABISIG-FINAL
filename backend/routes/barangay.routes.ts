@@ -120,15 +120,12 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
       return;
     }
 
-    const { data: chairpersons } = await supabaseAdmin
-      .from('users')
-      .select('*')
-      .eq('role_id', 2)
-      .eq('status', 'active');
-
+    // Fetch ALL users to bypass any role_id type mismatches in PostgREST
+    const { data: allUsers } = await supabaseAdmin.from('users').select('*');
     const chairMap = new Map<string, any>();
-    chairpersons?.forEach((c) => {
-      if (c.tenant_id) chairMap.set(c.tenant_id, c);
+    allUsers?.forEach((c) => {
+      const isChair = String(c.role_id) === '2' && String(c.status).toLowerCase() === 'active';
+      if (c.tenant_id && isChair) chairMap.set(c.tenant_id, c);
     });
 
     const { data: programs } = await supabaseAdmin

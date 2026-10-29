@@ -998,7 +998,7 @@ export default function PublicPages({
                           >
                             <option value="">Select a Barangay</option>
                             {barangays.map(b => (
-                              <option key={b.id} value={b.id} disabled={!b.chairperson || b.chairperson === 'Unassigned'}>
+                              <option key={b.id} value={b.id} disabled={!b.chairperson || b.chairperson === 'Unassigned' || String(b.chairperson).trim() === ''}>
                                 {b.name} {(!b.chairperson || b.chairperson === 'Unassigned') ? '(No Chairperson Yet)' : ''}
                               </option>
                             ))}
