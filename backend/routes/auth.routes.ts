@@ -419,6 +419,8 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
         marital_status: marital_status || 'Single',
         is_pwd: is_pwd || false,
         is_solo_parent: is_solo_parent || false,
+        guardian_name: guardian_name || null,
+        guardian_contact: guardian_contact || null,
         ...(frontPath ? { id_document_path: frontPath } : {}),
         ...(backPath ? { id_back_document_path: backPath } : {}),
         updated_at: new Date().toISOString()
