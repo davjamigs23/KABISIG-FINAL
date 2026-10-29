@@ -328,6 +328,10 @@ class KabisigApiClient {
 
   async setupOfficialPassword(payload: {
     email: string;
+    course?: string;
+    school?: string;
+    year?: string;
+    youth_sector?: string;
     password: string;
     confirmPassword: string;
     full_name: string;
@@ -395,6 +399,10 @@ class KabisigApiClient {
 
   async setupChairpersonPassword(data: {
     email: string;
+    course?: string;
+    school?: string;
+    year?: string;
+    youth_sector?: string;
     password: string;
     confirmPassword: string;
     full_name?: string;
@@ -421,6 +429,10 @@ class KabisigApiClient {
 
   async registerYouth(payload: {
     email: string;
+    course?: string;
+    school?: string;
+    year?: string;
+    youth_sector?: string;
     password?: string;
     full_name: string;
     first_name?: string;
@@ -442,9 +454,6 @@ class KabisigApiClient {
     marital_status?: string;
     is_pwd?: boolean;
     is_solo_parent?: boolean;
-    school?: string;
-    course?: string;
-    year?: string;
     is_registered_voter?: boolean;
     id_type?: string;
     id_number?: string;
@@ -467,6 +476,10 @@ class KabisigApiClient {
 
   async registerOfficial(payload: {
     email: string;
+    course?: string;
+    school?: string;
+    year?: string;
+    youth_sector?: string;
     password?: string;
     full_name: string;
     barangay_id: string;
