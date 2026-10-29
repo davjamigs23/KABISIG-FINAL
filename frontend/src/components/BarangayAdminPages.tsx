@@ -3181,7 +3181,7 @@ return (
                       <div className="space-y-2">
                         <div className="border border-slate-200 rounded-lg overflow-hidden bg-slate-50">
                           <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2 pt-2">Front Side</p>
-                          <img src={youthVerification.signed_url} alt="ID Front" className="w-full max-h-64 object-contain bg-white" />
+                          <img src={`${youthVerification.signed_url}&v=${youthVerification.id_document_path}`} alt="ID Front" className="w-full max-h-64 object-contain bg-white" />
                         </div>
                         {youthVerification.back_signed_url && (
                           <div className="border border-slate-200 rounded-lg overflow-hidden bg-slate-50">

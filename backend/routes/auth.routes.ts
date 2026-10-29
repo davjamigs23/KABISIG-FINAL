@@ -368,7 +368,7 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
       const { error: updateErr } = await supabaseAdmin
         .from('users')
         .update({ status: 'pending' })
-        .eq('id', existingUser.id);
+        .eq('id', existingUser!.id);
 
       if (updateErr) {
         sendError(res, 'Failed to reactivate rejected account.', 500);
@@ -378,17 +378,51 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
       await supabaseAdmin
         .from('resident_profile')
         .update({ verification_status: 'submitted' })
-        .eq('user_id', existingUser.id);
+        .eq('user_id', existingUser!.id);
 
-      sendSuccess(res, { id: existingUser.id, status: 'pending' }, 'Rejected account reset to pending. Please sign in and upload your ID again.');
+      sendSuccess(res, { id: existingUser!.id, status: 'pending' }, 'Rejected account reset to pending. Please sign in and upload your ID again.');
       return;
     }
 
     if (existingUser.status === 'rejected') {
       // Allow rejected users to re-apply by resetting their status to pending
-      await supabaseAdmin.from('users').update({ status: 'pending' }).eq('id', existingUser.id);
-      await supabaseAdmin.from('resident_profile').update({ verification_status: 'submitted' }).eq('user_id', existingUser.id);
-      sendSuccess(res, { id: existingUser.id, status: 'pending' }, 'Rejected account reset to pending. Please sign in to re-upload your ID.');
+            // Allow rejected users to re-apply by resetting their status to pending
+      await supabaseAdmin.from('users').update({ status: 'pending' }).eq('id', existingUser!.id);
+      
+      let frontPath = null;
+      let backPath = null;
+      
+      if (id_document_base64) {
+        const frontFileName = `${existingUser!.id}/front-${Date.now()}.${(id_document_mime || 'image/jpeg').split('/')[1] || 'jpg'}`;
+        const { error: fErr } = await supabaseAdmin.storage
+          .from('verification-ids')
+          .upload(frontFileName, Buffer.from(id_document_base64, 'base64'), {
+            contentType: id_document_mime || 'image/jpeg',
+            upsert: true
+          });
+        if (!fErr) frontPath = frontFileName;
+      }
+      
+      if (id_back_document_base64) {
+        const backFileName = `${existingUser!.id}/back-${Date.now()}.${(id_back_document_mime || 'image/jpeg').split('/')[1] || 'jpg'}`;
+        const { error: bErr } = await supabaseAdmin.storage
+          .from('verification-ids')
+          .upload(backFileName, Buffer.from(id_back_document_base64, 'base64'), {
+            contentType: id_back_document_mime || 'image/jpeg',
+            upsert: true
+          });
+        if (!bErr) backPath = backFileName;
+      }
+
+      await supabaseAdmin.from('resident_profile').update({ 
+        verification_status: 'submitted',
+        ...(frontPath ? { id_document_path: frontPath } : {}),
+        ...(backPath ? { id_back_document_path: backPath } : {})
+      }).eq('user_id', existingUser!.id);
+      
+      sendSuccess(res, { id: existingUser!.id, status: 'pending' }, 'Rejected account reset to pending. Please sign in to re-upload your ID.');
+      return;
+      sendSuccess(res, { id: existingUser!.id, status: 'pending' }, 'Rejected account reset to pending. Please sign in to re-upload your ID.');
       return;
     }
     const statusMessage = existingUser.status === 'pending'
