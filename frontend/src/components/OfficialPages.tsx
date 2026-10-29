@@ -3912,7 +3912,7 @@ export default function OfficialPages({
                                 <td className="px-5 py-3 font-bold text-slate-800">{y.name}</td>
                                 <td className="px-5 py-3 font-bold text-slate-600">{y.zone || 'Not Specified'}</td>
                                 <td className="px-5 py-3 text-slate-700">{y.educationalLevel}</td>
-                                <td className="px-5 py-3 text-slate-500">{y.school || 'Unspecified Institute'}</td>
+                                <td className="px-5 py-3 text-slate-500">{y.course ? `${y.course} · ` : ''}{y.course ? `${y.course} · ` : ''}{y.school || 'Unspecified Institute'}</td>
                                 <td className="px-5 py-3">
                                   <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${y.scholarStatus === 'Scholar' ? 'bg-indigo-50 text-[#091d64]' : 'bg-slate-100 text-slate-500'}`}>{y.scholarStatus}</span>
                                 </td>
@@ -4350,7 +4350,7 @@ export default function OfficialPages({
                           </td>
                           <td className="px-6 py-4">
                             <span className="font-bold text-slate-800 block">{y.educationalLevel}</span>
-                            <span className="text-[11px] text-slate-400 font-semibold block">{y.school || 'Unassigned Institute'}</span>
+                            <span className="text-[11px] text-slate-400 font-semibold block">{y.course ? `${y.course} · ` : ''}{y.school || 'Unassigned Institute'}</span>
                           </td>
                           <td className="px-6 py-4 text-center">
                             <span className="px-2.5 py-1 bg-slate-100 rounded text-slate-700 font-bold text-[10px]">{y.zone || 'Not Specified'}</span>
@@ -4457,7 +4457,7 @@ export default function OfficialPages({
                         </td>
                         <td className="px-6 py-4">
                           <span className="font-bold text-slate-700 block">{y.educationalLevel}</span>
-                          <span className="text-[10px] text-slate-400 font-semibold block">{y.school || 'Unspecified school'}</span>
+                          <span className="text-[10px] text-slate-400 font-semibold block">{y.course ? `${y.course} · ` : ''}{y.school || 'Unspecified school'}</span>
                         </td>
                         <td className="px-6 py-4 text-center">
                           <span className="px-2 py-1 bg-slate-100 rounded text-slate-700 font-bold text-[10px]">{y.zone || 'Not Specified'}</span>

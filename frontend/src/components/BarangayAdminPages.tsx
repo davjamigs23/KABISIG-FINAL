@@ -1562,9 +1562,7 @@ return (
         {/* DESKTOP HEADER */}
         <header className="hidden lg:flex bg-white border-b border-slate-100 h-20 items-center justify-between px-8 flex-shrink-0 z-30">
           <div className="flex items-center gap-4">
-            <div className="flex flex-col">
-              <div className="flex items-center gap-3">
-                <h1 className="font-sans font-extrabold text-[#091d64] text-2xl tracking-tight leading-none">
+            <div className="flex flex-col"><div className="flex items-center gap-3"><img src={currentBarangay?.logo || "/icon.png"} alt="Barangay Logo" className="h-8 w-auto object-contain" /><h1 className="font-sans font-extrabold text-[#091d64] text-2xl tracking-tight leading-none">
                   {activeMenu === 'dashboard' && `Barangay ${currentBarangay?.name || 'Barangay'} Dashboard`}
                   {activeMenu === 'youth' && 'Youth Management Registry'}
                   {activeMenu === 'programs' && 'Manage Programs'}
@@ -3082,7 +3080,7 @@ return (
                 </div>
                 <div>
                   <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Education</span>
-                  <span className="text-slate-800 block">{inspectProfile.educationalLevel || 'Not provided'}{inspectProfile.school ? ` · ${inspectProfile.school}` : ''}</span>
+                  <span className="text-slate-800 block">{inspectProfile.educationalLevel || 'Not provided'} {inspectProfile.course ? ` · ${inspectProfile.course}` : ''} {inspectProfile.school ? ` · ${inspectProfile.school}` : ''}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Employment & scholarship</span>
