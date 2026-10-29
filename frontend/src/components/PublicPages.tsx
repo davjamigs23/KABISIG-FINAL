@@ -360,6 +360,11 @@ export default function PublicPages({
   };
 
   const handleSignUpSubmit = async () => {
+    if (!signUpForm.educational_status || !signUpForm.employment_status) {
+      setCustomError("Please go back to Step 3 and fill out Educational Attainment and Employment Status.");
+      setSignUpStep(3);
+      return;
+    }
     if (!signUpForm.idFrontFile) {
       alert("A valid ID is required to register. Please upload your ID to continue.");
       setSignUpStep(4);

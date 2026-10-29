@@ -405,7 +405,7 @@ export default function OfficialPages({
           <tr>${tableHeaders}</tr>
         </thead>
         <tbody style="text-align: left;">
-          ${tableRows || '<tr><td colspan="3" style="text-align: center;">No data available.</td></tr>'}
+          ${tableRows || '<tr><td colspan="3" style="text-align: center;">No records found for this category.</td></tr>'}
         </tbody>
       </table>
       <div style="margin-top: 40px; font-size: 10px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 10px;">

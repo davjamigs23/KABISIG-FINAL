@@ -1898,7 +1898,7 @@ return (
                           </td>
                           <td className="px-6 py-4 text-center truncate">
                             <button 
-                              onClick={() => setInspectProfile(p)}
+                              onClick={() => { kabisigApi.getYouthDirectory().then(res => { if(res.success && res.data) { const fresh = res.data.find(x => x.id === p.id || x.user_id === (p as any).user_id); if(fresh) setInspectProfile(fresh); else setInspectProfile(p); } else { setInspectProfile(p); } }); }}
                               className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-extrabold rounded-lg flex items-center gap-1 mx-auto transition-colors cursor-pointer"
                             >
                               <Eye className="w-3.5 h-3.5 text-slate-500" />
