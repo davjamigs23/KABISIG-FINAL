@@ -511,7 +511,7 @@ export default function OfficialPages({
   // Tax withholding calculations (for expense form)
   const [calcVat, setCalcVat] = useState(0);
   const [calcWithholding, setCalcWithholding] = useState(0);
-  const [calcNet, setCalcNet] = useState(10000);
+  const [calcNet, setCalcNet] = useState(0);
 
   useEffect(() => {
     if (!currentTenant?.id) {

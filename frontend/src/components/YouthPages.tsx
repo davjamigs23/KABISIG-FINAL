@@ -108,6 +108,7 @@ export default function YouthPages({
   const barangayLogo = resolvedTenant?.logo || DEFAULT_BARANGAY_LOGOS[resolvedTenant?.name || ''] || '';
   // Navigation inside Youth Portal corresponding exactly to Image 4 Sidebar:
   // 'dashboard' | 'profile' | 'programs' | 'registrations' | 'feedback' | 'resolutions' | 'announcements' | 'settings'
+  const [zoomImage, setZoomImage] = useState<string | null>(null);
   const [activeMenu, setActiveMenu] = useState<
     'dashboard' | 'programs' | 'registrations' | 'feedback' | 'profile' | 'resolutions' | 'announcements' | 'settings'
    | 'directory' | 'directory'>('dashboard');
@@ -1915,7 +1916,7 @@ export default function YouthPages({
                         <span className="text-[10px] font-semibold text-slate-400">{announcement.datePosted}</span>
                       </div>
                       <h4 className="mt-3 text-sm font-black leading-tight text-slate-900">{announcement.title}</h4>
-                      {announcement.imageUrl && <img src={announcement.imageUrl} alt={`Pubmat for ${announcement.title}`} className="mt-3 max-h-80 w-full rounded-lg border border-slate-200 bg-white object-contain" />}
+                      {announcement.imageUrl && <img src={announcement.imageUrl} alt={`Pubmat for ${announcement.title}`} onClick={() => setZoomImage(announcement.imageUrl)} className="mt-3 max-h-80 w-full rounded-lg border border-slate-200 bg-white object-contain cursor-pointer hover:opacity-90 transition-opacity" />}
                       <div className="mt-3 space-y-1.5 text-xs text-slate-600">
                         {announcement.what && <p><strong className="text-slate-800">What:</strong> {announcement.what}</p>}
                         {announcement.where && <p><strong className="text-slate-800">Where:</strong> {announcement.where}</p>}
@@ -2564,6 +2565,20 @@ export default function YouthPages({
               {uploadingId ? 'Uploading...' : 'Submit ID for Verification'}
             </button>
           </div>
+        </div>
+      )}      {zoomImage && (
+        <div 
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 p-4 animate-in fade-in duration-200 cursor-zoom-out"
+          onClick={() => setZoomImage(null)}
+        >
+          <img 
+            src={zoomImage} 
+            alt="Zoomed Announcement" 
+            className="max-w-full max-h-[95vh] object-contain rounded-lg shadow-2xl"
+          />
+          <button className="absolute top-4 right-4 text-white bg-white/20 hover:bg-white/40 p-2 rounded-full transition-colors">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
         </div>
       )}</div>
   );
