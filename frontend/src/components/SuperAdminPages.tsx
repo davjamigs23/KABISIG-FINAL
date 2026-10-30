@@ -890,7 +890,7 @@ useEffect(() => {
                   >
                     <ShieldCheck className="w-4 h-4" /> Invite SK Official
                   </button>
-                  <button 
+                  <button onClick={() => setShowLydpModal(true)}
                     className="px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-amber-950 font-extrabold rounded-xl text-xs transition-colors flex items-center gap-2 cursor-pointer shadow-xs"
                   >
                     <FileText className="w-4 h-4" /> Generate LYDP Report
