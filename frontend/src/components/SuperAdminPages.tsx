@@ -888,7 +888,6 @@ useEffect(() => {
                     <ShieldCheck className="w-4 h-4" /> Invite SK Official
                   </button>
                   <button 
-                    onClick={() => setShowLydpModal(true)}
                     className="px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-amber-950 font-extrabold rounded-xl text-xs transition-colors flex items-center gap-2 cursor-pointer shadow-xs"
                   >
                     <FileText className="w-4 h-4" /> Generate LYDP Report
@@ -2304,6 +2303,56 @@ useEffect(() => {
           </div>
         </div>
       )}
-    </div>
+          {showEmailModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-amber-500 p-4 flex justify-between items-center text-white">
+              <div>
+                <h3 className="font-bold text-lg">Manage User Credentials</h3>
+                <p className="text-xs text-amber-100">Update email addresses securely.</p>
+              </div>
+              <button onClick={() => setShowEmailModal(false)} className="text-white hover:text-amber-200">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              setIsUpdatingEmail(true);
+              const res = await kabisigApi.updateUserEmail(emailForm);
+              setIsUpdatingEmail(false);
+              if (res.success) {
+                alert('Email updated successfully!');
+                setShowEmailModal(false);
+                setEmailForm({ current_email: '', new_email: '', reason: '' });
+              } else {
+                alert(res.message || 'Failed to update email.');
+              }
+            }} className="p-6 space-y-4">
+              
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Current Email (of User)</label>
+                <input required type="email" placeholder="user@example.com" value={emailForm.current_email} onChange={e => setEmailForm({...emailForm, current_email: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-amber-500" />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">New Email Address</label>
+                <input required type="email" placeholder="new.email@example.com" value={emailForm.new_email} onChange={e => setEmailForm({...emailForm, new_email: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-amber-500" />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Reason for Change (Audit Log)</label>
+                <input required type="text" placeholder="e.g., Official government email requested" value={emailForm.reason} onChange={e => setEmailForm({...emailForm, reason: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-amber-500" />
+              </div>
+
+              <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
+                <button type="button" onClick={() => setShowEmailModal(false)} className="px-4 py-2 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50">Cancel</button>
+                <button type="submit" disabled={isUpdatingEmail} className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl disabled:opacity-50">
+                  {isUpdatingEmail ? 'Updating...' : 'Update Email'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}</div>
   );
 }
