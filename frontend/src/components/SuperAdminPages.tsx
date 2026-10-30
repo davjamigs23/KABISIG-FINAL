@@ -78,6 +78,9 @@ useEffect(() => {
 
   // LYDP Report Modal
   const [showLydpModal, setShowLydpModal] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailForm, setEmailForm] = useState({ current_email: '', new_email: '', reason: '' });
+  const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
 
   // Dedicated Assign SK Chairperson Modal State (Email-only)
   const [showAssignModal, setShowAssignModal] = useState(false);
@@ -865,6 +868,12 @@ useEffect(() => {
                     className="px-4 py-2.5 bg-white text-[#091d64] hover:bg-blue-50 font-bold rounded-xl text-xs transition-colors flex items-center gap-2 cursor-pointer shadow-xs border border-slate-200"
                   >
                     <Building2 className="w-4 h-4" /> Manage Barangays
+                  </button>
+                  <button 
+                    onClick={() => setShowEmailModal(true)}
+                    className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-xs transition-colors flex items-center gap-2 cursor-pointer shadow-xs"
+                  >
+                    <span className="font-black text-sm">@</span> Manage Credentials
                   </button>
                   <button
                     onClick={() => handleOpenAssignModal()}

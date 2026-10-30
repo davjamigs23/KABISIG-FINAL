@@ -1367,3 +1367,54 @@ router.get(
 );
 
 export default router;
+
+// POST /api/admin/update-user-email - Super Admin only
+router.post(
+  '/update-user-email',
+  authenticateUser,
+  requireRoles('SUPER_ADMIN'),
+  async (req: Request, res: Response): Promise<void> => {
+    const { target_user_id, current_email, new_email, reason } = req.body;
+    if ((!target_user_id && !current_email) || !new_email) {
+      sendError(res, 'User ID (or Current Email) and new email are required.', 400);
+      return;
+    }
+
+    let userIdToUpdate = target_user_id;
+
+    // If only email is provided, look up the user ID
+    if (!userIdToUpdate && current_email) {
+      const { data: foundUser } = await supabaseAdmin.from('users').select('id').eq('email', current_email).single();
+      if (!foundUser) {
+        sendError(res, 'User with the provided current email not found.', 404);
+        return;
+      }
+      userIdToUpdate = foundUser.id;
+    }
+
+    // 1. Update Supabase Auth (Login Credentials)
+    const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(userIdToUpdate, { email: new_email });
+    if (authError) {
+      sendError(res, 'Failed to update Auth email: ' + authError.message, 500);
+      return;
+    }
+
+    // 2. Update Public Users Table
+    const { error: dbError } = await supabaseAdmin.from('users').update({ email: new_email }).eq('id', userIdToUpdate);
+    if (dbError) {
+      sendError(res, 'Failed to update database email: ' + dbError.message, 500);
+      return;
+    }
+
+    // 3. Audit Log
+    await recordAuditLog({
+      userId: (req as AuthRequest).user!.id,
+      action: 'UPDATE_USER_EMAIL',
+      entityName: 'users',
+      entityId: userIdToUpdate,
+      details: { new_email, reason },
+    });
+
+    sendSuccess(res, null, 'User email updated successfully.');
+  }
+);

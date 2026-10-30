@@ -896,8 +896,8 @@ class KabisigApiClient {
     });
   }
 
-  async updateUserEmail(userId: string, email: string): Promise<{ success: boolean; message?: string }> {
-    return await this.request<any>('/admin/users/' + userId + '/email', { method: 'PATCH', body: JSON.stringify({ email }) });
+  async updateUserEmail(payload: { target_user_id?: string; current_email?: string; new_email: string; reason: string }): Promise<{ success: boolean; message?: string }> {
+    return await this.request<any>('/admin/update-user-email', { method: 'POST', body: JSON.stringify(payload) });
   }
 
   async requestEmailChange(new_email: string): Promise<{ success: boolean; message?: string }> {
