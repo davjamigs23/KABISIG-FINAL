@@ -941,7 +941,10 @@ class KabisigApiClient {
     const res = await this.request<any[]>('/users/suspended', { method: 'GET' });
     return res.success ? (res.data || []) : [];
   }
-}
+
+  async getEmailHistory(): Promise<{ success: boolean; data?: any[]; message?: string }> {
+    return await this.request<any[]>('/admin/email-history', { method: 'GET' });
+  }}
 
 export const kabisigApi = new KabisigApiClient();
 export default kabisigApi;

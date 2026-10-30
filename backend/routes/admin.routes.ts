@@ -1418,3 +1418,22 @@ router.post(
     sendSuccess(res, null, 'User email updated successfully.');
   }
 );
+// GET /api/admin/email-history - Super Admin only
+router.get(
+  '/email-history',
+  authenticateUser,
+  requireRoles('SUPER_ADMIN'),
+  async (req: Request, res: Response): Promise<void> => {
+    const { data, error } = await supabaseAdmin
+      .from('audit_logs')
+      .select('id, created_at, user_id, details, users(full_name)')
+      .eq('action', 'UPDATE_USER_EMAIL')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      sendError(res, 'Failed to load history: ' + error.message, 500);
+      return;
+    }
+    sendSuccess(res, data, 'Email history retrieved.');
+  }
+);

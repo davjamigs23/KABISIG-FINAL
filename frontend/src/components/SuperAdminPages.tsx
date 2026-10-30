@@ -81,6 +81,9 @@ useEffect(() => {
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [emailForm, setEmailForm] = useState({ current_email: '', new_email: '', reason: '' });
   const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
+  const [emailModalTab, setEmailModalTab] = useState<'update' | 'history'>('update');
+  const [emailHistoryList, setEmailHistoryList] = useState<any[]>([]);
+  const [isFetchingEmailHistory, setIsFetchingEmailHistory] = useState(false);
 
   // Dedicated Assign SK Chairperson Modal State (Email-only)
   const [showAssignModal, setShowAssignModal] = useState(false);
@@ -862,7 +865,7 @@ useEffect(() => {
                   <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Super Admin Tools</span>
                   <h3 className="font-sans font-black text-lg text-slate-900">Super Admin Quick Actions</h3>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-start lg:justify-end">
                   <button 
                     onClick={() => setActiveMenu('barangays')}
                     className="px-4 py-2.5 bg-white text-[#091d64] hover:bg-blue-50 font-bold rounded-xl text-xs transition-colors flex items-center gap-2 cursor-pointer shadow-xs border border-slate-200"
@@ -870,7 +873,7 @@ useEffect(() => {
                     <Building2 className="w-4 h-4" /> Manage Barangays
                   </button>
                   <button 
-                    onClick={() => setShowEmailModal(true)}
+                    onClick={() => { setShowEmailModal(true); setEmailModalTab('update'); setIsFetchingEmailHistory(true); kabisigApi.getEmailHistory().then(res => { if (res.success && res.data) setEmailHistoryList(res.data); setIsFetchingEmailHistory(false); }); }}
                     className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-xs transition-colors flex items-center gap-2 cursor-pointer shadow-xs"
                   >
                     <span className="font-black text-sm">@</span> Manage Credentials
@@ -2303,56 +2306,92 @@ useEffect(() => {
           </div>
         </div>
       )}
-          {showEmailModal && (
+      {showEmailModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
-            <div className="bg-amber-500 p-4 flex justify-between items-center text-white">
+          <div className="bg-white rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
+            <div className="bg-[#091d64] p-4 flex justify-between items-center text-white shrink-0">
               <div>
                 <h3 className="font-bold text-lg">Manage User Credentials</h3>
-                <p className="text-xs text-amber-100">Update email addresses securely.</p>
+                <p className="text-xs text-blue-200">Update email addresses and view history securely.</p>
               </div>
-              <button onClick={() => setShowEmailModal(false)} className="text-white hover:text-amber-200">
+              <button onClick={() => setShowEmailModal(false)} className="text-white hover:text-blue-200">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-            <form onSubmit={async (e) => {
-              e.preventDefault();
-              setIsUpdatingEmail(true);
-              const res = await kabisigApi.updateUserEmail(emailForm);
-              setIsUpdatingEmail(false);
-              if (res.success) {
-                alert('Email updated successfully!');
-                setShowEmailModal(false);
-                setEmailForm({ current_email: '', new_email: '', reason: '' });
-              } else {
-                alert(res.message || 'Failed to update email.');
-              }
-            }} className="p-6 space-y-4">
-              
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Current Email (of User)</label>
-                <input required type="email" placeholder="user@example.com" value={emailForm.current_email} onChange={e => setEmailForm({...emailForm, current_email: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-amber-500" />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">New Email Address</label>
-                <input required type="email" placeholder="new.email@example.com" value={emailForm.new_email} onChange={e => setEmailForm({...emailForm, new_email: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-amber-500" />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Reason for Change (Audit Log)</label>
-                <input required type="text" placeholder="e.g., Official government email requested" value={emailForm.reason} onChange={e => setEmailForm({...emailForm, reason: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-amber-500" />
-              </div>
-
-              <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
-                <button type="button" onClick={() => setShowEmailModal(false)} className="px-4 py-2 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50">Cancel</button>
-                <button type="submit" disabled={isUpdatingEmail} className="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl disabled:opacity-50">
-                  {isUpdatingEmail ? 'Updating...' : 'Update Email'}
-                </button>
-              </div>
-            </form>
+            <div className="flex border-b border-slate-200 bg-slate-50 shrink-0">
+              <button onClick={() => setEmailModalTab('update')} className={`flex-1 py-3 text-xs font-bold transition-colors ${emailModalTab === 'update' ? 'text-[#091d64] border-b-2 border-[#091d64] bg-white' : 'text-slate-500 hover:bg-slate-100'}`}>Update Email</button>
+              <button onClick={() => setEmailModalTab('history')} className={`flex-1 py-3 text-xs font-bold transition-colors ${emailModalTab === 'history' ? 'text-[#091d64] border-b-2 border-[#091d64] bg-white' : 'text-slate-500 hover:bg-slate-100'}`}>Change History</button>
+            </div>
+            <div className="p-6 overflow-y-auto">
+              {emailModalTab === 'update' ? (
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
+                  setIsUpdatingEmail(true);
+                  const res = await kabisigApi.updateUserEmail(emailForm);
+                  setIsUpdatingEmail(false);
+                  if (res.success) {
+                    alert('Email updated successfully!');
+                    setShowEmailModal(false);
+                    setEmailForm({ current_email: '', new_email: '', reason: '' });
+                  } else {
+                    alert(res.message || 'Failed to update email.');
+                  }
+                }} className="space-y-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Current Email (of User)</label>
+                    <input required type="email" placeholder="user@example.com" value={emailForm.current_email} onChange={e => setEmailForm({...emailForm, current_email: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#091d64]" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">New Email Address</label>
+                    <input required type="email" placeholder="new.email@example.com" value={emailForm.new_email} onChange={e => setEmailForm({...emailForm, new_email: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#091d64]" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Reason for Change (Audit Log)</label>
+                    <input required type="text" placeholder="e.g., Official government email requested" value={emailForm.reason} onChange={e => setEmailForm({...emailForm, reason: e.target.value})} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#091d64]" />
+                  </div>
+                  <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
+                    <button type="button" onClick={() => setShowEmailModal(false)} className="px-4 py-2 border border-slate-200 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-50">Cancel</button>
+                    <button type="submit" disabled={isUpdatingEmail} className="px-5 py-2 bg-[#091d64] hover:bg-[#102a83] text-white text-xs font-bold rounded-xl disabled:opacity-50">
+                      {isUpdatingEmail ? 'Updating...' : 'Update Email'}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div className="space-y-4">
+                  {isFetchingEmailHistory ? (
+                    <p className="text-center text-xs text-slate-500">Loading history...</p>
+                  ) : emailHistoryList.length === 0 ? (
+                    <p className="text-center text-xs text-slate-500">No email changes recorded yet.</p>
+                  ) : (
+                    <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50 border-b border-slate-200">
+                          <tr>
+                            <th className="px-4 py-2 font-bold text-slate-600">Date</th>
+                            <th className="px-4 py-2 font-bold text-slate-600">Updated By</th>
+                            <th className="px-4 py-2 font-bold text-slate-600">New Email</th>
+                            <th className="px-4 py-2 font-bold text-slate-600">Reason</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {emailHistoryList.map((log: any) => (
+                            <tr key={log.id} className="hover:bg-slate-50">
+                              <td className="px-4 py-2 text-slate-500">{new Date(log.created_at).toLocaleString()}</td>
+                              <td className="px-4 py-2 font-semibold">{log.users?.full_name || 'Admin'}</td>
+                              <td className="px-4 py-2 text-blue-600">{log.details?.new_email}</td>
+                              <td className="px-4 py-2 italic text-slate-500">{log.details?.reason}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      )}</div>
+      )}
+</div>
   );
 }
