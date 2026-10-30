@@ -199,7 +199,11 @@ export default function PublicPages({
   });
 
   // Rule #1: compose display name from split fields
-  const signUpFullName = [
+    // Rule #1: compose display name from split fields
+  const isOfficial = ['SK Chairperson', 'Barangay Admin', 'SK Kagawad', 'SK Secretary', 'SK Treasurer'].includes(signUpForm.registeredRole || '');
+  const prefix = isOfficial ? 'Hon. ' : '';
+  
+  const signUpFullName = prefix + [
     signUpForm.firstName,
     signUpForm.middleName,
     signUpForm.lastName,
