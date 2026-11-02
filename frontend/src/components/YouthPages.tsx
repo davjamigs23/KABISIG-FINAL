@@ -675,6 +675,19 @@ export default function YouthPages({
     }
   }, [currentYouth?.status]);
 
+  // Dynamically count filled fields for the Youth Profile
+  const countCompletedFields = (() => {
+    const y = youth as any;
+    const fields = [
+      y.name || y.fullName, y.sex, y.birthdate, y.age, y.civilStatus,
+      y.address, y.zone, y.phone, y.contact || y.email, y.education || y.educationalLevel,
+      y.school, y.course, y.yearLevel || y.year, y.employmentStatus,
+      y.scholarStatus, y.youthSector, y.guardianName, y.guardianContact,
+      y.profilePic, y.id
+    ];
+    return fields.filter(f => f && String(f).trim() !== "" && f !== "Not specified" && f !== "N/A").length;
+  })();
+
   return (
     <div className="flex flex-col lg:flex-row h-screen bg-[#f8fafc] overflow-hidden font-sans text-slate-800">
       {/* @ts-ignore */}
@@ -897,6 +910,22 @@ export default function YouthPages({
           {/* ==================== 1. DASHBOARD VIEW (Image 4) ==================== */}
           {activeMenu === 'dashboard' && (
             <div className="space-y-6">
+              {countCompletedFields < 19 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="bg-amber-100 p-2 rounded-lg text-amber-600 shrink-0">
+                      <ShieldAlert className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-amber-900">Your profile is incomplete ({countCompletedFields}/19 fields)</h3>
+                      <p className="text-xs text-amber-700 mt-0.5">Please update your details (Zone, Employment, Guardian Info) to ensure you receive accurate program recommendations.</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setActiveMenu('profile')} className="w-full sm:w-auto px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg transition-colors shrink-0 cursor-pointer">
+                    Complete Profile Now
+                  </button>
+                </div>
+              )}
               {!isLoadingStatus && (isVerificationPending || showSuccessBanner) && (
                 <div role="status" className={`rounded-xl border px-4 py-3 text-sm flex flex-col sm:flex-row items-center justify-between gap-3 shadow-sm ${showSuccessBanner ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : isRejected ? 'border-rose-200 bg-rose-50 text-rose-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
                   <span className="font-semibold">
@@ -1322,7 +1351,7 @@ export default function YouthPages({
                             Resident ID: <span className="font-mono text-amber-600">{youth.id}</span>
                           </span>
                           <span className="text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-100 px-3 py-1 rounded-full font-bold uppercase tracking-widest">
-                            {youth.zone}
+                            {youth.zone || 'Not specified'}
                           </span>
                         </div>
                         <p className="text-xs text-slate-500 mt-2 font-medium flex items-center justify-center sm:justify-start gap-1">
@@ -1348,7 +1377,7 @@ export default function YouthPages({
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] font-mono font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md">
-                        19 / 19 Fields Complete
+                        {countCompletedFields} / 19 Fields Complete
                       </span>
                     </div>
                   </div>
@@ -1395,7 +1424,7 @@ export default function YouthPages({
                         {/* 7. Zone / Purok */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">7. Zone / Purok</td>
-                          <td className="py-2.5 px-4 font-extrabold text-indigo-700">{youth.zone}</td>
+                          <td className="py-2.5 px-4 font-extrabold text-indigo-700">{youth.zone || 'Not specified'}</td>
                         </tr>
                         {/* 8. Contact Number */}
                         <tr className="hover:bg-slate-50/50">
