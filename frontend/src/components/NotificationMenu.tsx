@@ -141,7 +141,7 @@ export default function NotificationMenu({
       {isOpen && (
         <div
           onMouseLeave={() => setIsOpen(false)}
-          className="fixed sm:absolute left-2 right-2 sm:left-auto sm:right-0 top-[3.75rem] sm:top-auto z-50 sm:mt-2 sm:w-96 max-w-full overflow-hidden rounded-xl border border-slate-100 bg-white py-2 shadow-xl"
+          className="fixed sm:absolute left-2 right-2 top-[4.5rem] sm:left-auto sm:right-0 sm:top-auto z-[9999] sm:mt-2 w-auto sm:w-96 max-w-[calc(100vw-1rem)] sm:max-w-none overflow-hidden rounded-xl border border-slate-100 bg-white py-2 shadow-2xl"
         >
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
             <span className="text-sm font-bold text-slate-800">Notifications</span>
