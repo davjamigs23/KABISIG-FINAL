@@ -2094,7 +2094,7 @@ export default function YouthPages({
                   <p className="text-xs text-slate-400">Self-service updates for personal information, contact details, and educational/employment status.</p>
                 </div>
                 <button 
-                  onClick={() => setIsEditModalOpen(false)}
+                  onClick={() => { setIsEditModalOpen(false); setIsEditingProfile(false); }}
                   className="p-1.5 hover:bg-slate-100 text-slate-400 hover:text-slate-600 rounded-lg transition-colors cursor-pointer"
                 >
                   <X className="w-5 h-5" />
@@ -2490,7 +2490,7 @@ export default function YouthPages({
                 <div className="flex gap-3 justify-end pt-4 border-t border-slate-100">
                   <button 
                     type="button" 
-                    onClick={() => setIsEditModalOpen(false)}
+                    onClick={() => { setIsEditModalOpen(false); setIsEditingProfile(false); }}
                     className="px-5 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold rounded-xl text-xs transition-colors cursor-pointer"
                   >
                     Cancel
@@ -2654,6 +2654,7 @@ export default function YouthPages({
                 onClick={() => {
                   setShowEditWarning(false);
                   setIsEditingProfile(true);
+                  setIsEditModalOpen(true);
                 }}
                 className="flex-1 py-2.5 bg-[#091d64] hover:bg-[#0a2578] rounded-xl text-xs font-bold text-white transition-colors cursor-pointer"
               >
