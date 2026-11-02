@@ -66,6 +66,7 @@ import { KabisigLogo } from './PublicPages'
 import NotificationMenu from './NotificationMenu';
 import { UserMenu } from './UserMenu';
 import ProfileAvatar from './ProfileAvatar';
+import ImageCropModal from './ImageCropModal';
 import kabisigApi from '../lib/api';
 interface YouthPagesProps {
   currentYouth: YouthProfile;
@@ -291,7 +292,9 @@ export default function YouthPages({
   };
   return () => { isMounted = false; };
   }, [currentYouth.id, currentYouth.name, currentYouth.qrCode]);
-  const handleProfilePictureChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const [cropImage, setCropImage] = useState<string | null>(null);
+
+  const handleProfilePictureChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
@@ -299,23 +302,22 @@ export default function YouthPages({
       setProfilePictureNotice({ type: 'error', text: 'Choose a JPEG, PNG, or WebP image.' });
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      setProfilePictureNotice({ type: 'error', text: 'The image must be smaller than 5 MB.' });
+    if (file.size > 15 * 1024 * 1024) {
+      setProfilePictureNotice({ type: 'error', text: 'Image must be under 15 MB.' });
       return;
     }
+    const reader = new FileReader();
+    reader.onload = () => setCropImage(reader.result as string);
+    reader.onerror = () => setProfilePictureNotice({ type: 'error', text: 'Failed to read image.' });
+    reader.readAsDataURL(file);
+  };
 
+  const handleCropConfirm = async (croppedBase64: string, mime: string) => {
+    setCropImage(null);
     setIsUploadingProfilePicture(true);
     setProfilePictureNotice(null);
     try {
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => typeof reader.result === 'string'
-          ? resolve(reader.result)
-          : reject(new Error('The selected image could not be read.'));
-        reader.onerror = () => reject(new Error('The selected image could not be read.'));
-        reader.readAsDataURL(file);
-      });
-      const result = await kabisigApi.uploadAvatar(base64, file.type);
+      const result = await kabisigApi.uploadAvatar(croppedBase64, mime);
       if (!result.success || !result.data?.avatar_url) {
         throw new Error(result.message || 'Profile photo upload failed.');
       }
@@ -328,7 +330,7 @@ export default function YouthPages({
     } catch (error: unknown) {
       setProfilePictureNotice({
         type: 'error',
-        text: error instanceof Error ? error.message : 'Profile photo upload failed.',
+        text: error instanceof Error ? error.message : 'Upload failed.',
       });
     } finally {
       setIsUploadingProfilePicture(false);
@@ -1651,6 +1653,16 @@ export default function YouthPages({
                               </div>
                             </div>
                           )}
+
+      {cropImage && (
+        <ImageCropModal
+          imageSrc={cropImage}
+          aspect={1}
+          outputSize={500}
+          onComplete={handleCropConfirm}
+          onCancel={() => setCropImage(null)}
+        />
+      )}
                         </div>
                       );
                     })}

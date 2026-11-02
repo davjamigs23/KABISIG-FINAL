@@ -508,16 +508,25 @@ export function analyzeFeedbackSentiment(content: string, category?: string): 'P
   }
   const normalized = content.toLowerCase();
 
-  const positiveKeywords = ['scholarship', 'sports', 'employment', 'livelihood', 'mental health', 'education', 'training', 'workshop', 'webinar', 'health', 'youth', 'skills', 'financial', 'assistance', 'aid', 'subsidy', 'allowance', 'driving', 'road signage', 'scholarship', 'sports', 'employment', 'livelihood', 'mental health', 'education', 'training', 'workshop', 'webinar', 'health', 'youth', 'skills', 'financial', 'assistance', 'aid', 'subsidy', 'allowance', 'driving', 'road signage', 'like', 'knowledge', 'hope', 'great', 'executed', 'good', 'like', 'knowledge', 'hope', 'great', 'executed', 'good', 
-    'good', 'great', 'excellent', 'informative', 'helpful', 'fun', 'awesome', 
-    'perfect', 'love', 'thanks', 'supportive', 'active', 'useful', 'learned a lot',
-    'nice', 'happy', 'fantastic', 'amazing', 'convenient', 'clean', 'organized'
+  const positiveKeywords = [
+    "scholarship", "sports", "employment", "livelihood", "mental health", "education",
+    "training", "workshop", "webinar", "health", "youth", "skills", "financial",
+    "assistance", "aid", "subsidy", "allowance", "driving", "road signage",
+    "like", "knowledge", "hope", "great", "executed", "good", "excellent",
+    "informative", "helpful", "help", "fun", "awesome", "perfect", "love",
+    "thanks", "supportive", "active", "useful", "learned a lot", "nice",
+    "happy", "fantastic", "amazing", "convenient", "clean", "organized",
+    "best", "wonderful", "clear", "easy", "positive",
+    "pogi", "cute", "ganda", "maganda", "ayos", "solid", "galing", "magaling"
   ];
 
   const negativeKeywords = [
-    'small', 'hot', 'late', 'bad', 'slow', 'crowded', 'poor', 'waste', 
-    'boring', 'unorganized', 'disappointed', 'delayed', 'limited', 'confusing',
-    'hard', 'difficult', 'loud', 'noisy', 'expensive', 'unhelpful', 'short', 'do not like', 'dislike', 'not good', 'not working', 'problem', 'issue', 'concern', 'intimidating', 'unfair', 'hate', 'upset', 'unhappy', 'frustrated'
+    "small", "hot", "late", "bad", "slow", "crowded", "poor", "waste",
+    "boring", "unorganized", "disappointed", "delayed", "limited", "confusing",
+    "hard", "difficult", "loud", "noisy", "expensive", "unhelpful", "short",
+    "do not like", "dislike", "not good", "not working", "problem", "issue",
+    "concern", "intimidating", "unfair", "hate", "upset", "unhappy", "frustrated",
+    "worst", "sucks", "pangit", "ayaw", "hindi maganda"
   ];
 
   let positiveScore = 0;

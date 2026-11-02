@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, MapPin, Mail, X, Loader2, Camera, Save, Edit2 } from 'lucide-react';
 import { kabisigApi } from '../lib/api';
+import ImageCropModal from './ImageCropModal';
 
 export default function ProfileSettings() {
   const [user, setUser] = useState<any>(null);
@@ -51,6 +52,9 @@ export default function ProfileSettings() {
     return s || 'User';
   };
 
+  const [cropImage, setCropImage] = useState<string | null>(null);
+  const [cropMime, setCropMime] = useState<string>('image/jpeg');
+
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -59,32 +63,34 @@ export default function ProfileSettings() {
       setNotice({ type: 'error', text: 'Choose a JPEG, PNG, or WebP image.' });
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      setNotice({ type: 'error', text: 'The image must be smaller than 5 MB.' });
+    if (file.size > 15 * 1024 * 1024) {
+      setNotice({ type: 'error', text: 'Image must be under 15 MB.' });
       return;
     }
+    // Read file → open crop modal
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCropImage(reader.result as string);
+      setCropMime('image/jpeg');
+    };
+    reader.onerror = () => setNotice({ type: 'error', text: 'Failed to read image.' });
+    reader.readAsDataURL(file);
+  };
 
+  const handleCropConfirm = async (croppedBase64: string, mime: string) => {
+    setCropImage(null);
     setIsUploadingPhoto(true);
-    setNotice(null);
     try {
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => typeof reader.result === 'string'
-          ? resolve(reader.result)
-          : reject(new Error('The selected image could not be read.'));
-        reader.onerror = () => reject(new Error('The selected image could not be read.'));
-        reader.readAsDataURL(file);
-      });
-      const res = await kabisigApi.uploadAvatar(base64, file.type);
+      const res = await kabisigApi.uploadAvatar(croppedBase64, mime);
       if (!res.success || !res.data?.avatar_url) {
         throw new Error(res.message || 'Failed to upload photo.');
       }
       const avatarUrl = res.data.avatar_url;
       setUser((previous: any) => previous ? { ...previous, avatar_url: avatarUrl } : previous);
       window.dispatchEvent(new CustomEvent('kabisig:avatar-updated', { detail: { avatar_url: avatarUrl } }));
-      setNotice({ type: 'success', text: 'Profile photo updated and saved successfully.' });
-    } catch (err: unknown) {
-      setNotice({ type: 'error', text: err instanceof Error ? err.message : 'Network error uploading photo.' });
+      setNotice({ type: 'success', text: 'Profile photo updated.' });
+    } catch (err) {
+      setNotice({ type: 'error', text: err instanceof Error ? err.message : 'Upload failed.' });
     } finally {
       setIsUploadingPhoto(false);
     }
@@ -147,8 +153,8 @@ export default function ProfileSettings() {
               </button>
             )
           ) : (
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
-              Read-Only (SA Only)
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 whitespace-nowrap shrink-0 text-center">
+              Read-only
             </span>
           )}
         </div>
@@ -174,6 +180,16 @@ export default function ProfileSettings() {
           )}
         </div>
       </div>
+
+      {cropImage && (
+        <ImageCropModal
+          imageSrc={cropImage}
+          aspect={1}
+          outputSize={500}
+          onComplete={handleCropConfirm}
+          onCancel={() => setCropImage(null)}
+        />
+      )}
     </div>
   );
 }
