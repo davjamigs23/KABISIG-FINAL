@@ -1,3 +1,4 @@
+import { sendEmail } from '../utils/email.js';
 import express from 'express';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
@@ -28,28 +29,6 @@ async function inviteWithBrevo(
 
 
 // Helper to send emails via Brevo API
-async function sendEmail(to: string, subject: string, html: string) {
-  try {
-    const apiKey = process.env.BREVO_API_KEY;
-    const senderEmail = process.env.BREVO_SENDER_EMAIL;
-    if (!apiKey || !senderEmail) {
-      console.warn('[EMAIL] SKIPPED. Missing BREVO_API_KEY or BREVO_SENDER_EMAIL in .env');
-      return;
-    }
-    console.log('[EMAIL] Attempting to send to ' + to + '...');
-    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
-      method: 'POST',
-      headers: { 'api-key': apiKey, 'content-type': 'application/json' },
-      body: JSON.stringify({ sender: { name: 'KABISIG', email: senderEmail }, to: [{ email: to }], subject: subject, htmlContent: html })
-    });
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error('[EMAIL] FAILED. Status: ' + res.status + ' Response: ' + errText);
-    } else {
-      console.log('[EMAIL] SUCCESS. Sent to ' + to);
-    }
-  } catch (err) { console.error('[EMAIL] ERROR:', err); }
-}
 
 
 const router = express.Router();
@@ -1381,41 +1360,91 @@ router.post(
     }
 
     let userIdToUpdate = target_user_id;
+    let old_email = current_email;
 
-    // If only email is provided, look up the user ID
-    if (!userIdToUpdate && current_email) {
-      const { data: foundUser } = await supabaseAdmin.from('users').select('id').eq('email', current_email).single();
+    // Look up the user to get their current email if not provided
+    if (!userIdToUpdate || !old_email) {
+      const query = supabaseAdmin.from('users').select('id, email, full_name');
+      if (userIdToUpdate) query.eq('id', userIdToUpdate);
+      else query.eq('email', current_email);
+      
+      const { data: foundUser } = await query.single();
       if (!foundUser) {
-        sendError(res, 'User with the provided current email not found.', 404);
+        sendError(res, 'User not found.', 404);
         return;
       }
       userIdToUpdate = foundUser.id;
+      old_email = foundUser.email;
+      
+      if (!old_email) {
+        sendError(res, 'User does not have an existing email.', 400);
+        return;
+      }
+
+      // 1. Update Supabase Auth (Login Credentials)
+      const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(userIdToUpdate, { email: new_email });
+      if (authError) {
+        sendError(res, 'Failed to update Auth email: ' + authError.message, 500);
+        return;
+      }
+
+      // 2. Update Public Users Table
+      const { error: dbError } = await supabaseAdmin.from('users').update({ email: new_email }).eq('id', userIdToUpdate);
+      if (dbError) {
+        sendError(res, 'Failed to update database email: ' + dbError.message, 500);
+        return;
+      }
+
+      // 3. Send Security Notifications to OLD and NEW emails
+      const htmlTemplate = (title: string, message: string, color: string) => `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+          <div style="background-color: #091d64; padding: 24px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px;">KABISIG</h1>
+            <p style="color: #93c5fd; margin: 4px 0 0 0; font-size: 14px;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p>
+          </div>
+          <div style="padding: 32px; background-color: #ffffff;">
+            <h2 style="color: ${color}; margin-top: 0;">${title}</h2>
+            <p style="color: #334155; font-size: 16px; line-height: 1.6;">${message}</p>
+            <p style="color: #334155; font-size: 14px; margin-top: 24px;"><strong>Reason for change:</strong> ${reason}</p>
+          </div>
+          <div style="background-color: #f8fafc; padding: 16px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">&copy; 2026 KABISIG. All rights reserved.</p>
+          </div>
+        </div>`;
+
+      // Notify OLD email
+      await sendEmail(
+        old_email,
+        'Security Alert: Your KABISIG Email Has Been Changed',
+        htmlTemplate(
+          'Email Changed',
+          `Hello,<br><br>This is a security notification to inform you that the email address associated with your KABISIG account has been updated to <strong>${new_email}</strong>.<br><br>If you did not request this change, please contact your SK Federation President immediately.`,
+          '#ef4444'
+        )
+      );
+
+      // Notify NEW email
+      await sendEmail(
+        new_email,
+        'Welcome to your new KABISIG Login',
+        htmlTemplate(
+          'Email Successfully Updated',
+          `Hello,<br><br>Your KABISIG account email has been successfully updated to this address.<br><br>You can now use this email to log in to the system.`,
+          '#10b981'
+        )
+      );
+
+      // 4. Audit Log
+      await recordAuditLog({
+        userId: (req as AuthRequest).user!.id,
+        action: 'UPDATE_USER_EMAIL',
+        entityName: 'users',
+        entityId: userIdToUpdate,
+        details: { old_email, new_email, reason },
+      });
+
+      sendSuccess(res, null, 'User email updated successfully. Notifications sent.');
     }
-
-    // 1. Update Supabase Auth (Login Credentials)
-    const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(userIdToUpdate, { email: new_email });
-    if (authError) {
-      sendError(res, 'Failed to update Auth email: ' + authError.message, 500);
-      return;
-    }
-
-    // 2. Update Public Users Table
-    const { error: dbError } = await supabaseAdmin.from('users').update({ email: new_email }).eq('id', userIdToUpdate);
-    if (dbError) {
-      sendError(res, 'Failed to update database email: ' + dbError.message, 500);
-      return;
-    }
-
-    // 3. Audit Log
-    await recordAuditLog({
-      userId: (req as AuthRequest).user!.id,
-      action: 'UPDATE_USER_EMAIL',
-      entityName: 'users',
-      entityId: userIdToUpdate,
-      details: { new_email, reason },
-    });
-
-    sendSuccess(res, null, 'User email updated successfully.');
   }
 );
 // GET /api/admin/email-history - Super Admin only

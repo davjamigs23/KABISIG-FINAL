@@ -1,18 +1,7 @@
+import { sendEmail } from '../utils/email.js';
 import express from 'express';
 import { composeFullName, splitFullName, normalizeSuffix, resolveName } from '../utils/name.js';
 // Helper to send emails via Brevo API
-async function sendEmail(to: string, subject: string, html: string) {
-  try {
-    const apiKey = process.env.BREVO_API_KEY;
-    const senderEmail = process.env.BREVO_SENDER_EMAIL;
-    if (!apiKey || !senderEmail) return;
-    await fetch('https://api.brevo.com/v3/smtp/email', {
-      method: 'POST',
-      headers: { 'api-key': apiKey, 'content-type': 'application/json' },
-      body: JSON.stringify({ sender: { name: 'KABISIG', email: senderEmail }, to: [{ email: to }], subject: subject, htmlContent: html })
-    });
-  } catch (err) { console.error('[EMAIL] ERROR:', err); }
-}
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import QRCode from 'qrcode';
