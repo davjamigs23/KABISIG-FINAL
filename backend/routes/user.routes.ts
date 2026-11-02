@@ -67,6 +67,12 @@ router.put('/complete-profile', authenticateUser, async (req: Request, res: Resp
   });
   const user = (req as AuthRequest).user!;
 
+  // Honorific enforcement for Chairperson (role_id = 2)
+  const _rawFullName = (resolvedName.full_name || full_name || '').trim();
+  const _effectiveFullName = user.role_id === 2 && _rawFullName
+    ? (_rawFullName.toLowerCase().startsWith('hon.') ? _rawFullName : `Hon. ${_rawFullName}`)
+    : _rawFullName;
+
   if ((password || confirmPassword) && (!password || !confirmPassword)) {
     sendError(res, 'Please provide both password and confirm password.', 400);
     return;
@@ -119,7 +125,7 @@ router.put('/complete-profile', authenticateUser, async (req: Request, res: Resp
   const { error: userUpdateErr } = await supabaseAdmin
     .from('users')
     .update({
-      full_name: resolvedName.full_name || full_name.trim(),
+      full_name: _effectiveFullName,
       first_name: resolvedName.first_name || null,
       middle_name: resolvedName.middle_name || null,
       last_name: resolvedName.last_name || null,
@@ -157,7 +163,7 @@ router.put('/complete-profile', authenticateUser, async (req: Request, res: Resp
   // 5. Update auth user metadata and password in Supabase Auth
   try {
     const authUpdateData: Record<string, any> = {
-      user_metadata: { full_name: resolvedName.full_name || full_name.trim(), first_name: resolvedName.first_name, middle_name: resolvedName.middle_name, last_name: resolvedName.last_name, suffix: resolvedName.suffix },
+      user_metadata: { full_name: _effectiveFullName, first_name: resolvedName.first_name, middle_name: resolvedName.middle_name, last_name: resolvedName.last_name, suffix: resolvedName.suffix },
     };
 
     if (password) {
@@ -177,7 +183,7 @@ router.put('/complete-profile', authenticateUser, async (req: Request, res: Resp
     entityName: 'users',
     entityId: user.id,
     details: {
-      full_name: resolvedName.full_name || full_name.trim(),
+      full_name: _effectiveFullName,
       first_name: resolvedName.first_name || null,
       middle_name: resolvedName.middle_name || null,
       last_name: resolvedName.last_name || null,
@@ -201,7 +207,7 @@ router.put('/complete-profile', authenticateUser, async (req: Request, res: Resp
     res,
     updatedProfile || {
       id: user.id,
-      full_name: resolvedName.full_name || full_name.trim(),
+      full_name: _effectiveFullName,
       first_name: resolvedName.first_name || null,
       middle_name: resolvedName.middle_name || null,
       last_name: resolvedName.last_name || null,
