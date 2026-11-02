@@ -2282,6 +2282,7 @@ export default function YouthPages({
                           <input
                             type="text"
                             value={verificationForm.id_number}
+                            disabled={['submitted','verified'].includes(String(verificationStatus?.verification_status || '').toLowerCase())}
                             onChange={(e) => setVerificationForm({ ...verificationForm, id_number: e.target.value })}
                             placeholder="e.g. 2024-12345"
                             className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
@@ -2294,6 +2295,7 @@ export default function YouthPages({
                           type="file"
                           accept="image/jpeg,image/png,image/webp"
                           onChange={(e) => handleVerificationFile(e.target.files && e.target.files[0] ? e.target.files[0] : null)}
+                          disabled={['submitted','verified'].includes(String(verificationStatus?.verification_status || '').toLowerCase())}
                           className="w-full text-xs file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#091d64] file:text-white hover:file:bg-[#102a83] file:cursor-pointer"
                         />
                         {verificationForm.file && (
@@ -2312,10 +2314,10 @@ export default function YouthPages({
                       <button
                         type="button"
                         onClick={handleVerificationSubmit}
-                        disabled={isSubmittingVerification}
-                        className="w-full py-3 bg-[#091d64] hover:bg-[#102a83] disabled:opacity-60 text-white font-bold rounded-lg text-xs flex items-center justify-center gap-2 cursor-pointer"
+                        disabled={isSubmittingVerification || ['submitted','verified'].includes(String(verificationStatus?.verification_status || '').toLowerCase())}
+                        className="w-full py-3 bg-[#091d64] hover:bg-[#102a83] disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold rounded-lg text-xs flex items-center justify-center gap-2 cursor-pointer"
                       >
-                        {isSubmittingVerification ? <><Loader2 className="w-4 h-4 animate-spin" /> Uploading...</> : <><Upload className="w-4 h-4" /> Submit for Verification</>}
+                        {isSubmittingVerification ? <><Loader2 className="w-4 h-4 animate-spin" /> Uploading...</> : <><Upload className="w-4 h-4" /> {String(verificationStatus?.verification_status || "").toLowerCase() === "submitted" ? "Under Review" : "Submit for Verification"}</>}
                       </button>
                     </>
                   )}
@@ -2498,7 +2500,7 @@ export default function YouthPages({
                   <button 
                     type="submit" 
                     disabled={isSavingProfile}
-                    className="px-6 py-2.5 bg-[#091d64] hover:bg-[#122878] disabled:opacity-60 text-white font-bold rounded-xl text-xs transition-colors shadow-md cursor-pointer flex items-center gap-2"
+                    className="px-6 py-2.5 bg-[#091d64] hover:bg-[#122878] disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs transition-colors shadow-md cursor-pointer flex items-center gap-2"
                   >
                     {isSavingProfile ? (
                       <>
