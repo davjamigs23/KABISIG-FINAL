@@ -239,6 +239,7 @@ export default function YouthPages({
     id_type: 'Student ID',
     id_number: '',
     file: null as File | null,
+    backFile: null as File | null,
   });
   const [isSubmittingVerification, setIsSubmittingVerification] = useState(false);
   const [verificationNotice, setVerificationNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -431,9 +432,9 @@ export default function YouthPages({
     } catch { /* no-op */ }
     finally { setVerificationLoading(false); }
   };
-  const handleVerificationFile = (file: File | null) => {
+  const handleVerificationFile = (file: File | null, side: 'front' | 'back' = 'front') => {
     if (!file) {
-      setVerificationForm((p) => ({ ...p, file: null }));
+      setVerificationForm((p) => side === 'back' ? { ...p, backFile: null } : { ...p, file: null });
       return;
     }
     const allowed = ['image/jpeg', 'image/png', 'image/webp'];
@@ -446,10 +447,14 @@ export default function YouthPages({
       return;
     }
     setVerificationNotice(null);
-    setVerificationForm((p) => ({ ...p, file }));
+    if (side === 'back') {
+      setVerificationForm((p) => ({ ...p, backFile: file }));
+    } else {
+      setVerificationForm((p) => ({ ...p, file }));
+    }
   };
   const handleVerificationSubmit = async () => {
-    const { id_type, id_number, file } = verificationForm;
+    const { id_type, id_number, file, backFile } = verificationForm;
     if (!id_number.trim()) {
       setVerificationNotice({ type: 'error', text: 'Please enter your ID number.' });
       return;
@@ -459,6 +464,11 @@ export default function YouthPages({
       return;
     }
     setIsSubmittingVerification(true);
+    if (!backFile) {
+      setVerificationNotice({ type: 'error', text: 'Please select the back side of your ID image.' });
+      setIsSubmittingVerification(false);
+      return;
+    }
     setVerificationNotice(null);
     try {
       const b64 = await new Promise<string>((resolve, reject) => {
@@ -471,19 +481,32 @@ export default function YouthPages({
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
+      const backB64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          const commaIdx = result.indexOf(',');
+          resolve(commaIdx >= 0 ? result.substring(commaIdx + 1) : result);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(backFile);
+      });
       const res = await kabisigApi.uploadVerification({
         id_type,
         id_number: id_number.trim(),
         file_base64: b64,
         file_name: file.name,
         mime_type: file.type,
+        back_file_base64: backB64,
+        back_file_name: backFile.name,
+        back_mime_type: backFile.type,
       });
       if (!res.success) {
         setVerificationNotice({ type: 'error', text: res.message || 'Upload failed.' });
         return;
       }
       setVerificationNotice({ type: 'success', text: res.message || 'ID uploaded. Awaiting review.' });
-      setVerificationForm({ id_type, id_number: '', file: null });
+      setVerificationForm({ id_type, id_number: '', file: null, backFile: null });
       await loadVerification();
     } catch (err: any) {
       setVerificationNotice({ type: 'error', text: err.message || 'Upload failed.' });
@@ -2290,7 +2313,7 @@ export default function YouthPages({
                         </div>
                       </div>
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Upload ID Image <span className="text-slate-400 font-normal">(JPG / PNG / WEBP, ≤ 5 MB)</span></label>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Upload Front of ID <span className="text-rose-500">*</span> <span className="text-slate-400 font-normal">(JPG / PNG / WEBP, ≤ 5 MB)</span></label>
                         <input
                           type="file"
                           accept="image/jpeg,image/png,image/webp"
@@ -2301,6 +2324,21 @@ export default function YouthPages({
                         {verificationForm.file && (
                           <p className="mt-1 text-[10px] text-slate-500">
                             Selected: <strong>{verificationForm.file.name}</strong> ({(verificationForm.file.size / 1024).toFixed(0)} KB)
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Upload Back of ID <span className="text-rose-500">*</span> <span className="text-slate-400 font-normal">(JPG / PNG / WEBP, ≤ 5 MB)</span></label>
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          onChange={(e) => handleVerificationFile(e.target.files && e.target.files[0] ? e.target.files[0] : null, 'back')}
+                          disabled={['submitted','verified'].includes(String(verificationStatus?.verification_status || '').toLowerCase())}
+                          className="w-full text-xs file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#091d64] file:text-white hover:file:bg-[#102a83] file:cursor-pointer"
+                        />
+                        {verificationForm.backFile && (
+                          <p className="mt-1 text-[10px] text-slate-500">
+                            Selected: <strong>{verificationForm.backFile.name}</strong> ({(verificationForm.backFile.size / 1024).toFixed(0)} KB)
                           </p>
                         )}
                       </div>
