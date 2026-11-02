@@ -134,6 +134,14 @@ router.post(
 
     // Panel rec #9: prevent silent overwrite of an existing Chairperson.
     // If a Chairperson already exists, use the Transfer Leadership workflow instead.
+
+  // === Chairperson honorific auto-enforcement ===
+  // Elected chairs always carry "Hon." — enforced at invite/assign time.
+  const ensureHon = (n: string | null | undefined): string => {
+    const _n = String(n || '').trim();
+    if (!_n || _n === 'Pending Invitation') return _n || 'Pending Invitation';
+    return _n.toLowerCase().startsWith('hon.') ? _n : `Hon. ${_n}`;
+  };
     const { data: existingChair } = await supabaseAdmin
       .from('users')
       .select('id, email, full_name, status')
@@ -275,7 +283,7 @@ router.post(
             status: 'active',
             approved_by: admin.id,
             updated_at: new Date().toISOString(),
-            full_name: _preserveChair.full_name || existingUser.full_name || 'Pending Invitation',
+            full_name: ensureHon(_preserveChair.full_name || existingUser.full_name || 'Pending Invitation'),
             first_name: _preserveChair.first_name || null,
             middle_name: _preserveChair.middle_name || null,
             last_name: _preserveChair.last_name || null,
@@ -298,7 +306,7 @@ router.post(
           id: targetUserId,
           tenant_id: barangay_id,
           role_id: 2,
-          full_name: existingAuthUser.user_metadata?.full_name || '',
+          full_name: ensureHon(existingAuthUser.user_metadata?.full_name || ''),
           first_name: null,
           middle_name: null,
           last_name: null,
