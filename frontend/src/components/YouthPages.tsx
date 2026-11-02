@@ -132,6 +132,8 @@ export default function YouthPages({
   const [profilePictureNotice, setProfilePictureNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editForm, setEditForm] = useState<YouthProfile>(currentYouth);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [showEditWarning, setShowEditWarning] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [showSuccessBanner, setShowSuccessBanner] = useState(false);
   const [isLoadingStatus, setIsLoadingStatus] = useState(true);
@@ -529,6 +531,7 @@ export default function YouthPages({
         onUpdateYouthProfile(updatedProfile);
       }
       setIsEditModalOpen(false);
+        setIsEditingProfile(false);
       alert('Your Katipunan ng Kabataan Profile (DILG Annex 4) has been updated and saved to the database successfully!');
     } catch (err: any) {
       console.error('Error saving profile changes:', err);
@@ -1375,13 +1378,22 @@ export default function YouthPages({
                       </h4>
                   
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
                       <span className="text-[11px] font-mono font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md">
                         {countCompletedFields} / 19 Fields Complete
                       </span>
+                      {!isEditingProfile && (
+                        <button
+                          onClick={() => setShowEditWarning(true)}
+                          className="px-3 py-1.5 bg-[#091d64] hover:bg-[#0a2578] text-white text-[10px] font-bold rounded-md transition-colors shadow-sm cursor-pointer whitespace-nowrap"
+                        >
+                          Edit Profile
+                        </button>
+                      )}
                     </div>
                   </div>
                   <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-2xs">
+              {!isEditingProfile && (
                     <table className="w-full text-left text-xs text-slate-700">
                       <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                         <tr>
@@ -1490,6 +1502,7 @@ export default function YouthPages({
                         </tr>
                       </tbody>
                     </table>
+              )}
                   </div>
                 </div>
               </div>
@@ -1682,6 +1695,37 @@ export default function YouthPages({
                               </div>
                             </div>
                           )}
+
+      {showEditWarning && (
+        <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-center w-14 h-14 rounded-full bg-amber-100 text-amber-600 mx-auto mb-4">
+              <ShieldAlert className="w-7 h-7" />
+            </div>
+            <h3 className="text-lg font-black text-center text-slate-800 mb-2">One-Time Edit Warning</h3>
+            <p className="text-sm text-center text-slate-600 mb-6 leading-relaxed">
+              You can only edit your profile <strong className="text-slate-800">ONCE</strong>. If you make a mistake, you will need to contact the SK Federation President to correct it.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowEditWarning(false)}
+                className="flex-1 py-2.5 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setShowEditWarning(false);
+                  setIsEditingProfile(true);
+                }}
+                className="flex-1 py-2.5 bg-[#091d64] hover:bg-[#0a2578] rounded-xl text-xs font-bold text-white transition-colors cursor-pointer"
+              >
+                Proceed to Edit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {cropImage && (
         <ImageCropModal
@@ -2092,6 +2136,13 @@ export default function YouthPages({
                   <X className="w-5 h-5" />
                 </button>
               </div>
+              {isEditingProfile && (
+                <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 mb-6 shadow-sm">
+                  <h4 className="text-sm font-bold text-rose-800 mb-1">One-Time Edit Warning</h4>
+                  <p className="text-xs text-rose-700">Please review your details carefully. You can only edit your profile once after being demoted to a Youth Constituent. If you make a mistake, you will need to contact the SK Federation President to correct it.</p>
+                </div>
+              )}
+              {isEditingProfile && (
               <form onSubmit={handleSaveProfile} className="space-y-6">
                 
                 {/* SECTION 1: PERSONAL INFORMATION */}
@@ -2499,6 +2550,7 @@ export default function YouthPages({
                   </button>
                 </div>
               </form>
+              )}
             </div>
           </div>
         )}
