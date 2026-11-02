@@ -734,8 +734,12 @@ export default function YouthPages({
       {/* MOBILE TOP HEADER BAR */}
       <div className="lg:hidden bg-[#091d64]/95 backdrop-blur-md text-white px-4 py-2 flex justify-between items-center sticky top-0 z-50 shadow-sm border-b border-white/10 h-14">
         <div className="flex items-center gap-2">
-          <div className="w-20 bg-white rounded p-0.5">
-            <KabisigLogo className="w-24" />
+          <div className="h-10 px-1.5 rounded-lg bg-white shadow-md ring-1 ring-white/30 flex items-center justify-center overflow-hidden flex-shrink-0">
+            <img
+              src="/images/Kabisig_logo.png"
+              alt="KABISIG"
+              className="h-9 w-auto object-contain"
+            />
           </div>
           <span className="text-[10px] font-bold bg-[#1e3a8a] px-2 py-0.5 rounded text-amber-300">Youth Portal</span>
         </div>
@@ -1342,7 +1346,7 @@ export default function YouthPages({
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] font-mono font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md">
-                        20 / 20 Fields Complete
+                        19 / 19 Fields Complete
                       </span>
                     </div>
                   </div>
@@ -1451,12 +1455,7 @@ export default function YouthPages({
                         {/* 19. Resident ID */}
                         <tr className="hover:bg-slate-50/50 bg-amber-50/20">
                           <td className="py-2.5 px-4 font-bold text-slate-900">19. Resident ID</td>
-                          <td className="py-2.5 px-4 font-black font-mono text-amber-700">{youth.id}</td>
-                        </tr>
-                        {/* 20. QR Code */}
-                        <tr className="hover:bg-slate-50/50 bg-amber-50/20">
-                          <td className="py-2.5 px-4 font-bold text-slate-900">20. QR Code</td>
-                          <td className="py-2.5 px-4 font-mono font-bold text-slate-800">{youth.qrCode || `QR-${youth.id}`}</td>
+                          <td className="py-2.5 px-4 font-black font-mono text-amber-700 break-all">{youth.id}</td>
                         </tr>
                       </tbody>
                     </table>
@@ -1471,7 +1470,7 @@ export default function YouthPages({
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold text-slate-800">Katipunan ng Kabataan Roster</h2>
               </div>
-              <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
+              <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-x-auto pb-4">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-[#091d64] text-white font-bold uppercase text-[10px]">
                     <tr>
@@ -2487,6 +2486,15 @@ export default function YouthPages({
         >
           <ClipboardList className={`w-5 h-5 ${activeMenu === 'programs' || activeMenu === 'registrations' ? 'text-[#091d64] scale-110' : 'text-slate-400'} transition-transform`} />
           <span className="text-[10px] mt-0.5 tracking-tight font-sans">Programs</span>
+        </button>
+        <button
+              disabled={isVerificationPending} onClick={() => setActiveMenu('directory')}
+          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
+            isVerificationPending ? 'opacity-50 cursor-not-allowed' : activeMenu === 'directory' ? 'text-[#091d64] font-extrabold bg-blue-50/80' : 'text-slate-400 font-medium hover:text-slate-600'
+          }`}
+        >
+          <Users className={`w-5 h-5 ${activeMenu === 'directory' ? 'text-[#091d64] scale-110' : 'text-slate-400'} transition-transform`} />
+          <span className="text-[10px] mt-0.5 tracking-tight font-sans">Roster</span>
         </button>
         <button
               disabled={isVerificationPending} onClick={() => setActiveMenu('feedback')}

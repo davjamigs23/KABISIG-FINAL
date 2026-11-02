@@ -89,7 +89,7 @@ export function KabisigLogo({ className = "w-28" }: { className?: string }) {
   return (
     <div className={`flex flex-col items-center text-center select-none ${className}`}>
       <img 
-        src="/icon.png"
+        src="/images/Kabisig_logo.png"
         alt="KABISIG Logo" 
         className="w-[220px] max-w-full h-auto object-contain"
         referrerPolicy="no-referrer"

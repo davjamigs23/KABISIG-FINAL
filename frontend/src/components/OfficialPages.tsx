@@ -608,19 +608,22 @@ export default function OfficialPages({
       { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { id: 'programs', label: 'Programs & Initiatives', icon: ClipboardList },
       { id: 'attendance', label: 'Attendance Tracking', icon: CalendarCheck },
-      { id: 'feedback', label: 'Feedback Desk', icon: MessageSquare }
+      { id: 'feedback', label: 'Feedback Desk', icon: MessageSquare },
+      { id: 'profile', label: 'My Profile', icon: Users }
     ],
     'SK Secretary': [
       { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { id: 'documents', label: 'Documents Repository', icon: FolderClosed },
       { id: 'records', label: 'Youth Records', icon: Users },
-      { id: 'reports', label: 'Administrative Reports', icon: BarChart3 }
+      { id: 'reports', label: 'Administrative Reports', icon: BarChart3 },
+      { id: 'profile', label: 'My Profile', icon: Users }
     ],
     'SK Treasurer': [
       { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { id: 'budget', label: 'Budget', icon: Coins },
       { id: 'inventory', label: 'Inventory', icon: Layers },
-      { id: 'reports', label: 'Reports', icon: BarChart3 }
+      { id: 'reports', label: 'Reports', icon: BarChart3 },
+      { id: 'profile', label: 'My Profile', icon: Users }
     ]
   };
 
@@ -1223,7 +1226,9 @@ export default function OfficialPages({
       {/* MOBILE TOP HEADER BAR */}
       <div className="lg:hidden bg-[#091d64]/95 backdrop-blur-md text-white px-4 py-2 flex justify-between items-center sticky top-0 z-50 shadow-sm border-b border-white/10 h-14 gap-3">
         <div className="flex items-center gap-2.5 min-w-0">
-          <img src="/icon.png" alt="KABISIG" className="h-8 w-auto object-contain shrink-0" />
+          <div className="h-10 px-1.5 rounded-lg bg-white shadow-md ring-1 ring-white/30 flex items-center justify-center overflow-hidden flex-shrink-0">
+            <img src="/images/Kabisig_logo.png" alt="KABISIG" className="h-9 w-auto object-contain" />
+          </div>
           <span className="text-[10px] font-bold bg-[#1e3a8a] px-2 py-0.5 rounded text-amber-300 truncate">{currentRole}</span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -1242,12 +1247,14 @@ export default function OfficialPages({
                 else setActiveMenu('dashboard');
               }}
           />
-          <button 
+          <div className="flex items-center gap-2">
+            <button 
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             className="p-2 rounded-xl bg-white/10 text-white hover:bg-white/20 transition-all cursor-pointer"
           >
             {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
+          </div>
         </div>
       </div>
 
@@ -1436,58 +1443,58 @@ export default function OfficialPages({
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
                 {currentRole === 'SK Kagawad' && (
                   <>
-                    <div className="bg-white rounded-xl border border-slate-100 p-5 flex items-center gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
-                      <div className="w-12 h-12 rounded-xl bg-blue-50 text-[#091d64] flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-[#091d64] group-hover:text-white transition-colors">
+                    <div className="bg-white rounded-xl border border-slate-100 p-3.5 sm:p-5 flex items-center gap-2.5 sm:gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
+                      <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-blue-50 text-[#091d64] flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-[#091d64] group-hover:text-white transition-colors">
                         <ClipboardList className="w-5 h-5" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Active Programs</span>
-                          <span className="text-[9px] font-bold bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded">CBYDP Aligned</span>
+                          <span className="hidden sm:inline text-[9px] font-bold bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded">CBYDP Aligned</span>
                         </div>
-                        <h3 className="text-2xl font-black text-[#091d64] mt-0.5">{programs.length} <span className="text-xs font-semibold text-slate-400">Initiatives</span></h3>
+                        <h3 className="text-lg sm:text-2xl font-black text-[#091d64] mt-0.5">{programs.length} <span className="text-xs font-semibold text-slate-400">Initiatives</span></h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">AYDP 8 Participation Centers</p>
                       </div>
                     </div>
 
-                    <div className="bg-white rounded-xl border border-slate-100 p-5 flex items-center gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
-                      <div className="w-12 h-12 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-violet-600 group-hover:text-white transition-colors">
+                    <div className="bg-white rounded-xl border border-slate-100 p-3.5 sm:p-5 flex items-center gap-2.5 sm:gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
+                      <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-violet-600 group-hover:text-white transition-colors">
                         <Users className="w-5 h-5" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">KK Participants</span>
-                          <span className="text-[9px] font-bold bg-violet-50 text-violet-700 px-1.5 py-0.2 rounded">Roster Active</span>
+                          <span className="hidden sm:inline text-[9px] font-bold bg-violet-50 text-violet-700 px-1.5 py-0.2 rounded">Roster Active</span>
                         </div>
-                        <h3 className="text-2xl font-black text-slate-800 mt-0.5">{youthProfiles.length} <span className="text-xs font-semibold text-slate-400">Youth</span></h3>
+                        <h3 className="text-lg sm:text-2xl font-black text-slate-800 mt-0.5">{youthProfiles.length} <span className="text-xs font-semibold text-slate-400">Youth</span></h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">Registered KK Residents</p>
                       </div>
                     </div>
 
-                    <div className="bg-white rounded-xl border border-slate-100 p-5 flex items-center gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
-                      <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                    <div className="bg-white rounded-xl border border-slate-100 p-3.5 sm:p-5 flex items-center gap-2.5 sm:gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
+                      <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-emerald-600 group-hover:text-white transition-colors">
                         <CalendarCheck className="w-5 h-5" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Attendance Tracking</span>
-                          <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded">QR Verified</span>
+                          <span className="hidden sm:inline text-[9px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded">QR Verified</span>
                         </div>
-                        <h3 className="text-2xl font-black text-emerald-600 mt-0.5">{localAttendance?.length ?? 0} <span className="text-xs font-semibold text-slate-400">Check-ins</span></h3>
+                        <h3 className="text-lg sm:text-2xl font-black text-emerald-600 mt-0.5">{localAttendance?.length ?? 0} <span className="text-xs font-semibold text-slate-400">Check-ins</span></h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">Event Check-in Average</p>
                       </div>
                     </div>
 
-                    <div className="bg-white rounded-xl border border-slate-100 p-5 flex items-center gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
-                      <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-amber-500 group-hover:text-white transition-colors">
+                    <div className="bg-white rounded-xl border border-slate-100 p-3.5 sm:p-5 flex items-center gap-2.5 sm:gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
+                      <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-amber-500 group-hover:text-white transition-colors">
                         <Sparkles className="w-5 h-5" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Rule-Based Matching</span>
-                          <span className="text-[9px] font-bold bg-amber-50 text-amber-700 px-1.5 py-0.2 rounded">Active</span>
+                          <span className="hidden sm:inline text-[9px] font-bold bg-amber-50 text-amber-700 px-1.5 py-0.2 rounded">Active</span>
                         </div>
-                        <h3 className="text-2xl font-black text-amber-600 mt-0.5">{programs?.length ?? 0} <span className="text-xs font-semibold text-slate-400">Programs</span></h3>
+                        <h3 className="text-lg sm:text-2xl font-black text-amber-600 mt-0.5">{programs?.length ?? 0} <span className="text-xs font-semibold text-slate-400">Programs</span></h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">Generated from resident profiles</p>
                       </div>
                     </div>
@@ -1496,58 +1503,58 @@ export default function OfficialPages({
 
                 {currentRole === 'SK Secretary' && (
                   <>
-                    <div className="bg-white rounded-xl border border-slate-100 p-5 flex items-center gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
-                      <div className="w-12 h-12 rounded-xl bg-blue-50 text-[#091d64] flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-[#091d64] group-hover:text-white transition-colors">
+                    <div className="bg-white rounded-xl border border-slate-100 p-3.5 sm:p-5 flex items-center gap-2.5 sm:gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
+                      <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-blue-50 text-[#091d64] flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-[#091d64] group-hover:text-white transition-colors">
                         <Users className="w-5 h-5" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">KK Youth Database</span>
-                          <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded">Active</span>
+                          <span className="hidden sm:inline text-[9px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded">Active</span>
                         </div>
-                        <h3 className="text-2xl font-black text-[#091d64] mt-0.5">{youthProfiles.length} <span className="text-xs font-semibold text-slate-400">Residents</span></h3>
+                        <h3 className="text-lg sm:text-2xl font-black text-[#091d64] mt-0.5">{youthProfiles.length} <span className="text-xs font-semibold text-slate-400">Residents</span></h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">Katipunan ng Kabataan (Ages 15–30 yrs)</p>
                       </div>
                     </div>
 
-                    <div className="bg-white rounded-xl border border-slate-100 p-5 flex items-center gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
-                      <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                    <div className="bg-white rounded-xl border border-slate-100 p-3.5 sm:p-5 flex items-center gap-2.5 sm:gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
+                      <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-indigo-600 group-hover:text-white transition-colors">
                         <FolderClosed className="w-5 h-5" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Document Archive</span>
-                          <span className="text-[9px] font-bold bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded">Indexed</span>
+                          <span className="hidden sm:inline text-[9px] font-bold bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded">Indexed</span>
                         </div>
-                        <h3 className="text-2xl font-black text-slate-800 mt-0.5">{localDocs.length} <span className="text-xs font-semibold text-slate-400">Records</span></h3>
+                        <h3 className="text-lg sm:text-2xl font-black text-slate-800 mt-0.5">{localDocs.length} <span className="text-xs font-semibold text-slate-400">Records</span></h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">Resolutions, Minutes & Dossiers</p>
                       </div>
                     </div>
 
-                    <div className="bg-white rounded-xl border border-slate-100 p-5 flex items-center gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
-                      <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-amber-500 group-hover:text-white transition-colors">
+                    <div className="bg-white rounded-xl border border-slate-100 p-3.5 sm:p-5 flex items-center gap-2.5 sm:gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
+                      <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-amber-500 group-hover:text-white transition-colors">
                         <Clock className="w-5 h-5" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Pending Actions</span>
-                          <span className="text-[9px] font-bold bg-amber-50 text-amber-700 px-1.5 py-0.2 rounded">Action Req</span>
+                          <span className="hidden sm:inline text-[9px] font-bold bg-amber-50 text-amber-700 px-1.5 py-0.2 rounded">Action Req</span>
                         </div>
-                        <h3 className="text-2xl font-black text-amber-600 mt-0.5">{localDocs.filter(d => d.status === 'Pending').length + 1} <span className="text-xs font-semibold text-slate-400">Items</span></h3>
+                        <h3 className="text-lg sm:text-2xl font-black text-amber-600 mt-0.5">{localDocs.filter(d => d.status === 'Pending').length + 1} <span className="text-xs font-semibold text-slate-400">Items</span></h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">Minutes signing & transmittals</p>
                       </div>
                     </div>
 
-                    <div className="bg-white rounded-xl border border-slate-100 p-5 flex items-center gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
-                      <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                    <div className="bg-white rounded-xl border border-slate-100 p-3.5 sm:p-5 flex items-center gap-2.5 sm:gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
+                      <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-emerald-600 group-hover:text-white transition-colors">
                         <ShieldCheck className="w-5 h-5" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">DILG Compliance</span>
-                          <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded">See Reports</span>
+                          <span className="hidden sm:inline text-[9px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded">See Reports</span>
                         </div>
-                        <h3 className="text-2xl font-black text-emerald-600 mt-0.5">—</h3>
+                        <h3 className="text-lg sm:text-2xl font-black text-emerald-600 mt-0.5">—</h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">RA 10742 & CBYDP Standard</p>
                       </div>
                     </div>
@@ -1556,58 +1563,58 @@ export default function OfficialPages({
 
                 {currentRole === 'SK Treasurer' && (
                   <>
-                    <div className="bg-white rounded-xl border border-slate-100 p-5 flex items-center gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
-                      <div className="w-12 h-12 rounded-xl bg-blue-50 text-[#091d64] flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-[#091d64] group-hover:text-white transition-colors">
+                    <div className="bg-white rounded-xl border border-slate-100 p-3.5 sm:p-5 flex items-center gap-2.5 sm:gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
+                      <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-blue-50 text-[#091d64] flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-[#091d64] group-hover:text-white transition-colors">
                         <Coins className="w-5 h-5" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Program Allocations</span>
-                          <span className="text-[9px] font-bold bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded">Current Year</span>
+                          <span className="hidden sm:inline text-[9px] font-bold bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded">Current Year</span>
                         </div>
-                        <h3 className="text-xl font-black text-[#091d64] mt-0.5">₱{totalBarangayBudget.toLocaleString()}</h3>
+                        <h3 className="text-base sm:text-xl font-black text-[#091d64] mt-0.5">₱{totalBarangayBudget.toLocaleString()}</h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">From saved SK programs</p>
                       </div>
                     </div>
 
-                    <div className="bg-white rounded-xl border border-slate-100 p-5 flex items-center gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
-                      <div className="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-rose-600 group-hover:text-white transition-colors">
+                    <div className="bg-white rounded-xl border border-slate-100 p-3.5 sm:p-5 flex items-center gap-2.5 sm:gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
+                      <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-rose-600 group-hover:text-white transition-colors">
                         <DollarSign className="w-5 h-5" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Disbursed Ledger</span>
-                          <span className="text-[9px] font-bold bg-rose-50 text-rose-700 px-1.5 py-0.2 rounded">COA Audited</span>
+                          <span className="hidden sm:inline text-[9px] font-bold bg-rose-50 text-rose-700 px-1.5 py-0.2 rounded">COA Audited</span>
                         </div>
-                        <h3 className="text-xl font-black text-rose-600 mt-0.5">₱{totalSpentExpenses.toLocaleString()}</h3>
+                        <h3 className="text-base sm:text-xl font-black text-rose-600 mt-0.5">₱{totalSpentExpenses.toLocaleString()}</h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">VAT / Non-VAT Expenses</p>
                       </div>
                     </div>
 
-                    <div className="bg-white rounded-xl border border-slate-100 p-5 flex items-center gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
-                      <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                    <div className="bg-white rounded-xl border border-slate-100 p-3.5 sm:p-5 flex items-center gap-2.5 sm:gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
+                      <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-emerald-600 group-hover:text-white transition-colors">
                         <RefreshCw className="w-5 h-5" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Cash Balance</span>
-                          <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded">{((remainingCash / (totalBarangayBudget || 1))*100).toFixed(1)}% Left</span>
+                          <span className="hidden sm:inline text-[9px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded">{((remainingCash / (totalBarangayBudget || 1))*100).toFixed(1)}% Left</span>
                         </div>
-                        <h3 className="text-xl font-black text-emerald-600 mt-0.5">₱{remainingCash.toLocaleString()}</h3>
+                        <h3 className="text-base sm:text-xl font-black text-emerald-600 mt-0.5">₱{remainingCash.toLocaleString()}</h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">Net Unexpended Funds</p>
                       </div>
                     </div>
 
-                    <div className="bg-white rounded-xl border border-slate-100 p-5 flex items-center gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
-                      <div className="w-12 h-12 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-violet-600 group-hover:text-white transition-colors">
+                    <div className="bg-white rounded-xl border border-slate-100 p-3.5 sm:p-5 flex items-center gap-2.5 sm:gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
+                      <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-violet-600 group-hover:text-white transition-colors">
                         <Layers className="w-5 h-5" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Property Roster</span>
-                          <span className="text-[9px] font-bold bg-violet-50 text-violet-700 px-1.5 py-0.2 rounded">See Inventory Detail</span>
+                          <span className="hidden sm:inline text-[9px] font-bold bg-violet-50 text-violet-700 px-1.5 py-0.2 rounded">See Inventory Detail</span>
                         </div>
-                        <h3 className="text-2xl font-black text-[#091d64] mt-0.5">{inventory.length} <span className="text-xs font-semibold text-slate-400">Items</span></h3>
+                        <h3 className="text-lg sm:text-2xl font-black text-[#091d64] mt-0.5">{inventory.length} <span className="text-xs font-semibold text-slate-400">Items</span></h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">Barangay Property Assets</p>
                       </div>
                     </div>
@@ -1616,55 +1623,55 @@ export default function OfficialPages({
 
                 {currentRole === 'SK Chairperson' && (
                   <>
-                    <div className="bg-white rounded-xl border border-slate-100 p-5 flex items-center gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
-                      <div className="w-12 h-12 rounded-xl bg-blue-50 text-[#091d64] flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-[#091d64] group-hover:text-white transition-colors">
+                    <div className="bg-white rounded-xl border border-slate-100 p-3.5 sm:p-5 flex items-center gap-2.5 sm:gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
+                      <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-blue-50 text-[#091d64] flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-[#091d64] group-hover:text-white transition-colors">
                         <Users className="w-5 h-5" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Katipunan ng Kabataan</span>
-                          <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded">Active</span>
+                          <span className="hidden sm:inline text-[9px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded">Active</span>
                         </div>
-                        <h3 className="text-2xl font-black text-[#091d64] mt-0.5">{youthProfiles.length} <span className="text-xs font-semibold text-slate-400">Youth</span></h3>
+                        <h3 className="text-lg sm:text-2xl font-black text-[#091d64] mt-0.5">{youthProfiles.length} <span className="text-xs font-semibold text-slate-400">Youth</span></h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">Barangay Resident Roster</p>
                       </div>
                     </div>
-                    <div className="bg-white rounded-xl border border-slate-100 p-5 flex items-center gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
-                      <div className="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                    <div className="bg-white rounded-xl border border-slate-100 p-3.5 sm:p-5 flex items-center gap-2.5 sm:gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
+                      <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-indigo-600 group-hover:text-white transition-colors">
                         <ClipboardList className="w-5 h-5" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Active CBYDP Programs</span>
-                          <span className="text-[9px] font-bold bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded">In Progress</span>
+                          <span className="hidden sm:inline text-[9px] font-bold bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded">In Progress</span>
                         </div>
-                        <h3 className="text-2xl font-black text-slate-800 mt-0.5">{programs.length} <span className="text-xs font-semibold text-slate-400">Initiatives</span></h3>
+                        <h3 className="text-lg sm:text-2xl font-black text-slate-800 mt-0.5">{programs.length} <span className="text-xs font-semibold text-slate-400">Initiatives</span></h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">AYDP 8 Centers of Participation</p>
                       </div>
                     </div>
-                    <div className="bg-white rounded-xl border border-slate-100 p-5 flex items-center gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
-                      <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-amber-500 group-hover:text-white transition-colors">
+                    <div className="bg-white rounded-xl border border-slate-100 p-3.5 sm:p-5 flex items-center gap-2.5 sm:gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
+                      <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-amber-500 group-hover:text-white transition-colors">
                         <Coins className="w-5 h-5" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Program Allocations</span>
-                          <span className="text-[9px] font-bold bg-amber-50 text-amber-700 px-1.5 py-0.2 rounded">Current Year</span>
+                          <span className="hidden sm:inline text-[9px] font-bold bg-amber-50 text-amber-700 px-1.5 py-0.2 rounded">Current Year</span>
                         </div>
-                        <h3 className="text-xl font-black text-amber-600 mt-0.5">₱{totalBarangayBudget.toLocaleString()}</h3>
+                        <h3 className="text-base sm:text-xl font-black text-amber-600 mt-0.5">₱{totalBarangayBudget.toLocaleString()}</h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">₱{remainingCash.toLocaleString()} Cash Balance</p>
                       </div>
                     </div>
-                    <div className="bg-white rounded-xl border border-slate-100 p-5 flex items-center gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
-                      <div className="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                    <div className="bg-white rounded-xl border border-slate-100 p-3.5 sm:p-5 flex items-center gap-2.5 sm:gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
+                      <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-emerald-600 group-hover:text-white transition-colors">
                         <ShieldCheck className="w-5 h-5" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Governance Score</span>
-                          <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded">DILG Excellent</span>
+                          <span className="hidden sm:inline text-[9px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded">DILG Excellent</span>
                         </div>
-                        <h3 className="text-2xl font-black text-emerald-600 mt-0.5">99.2%</h3>
+                        <h3 className="text-lg sm:text-2xl font-black text-emerald-600 mt-0.5">99.2%</h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">Full Transparency Compliant</p>
                       </div>
                     </div>

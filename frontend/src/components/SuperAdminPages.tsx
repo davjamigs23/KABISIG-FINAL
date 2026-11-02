@@ -1,3 +1,4 @@
+import NotificationMenu from './NotificationMenu';
 /* PDF Export Available */ import { generateBudgetUtilizationReport } from '../lib/pdfReports';
 import { useEffect, useState } from 'react';
 import ProfileSettings from './ProfileSettings';
@@ -616,15 +617,19 @@ useEffect(() => {
       {/* MOBILE TOP HEADER BAR */}
       <div className="lg:hidden bg-[#091d64]/95 backdrop-blur-md text-white px-4 py-2 flex justify-between items-center sticky top-0 z-50 shadow-sm border-b border-white/10 h-14">
         <div className="flex items-center gap-2">
-          <KabisigLogo className="scale-75" />
+          <div className="h-10 px-1.5 rounded-lg bg-white shadow-md ring-1 ring-white/30 flex items-center justify-center overflow-hidden flex-shrink-0">
+            <img src="/images/Kabisig_logo.png" alt="KABISIG" className="h-9 w-auto object-contain" />
+          </div>
           <span className="text-[10px] font-bold bg-white/10 px-2 py-0.5 rounded text-amber-300">Super Admin</span>
         </div>
-        <button 
+        <div className="flex items-center gap-2">
+            <button 
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           className="p-2 rounded-xl bg-white/10 text-white hover:bg-white/20 transition-all cursor-pointer"
         >
           {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
+          </div>
       </div>
 
       {/* MOBILE DRAWER OVERLAY */}
@@ -791,7 +796,7 @@ useEffect(() => {
         </header>
 
         {/* MAIN WORKSPACE CONTENT */}
-        <div className="flex-1 overflow-y-auto p-3.5 sm:p-6 lg:p-8 pb-24 sm:pb-8 bg-[#f8fafc]">
+        <div className="flex-1 overflow-y-auto pb-24 p-3.5 sm:p-6 lg:p-8 pb-24 sm:pb-8 bg-[#f8fafc]">
           
           {/* ==================== 1. DASHBOARD TAB ==================== */}
           {activeMenu === 'profile' && (
@@ -2262,6 +2267,16 @@ useEffect(() => {
         >
           <History className={`w-5 h-5 ${activeMenu === 'audit' ? 'text-[#091d64] scale-110' : 'text-slate-400'} transition-transform`} />
           <span className="text-[10px] mt-0.5 tracking-tight font-sans">Audit</span>
+        </button>
+
+        <button
+          onClick={() => setActiveMenu('profile')}
+          className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
+            activeMenu === 'profile' ? 'text-[#091d64] font-extrabold bg-blue-50/80' : 'text-slate-400 font-medium hover:text-slate-600'
+          }`}
+        >
+          <Users className={`w-5 h-5 ${activeMenu === 'profile' ? 'text-[#091d64] scale-110' : 'text-slate-400'} transition-transform`} />
+          <span className="text-[10px] mt-0.5 tracking-tight font-sans">Profile</span>
         </button>
       </div>
 

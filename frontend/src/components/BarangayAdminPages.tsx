@@ -1297,15 +1297,20 @@ return (
       {/* MOBILE HEADER */}
       <div className="lg:hidden bg-[#091d64]/95 backdrop-blur-md text-white px-4 py-2 flex justify-between items-center sticky top-0 z-50 shadow-sm border-b border-white/10 h-14">
         <div className="flex items-center gap-2.5">
-          <KabisigLogo className="scale-75" />
+          <div className="h-10 px-1.5 rounded-lg bg-white shadow-md ring-1 ring-white/30 flex items-center justify-center overflow-hidden flex-shrink-0">
+            <img src="/images/Kabisig_logo.png" alt="KABISIG" className="h-9 w-auto object-contain" />
+          </div>
           <span className="text-[10px] font-bold bg-[#1e3a8a] px-2 py-0.5 rounded text-sky-200">Brgy. {currentBarangay?.name}</span>
         </div>
-        <button
+        <div className="flex items-center gap-2">
+            <NotificationMenu userRole="Barangay Admin" buttonClassName="text-white hover:bg-white/10" />
+            <button
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           className="p-2 rounded-xl bg-white/10 text-white hover:bg-white/20 transition-all cursor-pointer"
         >
           {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
+          </div>
       </div>
 
       {/* MOBILE DRAWER */}
@@ -3398,6 +3403,38 @@ return (
         </div>
       )}
 
+
+      {/* MOBILE BOTTOM NAVIGATION — Chairperson */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200/80 px-2 py-1.5 flex justify-around items-center z-40 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
+        {([
+          { id: 'dashboard',    label: 'Home',       Icon: LayoutDashboard },
+          { id: 'youth',        label: 'Youth',      Icon: Users },
+          { id: 'programs',     label: 'Programs',   Icon: ClipboardList },
+          { id: 'restrictions', label: 'Restrict',   Icon: ShieldAlert },
+          { id: 'profile',      label: 'Profile',    Icon: User },
+        ] as const).map(({ id, label, Icon }) => {
+          const isActive = activeMenu === id;
+          return (
+            <button
+              key={id}
+              onClick={() => { setActiveMenu(id); if (typeof setIsMobileMenuOpen === 'function') setIsMobileMenuOpen(false); }}
+              className={`flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all cursor-pointer ${
+                isActive ? 'text-[#091d64] font-extrabold bg-blue-50/80' : 'text-slate-400 font-medium hover:text-slate-600'
+              }`}
+            >
+              <Icon className={`w-5 h-5 ${isActive ? 'text-[#091d64] scale-110' : 'text-slate-400'} transition-transform`} />
+              <span className="text-[10px] mt-0.5 tracking-tight font-sans truncate max-w-[44px]">{label}</span>
+            </button>
+          );
+        })}
+        <button
+          onClick={() => setIsMobileMenuOpen(true)}
+          className="flex flex-col items-center justify-center py-1 px-1 rounded-xl text-slate-400 font-medium hover:text-slate-600 cursor-pointer"
+        >
+          <Menu className="w-5 h-5 text-slate-400" />
+          <span className="text-[10px] mt-0.5 tracking-tight font-sans">More</span>
+        </button>
+      </div>
     </div>
   );
 }
