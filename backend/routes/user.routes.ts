@@ -262,7 +262,7 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
     const userId = authenticatedUser.id;
     const { data: user, error: userError } = await supabaseAdmin
       .from('users')
-      .select('id, email, tenant_id, full_name, first_name, middle_name, last_name, suffix, suspension_reason')
+      .select('id, email, tenant_id, full_name, first_name, middle_name, last_name, suffix, suspension_reason, is_demoted')
       .eq('id', userId)
       .maybeSingle();
 
@@ -300,6 +300,9 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
     }
     if (body.mobile || body.phone) {
       userUpdates.phone = (body.mobile || body.phone).trim();
+    }
+    if (body.has_edited_profile === true && user.is_demoted === true) {
+      userUpdates.has_edited_profile = true;
     }
 
     const { error: userUpdateError } = await supabaseAdmin.from('users').update(userUpdates).eq('id', userId);

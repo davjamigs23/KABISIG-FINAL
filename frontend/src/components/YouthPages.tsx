@@ -532,6 +532,9 @@ export default function YouthPages({
       }
       setIsEditModalOpen(false);
         setIsEditingProfile(false);
+        if (currentYouth.is_demoted) { await kabisigApi.updateProfile({ ...editForm, has_edited_profile: true }); }
+        setIsEditingProfile(false);
+        onUpdateYouthProfile({ ...currentYouth, ...editForm, has_edited_profile: true } as any);
       alert('Your Katipunan ng Kabataan Profile (DILG Annex 4) has been updated and saved to the database successfully!');
     } catch (err: any) {
       console.error('Error saving profile changes:', err);
@@ -1382,7 +1385,7 @@ export default function YouthPages({
                       <span className="text-[11px] font-mono font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md">
                         {countCompletedFields} / 19 Fields Complete
                       </span>
-                      {!isEditingProfile && (
+                      {currentYouth.is_demoted === true && currentYouth.has_edited_profile !== true && !isEditingProfile && (
                         <button
                           onClick={() => setShowEditWarning(true)}
                           className="px-3 py-1.5 bg-[#091d64] hover:bg-[#0a2578] text-white text-[10px] font-bold rounded-md transition-colors shadow-sm cursor-pointer whitespace-nowrap"
