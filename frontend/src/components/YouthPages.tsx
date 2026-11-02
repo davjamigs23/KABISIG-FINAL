@@ -1696,46 +1696,7 @@ export default function YouthPages({
                             </div>
                           )}
 
-      {showEditWarning && (
-        <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-center w-14 h-14 rounded-full bg-amber-100 text-amber-600 mx-auto mb-4">
-              <ShieldAlert className="w-7 h-7" />
-            </div>
-            <h3 className="text-lg font-black text-center text-slate-800 mb-2">One-Time Edit Warning</h3>
-            <p className="text-sm text-center text-slate-600 mb-6 leading-relaxed">
-              You can only edit your profile <strong className="text-slate-800">ONCE</strong>. If you make a mistake, you will need to contact the SK Federation President to correct it.
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowEditWarning(false)}
-                className="flex-1 py-2.5 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  setShowEditWarning(false);
-                  setIsEditingProfile(true);
-                }}
-                className="flex-1 py-2.5 bg-[#091d64] hover:bg-[#0a2578] rounded-xl text-xs font-bold text-white transition-colors cursor-pointer"
-              >
-                Proceed to Edit
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {cropImage && (
-        <ImageCropModal
-          imageSrc={cropImage}
-          aspect={1}
-          outputSize={500}
-          onComplete={handleCropConfirm}
-          onCancel={() => setCropImage(null)}
-        />
-      )}
                         </div>
                       );
                     })}
@@ -2665,6 +2626,37 @@ export default function YouthPages({
             >
               {uploadingId ? 'Uploading...' : 'Submit ID for Verification'}
             </button>
+          </div>
+        </div>
+      )}
+
+      {showEditWarning && (
+        <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-center w-14 h-14 rounded-full bg-amber-100 text-amber-600 mx-auto mb-4">
+              <ShieldAlert className="w-7 h-7" />
+            </div>
+            <h3 className="text-lg font-black text-center text-slate-800 mb-2">One-Time Edit Warning</h3>
+            <p className="text-sm text-center text-slate-600 mb-6 leading-relaxed">
+              You can only edit your profile <strong className="text-slate-800">ONCE</strong>. If you make a mistake, you will need to contact the SK Federation President to correct it.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowEditWarning(false)}
+                className="flex-1 py-2.5 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setShowEditWarning(false);
+                  setIsEditingProfile(true);
+                }}
+                className="flex-1 py-2.5 bg-[#091d64] hover:bg-[#0a2578] rounded-xl text-xs font-bold text-white transition-colors cursor-pointer"
+              >
+                Proceed to Edit
+              </button>
+            </div>
           </div>
         </div>
       )}
