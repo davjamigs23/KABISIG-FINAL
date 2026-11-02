@@ -177,6 +177,20 @@ router.post(
     const existingAuthUser = authUsersData?.users?.find(u => u.email?.toLowerCase() === cleanEmail);
 
     if (existingUser) {
+      // === Reused-email guard (single-account-per-email policy) ===
+      // Each email may hold exactly one role. Reject if this email already
+      // belongs to a different role (Youth / SK Official / SA / Viewer).
+      if (Number(existingUser.role_id) !== 2) {
+        const _roleNames: Record<number, string> = { 1: 'Super Admin', 3: 'SK Official', 4: 'Youth Constituent', 5: 'Viewer' };
+        const _currentRole = _roleNames[Number(existingUser.role_id)] || 'another role';
+        sendError(
+          res,
+          'This email is already registered as ' + _currentRole + '. Each email can only be linked to one account across all roles. Please use a different email address.',
+          409,
+          { code: 'EMAIL_ALREADY_REGISTERED_OTHER_ROLE', current_role_id: existingUser.role_id }
+        );
+        return;
+      }
       targetUserId = existingUser.id;
 
       if (!existingAuthUser) {

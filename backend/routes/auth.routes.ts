@@ -1050,6 +1050,21 @@ router.post('/setup-chairperson-password', async (req: Request, res: Response): 
     return;
   }
 
+  // === Reused-email guard (mirror of /invite-chairperson) ===
+  // If an existing non-Chairperson (Youth / SK Official) reaches this route
+  // with a valid tenant_id, refuse to silently promote them to Chairperson.
+  if (existingUser && Number(existingUser.role_id) !== 2) {
+    const _roleNames: Record<number, string> = { 1: 'Super Admin', 3: 'SK Official', 4: 'Youth Constituent', 5: 'Viewer' };
+    const _currentRole = _roleNames[Number(existingUser.role_id)] || 'another role';
+    sendError(
+      res,
+      'This email is already registered as ' + _currentRole + '. Each email can only be linked to one account across all roles.',
+      409,
+      { code: 'EMAIL_ALREADY_REGISTERED_OTHER_ROLE', current_role_id: existingUser.role_id }
+    );
+    return;
+  }
+
   const resolvedName = resolveName({
     payload: { first_name, middle_name, last_name, suffix, full_name },
     existing: existingUser
