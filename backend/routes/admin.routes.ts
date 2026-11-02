@@ -985,7 +985,7 @@ router.post(
       
       const { error: demoteErr } = await supabaseAdmin
         .from('users')
-        .update({ role_id: 4, status: 'active', full_name: cleanName })
+        .update({ role_id: 4, status: 'active', full_name: cleanName, is_demoted: true, has_edited_profile: false })
         .eq('id', outgoing.id);
 
       if (demoteErr) {

@@ -460,6 +460,8 @@ export default function App() {
               barangayId: user.tenant_id || '',
               dateRegistered: user.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
               registeredRole: 'Youth Constituent',
+              is_demoted: (user as any).is_demoted === true,
+              has_edited_profile: (user as any).has_edited_profile === true,
             };
             setCurrentYouth(youthFromDb);
             setYouthProfiles(prev => [youthFromDb, ...prev.filter(p => p.id !== youthFromDb.id && p.email !== youthFromDb.email)]);
@@ -901,6 +903,8 @@ export default function App() {
           barangayId: userObj.tenant_id || matchedProfile?.barangayId || '',
           dateRegistered: userObj.created_at?.split('T')[0] || matchedProfile?.dateRegistered || new Date().toISOString().split('T')[0],
           registeredRole: 'Youth Constituent',
+          is_demoted: (userObj as any).is_demoted === true,
+          has_edited_profile: (userObj as any).has_edited_profile === true,
         };
         matchedProfile = mergedFromDb;
       }
