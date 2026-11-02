@@ -1359,22 +1359,19 @@ router.post(
       return;
     }
 
-    let userIdToUpdate = target_user_id;
-    let old_email = current_email;
+        // 1. Find the user explicitly to get their CURRENT email before we change it
+    const query = supabaseAdmin.from('users').select('id, email, full_name');
+    if (target_user_id) query.eq('id', target_user_id);
+    else query.eq('email', current_email);
 
-    // Look up the user to get their current email if not provided
-    if (!userIdToUpdate || !old_email) {
-      const query = supabaseAdmin.from('users').select('id, email, full_name');
-      if (userIdToUpdate) query.eq('id', userIdToUpdate);
-      else query.eq('email', current_email);
-      
-      const { data: foundUser } = await query.single();
-      if (!foundUser) {
-        sendError(res, 'User not found.', 404);
-        return;
-      }
-      userIdToUpdate = foundUser.id;
-      old_email = foundUser.email;
+    const { data: foundUser, error: findErr } = await query.single();
+    if (findErr || !foundUser) {
+      sendError(res, 'User not found.', 404);
+      return;
+    }
+    
+    const userIdToUpdate = foundUser.id;
+    const old_email = foundUser.email; // Guaranteed to be the real current email
       
       if (!old_email) {
         sendError(res, 'User does not have an existing email.', 400);
@@ -1444,7 +1441,6 @@ router.post(
       });
 
       sendSuccess(res, null, 'User email updated successfully. Notifications sent.');
-    }
   }
 );
 // GET /api/admin/email-history - Super Admin only

@@ -4,7 +4,7 @@ import SupabaseCookieCleanup from '../src/components/SupabaseCookieCleanup';
 import GlobalFormBehavior from '../src/components/GlobalFormBehavior';
 
 export const metadata: Metadata = {
-  title: 'Kabisig SK Information System',
+  title: 'KABISIG',
   description: 'Frontend portal for Sangguniang Kabataan councils in Naga City.',
 };
 
