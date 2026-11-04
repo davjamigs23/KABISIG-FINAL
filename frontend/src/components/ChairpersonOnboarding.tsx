@@ -157,7 +157,16 @@ export default function ChairpersonOnboarding({
           {/* Top Header */}
           <div className="flex justify-between items-start mb-6">
             <div className="flex items-center gap-3">
-              <KabisigLogo className="w-24" />
+              {currentBarangay?.logo ? (
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="h-16 px-2 rounded-xl bg-white shadow-lg flex items-center justify-center overflow-hidden">
+                      <img src={currentBarangay.logo} alt={currentBarangay.name} className="h-14 w-auto object-contain" />
+                    </div>
+                    <span className="text-xs font-bold text-white uppercase tracking-wider">{currentBarangay.name}</span>
+                  </div>
+                ) : (
+                  <KabisigLogo className="w-24" />
+                )}
               <div className="h-8 w-px bg-slate-200"></div>
               <div>
                 <span className="text-[10px] font-black uppercase tracking-wider text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full inline-block">
