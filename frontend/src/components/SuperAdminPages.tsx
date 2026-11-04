@@ -80,6 +80,13 @@ useEffect(() => {
   // LYDP Report Modal
   const [showLydpModal, setShowLydpModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
+  const [showFixTypoModal, setShowFixTypoModal] = useState(false);
+  const [typoUserId, setTypoUserId] = useState('');
+  const [typoFullName, setTypoFullName] = useState('');
+  const [typoEmail, setTypoEmail] = useState('');
+  const [typoPhone, setTypoPhone] = useState('');
+  const [typoBirthdate, setTypoBirthdate] = useState('');
+  const [isFixingTypo, setIsFixingTypo] = useState(false);
   const [emailForm, setEmailForm] = useState({ current_email: '', new_email: '', reason: '' });
   const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
   const [emailModalTab, setEmailModalTab] = useState<'update' | 'history'>('update');
@@ -878,7 +885,7 @@ useEffect(() => {
                     <Building2 className="w-4 h-4" /> Manage Barangays
                   </button>
                   <button 
-                    onClick={() => { setShowEmailModal(true); setEmailModalTab('update'); setIsFetchingEmailHistory(true); kabisigApi.getEmailHistory().then(res => { if (res.success && res.data) setEmailHistoryList(res.data); setIsFetchingEmailHistory(false); }); }}
+                     onClick={() => setShowFixTypoModal(true)}
                     className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-xs transition-colors flex items-center gap-2 cursor-pointer shadow-xs"
                   >
                     <span className="font-black text-sm">@</span> Manage Credentials
@@ -2404,6 +2411,78 @@ useEffect(() => {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* FIX USER TYPO MODAL */}
+      {showFixTypoModal && (
+        <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+            <h3 className="font-bold text-slate-800 text-lg mb-1">Manage User Credentials</h3>
+            <p className="text-xs text-slate-500 mb-4">Correct a user's profile, contact info, or birthdate directly in the database. Leave fields blank to keep them unchanged.</p>
+            
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              if (!typoUserId || !typoFullName) return alert('Both fields are required.');
+              setIsFixingTypo(true);
+              try {
+                const res = await kabisigApi.updateUserName(typoUserId, { 
+                  full_name: typoFullName,
+                  email: typoEmail.trim() || undefined,
+                  phone: typoPhone.trim() || undefined,
+                  birthdate: typoBirthdate || undefined
+                });
+                if (res.success) {
+                  alert('User name corrected successfully!');
+                  setShowFixTypoModal(false);
+                  setTypoUserId('');
+                  setTypoFullName('');
+                  setTypoEmail('');
+                  setTypoPhone('');
+                  setTypoBirthdate('');
+                } else {
+                  alert(res.message || 'Failed to update.');
+                }
+              } catch (err: any) {
+                alert(err.message || 'Error updating name.');
+              } finally {
+                setIsFixingTypo(false);
+              }
+            }} className="space-y-4">
+              
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">User ID or Email</label>
+                <input required type="text" value={typoUserId} onChange={e => setTypoUserId(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Corrected Full Name</label>
+                <input required type="text" value={typoFullName} onChange={e => setTypoFullName(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Corrected Email (Optional)</label>
+                <input type="email" value={typoEmail} onChange={e => setTypoEmail(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank to keep current" />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Corrected Phone (Optional)</label>
+                <input type="text" value={typoPhone} onChange={e => setTypoPhone(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank to keep current" />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Corrected Birthdate (Optional)</label>
+                <input type="date" value={typoBirthdate} onChange={e => setTypoBirthdate(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" onClick={() => setShowFixTypoModal(false)} className="px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-50 rounded-lg">Cancel</button>
+                <button type="submit" disabled={isFixingTypo} className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg disabled:opacity-50">
+                  {isFixingTypo ? 'Saving...' : 'Update Credentials'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

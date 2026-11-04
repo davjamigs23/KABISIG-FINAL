@@ -39,6 +39,52 @@ const AssignChairpersonByEmailSchema = z.object({
   barangay_id: z.string().uuid('Valid Barangay ID is required'),
 });
 
+// PUT /api/admin/users/:userId/update-name - SA only
+router.put('/users/:userId/update-name', authenticateUser, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const authUser = (req as AuthRequest).user!;
+    if (authUser.role_id !== 1) { sendError(res, 'Forbidden. Super Admin access only.', 403); return; }
+    const userId = String(req.params.userId || '');
+    const { full_name, first_name, middle_name, last_name, suffix, email, phone, birthdate } = req.body;
+    if (!full_name) { sendError(res, 'Full name is required.', 400); return; }
+
+    // 1. Update public.users
+    const { error: userError } = await supabaseAdmin.from('users').update({
+      full_name: full_name.trim(),
+      first_name: first_name?.trim() || null,
+      middle_name: middle_name?.trim() || null,
+      last_name: last_name?.trim() || null,
+      suffix: suffix?.trim() || null,
+      phone: phone?.trim() || null,
+      email: email?.trim() || undefined,
+      updated_at: new Date().toISOString()
+    }).eq('id', userId);
+
+    if (userError) { sendError(res, 'Failed to update user: ' + userError.message, 500); return; }
+
+    // 2. Update auth.users (Email & Metadata)
+    const authUpdate: any = { user_metadata: { full_name: full_name.trim() } };
+    if (email && email.trim()) {
+      authUpdate.email = email.trim();
+      authUpdate.email_confirm = true; // Bypass confirmation email
+    }
+    const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(userId, authUpdate);
+    if (authError) { sendError(res, 'Auth update failed: ' + authError.message, 500); return; }
+
+    // 3. Update resident_profile (Birthdate)
+    if (birthdate) {
+      const { error: profileError } = await supabaseAdmin.from('resident_profile').update({
+        birthdate: birthdate
+      }).eq('user_id', userId);
+      if (profileError) { console.warn('Profile update failed:', profileError.message); }
+    }
+
+    sendSuccess(res, { id: userId, full_name: full_name.trim() }, 'User profile corrected successfully.');
+  } catch (err: any) {
+    sendError(res, 'Unexpected error: ' + err.message, 500);
+  }
+});
+
 router.get(
   '/audit-logs',
   authenticateUser,

@@ -970,7 +970,7 @@ router.get('/check-chairperson-invite', async (req: Request, res: Response): Pro
   // Check users table
   const { data: user } = await supabaseAdmin
     .from('users')
-    .select('id, email, tenant_id, role_id, full_name, status, barangay(name, city, district)')
+    .select('id, email, tenant_id, role_id, full_name, status, barangay(id, name, city, district, sk_district)')
     .eq('email', normalizedEmail)
     .maybeSingle();
 
@@ -1222,7 +1222,7 @@ router.post('/setup-chairperson-password', async (req: Request, res: Response): 
   // Retrieve complete user profile
   const { data: profile } = await supabaseAdmin
     .from('users')
-    .select('*, roles(role_name), barangay(name, city, district), resident_profile!resident_profile_user_id_fkey(*)')
+    .select('*, roles(role_name), barangay(id, name, city, district, sk_district), resident_profile!resident_profile_user_id_fkey(*)')
     .eq('id', userId)
     .single();
 
@@ -1431,7 +1431,7 @@ router.post('/setup-official-password', async (req: Request, res: Response): Pro
 
   const { data: profile } = await supabaseAdmin
     .from('users')
-    .select('*, roles(role_name), barangay(name, city, district), resident_profile!resident_profile_user_id_fkey(*)')
+    .select('*, roles(role_name), barangay(id, name, city, district, sk_district), resident_profile!resident_profile_user_id_fkey(*)')
     .eq('id', userId)
     .single();
 
@@ -1470,7 +1470,7 @@ router.get('/me', authenticateUser, async (req: Request, res: Response): Promise
   const user = (req as AuthRequest).user!;
   const { data: profile } = await supabaseAdmin
     .from('users')
-    .select('*, roles(role_name), barangay(name, city, district), resident_profile!resident_profile_user_id_fkey(*)')
+    .select('*, roles(role_name), barangay(id, name, city, district, sk_district), resident_profile!resident_profile_user_id_fkey(*)')
     .eq('id', user.id)
     .single();
 

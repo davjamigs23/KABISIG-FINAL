@@ -817,6 +817,7 @@ export default function PublicPages({
                             type="email"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter' && !isLoggingIn) { e.preventDefault(); handleSignIn(); } }}
                             className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
                             placeholder=""
                             required
@@ -838,6 +839,7 @@ export default function PublicPages({
                             type={showPassword ? "text" : "password"}
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter' && !isLoggingIn) { e.preventDefault(); handleSignIn(); } }}
                             className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
                             placeholder=""
                             required
@@ -848,7 +850,7 @@ export default function PublicPages({
                             onClick={() => setShowPassword(!showPassword)}
                             className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer"
                           >
-                            <Eye className="w-4 h-4" />
+                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                           </button>
                         </div>
                       </div>
@@ -1356,7 +1358,7 @@ export default function PublicPages({
                             onClick={() => setShowPassword(!showPassword)}
                             className="absolute right-3.5 top-3 text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer"
                           >
-                            <Eye className="w-4 h-4" />
+                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                           </button>
                         </div>
                         
@@ -1425,7 +1427,7 @@ export default function PublicPages({
                             onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                             className="absolute right-3.5 top-3 text-slate-400 hover:text-slate-600 focus:outline-none cursor-pointer"
                           >
-                            <Eye className="w-4 h-4" />
+                            {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                           </button>
                         </div>
                       </div>

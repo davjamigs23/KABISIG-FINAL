@@ -304,7 +304,9 @@ export default function ViewerPages({
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 lg:hidden flex flex-col justify-between p-6 animate-in fade-in duration-200">
           <div className="space-y-6 overflow-y-auto">
             <div className="flex justify-between items-center border-b border-white/10 pb-4">
-              <KabisigLogo className="scale-90" />
+              <div className="bg-white rounded-lg px-2 py-1 flex items-center shadow-sm">
+                <KabisigLogo className="scale-90" />
+              </div>
               <button 
                 onClick={() => setIsMobileMenuOpen(false)}
                 className="p-2 rounded-xl text-white/70 hover:text-white hover:bg-white/10"

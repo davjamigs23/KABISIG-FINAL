@@ -7,8 +7,9 @@ export function openPrintableReport(title: string, subtitle: string, columns: st
 
   const html = `
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
     <head>
+      <meta charset="UTF-8">
       <title>${title}</title>
       <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
@@ -21,10 +22,11 @@ export function openPrintableReport(title: string, subtitle: string, columns: st
         th { background: #091d64; color: #fff; text-align: left; padding: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
         td { padding: 10px 12px; border-bottom: 1px solid #e2e8f0; }
         tr:nth-child(even) { background-color: #f8fafc; }
-        .footer { margin-top: 50px; display: flex; justify-content: space-between; font-size: 12px; }
+        .footer { margin-top: 60px; display: flex; justify-content: space-between; font-size: 12px; page-break-inside: avoid; }
         .signature { text-align: center; width: 250px; }
         .signature p { margin: 0 0 50px; font-weight: 600; }
-        .signature .line { border-top: 1px solid #000; padding-top: 5px; font-weight: 700; }
+        .signature .line { border-top: 1px solid #000; padding-top: 5px; font-weight: 700; text-transform: uppercase; }
+        .signature .title { font-size: 11px; color: #64748b; margin-top: 2px; text-transform: none; font-weight: 400; }
         @media print {
           body { padding: 0; }
           th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -53,12 +55,12 @@ export function openPrintableReport(title: string, subtitle: string, columns: st
         <div class="signature">
           <p>Prepared by:</p>
           <div class="line">${meta.preparedBy || 'System Generated'}</div>
-          <div>Position / Title</div>
+          <div class="title">${meta.preparedByTitle || 'Position / Title'}</div>
         </div>
         <div class="signature">
           <p>Approved by:</p>
-          <div class="line">${meta.approvedBy || 'SK Chairperson'}</div>
-          <div>SK Chairperson</div>
+          <div class="line">${meta.approvedBy || '____________________'}</div>
+          <div class="title">${meta.approvedByTitle || 'SK Chairperson'}</div>
         </div>
       </div>
     </body>

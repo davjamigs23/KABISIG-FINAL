@@ -2862,18 +2862,16 @@ export default function YouthPages({
                   <thead className="bg-slate-50 text-[10px] text-slate-500 uppercase">
                     <tr>
                       <th className="px-3 py-2">Name</th>
-                      <th className="px-3 py-2 text-right">Status</th>
+                      <th className="px-3 py-2">Zone</th>
+                      <th className="px-3 py-2 text-right">Email</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {programParticipants.map((pt, idx) => (
                       <tr key={idx}>
                         <td className="px-3 py-2 font-bold text-slate-800">{pt.name}</td>
-                        <td className="px-3 py-2 text-right">
-                          <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${pt.status === 'attended' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                            {pt.status}
-                          </span>
-                        </td>
+                        <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{pt.zone || "—"}</td>
+                        <td className="px-3 py-2 text-right text-slate-500 font-mono text-[10px]">{pt.email || "—"}</td>
                       </tr>
                     ))}
                   </tbody>

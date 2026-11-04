@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { composeFullName, splitFullName } from '../lib/name';
 import { BarangayTenant } from '../types';
+import { DEFAULT_BARANGAY_LOGOS } from '../data';
 import { KabisigLogo, DecorativeBackground, validatePassword } from './PublicPages';
 import { kabisigApi } from '../lib/api';
 
@@ -37,6 +38,8 @@ export default function ChairpersonOnboarding({
   const [lastName, setLastName] = useState('');
   const [suffix, setSuffix] = useState('');
   const [phone, setPhone] = useState('');
+
+  const resolvedBarangayLogo = currentBarangay?.logo || DEFAULT_BARANGAY_LOGOS[currentBarangay?.name || ''] || '';
   const [birthdate, setBirthdate] = useState('');
   const [sex, setSex] = useState<'Male' | 'Female' | 'Other' | 'Prefer not to say'>('Male');
   const [address, setAddress] = useState('');
@@ -89,10 +92,9 @@ export default function ChairpersonOnboarding({
 
     const cleanPhone = phone.replace(/[\s\-+]/g, '');
     if (cleanPhone) {
-      const isPhMobile = (cleanPhone.startsWith('09') && cleanPhone.length === 11) || 
-                         (cleanPhone.startsWith('639') && cleanPhone.length === 12);
+      const isPhMobile = cleanPhone.startsWith('09') && cleanPhone.length === 11;
       if (!isPhMobile) {
-        setErrorMsg('Please enter a valid Philippine mobile number (e.g. 09171234567 or +639171234567).');
+        setErrorMsg('Please enter a valid 11-digit mobile number starting with 09 (e.g., 09171234567).');
         return;
       }
     }
@@ -157,12 +159,12 @@ export default function ChairpersonOnboarding({
           {/* Top Header */}
           <div className="flex justify-between items-start mb-6">
             <div className="flex items-center gap-3">
-              {currentBarangay?.logo ? (
+              {resolvedBarangayLogo ? (
                   <div className="flex flex-col items-center gap-3">
                     <div className="h-16 px-2 rounded-xl bg-white shadow-lg flex items-center justify-center overflow-hidden">
-                      <img src={currentBarangay.logo} alt={currentBarangay.name} className="h-14 w-auto object-contain" />
+                      <img src={resolvedBarangayLogo} alt={currentBarangay.name} className="h-14 w-auto object-contain" />
                     </div>
-                    <span className="text-xs font-bold text-white uppercase tracking-wider">{currentBarangay.name}</span>
+                    <span className="text-xs font-bold text-[#091d64] uppercase tracking-wider">{currentBarangay.name}</span>
                   </div>
                 ) : (
                   <KabisigLogo className="w-24" />
@@ -187,9 +189,9 @@ export default function ChairpersonOnboarding({
 
           {/* Assigned Barangay Jurisdiction Banner */}
           <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-center gap-3.5 mb-6">
-            {currentBarangay?.logo ? (
+            {resolvedBarangayLogo ? (
               <img 
-                src={currentBarangay.logo} 
+                src={resolvedBarangayLogo} 
                 alt={`${currentBarangay.name} Seal`} 
                 className="w-12 h-12 rounded-xl object-contain bg-white p-1 border border-slate-200 shadow-2xs shrink-0" 
               />
@@ -295,10 +297,10 @@ export default function ChairpersonOnboarding({
                 Philippine Mobile Contact <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
-                <input 
+                <input maxLength={11} 
                   type="tel"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
                   placeholder=""
                   className="w-full pl-9 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#091d64] focus:border-[#091d64] transition-colors"
                   required

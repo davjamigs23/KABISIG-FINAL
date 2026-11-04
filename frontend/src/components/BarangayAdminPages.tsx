@@ -215,7 +215,7 @@ export default function BarangayAdminPages({
           `₱${(Number(b.spent_amount) || 0).toLocaleString()}`,
           `₱${(Number(b.remaining_amount) || 0).toLocaleString()}`
         ]),
-        { barangay: currentBarangay?.name, preparedBy: currentUser?.full_name || 'SK Chairperson' }
+        { barangay: currentBarangay?.name, preparedBy: currentUser?.full_name || 'SK Chairperson', preparedByTitle: 'SK Chairperson', approvedBy: 'SK Federation President', approvedByTitle: 'SK Federation President' }
       );
     } catch (e) {
       console.error(e);
