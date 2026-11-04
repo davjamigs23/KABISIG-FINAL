@@ -712,7 +712,7 @@ export default function YouthPages({
       y.address, y.zone, y.phone, y.contact || y.email, y.education || y.educationalLevel,
       y.school, y.course, y.yearLevel || y.year, y.employmentStatus,
       y.scholarStatus, y.youthSector, y.guardianName, y.guardianContact,
-      y.profilePic, y.id
+      y.id
     ];
     return fields.filter(f => f && String(f).trim() !== "" && f !== "Not specified" && f !== "N/A").length;
   })();
@@ -787,12 +787,25 @@ export default function YouthPages({
           </div>
           <span className="text-[10px] font-bold bg-[#1e3a8a] px-2 py-0.5 rounded text-amber-300">Youth Portal</span>
         </div>
-        <button 
-          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="p-2 rounded-xl bg-white/10 text-white hover:bg-white/20 transition-all cursor-pointer"
-        >
-          {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </button>
+        <div className="flex items-center gap-2">
+          <NotificationMenu
+            userRole="Youth Constituent"
+            items={notifications || []}
+            buttonClassName="p-2 rounded-xl bg-white/10 text-white hover:bg-white/20"
+            onNavigate={(link) => {
+              if (link.includes('feedback')) setActiveMenu('feedback');
+              else if (link.includes('program')) setActiveMenu('programs');
+              else if (link.includes('profile')) setActiveMenu('profile');
+              else setActiveMenu('dashboard');
+            }}
+          />
+          <button
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="p-2 rounded-xl bg-white/10 text-white hover:bg-white/20 transition-all cursor-pointer"
+          >
+            {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+        </div>
       </div>
       {/* MOBILE DRAWER OVERLAY */}
       {isMobileMenuOpen && (
@@ -939,14 +952,14 @@ export default function YouthPages({
           {/* ==================== 1. DASHBOARD VIEW (Image 4) ==================== */}
           {activeMenu === 'dashboard' && (
             <div className="space-y-6">
-              {countCompletedFields < 19 && (
+              {currentYouth?.is_demoted === true && countCompletedFields < 18 && (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
                   <div className="flex items-start gap-3">
                     <div className="bg-amber-100 p-2 rounded-lg text-amber-600 shrink-0">
                       <ShieldAlert className="w-5 h-5" />
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-amber-900">Your profile is incomplete ({countCompletedFields}/19 fields)</h3>
+                      <h3 className="text-sm font-bold text-amber-900">Your profile is incomplete ({countCompletedFields}/18 fields)</h3>
                       <p className="text-xs text-amber-700 mt-0.5">Please update your details (Zone, Employment, Guardian Info) to ensure you receive accurate program recommendations.</p>
                     </div>
                   </div>
@@ -1406,7 +1419,7 @@ export default function YouthPages({
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="text-[11px] font-mono font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md">
-                        {countCompletedFields} / 19 Fields Complete
+                        {countCompletedFields} / 18 Fields Complete
                       </span>
                       {currentYouth.is_demoted === true && currentYouth.has_edited_profile !== true && !isEditingProfile && (
                         <button
