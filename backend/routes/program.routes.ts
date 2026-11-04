@@ -138,7 +138,7 @@ router.get(
   '/:id/registrations',
   authenticateUser,
   requireActiveUser,
-  requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'),
+  requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN', 'YOUTH_CONSTITUENT'),
   async (req: Request, res: Response): Promise<void> => {
     const programId = String(req.params.id || '');
     const user = (req as AuthRequest).user!;

@@ -95,6 +95,7 @@ import { UserMenu } from './UserMenu';
 import NotificationMenu, { NotificationMenuItem } from './NotificationMenu';
 import { DEFAULT_BARANGAY_LOGOS } from '../data';
 import kabisigApi from '../lib/api';
+import { openPrintableReport } from '../lib/reportGenerator';
 
 // Distinct calendar colors per program — deterministic hash so colors are consistent across reloads
 const CALENDAR_COLORS: string[] = [
@@ -202,106 +203,25 @@ export default function BarangayAdminPages({
   const [reportSubTab, setReportSubTab] = useState<'executive'|'attendance'|'accomplishments'|'beneficiaries'|'demographics'|'financial'>('attendance');
   const barangayLogo = currentBarangay?.logo || DEFAULT_BARANGAY_LOGOS[currentBarangay?.name || ''] || '';
 
-  const generatePDFReport = (reportTitle: string = 'COA Annual Audit & AIP Financial Performance Report') => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert('Please allow popups for this website to export the PDF report.');
-      return;
+  const generatePDFReport = (title: string = 'COA Financial Performance Report') => {
+    try {
+      openPrintableReport(
+        title,
+        'Barangay SK Financial Summary',
+        ['Category', 'Allocated', 'Spent', 'Remaining'],
+        (budgetAllocations || []).map(b => [
+          b.category || 'General',
+          `₱${(Number(b.allocated_amount) || 0).toLocaleString()}`,
+          `₱${(Number(b.spent_amount) || 0).toLocaleString()}`,
+          `₱${(Number(b.remaining_amount) || 0).toLocaleString()}`
+        ]),
+        { barangay: currentBarangay?.name, preparedBy: currentUser?.full_name || 'SK Chairperson' }
+      );
+    } catch (e) {
+      console.error(e);
+      alert('Failed to export PDF');
     }
-    const reportProgramRows = programs.length > 0
-      ? programs.map(program => {
-          const allocated = Number(program.budgetAllocation) || 0;
-          const spent = expenses.filter(expense => expense.programId === program.id)
-            .reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0) || Number(program.spentBudget) || 0;
-          const rate = allocated > 0 ? ((allocated > 0 ? (allocated > 0 ? (allocated > 0 ? (spent / allocated) * 100 : 0) : 0) : 0)).toFixed(1) : '0.0';
-          return `<tr><td><strong>${program.title}</strong><br><span style="color:#64748b">${program.category}</span></td><td>${program.aipReference || 'Not provided'}</td><td class="text-right">₱${allocated.toLocaleString()}</td><td class="text-right">₱${spent.toLocaleString()}</td><td class="text-right">${rate}%</td><td class="text-center"><span class="badge">${program.status}</span></td></tr>`;
-        }).join('')
-      : '<tr><td colspan="6" class="text-center">No program records available.</td></tr>';
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>${reportTitle} - Barangay ${currentBarangay?.name || 'Barangay'}</title>
-        <style>
-          body { font-family: 'Poppins', ui-sans-serif, system-ui, sans-serif; color: #1e293b; margin: 0; padding: 40px; background: #ffffff; }
-          .header { text-align: center; border-bottom: 3px solid #091d64; padding-bottom: 20px; margin-bottom: 30px; }
-          .header h1 { font-size: 13px; font-weight: 700; color: #64748b; margin: 0; text-transform: uppercase; letter-spacing: 1px; }
-          .header h2 { font-size: 20px; font-weight: 800; color: #091d64; margin: 5px 0; }
-          .header p { font-size: 12px; color: #64748b; margin: 0; }
-          .section-title { font-size: 13px; font-weight: 800; color: #091d64; background: #eff6ff; padding: 8px 12px; border-left: 4px solid #091d64; margin: 25px 0 15px 0; text-transform: uppercase; }
-          table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
-          th { background: #f8fafc; color: #475569; font-weight: 700; text-align: left; padding: 10px; border-bottom: 2px solid #e2e8f0; }
-          td { padding: 10px; border-bottom: 1px solid #e2e8f0; color: #334155; }
-          .text-right { text-align: right; }
-          .text-center { text-align: center; }
-          .badge { display: inline-block; padding: 3px 8px; font-size: 10px; font-weight: 700; border-radius: 4px; background: #ecfdf5; color: #065f46; }
-          .footer { margin-top: 50px; text-align: right; font-size: 12px; color: #475569; }
-          .footer .sign { margin-top: 40px; font-weight: 700; color: #091d64; }
-          @media print {
-            body { padding: 20px; }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h1>Republic of the Philippines &bull; Province of Camarines Sur &bull; City of Naga</h1>
-          <h2>Barangay ${currentBarangay?.name || 'Barangay'} &bull; Sangguniang Kabataan Council</h2>
-          <p>Official Statutory ${reportTitle} &bull; Date Generated: ${new Date().toLocaleDateString()}</p>
-        </div>
-
-        <div class="section-title">I. Annual Investment Plan (AIP) Financial Summary</div>
-        <table>
-          <thead>
-            <tr>
-              <th>Program / Project Category</th>
-              <th>AIP Reference Code</th>
-              <th class="text-right">Budget Allocated</th>
-              <th class="text-right">Disbursed Expenditure</th>
-              <th class="text-right">Utilization Rate</th>
-              <th class="text-center">Audit Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${reportProgramRows}
-          </tbody>
-        </table>
-
-        <div class="section-title">II. DILG MC 2023 Compliance & Statutory Transmittals</div>
-        <table>
-          <thead>
-            <tr>
-              <th>Statutory Requirement</th>
-              <th>Filing Quarter</th>
-              <th>Date Submitted</th>
-              <th class="text-center">DILG Verification</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              ${documents.filter(d => d.category === 'Reports' || d.category === 'Compliance' || (d.title || '').toLowerCase().includes('compliance')).map(d => `<tr><td>${d.title}</td><td>Current</td><td>${d.uploadedDate || '-'}</td><td class="text-center">${d.status === 'Approved' ? 'Verified' : 'Pending'}</td></tr>`).join('') || '<td colspan="4" class="text-center">No compliance transmittal records available.</td>'}
-            </tr>
-          </tbody>
-        </table>
-
-        <div class="footer">
-          <p>Certified Correct & Attested:</p>
-          <div class="sign">
-            HON. ${(currentBarangay?.chairperson || 'SK CHAIRPERSON').replace(/^Hon\.\s+/i, '').toUpperCase()} &bull; SK EXECUTIVE BOARD<br>
-            <span style="font-weight: normal; color: #64748b;">Barangay ${currentBarangay?.name || 'Barangay'}, City of Naga</span>
-          </div>
-        </div>
-
-        <script>
-          window.onload = function() {
-            window.print();
-          }
-        </script>
-      </body>
-      </html>
-    `;
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
-  };
+};
 
   const [filterStatus, setFilterStatus] = useState<'All' | 'Pending' | 'Approved' | 'Rejected'>('All');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);

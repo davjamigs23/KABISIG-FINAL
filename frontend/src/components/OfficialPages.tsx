@@ -100,6 +100,7 @@ import { UserMenu } from './UserMenu';
 import NotificationMenu from './NotificationMenu';
 import ProfileAvatar from './ProfileAvatar';
 import kabisigApi from '../lib/api';
+import { openPrintableReport } from '../lib/reportGenerator';
 import { DEFAULT_BARANGAY_LOGOS } from '../data';
 
 interface OfficialPagesProps {
