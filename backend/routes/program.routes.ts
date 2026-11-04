@@ -342,7 +342,7 @@ router.post(
 
     const { data: program, error: progError } = await supabaseAdmin
       .from('program')
-      .select('id, title, tenant_id, total_slots, status')
+      .select('id, title, tenant_id, total_slots, status, end_date')
       .eq('id', programId)
       .single();
 
@@ -353,6 +353,11 @@ router.post(
 
     if (program.status === 'cancelled' || program.status === 'completed') {
       sendError(res, `Cannot register: Program is currently '${program.status}'.`, 400);
+      return;
+    }
+
+    if (program.end_date && new Date(program.end_date) < new Date()) {
+      sendError(res, `Cannot register: This program ended on ${program.end_date}.`, 400, { code: 'PROGRAM_ENDED', end_date: program.end_date });
       return;
     }
 
@@ -479,6 +484,11 @@ router.post('/:id/attendance', authenticateUser, requireActiveUser, requireRoles
 
     const { data: program, error: progError } = await supabaseAdmin.from('program').select('*').eq('id', programId).single();
     if (progError || !program) { sendError(res, 'Program not found.', 404); return; }
+
+    if (program.end_date && new Date(program.end_date) < new Date()) {
+      sendError(res, `Attendance blocked: this program ended on ${program.end_date}.`, 400, { code: 'PROGRAM_ENDED', end_date: program.end_date });
+      return;
+    }
     if (!canAccessTenant(user, program.tenant_id)) { sendError(res, 'Forbidden.', 403); return; }
 
     const { data: uData } = await supabaseAdmin.from('users').select('id, full_name').eq('id', resolvedUserId).maybeSingle();

@@ -304,6 +304,7 @@ export default function BarangayAdminPages({
 
   const [filterStatus, setFilterStatus] = useState<'All' | 'Pending' | 'Approved' | 'Rejected'>('All');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [showFacebookGuide, setShowFacebookGuide] = useState(false);
 
   // Document repository & digital approval states
   const [docSearchTerm, setDocSearchTerm] = useState('');
@@ -3405,6 +3406,17 @@ return (
 
 
       {/* MOBILE BOTTOM NAVIGATION — Chairperson */}
+      {/* Facebook Setup Guide FAB — appears only on Settings tab */}
+      {activeMenu === 'settings' && (
+        <button
+          onClick={() => setShowFacebookGuide(true)}
+          className="fixed bottom-24 right-4 z-40 bg-blue-500 hover:bg-blue-600 text-white rounded-full p-4 shadow-2xl cursor-pointer transition-all hover:scale-105"
+          title="Facebook Setup Guide"
+          aria-label="Open Facebook Setup Guide"
+        >
+          <HelpCircle className="w-6 h-6" />
+        </button>
+      )}
       <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200/80 px-2 py-1.5 flex justify-around items-center z-40 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
         {([
           { id: 'dashboard',    label: 'Home',       Icon: LayoutDashboard },
@@ -3435,6 +3447,59 @@ return (
           <span className="text-[10px] mt-0.5 tracking-tight font-sans">More</span>
         </button>
       </div>
+
+      {showFacebookGuide && (
+        <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3 mb-4">
+              <div>
+                <h3 className="text-lg font-black text-[#091d64]">Facebook Integration Guide</h3>
+                <p className="text-xs text-slate-400 mt-0.5">6 steps to connect your SK Facebook Page to KABISIG</p>
+              </div>
+              <button onClick={() => setShowFacebookGuide(false)} className="p-1.5 hover:bg-slate-100 rounded-lg cursor-pointer">
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+            <div className="space-y-4 text-xs text-slate-700">
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <strong className="text-[#091d64] block mb-1">Prerequisites</strong>
+                <p>You must be the Admin of the SK Facebook Page. A free Facebook Developer account is required.</p>
+              </div>
+              <div>
+                <h4 className="font-bold text-[#091d64] mb-1">1. Create a Facebook Developer App</h4>
+                <p>Go to <a href="https://developers.facebook.com/apps" target="_blank" className="text-blue-600 underline">developers.facebook.com/apps</a>, click Create App, choose Business type, name it KABISIG [Barangay].</p>
+              </div>
+              <div>
+                <h4 className="font-bold text-[#091d64] mb-1">2. Add Facebook Login for Business</h4>
+                <p>On the App Dashboard, go to Add Product, select Facebook Login for Business, complete the setup.</p>
+              </div>
+              <div>
+                <h4 className="font-bold text-[#091d64] mb-1">3. Open Graph API Explorer</h4>
+                <p>Visit <a href="https://developers.facebook.com/tools/explorer" target="_blank" className="text-blue-600 underline">Graph API Explorer</a>, select your App, click Generate Access Token.</p>
+              </div>
+              <div>
+                <h4 className="font-bold text-[#091d64] mb-1">4. Grant Required Permissions</h4>
+                <p>Add scopes: pages_manage_posts, pages_read_engagement, pages_show_list. Approve the request.</p>
+              </div>
+              <div>
+                <h4 className="font-bold text-[#091d64] mb-1">5. Get Page Token and Page ID</h4>
+                <p>Run GET /me/accounts in Graph API Explorer, find your SK Page, and copy both the Page Access Token and Page ID.</p>
+              </div>
+              <div>
+                <h4 className="font-bold text-[#091d64] mb-1">6. Paste into KABISIG</h4>
+                <p>Paste the Page ID and Page Access Token into the fields on this Settings page, then click Connect Facebook Page. Tokens expire after 60 days.</p>
+              </div>
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg mt-4">
+                <strong className="text-amber-800 block mb-1">Security Note</strong>
+                <p className="text-amber-700">Your Page Access Token is stored encrypted and never exposed to the frontend.</p>
+              </div>
+            </div>
+            <button onClick={() => setShowFacebookGuide(false)} className="w-full mt-6 py-3 bg-[#091d64] hover:bg-[#0a2578] text-white font-bold rounded-lg text-xs cursor-pointer">
+              Got It
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

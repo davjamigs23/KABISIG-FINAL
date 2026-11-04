@@ -457,6 +457,9 @@ export default function OfficialPages({
   const [isRecordingAttendance, setIsRecordingAttendance] = useState(false);
 
   useEffect(() => {
+    // Clear stale scan result whenever program selection changes
+    if (typeof setLastScanDetail === 'function') setLastScanDetail(null);
+    if (typeof setQrMessage === 'function') setQrMessage('');
     if (!selectedProgId) {
       setLocalAttendance([]);
       return;
@@ -948,6 +951,18 @@ export default function OfficialPages({
 
   const handleActualScan = async (scannedText: string) => {
     if (isRecordingAttendance) return;
+    const _activeProg = programs.find(p => p.id === selectedProgId);
+    if (_activeProg?.endDate && new Date(_activeProg.endDate) < new Date()) {
+      setLastScanDetail({
+        rawCode: scannedText,
+        status: 'WRONG_PROGRAM',
+        title: 'Program Ended',
+        message: 'This program ended on ' + _activeProg.endDate + '. No more check-ins allowed.',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      });
+      setQrMessage('Cannot check in: this program has already ended.');
+      return;
+    }
     if (!selectedProgId) {
       setLastScanDetail({
         rawCode: scannedText,
@@ -1090,6 +1105,22 @@ export default function OfficialPages({
           record.participantId = scannedUserId || (record as any).participantId;
           // @ts-ignore
           record.participantName = youthProf?.name || (record as any).participantName;
+        }
+        // Guard: reject if youth is NOT registered for the selected program
+        if (!reg) {
+          setLastScanDetail({
+            rawCode: scannedText,
+            status: 'NOT_REGISTERED',
+            title: 'Not Registered',
+            message: `This youth is not registered for "${progTitle}". Check the target program dropdown above.`,
+            participantId: finalPartId,
+            purok: purokVal,
+            programTitle: progTitle,
+            timestamp: timeStr
+          });
+          setQrMessage(`Rejected: Not registered for "${progTitle}".`);
+          setIsRecordingAttendance(false);
+          return;
         }
         const savedRecord = await onRegisterAttendance(record, scannedText);
       setLocalAttendance(prev => [savedRecord, ...prev.filter(item => item.id !== savedRecord.id)]);
@@ -1264,7 +1295,7 @@ export default function OfficialPages({
           <div className="space-y-6 overflow-y-auto">
             <div className="flex justify-between items-center border-b border-white/10 pb-4">
               <div className="flex items-center gap-3">
-                <ProfileAvatar name={profileConfig[currentRole]?.name} className="w-10 h-10 rounded-full border-2 border-amber-400" />
+                <ProfileAvatar name={profileConfig[currentRole]?.name} src={currentUser?.avatar_url} className="w-10 h-10 rounded-full border-2 border-amber-400" />
                 <div>
                   <h4 className="text-xs font-bold text-white">{profileConfig[currentRole]?.name}</h4>
                   <p className="text-[10px] text-slate-300">{profileConfig[currentRole]?.title}</p>
@@ -3207,6 +3238,7 @@ export default function OfficialPages({
                           
                           <th className="px-6 py-3 text-center">Legislation Status</th>
                           <th className="px-6 py-3 text-center">Votes Support</th>
+                          <th className="px-6 py-3 text-center">Votes Oppose</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50 text-xs font-medium">
@@ -3222,6 +3254,9 @@ export default function OfficialPages({
                             </td>
                             <td className="px-6 py-4 text-center font-mono font-bold text-emerald-600">
                               {r.votesSupport} Supporting
+                            </td>
+                            <td className="px-6 py-4 text-center font-mono font-bold text-rose-600">
+                              {r.votesOppose} Opposing
                             </td>
                           </tr>
                         ))}
@@ -4828,7 +4863,7 @@ export default function OfficialPages({
 
               <div className="grid md:grid-cols-3 gap-8">
                 <div className="md:col-span-1 p-6 border border-slate-100 rounded-xl flex flex-col items-center justify-center space-y-4">
-                  <ProfileAvatar name={profileConfig[currentRole]?.name} alt="User Avatar" className="w-24 h-24 rounded-full border-4 border-[#eff6ff]" />
+                  <ProfileAvatar name={profileConfig[currentRole]?.name} src={currentUser?.avatar_url} alt="User Avatar" className="w-24 h-24 rounded-full border-4 border-[#eff6ff]" />
                   <button className="px-3 py-1.5 bg-[#eff6ff] hover:bg-[#dbeafe] text-[#091d64] text-xs font-bold rounded-lg flex items-center gap-1.5">
                     <Camera className="w-3.5 h-3.5" /> Upload Avatar
                   </button>

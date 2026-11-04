@@ -567,6 +567,11 @@ export default function YouthPages({
     }
   };
   const handleRegisterProgramClick = async (progId: string) => {
+    const _prog = programs.find(p => p.id === progId);
+    if (_prog?.endDate && new Date(_prog.endDate) < new Date()) {
+      alert('This program has already ended. Registration is closed.');
+      return;
+    }
     // Check if already registered
     const alreadyReg = localRegs.some(r => r.programId === progId && r.participantId === currentYouth.id);
     if (alreadyReg) {
