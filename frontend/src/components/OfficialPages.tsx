@@ -2695,7 +2695,12 @@ export default function OfficialPages({
                     className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                   >
                     <option value="">-- Select a Program --</option>
-                    {programs.map(p => (
+                    {programs.filter((p: any) => {
+                      const _st = String(p.status || '').toLowerCase();
+                      const _isCompleted = _st === 'completed' || _st === 'cancelled';
+                      const _isPast = p.endDate && new Date(p.endDate) < new Date();
+                      return !_isCompleted && !_isPast;
+                    }).map((p: any) => (
                       <option key={p.id} value={p.id}>{p.title} ({p.category})</option>
                     ))}
                   </select>
@@ -5597,7 +5602,7 @@ export default function OfficialPages({
               </button>
             </div>
 
-            <div className="p-6 space-y-4 text-xs font-semibold text-slate-700 max-h-[75vh] overflow-y-auto">
+            <div className="p-6 space-y-4 text-xs font-semibold text-slate-700 max-h-[75vh] overflow-y-auto [&_input]:pointer-events-none [&_input]:bg-slate-50 [&_select]:pointer-events-none [&_select]:bg-slate-50 [&_textarea]:pointer-events-none [&_textarea]:bg-slate-50">
               {/* Digital QR Code */}
               <div className="flex flex-col sm:flex-row items-center gap-4 p-4 bg-gradient-to-br from-blue-50 to-emerald-50 border-2 border-dashed border-[#091d64]/30 rounded-xl">
                 <div className="bg-white p-3 rounded-lg shadow-md ring-1 ring-[#091d64]/10">
@@ -5878,7 +5883,7 @@ export default function OfficialPages({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium">
-                      {['Zone 1', 'Zone 2', 'Zone 3', 'Zone 4'].map(z => {
+                      {Array.from(new Set(localYouthProfiles.map(y => y.zone).filter(Boolean))).sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true })).map((z: any) => {
                         const zoneCount = localYouthProfiles.filter(y => y.zone === z && (y.status === 'Approved' || y.status?.toLowerCase() === 'suspended')).length;
                         const zoneScholars = localYouthProfiles.filter(y => y.zone === z && y.scholarStatus === 'Scholar').length;
                         const total = localYouthProfiles.filter(y => (y.status === 'Approved' || y.status?.toLowerCase() === 'suspended')).length || 1;
