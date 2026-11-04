@@ -1469,7 +1469,26 @@ export default function YouthPages({
                         {/* 1. Full Name */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">1. Full Name</td>
-                          <td className="py-2.5 px-4 font-extrabold text-[#091d64]">{youth.name}</td>
+                          <td className="py-2.5 px-4 font-bold">
+                            <div className="space-y-1">
+                              <div className="flex items-baseline gap-2">
+                                <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 w-16 flex-shrink-0">First Name:</span>
+                                <span className="text-slate-900 font-bold">{(youth as any).first_name || youth.name?.split(" ")[0] || "—"}</span>
+                              </div>
+                              <div className="flex items-baseline gap-2">
+                                <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 w-16 flex-shrink-0">Middle Name:</span>
+                                <span className="text-slate-900 font-bold">{(youth as any).middle_name || "—"}</span>
+                              </div>
+                              <div className="flex items-baseline gap-2">
+                                <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 w-16 flex-shrink-0">Last Name:</span>
+                                <span className="text-slate-900 font-bold">{(youth as any).last_name || "—"}</span>
+                              </div>
+                              <div className="flex items-baseline gap-2">
+                                <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 w-16 flex-shrink-0">Suffix:</span>
+                                <span className="text-slate-900 font-bold">{(youth as any).suffix || "None"}</span>
+                              </div>
+                            </div>
+                          </td>
                         </tr>
                         {/* 2. Sex */}
                         <tr className="hover:bg-slate-50/50">

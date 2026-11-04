@@ -3921,7 +3921,7 @@ export default function OfficialPages({
                         <div>
                           <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Select Active Youth Program</label>
                           <select 
-                            value={reportProgramId}
+                            value={selectedProgramForReport || ""}
                             onChange={(e) => setSelectedProgramForReport(e.target.value)}
                             className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none min-w-[300px]"
                             disabled={programs.length === 0}
@@ -4006,7 +4006,7 @@ export default function OfficialPages({
                           <thead className="bg-slate-50 text-slate-500 text-[10px] font-bold uppercase tracking-wider">
                             <tr>
                               <th className="px-5 py-3">Constituent Name</th>
-                              <th className="px-5 py-3">Zone</th>
+                              <th className="px-5 py-3 whitespace-nowrap">Zone</th>
                               <th className="px-5 py-3">Educational Level</th>
                               <th className="px-5 py-3">School / University</th>
                               <th className="px-5 py-3">Scholarship</th>
@@ -4017,7 +4017,7 @@ export default function OfficialPages({
                             {localYouthProfiles.filter(y => selectedZoneForReport === 'All' ? true : y.zone === selectedZoneForReport).map(y => (
                               <tr key={y.id} className="hover:bg-slate-50">
                                 <td className="px-5 py-3 font-bold text-slate-800">{y.name}</td>
-                                <td className="px-5 py-3 font-bold text-slate-600">{y.zone || 'Not Specified'}</td>
+                                <td className="px-5 py-3 font-bold text-slate-600 whitespace-nowrap">{y.zone || 'Not Specified'}</td>
                                 <td className="px-5 py-3 text-slate-700">{y.educationalLevel}</td>
                                 <td className="px-5 py-3 text-slate-500">{y.course ? `${y.course} · ` : ''}{y.course ? `${y.course} · ` : ''}{y.school || 'Unspecified Institute'}</td>
                                 <td className="px-5 py-3">
@@ -4395,26 +4395,10 @@ export default function OfficialPages({
                   className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 focus:outline-none focus:ring-1 focus:ring-[#091d64]"
                 >
                   <option value="All">All Demographic Filters</option>
-                  <optgroup label="Scholarship">
-                    <option value="Scholar">Scholar</option>
-                    <option value="Non-Scholar">Non-Scholar</option>
-                    {Array.from(new Set(youthProfiles.map((y: any) => y.scholarStatus).filter(Boolean))).sort().map((s: any) => <option key={s} value={s}>{s}</option>)}
-                  </optgroup>
-                  <optgroup label="Educational Level">
-                    <option value="College">College</option>
-                    <option value="Senior High">Senior High</option>
-                    <option value="Junior High">Junior High</option>
-                    {Array.from(new Set(youthProfiles.map((y: any) => y.educationalLevel).filter(Boolean))).sort().map((z: any) => <option key={z} value={z}>{z}</option>)}
-                  </optgroup>
-                  <optgroup label="Employment Status">
-                    <option value="Employed">Employed</option>
-                    <option value="Unemployed">Unemployed</option>
-                    <option value="Out-of-School Youth">Out-of-School Youth</option>
-                    {Array.from(new Set(youthProfiles.map((y: any) => y.employmentStatus).filter(Boolean))).sort().map((z: any) => <option key={z} value={z}>{z}</option>)}
-                  </optgroup>
-                  <optgroup label="Out-of-School / OSY">
-                    {Array.from(new Set(youthProfiles.map((y: any) => y.youthSector).filter(Boolean))).sort().map((z: any) => <option key={z} value={z}>{z}</option>)}
-                  </optgroup>
+                  <optgroup label="Scholarship"><option value="Scholar">Scholar</option><option value="Non-Scholar">Non-Scholar</option></optgroup>
+                  <optgroup label="Educational Level"><option value="College">College</option><option value="Senior High">Senior High</option><option value="Junior High">Junior High</option><option value="Elementary">Elementary</option><option value="Vocational">Vocational</option></optgroup>
+                  <optgroup label="Employment Status"><option value="Employed">Employed</option><option value="Unemployed">Unemployed</option><option value="Student">Student</option></optgroup>
+                  <optgroup label="Youth Sector"><option value="In-School Youth">In-School Youth</option><option value="Out-of-School Youth">Out-of-School Youth</option><option value="Working Youth">Working Youth</option></optgroup>
                 </select>
               </div>
 
@@ -5658,7 +5642,7 @@ export default function OfficialPages({
               </button>
             </div>
 
-            <div className="p-6 space-y-4 text-xs font-semibold text-slate-700 max-h-[75vh] overflow-y-auto [&_input]:pointer-events-none [&_input]:bg-slate-50 [&_select]:pointer-events-none [&_select]:bg-slate-50 [&_textarea]:pointer-events-none [&_textarea]:bg-slate-50">
+            <div className="p-6 space-y-4 text-xs font-semibold text-slate-700 max-h-[75vh] overflow-y-auto [&_input]:pointer-events-none [&_input]:bg-slate-50 [&_select]:pointer-events-none [&_select]:appearance-none [&_select]:bg-slate-50 [&_textarea]:pointer-events-none [&_textarea]:bg-slate-50">
               {/* Digital QR Code */}
               <div className="flex flex-col sm:flex-row items-center gap-4 p-4 bg-gradient-to-br from-blue-50 to-emerald-50 border-2 border-dashed border-[#091d64]/30 rounded-xl">
                 <div className="bg-white p-3 rounded-lg shadow-md ring-1 ring-[#091d64]/10">
