@@ -2342,7 +2342,7 @@ useEffect(() => {
               </button>
             </div>
             <div className="flex border-b border-slate-200 bg-slate-50 shrink-0">
-              <button onClick={() => setEmailModalTab('update')} className={`flex-1 py-3 text-xs font-bold transition-colors ${emailModalTab === 'update' ? 'text-[#091d64] border-b-2 border-[#091d64] bg-white' : 'text-slate-500 hover:bg-slate-100'}`}>Update Email</button>
+              
               <button onClick={() => setEmailModalTab('history')} className={`flex-1 py-3 text-xs font-bold transition-colors ${emailModalTab === 'history' ? 'text-[#091d64] border-b-2 border-[#091d64] bg-white' : 'text-slate-500 hover:bg-slate-100'}`}>Change History</button>
             </div>
             <div className="p-6 overflow-y-auto">
