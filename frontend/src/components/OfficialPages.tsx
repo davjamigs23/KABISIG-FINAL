@@ -1058,6 +1058,11 @@ export default function OfficialPages({
       (scannedDigitalYouthId && y.id === scannedDigitalYouthId) ||
       y.id === partId || y.id === scannedText || y.qrCode === scannedText
     );
+    console.log("=== SCAN DEBUG ===");
+    console.log("activeProgId:", activeProgId);
+    console.log("scannedUserId:", scannedUserId);
+    console.log("partId:", partId);
+    console.log("Available Regs:", selectedProgramRegistrations.map(r => ({ userId: r.userId, participantId: r.participantId, status: r.status, programId: r.programId })));
     const reg = selectedProgramRegistrations.find((r: any) =>
       r.programId === activeProgId && (
         r.userId === partId || r.userId === scannedUserId ||
