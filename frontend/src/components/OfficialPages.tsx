@@ -430,12 +430,12 @@ export default function OfficialPages({
   const [rejectReason, setRejectReason] = useState('');
 
   // Attendance scanner state
-  const [selectedProgId, setSelectedProgId] = useState(programs[0]?.id || '');
+  const [selectedProgId, setSelectedProgId] = useState('');
   const selectedProgIdRef = useRef(selectedProgId);
 
   // Auto-select the first program when the program list becomes available
   useEffect(() => {
-    if (!selectedProgId && programs.length > 0) {
+    if (false) { /* auto-select disabled — user must pick manually */
       setSelectedProgId(programs[0].id);
     }
   }, [programs, selectedProgId]);
@@ -2674,6 +2674,7 @@ export default function OfficialPages({
                     onChange={(e) => setSelectedProgId(e.target.value)}
                     className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                   >
+                    <option value="">-- Select a Program --</option>
                     {programs.map(p => (
                       <option key={p.id} value={p.id}>{p.title} ({p.category})</option>
                     ))}

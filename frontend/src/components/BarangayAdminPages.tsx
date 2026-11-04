@@ -1283,6 +1283,37 @@ return (
                 <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Description</span>
                 <p className="text-slate-700 leading-relaxed whitespace-pre-line">{viewingProgram.description || 'No description provided.'}</p>
               </div>
+              <div className="border-t border-slate-100 pt-4 mt-4">
+                <h4 className="text-xs font-black text-[#091d64] uppercase tracking-wider mb-3">Registered Participants</h4>
+                {(() => {
+                  const progRegs = (registrations || []).filter((r: any) => r.programId === viewingProgram.id);
+                  if (progRegs.length === 0) return <p className="text-[11px] text-slate-400 italic">No participants have registered for this program yet.</p>;
+                  return (
+                    <div className="max-h-60 overflow-y-auto border border-slate-200 rounded-lg">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50 text-[10px] text-slate-500 uppercase sticky top-0">
+                          <tr>
+                            <th className="px-3 py-2">Name</th>
+                            <th className="px-3 py-2 text-right">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {progRegs.map((r: any) => (
+                            <tr key={r.id}>
+                              <td className="px-3 py-2 font-bold text-slate-800">{r.participantName || 'Unknown'}</td>
+                              <td className="px-3 py-2 text-right">
+                                <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${r.status === 'attended' || r.status === 'Approved' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                                  {r.status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
             <div className="px-6 py-4 border-t border-slate-100 flex justify-between gap-2">
               <button onClick={() => { if (window.confirm(`Delete "${viewingProgram.title}"?`)) { void onDeleteProgram(viewingProgram.id); setViewingProgram(null); } }} className="px-4 py-2 text-xs font-bold border border-rose-200 rounded-lg text-rose-600 hover:bg-rose-50">Delete</button>

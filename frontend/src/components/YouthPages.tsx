@@ -522,6 +522,25 @@ export default function YouthPages({
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingProfile(true);
+
+    // Validation: demoted users get only ONE edit — force completeness
+    if (currentYouth?.is_demoted === true) {
+      const _missing: string[] = [];
+      const _checkField = (label: string, val: any, placeholders: string[] = ['Not specified', 'Not provided', 'N/A', '']) => {
+        const _str = String(val ?? '').trim();
+        if (_str === '' || placeholders.includes(_str)) _missing.push(label);
+      };
+      _checkField('Zone / Purok', editForm.zone);
+      _checkField('Youth Sector', editForm.youthSector);
+      _checkField('Employment Status', editForm.employmentStatus);
+      _checkField('Guardian Name', editForm.guardianName);
+      _checkField('Guardian Contact', editForm.guardianContact);
+      if (_missing.length > 0) {
+        setIsSavingProfile(false);
+        alert('Please fill in all required fields before saving.\n\nMissing: ' + _missing.join(', '));
+        return;
+      }
+    }
     
     // Calculate age from birthdate if provided
     let calculatedAge = editForm.age;
