@@ -1,7 +1,7 @@
 
 import { formatCurrencyInput } from '../lib/utils';
 import ProfileSettings from './ProfileSettings';
-import { useState, useEffect } from 'react';
+import { useRef,  useState, useEffect  } from 'react';
 import { composeFullName, splitFullName } from '../lib/name';
 import { 
   Building2, 
@@ -431,6 +431,7 @@ export default function OfficialPages({
 
   // Attendance scanner state
   const [selectedProgId, setSelectedProgId] = useState(programs[0]?.id || '');
+  const selectedProgIdRef = useRef(selectedProgId);
 
   // Auto-select the first program when the program list becomes available
   useEffect(() => {
@@ -484,6 +485,11 @@ export default function OfficialPages({
 
     return () => { isMounted = false; };
   }, [selectedProgId, youthProfiles]);
+
+  // Keep ref in sync with state for stale-closure-free scan handler
+  useEffect(() => {
+    selectedProgIdRef.current = selectedProgId;
+  }, [selectedProgId]);
 
   useEffect(() => {
     if (!selectedProgId) {
@@ -950,8 +956,9 @@ export default function OfficialPages({
   };
 
   const handleActualScan = async (scannedText: string) => {
+    const activeProgId = selectedProgIdRef.current;
     if (isRecordingAttendance) return;
-    const _activeProg = programs.find(p => p.id === selectedProgId);
+    const _activeProg = programs.find(p => p.id === activeProgId);
     if (_activeProg?.endDate && new Date(_activeProg.endDate) < new Date()) {
       setLastScanDetail({
         rawCode: scannedText,
@@ -963,7 +970,7 @@ export default function OfficialPages({
       setQrMessage('Cannot check in: this program has already ended.');
       return;
     }
-    if (!selectedProgId) {
+    if (!activeProgId) {
       setLastScanDetail({
         rawCode: scannedText,
         status: 'NOT_REGISTERED',
@@ -975,8 +982,8 @@ export default function OfficialPages({
       return;
     }
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    const currentProg = programs.find(p => p.id === selectedProgId);
-    const progTitle = currentProg?.title || selectedProgId;
+    const currentProg = programs.find(p => p.id === activeProgId);
+    const progTitle = currentProg?.title || activeProgId;
 
     // 1. Check if user scanned a Program Venue QR Code (e.g. KABISIG-PROG-PROG01 or PROG01)
     if (scannedText.startsWith('KABISIG-PROG-') || (scannedText.startsWith('PROG') && !scannedText.includes('PART') && !scannedText.includes('SK'))) {
@@ -998,7 +1005,7 @@ export default function OfficialPages({
 
     // 2. Parse Event Pass vs Youth ID Code
     let partId = scannedText;
-    let qrProgId = selectedProgId;
+    let qrProgId = activeProgId;
     let scannedUserId = '';
     let scannedDigitalYouthId = '';
 
@@ -1025,7 +1032,7 @@ export default function OfficialPages({
     }
 
     // 3. Check for Program Mismatch
-    if (qrProgId && qrProgId !== selectedProgId) {
+    if (qrProgId && qrProgId !== activeProgId) {
       const targetProg = programs.find(p => p.id === qrProgId);
       const wrongTitle = targetProg?.title || qrProgId;
 
@@ -1049,7 +1056,7 @@ export default function OfficialPages({
       y.id === partId || y.id === scannedText || y.qrCode === scannedText
     );
     const reg = selectedProgramRegistrations.find(r =>
-      r.programId === selectedProgId && 
+      r.programId === activeProgId && 
       (r.participantId === partId || r.qrCode === scannedText || r.participantId === scannedText || (youthProf && r.participantId === youthProf.id)) && 
       r.status === 'Approved'
     );
@@ -1090,7 +1097,7 @@ export default function OfficialPages({
     // The backend is authoritative for identity, registration, and duplicate check-in validation.
     const record: AttendanceRecord = {
       id: '',
-      programId: selectedProgId,
+      programId: activeProgId,
       participantId: finalPartId,
       participantName: youthName,
       checkInTime: '',

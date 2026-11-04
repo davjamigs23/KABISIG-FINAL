@@ -352,6 +352,8 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
         ? (typeof body.guardianContact === 'string' ? body.guardianContact.trim() || null : null)
         : existingProfile?.guardian_contact ?? null,
       updated_at: new Date().toISOString(),
+      youth_sector: body.youthSector ?? body.youth_sector ?? undefined,
+      scholar_status: body.scholarStatus ?? body.scholar_status ?? undefined,
     };
 
     if (body.digital_youth_id || body.id) {

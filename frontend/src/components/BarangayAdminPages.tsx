@@ -3491,7 +3491,7 @@ return (
               </div>
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg mt-4">
                 <strong className="text-amber-800 block mb-1">Security Note</strong>
-                <p className="text-amber-700">Your Page Access Token is stored encrypted and never exposed to the frontend.</p>
+                <p className="text-amber-700">Your Page Access Token is stored securely in our encrypted database and is only visible to the Super Admin and your Barangay Chairperson.</p>
               </div>
             </div>
             <button onClick={() => setShowFacebookGuide(false)} className="w-full mt-6 py-3 bg-[#091d64] hover:bg-[#0a2578] text-white font-bold rounded-lg text-xs cursor-pointer">
