@@ -7,6 +7,7 @@ import { formatAuditDetails } from '../lib/auditFormatter';
 import React, { useEffect, useState } from 'react';
 import { CartesianGrid } from 'recharts';
 import { FolderClosed } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { createClient } from '@supabase/supabase-js';
 import { 
   Building2, 
@@ -503,6 +504,7 @@ export default function BarangayAdminPages({
   });
 
   const [budgetYear, setBudgetYear] = useState(String(new Date().getFullYear()));
+  const [availableYears, setAvailableYears] = useState<number[]>([new Date().getFullYear()]);
   const [budgetProgramFilter, setBudgetProgramFilter] = useState('All Programs');
   const [budgetAllocations, setBudgetAllocations] = useState<any[]>([]);
   const [showRecordExpense, setShowRecordExpense] = useState(false);
@@ -1070,7 +1072,14 @@ export default function BarangayAdminPages({
   ];
 
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const budgetPrograms = programs.filter(program => budgetProgramFilter === 'All Programs' || program.id === budgetProgramFilter);
+  const budgetPrograms = programs.filter(program => {
+    const yr = Number(budgetYear);
+    const start = new Date(program.startDate).getFullYear();
+    const end = program.endDate ? new Date(program.endDate).getFullYear() : start;
+    const inYear = start <= yr && end >= yr;
+    const matchesFilter = budgetProgramFilter === 'All Programs' || program.id === budgetProgramFilter;
+    return inYear && matchesFilter;
+  });
   const selectedProgramsBudget = budgetPrograms.reduce((sum, program) => sum + (Number(program.budgetAllocation) || 0), 0);
   const barangayAllocatedBudget = Math.max(Number(currentBarangay?.allocatedBudget) || 0, Number(currentBarangay?.totalBudget) || 0);
   const budgetScopeAllocated = budgetProgramFilter === 'All Programs'
@@ -2248,6 +2257,7 @@ return (
                         if (!res.success) { setTotalFormError(res.message || 'Total budget save failed.'); return; }
                         setShowSetTotal(false);
                         setBudgetYear(totalForm.fiscalYear);
+                        setAvailableYears(prev => Array.from(new Set([...prev, Number(totalForm.fiscalYear)])).sort((a,b)=>b-a));
                         setTotalForm({ amount: '', fiscalYear: String(new Date().getFullYear()) });
                         setSavedTotalBudget(amount);
                         setTotalBudgetNotice('Total SK budget saved: P' + amount.toLocaleString());
@@ -2347,13 +2357,15 @@ return (
                   <div className="mt-4 flex flex-wrap items-end gap-x-4 gap-y-2">
                     <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Fiscal year
                       <select value={budgetYear} onChange={event => setBudgetYear(event.target.value)} className="mt-1 block rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700">
-                        {[2030, 2029, 2028, 2027, 2026, 2025, 2024, 2023].map(year => <option key={year} value={year}>{year}</option>)}
+                        {availableYears.map(year => (
+                          <option key={year} value={year}>{year}</option>
+                        ))}
                       </select>
                     </label>
                     <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Program
                       <select value={budgetProgramFilter} onChange={event => setBudgetProgramFilter(event.target.value)} className="mt-1 block min-w-44 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700">
                         <option>All Programs</option>
-                        {programs.map(program => <option key={program.id} value={program.id}>{program.title}</option>)}
+                        {programs.filter(p => { const yr = Number(budgetYear); const s = new Date(p.startDate).getFullYear(); const e = p.endDate ? new Date(p.endDate).getFullYear() : s; return s <= yr && e >= yr; }).map(program => <option key={program.id} value={program.id}>{program.title}</option>)}
                       </select>
                     </label>
                     <button type="button" onClick={() => { setBudgetYear(String(new Date().getFullYear())); setBudgetProgramFilter('All Programs'); }} className="px-1 py-1.5 text-[10px] font-semibold text-slate-400 hover:text-[#091d64]">Reset</button>
@@ -3133,6 +3145,28 @@ return (
             </div>
 
             <div className="p-6 overflow-y-auto max-h-[70vh] space-y-6">
+              {/* Digital QR Code for Attendance Scanning */}
+              <div className="flex flex-col sm:flex-row items-center gap-4 p-4 bg-gradient-to-br from-blue-50 to-emerald-50 border-2 border-dashed border-[#091d64]/30 rounded-xl">
+                <div className="bg-white p-3 rounded-lg shadow-md ring-1 ring-[#091d64]/10">
+                  <QRCodeSVG 
+                    value={
+                      (inspectProfile as any).userId
+                        ? JSON.stringify({ user_id: (inspectProfile as any).userId })
+                        : (inspectProfile as any).qrCode?.startsWith('KAB-NAGA-')
+                          ? (inspectProfile as any).qrCode
+                          : inspectProfile.id
+                    }
+                    size={130}
+                    fgColor="#091d64"
+                    level="M"
+                  />
+                </div>
+                <div className="flex-1 text-center sm:text-left">
+                  <span className="text-[10px] font-black text-[#091d64] uppercase tracking-widest block">Digital Youth ID QR Code</span>
+                  <p className="text-xs text-slate-600 mt-1 font-semibold">Scan at program check-in events</p>
+                  <p className="text-[10px] text-slate-400 mt-1 font-mono">Serial: {(inspectProfile as any).userId || inspectProfile.id}</p>
+                </div>
+              </div>
               <div className="flex items-center gap-4 border-b pb-4">
                 <ProfileAvatar name={inspectProfile.name} src={inspectProfile.profilePic} alt={inspectProfile.name} className="w-16 h-16 rounded-full border border-slate-100 shadow-2xs" />
                 <div>

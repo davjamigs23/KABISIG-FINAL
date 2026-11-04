@@ -63,6 +63,7 @@ import {
   Sparkles,
   ArrowRight
 , Loader2, AlertCircle} from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { LiveCameraScanner } from './LiveCameraScanner';
 import { 
   BarChart, 
@@ -5597,6 +5598,28 @@ export default function OfficialPages({
             </div>
 
             <div className="p-6 space-y-4 text-xs font-semibold text-slate-700 max-h-[75vh] overflow-y-auto">
+              {/* Digital QR Code */}
+              <div className="flex flex-col sm:flex-row items-center gap-4 p-4 bg-gradient-to-br from-blue-50 to-emerald-50 border-2 border-dashed border-[#091d64]/30 rounded-xl">
+                <div className="bg-white p-3 rounded-lg shadow-md ring-1 ring-[#091d64]/10">
+                  <QRCodeSVG 
+                    value={
+                      (selectedYouthProfile as any).userId
+                        ? JSON.stringify({ user_id: (selectedYouthProfile as any).userId })
+                        : (selectedYouthProfile as any).qrCode?.startsWith('KAB-NAGA-')
+                          ? (selectedYouthProfile as any).qrCode
+                          : selectedYouthProfile.id
+                    }
+                    size={130}
+                    fgColor="#091d64"
+                    level="M"
+                  />
+                </div>
+                <div className="flex-1 text-center sm:text-left">
+                  <span className="text-[10px] font-black text-[#091d64] uppercase tracking-widest block">Digital Youth ID QR Code</span>
+                  <p className="text-xs text-slate-600 mt-1 font-semibold">Scan at program check-in events</p>
+                  <p className="text-[10px] text-slate-400 mt-1 font-mono">Serial: {(selectedYouthProfile as any).userId || selectedYouthProfile.id}</p>
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="col-span-2 grid grid-cols-2 gap-2">
                   <div>

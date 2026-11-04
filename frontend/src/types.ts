@@ -110,6 +110,7 @@ export interface Registration {
   programId: string;
   programTitle: string;
   participantId: string; // matches YouthProfile.id
+  userId?: string; // Raw user_id from backend (for scanning)
   participantName: string;
   dateRegistered: string;
   status: 'Pending' | 'Approved' | 'Rejected' | 'suspended' | 'Completed';
