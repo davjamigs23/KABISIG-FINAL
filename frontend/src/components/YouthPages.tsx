@@ -1648,23 +1648,20 @@ export default function YouthPages({
                     <p className="text-xs text-slate-400 mt-1">Direct access to Sangguniang Kabataan initiatives. Browse, learn, and exercise your right to participate.</p>
                   </div>
                   
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {programs.map(p => {
-                      const alreadyReg = myRegistrations.some(r => r.programId === p.id);
-                        const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      const base64 = reader.result as string;
-      const res = await kabisigApi.uploadAvatar(base64, file.type);
-      if (res.success && res.data?.avatar_url) {
-        setYouth(prev => ({ ...prev, profilePic: res.data.avatar_url }));
-      }
-    };
-    reader.readAsDataURL(file);
-  };
-  return (
+                  <div className="space-y-6">
+                    {(() => {
+                      const _now = new Date();
+                      const _isCompleted = (p: any) => {
+                        const st = String(p.status || "").toLowerCase();
+                        if (st === "completed" || st === "cancelled") return true;
+                        const endDate = p.endDate ? new Date(p.endDate) : new Date(p.startDate);
+                        return endDate < _now;
+                      };
+                      const _activePrograms = programs.filter((p: any) => !_isCompleted(p)).sort((a: any, b: any) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+                      const _completedPrograms = programs.filter((p: any) => _isCompleted(p)).sort((a: any, b: any) => new Date(b.endDate || b.startDate).getTime() - new Date(a.endDate || a.startDate).getTime());
+                      const _renderCard = (p: any) => {
+                        const alreadyReg = myRegistrations.some(r => r.programId === p.id);
+                        return (
                         <div key={p.id} className="group p-5 border border-slate-100 rounded-2xl bg-white hover:border-[#091d64]/20 hover:shadow-md transition-all flex flex-col justify-between overflow-hidden">
                           <div>
                             <div className="flex justify-between items-start gap-3 mb-2">
@@ -1761,8 +1758,35 @@ export default function YouthPages({
 
 
                         </div>
+                        );
+                      };
+                      return (
+                        <>
+                          {_activePrograms.length > 0 && (
+                            <div>
+                              <div className="flex items-center gap-2 mb-3 mt-2">
+                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">Upcoming & Ongoing ({_activePrograms.length})</h3>
+                              </div>
+                              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                {_activePrograms.map((p: any) => _renderCard(p))}
+                              </div>
+                            </div>
+                          )}
+                          {_completedPrograms.length > 0 && (
+                            <div className="mt-2">
+                              <div className="flex items-center gap-2 mb-3">
+                                <span className="w-2 h-2 rounded-full bg-slate-400"></span>
+                                <h3 className="text-sm font-black text-slate-500 uppercase tracking-wider">Completed Programs ({_completedPrograms.length})</h3>
+                              </div>
+                              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                {_completedPrograms.map((p: any) => _renderCard(p))}
+                              </div>
+                            </div>
+                          )}
+                        </>
                       );
-                    })}
+                    })()}
                   </div>
                 </div>
               ) : (

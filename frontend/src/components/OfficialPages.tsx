@@ -409,6 +409,7 @@ export default function OfficialPages({
     programId: programs[0]?.id || '', budgetId: '', amount: 0, supplier: '', taxType: 'VAT' as any, category: 'Supplies' as any
   });
   const [budgetOptions, setBudgetOptions] = useState<any[]>([]);
+  const [treasurerBudgetYear, setTreasurerBudgetYear] = useState(String(new Date().getFullYear()));
   const [isLoadingBudgets, setIsLoadingBudgets] = useState(false);
   const [isSavingExpense, setIsSavingExpense] = useState(false);
 
@@ -530,10 +531,10 @@ export default function OfficialPages({
 
     let isMounted = true;
     setIsLoadingBudgets(true);
-    kabisigApi.getBudgets(currentTenant.id).then((budgets) => {
+    kabisigApi.getBudgets(currentTenant.id, Number(treasurerBudgetYear)).then((budgets) => {
       if (!isMounted) return;
       const currentYear = new Date().getFullYear();
-      const currentYearBudgets = budgets.filter((budget) => Number(budget.fiscal_year) === currentYear);
+      const currentYearBudgets = budgets; // Backend already filters by year
       setBudgetOptions(currentYearBudgets);
       setExpenseForm(previous => ({
         ...previous,
@@ -549,7 +550,7 @@ export default function OfficialPages({
     });
 
     return () => { isMounted = false; };
-  }, [currentTenant?.id]);
+  }, [currentTenant?.id, treasurerBudgetYear]);
 
   useEffect(() => {
     const amt = expenseForm.amount;
@@ -1058,7 +1059,7 @@ export default function OfficialPages({
     const reg = selectedProgramRegistrations.find(r =>
       r.programId === activeProgId && 
       (r.participantId === partId || r.qrCode === scannedText || r.participantId === scannedText || (youthProf && r.participantId === youthProf.id)) && 
-      r.status === 'Approved'
+      ['Approved', 'registered', 'attended'].includes(r.status)
     );
 
     // Widened lookup for display — includes any registration status and matches by user_id, participantId, or qrCode
@@ -1477,6 +1478,12 @@ export default function OfficialPages({
                 </div>
               </section>
               
+              <div className="flex items-center gap-3 mb-4">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Fiscal Year</label>
+                <select value={treasurerBudgetYear} onChange={e => setTreasurerBudgetYear(e.target.value)} className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700">
+                  {[2030, 2029, 2028, 2027, 2026, 2025, 2024].map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </div>
               {/* 4 Metric Cards */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
                 {currentRole === 'SK Kagawad' && (
