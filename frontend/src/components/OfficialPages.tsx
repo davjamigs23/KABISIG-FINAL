@@ -1550,7 +1550,13 @@ export default function OfficialPages({
               <div className="flex items-center gap-3 mb-4">
                 <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Fiscal Year</label>
                 <select value={treasurerBudgetYear} onChange={e => setTreasurerBudgetYear(e.target.value)} className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700">
-                  {[2030, 2029, 2028, 2027, 2026, 2025, 2024].map(y => <option key={y} value={y}>{y}</option>)}
+                  {(() => {
+                    const _yrs = Array.from(new Set([
+                      new Date().getFullYear(),
+                      ...(budgetOptions || []).map((b: any) => Number(b.fiscal_year)).filter(Boolean)
+                    ])).sort((a: any, b: any) => b - a);
+                    return _yrs.map(y => <option key={y} value={y}>{y}</option>);
+                  })()}
                 </select>
               </div>
               {/* 4 Metric Cards */}
@@ -3927,7 +3933,12 @@ export default function OfficialPages({
                             disabled={programs.length === 0}
                           >
                             <option value="">-- Select Program --</option>
-                            {programs.map((program) => <option key={program.id} value={program.id}>{program.title}</option>)}
+                            {programs.filter((program) => {
+                              const _st = String(program.status || '').toLowerCase();
+                              const _isCompleted = _st === 'completed' || _st === 'cancelled';
+                              const _isPast = program.endDate && new Date(program.endDate) < new Date();
+                              return !_isCompleted && !_isPast;
+                            }).map((program) => <option key={program.id} value={program.id}>{program.title}</option>)}
                           </select>
                         </div>
 

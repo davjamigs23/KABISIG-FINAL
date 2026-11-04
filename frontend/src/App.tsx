@@ -434,6 +434,10 @@ export default function App() {
               userId: user.id,
               id: meta.id || resident.digital_youth_id || `SK-2026-${user.id.slice(0, 4)}`,
               name: user.full_name || meta.name || 'Anonymous',
+              first_name: (user as any).first_name || (meta as any).first_name || '',
+              middle_name: (user as any).middle_name || (meta as any).middle_name || '',
+              last_name: (user as any).last_name || (meta as any).last_name || '',
+              suffix: (user as any).suffix || (meta as any).suffix || '',
               sex: resident.sex || meta.sex || 'Female',
               birthdate: resident.birthdate || meta.birthdate || '2005-01-01',
               age: meta.age || 20,
@@ -937,6 +941,11 @@ export default function App() {
     setCurrentUser(null);
     setCurrentEmail('');
     setPublicView('landing');
+    // Force full state reset + navigate to landing page
+    if (typeof window !== 'undefined') {
+      try { localStorage.clear(); sessionStorage.clear(); } catch {}
+      window.location.href = '/';
+    }
   };
 
   // --- SYSTEM REGISTRATION WORKFLOWS (Multi-Tenancy Binding) ---
