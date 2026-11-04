@@ -2,7 +2,6 @@
   "name": "kabisig-sk-information-system",
   "private": true,
   "version": "0.1.0",
-  
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -30,6 +29,7 @@
     "qrcode.react": "^4.2.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
+    "react-easy-crop": "^5.5.7",
     "react-hook-form": "^7.15.0",
     "recharts": "^3.9.2",
     "tailwind-merge": "^3.5.0",

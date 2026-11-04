@@ -35,6 +35,8 @@ export interface BarangayTenant {
 }
 
 export interface YouthProfile {
+  is_demoted?: boolean;
+  has_edited_profile?: boolean;
   userId?: string;
   id: string; // Resident ID (Auto-generated, e.g. SK-2026-001)
   name: string; // Full Name (Required)
