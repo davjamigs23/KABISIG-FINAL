@@ -442,6 +442,10 @@ export default function OfficialPages({
     }
   }, [programs, selectedProgId]);
   const [selectedProgramRegistrations, setSelectedProgramRegistrations] = useState<Registration[]>([]);
+
+  // Per-program registration cache (avoids re-fetch per scan)
+  const regCacheRef = useRef<Record<string, any[]>>({});
+  const regFetchingRef = useRef<Record<string, Promise<any[]>>>({});
   const [attendanceMode, setAttendanceMode] = useState<'qr' | 'manual'>('qr');
   const [qrScanning, setQrScanning] = useState(false);
   const [qrMessage, setQrMessage] = useState('');
@@ -500,24 +504,47 @@ export default function OfficialPages({
       return;
     }
     let isMounted = true;
-    kabisigApi.getProgramRegistrations(selectedProgId).then((rows) => {
-      if (!isMounted || !rows) return;
-      setSelectedProgramRegistrations(rows.map((row: any) => {
+
+    // Cache hit → instant
+    if (regCacheRef.current[selectedProgId]) {
+      setSelectedProgramRegistrations(regCacheRef.current[selectedProgId]);
+      return;
+    }
+
+    // Cache miss → use in-flight promise if exists, else start new fetch
+    const _promise = regFetchingRef.current[selectedProgId] || (async () => {
+      try {
+        const rows = await kabisigApi.getProgramRegistrations(selectedProgId);
+        return Array.isArray(rows) ? rows : [];
+      } catch {
+        return [];
+      }
+    })();
+    regFetchingRef.current[selectedProgId] = _promise;
+
+    _promise.then((rows) => {
+      if (!isMounted) return;
+      const mapped: Registration[] = rows.map((row: any) => {
         const user = Array.isArray(row.users) ? row.users[0] : row.users;
-        const profile = youthProfiles.find(candidate => candidate.userId === row.user_id);
+        const profile = (youthProfiles || []).find((candidate: any) => candidate.userId === row.user_id);
         return {
           id: row.id,
           programId: row.program_id,
-          programTitle: programs.find(program => program.id === row.program_id)?.title || '',
+          programTitle: (programs || []).find((program: any) => program.id === row.program_id)?.title || "",
           participantId: profile?.id || row.user_id,
           userId: row.user_id,
-          participantName: user?.full_name || profile?.name || 'Youth Constituent',
-          dateRegistered: row.registered_at || '',
-          status: row.status === 'attended' ? 'Completed' : 'Approved',
-          qrCode: profile?.qrCode || '',
+          participantName: user?.full_name || profile?.name || "Youth Constituent",
+          dateRegistered: row.registered_at || "",
+          status: (row.status === "attended" ? "Completed" : "Approved") as Registration['status'],
+          qrCode: profile?.qrCode || "",
         };
-      }));
-    }).catch((error: any) => setQrMessage(error.message || 'Could not load registrations for this program.'));
+      });
+      regCacheRef.current[selectedProgId] = mapped;
+      setSelectedProgramRegistrations(mapped);
+    }).finally(() => {
+      delete regFetchingRef.current[selectedProgId];
+    });
+
     return () => { isMounted = false; };
   }, [selectedProgId, programs, youthProfiles]);
 
@@ -1064,8 +1091,26 @@ export default function OfficialPages({
     console.log("scannedUserId:", scannedUserId);
     console.log("partId:", partId);
     console.log("Available Regs:", selectedProgramRegistrations.map(r => ({ userId: r.userId, participantId: r.participantId, status: r.status, programId: r.programId })));
-    const _regs = Array.isArray(registrations) ? registrations : [];
-    const reg = _regs.find((r: any) => {
+    // Cache-first lookup — instant if warm, waits on in-flight if racing
+    let _allRegs: any[] = regCacheRef.current[activeProgId] || [];
+    if (_allRegs.length === 0) {
+      const _inFlight = regFetchingRef.current[activeProgId];
+      if (_inFlight) {
+        try { _allRegs = await _inFlight; regCacheRef.current[activeProgId] = _allRegs; } catch {}
+      } else {
+        try {
+          const _fresh = await kabisigApi.getProgramRegistrations(String(activeProgId));
+          _allRegs = Array.isArray(_fresh) ? _fresh : [];
+          regCacheRef.current[activeProgId] = _allRegs;
+        } catch { _allRegs = []; }
+      }
+    }
+    const _seen = new Set(_allRegs.map((r: any) => String(r.id)));
+    for (const r of [...(selectedProgramRegistrations || []), ...(Array.isArray(registrations) ? registrations : [])]) {
+      if (r && r.id && !_seen.has(String(r.id))) { _allRegs.push(r); _seen.add(String(r.id)); }
+    }
+    console.log("=== SCAN CACHE ===", { activeProgId, cachedCount: _allRegs.length });
+    const reg = _allRegs.find((r: any) => {
       const _rProg = String(r.programId || r.program_id || "");
       if (_rProg !== String(activeProgId)) return false;
       const _rUser = String(r.userId || r.user_id || "");
