@@ -159,7 +159,7 @@ router.get(
 
     const { data, error } = await supabaseAdmin
       .from('program_registrations')
-      .select('id, program_id, user_id, tenant_id, status, registered_at, users(full_name, email)')
+      .select('id, program_id, user_id, tenant_id, status, registered_at, users!user_id(full_name, email, phone, resident_profile!resident_profile_user_id_fkey(zone))')
       .eq('program_id', programId)
       .neq('status', 'cancelled')
       .order('registered_at', { ascending: true });

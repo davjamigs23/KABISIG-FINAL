@@ -2869,12 +2869,14 @@ export default function OfficialPages({
                         <th className="px-6 py-3">Participant Name</th>
                         <th className="px-6 py-3 font-mono text-center">Participant ID</th>
                         <th className="px-6 py-3 text-center">Attendance Status</th>
+                        <th className="px-6 py-3 text-center">Check-In Time</th>
                         <th className="px-6 py-3 text-center">Action Check-In</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50 text-xs font-medium">
                       {selectedProgramRegistrations.map(r => {
-                        const isPresent = localAttendance.some(a => a.programId === selectedProgId && a.participantId === r.participantId);
+                        const attendanceRecord = localAttendance.find(a => a.programId === selectedProgId && a.participantId === r.participantId);
+                        const isPresent = !!attendanceRecord;
                         return (
                           <tr key={r.id} className="hover:bg-slate-50/60 transition-colors">
                             <td className="px-6 py-3.5 font-bold text-slate-800">{r.participantName}</td>
@@ -2883,6 +2885,9 @@ export default function OfficialPages({
                               <span className={`px-2.5 py-1 rounded-full text-[9px] font-extrabold uppercase tracking-wide ${isPresent ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>
                                 {isPresent ? 'Present' : 'Absent'}
                               </span>
+                            </td>
+                            <td className="px-6 py-3.5 text-center font-mono text-slate-500">
+                              {attendanceRecord?.checkInTime ? new Date(attendanceRecord.checkInTime).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '—'}
                             </td>
                             <td className="px-6 py-3.5 text-center">
                               <button

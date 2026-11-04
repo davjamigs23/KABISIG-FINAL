@@ -466,6 +466,29 @@ export default function BarangayAdminPages({
   const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [editingProgram, setEditingProgram] = useState<Program | null>(null);
   const [viewingProgram, setViewingProgram] = useState<Program | null>(null);
+  const [modalRegistrations, setModalRegistrations] = useState<any[]>([]);
+  const [loadingModalRegs, setLoadingModalRegs] = useState(false);
+
+  useEffect(() => {
+    if (!viewingProgram?.id) {
+      setModalRegistrations([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingModalRegs(true);
+    kabisigApi.getProgramRegistrations(viewingProgram.id)
+      .then((rows) => {
+        if (!cancelled) setModalRegistrations(rows || []);
+      })
+      .catch((err) => {
+        console.warn("Failed to fetch modal registrations:", err);
+        if (!cancelled) setModalRegistrations([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingModalRegs(false);
+      });
+    return () => { cancelled = true; };
+  }, [viewingProgram?.id]);
   const [newProgForm, setNewProgForm] = useState({
     title: '',
     description: '',
@@ -479,7 +502,7 @@ export default function BarangayAdminPages({
     status: 'Upcoming' as 'Draft' | 'Published' | 'Upcoming' | 'Ongoing' | 'Completed'
   });
 
-  const [budgetYear, setBudgetYear] = useState('2026');
+  const [budgetYear, setBudgetYear] = useState(String(new Date().getFullYear()));
   const [budgetProgramFilter, setBudgetProgramFilter] = useState('All Programs');
   const [budgetAllocations, setBudgetAllocations] = useState<any[]>([]);
   const [showRecordExpense, setShowRecordExpense] = useState(false);
@@ -1286,7 +1309,8 @@ return (
               <div className="border-t border-slate-100 pt-4 mt-4">
                 <h4 className="text-xs font-black text-[#091d64] uppercase tracking-wider mb-3">Registered Participants</h4>
                 {(() => {
-                  const progRegs = (registrations || []).filter((r: any) => r.programId === viewingProgram.id);
+                  const progRegs = modalRegistrations;
+                  if (loadingModalRegs) return <p className="text-[11px] text-slate-400 italic">Loading participants...</p>;
                   if (progRegs.length === 0) return <p className="text-[11px] text-slate-400 italic">No participants have registered for this program yet.</p>;
                   return (
                     <div className="max-h-60 overflow-y-auto border border-slate-200 rounded-lg">
@@ -1294,20 +1318,31 @@ return (
                         <thead className="bg-slate-50 text-[10px] text-slate-500 uppercase sticky top-0">
                           <tr>
                             <th className="px-3 py-2">Name</th>
+                            <th className="px-3 py-2">Zone</th>
+                            <th className="px-3 py-2">Contact</th>
                             <th className="px-3 py-2 text-right">Status</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {progRegs.map((r: any) => (
-                            <tr key={r.id}>
-                              <td className="px-3 py-2 font-bold text-slate-800">{r.participantName || 'Unknown'}</td>
-                              <td className="px-3 py-2 text-right">
-                                <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${r.status === 'attended' || r.status === 'Approved' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                                  {r.status}
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
+                          {progRegs.map((r: any) => {
+                            const u = Array.isArray(r.users) ? r.users[0] : r.users;
+                            const rp = Array.isArray(u?.resident_profile) ? u.resident_profile[0] : u?.resident_profile;
+                            const displayName = u?.full_name || r.participantName || 'Unknown';
+                            const zone = rp?.zone || '—';
+                            const contact = u?.phone || '—';
+                            return (
+                              <tr key={r.id}>
+                                <td className="px-3 py-2 font-bold text-slate-800">{displayName}</td>
+                                <td className="px-3 py-2 text-slate-600">{zone}</td>
+                                <td className="px-3 py-2 text-slate-600 font-mono text-[10px]">{contact}</td>
+                                <td className="px-3 py-2 text-right">
+                                  <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${r.status === 'attended' || r.status === 'Approved' || r.status === 'registered' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                                    {r.status}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -2212,6 +2247,7 @@ return (
                         });
                         if (!res.success) { setTotalFormError(res.message || 'Total budget save failed.'); return; }
                         setShowSetTotal(false);
+                        setBudgetYear(totalForm.fiscalYear);
                         setTotalForm({ amount: '', fiscalYear: String(new Date().getFullYear()) });
                         setSavedTotalBudget(amount);
                         setTotalBudgetNotice('Total SK budget saved: P' + amount.toLocaleString());
@@ -2232,7 +2268,7 @@ return (
                       <button type="button" onClick={() => setShowSetTotal(false)} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close total budget form"><X className="h-4 w-4" /></button>
                     </div>
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Fiscal year
-                      <input required type="number" min="2020" max="2100" value={totalForm.fiscalYear} onChange={(event) => setTotalForm((previous) => ({ ...previous, fiscalYear: event.target.value }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800" />
+                      <input required type="number" min="2020" max="2050" value={totalForm.fiscalYear} onChange={(event) => setTotalForm((previous) => ({ ...previous, fiscalYear: event.target.value }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800" />
                     </label>
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Total SK budget for the year
                       <input required type="text" inputMode="decimal" value={totalForm.amount} onChange={(event) => setTotalForm((previous) => ({ ...previous, amount: formatCurrencyInput(event.target.value) }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800" placeholder="0.00" />
@@ -2282,7 +2318,7 @@ return (
                       <button type="button" onClick={() => setShowSetBudget(false)} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close budget form"><X className="h-4 w-4" /></button>
                     </div>
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Fiscal year
-                      <input required type="number" min="2020" max="2100" value={budgetForm.fiscalYear} onChange={(event) => setBudgetForm((previous) => ({ ...previous, fiscalYear: event.target.value }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800" />
+                      <input required type="number" min="2020" max="2050" value={budgetForm.fiscalYear} onChange={(event) => setBudgetForm((previous) => ({ ...previous, fiscalYear: event.target.value }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800" />
                     </label>
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Program
                       <select required value={budgetForm.category} onChange={(event) => setBudgetForm((previous) => ({ ...previous, category: event.target.value }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800">
@@ -2311,7 +2347,7 @@ return (
                   <div className="mt-4 flex flex-wrap items-end gap-x-4 gap-y-2">
                     <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Fiscal year
                       <select value={budgetYear} onChange={event => setBudgetYear(event.target.value)} className="mt-1 block rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700">
-                        {[...new Set([new Date().getFullYear(), ...programs.map(program => new Date(program.startDate).getFullYear()).filter(Boolean)])].sort().reverse().map(year => <option key={year}>{year}</option>)}
+                        {[2030, 2029, 2028, 2027, 2026, 2025, 2024, 2023].map(year => <option key={year} value={year}>{year}</option>)}
                       </select>
                     </label>
                     <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Program
