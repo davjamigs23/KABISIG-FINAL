@@ -2387,34 +2387,40 @@ useEffect(() => {
                     <p className="text-center text-xs text-slate-500">No email changes recorded yet.</p>
                   ) : (
                     <div className="overflow-x-auto border border-slate-200 rounded-lg">
-                      <table className="w-full text-left text-xs">
-                        <thead className="bg-slate-50 border-b border-slate-200">
-                          <tr>
-                            <th className="px-4 py-2 font-bold text-slate-600">Date</th>
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200">
                           <th className="px-4 py-2 font-bold text-slate-600">Date</th>
                           <th className="px-4 py-2 font-bold text-slate-600">Target User</th>
                           <th className="px-4 py-2 font-bold text-slate-600">Changed Details</th>
                           <th className="px-4 py-2 font-bold text-slate-600">Reason</th>
-                            <th className="px-4 py-2 font-bold text-slate-600">Reason</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {emailHistoryList.map((log: any) => (
+                          <tr key={log.id} className="border-b border-slate-100 hover:bg-slate-50">
+                            <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
+                              {new Date(log.created_at).toLocaleString()}
+                            </td>
+                            <td className="px-4 py-3 text-xs font-medium text-slate-800">
+                              {log.users?.full_name || 'Unknown User'}
+                            </td>
+                            <td className="px-4 py-3 text-xs text-slate-600 font-mono">
+                              {log.action === 'UPDATE_USER_EMAIL' ? (
+                                <span>Email: {log.details?.old_email} &rarr; {log.details?.new_email}</span>
+                              ) : (
+                                <pre className="whitespace-pre-wrap text-[10px]">
+                                  {JSON.stringify(log.details?.updated_fields, null, 2)}
+                                </pre>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-xs text-slate-500 italic">
+                              {log.details?.reason || 'N/A'}
+                            </td>
                           </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {emailHistoryList.map((log: any) => (
-                            <tr key={log.id} className="border-b border-slate-100 hover:bg-slate-50">
-                              <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{new Date(log.created_at).toLocaleString()}</td>
-                              <td className="px-4 py-3 text-xs font-medium text-slate-800">{log.users?.full_name || 'Unknown User'}</td>
-                              <td className="px-4 py-3 text-xs text-slate-600 font-mono">
-                                {log.action === 'UPDATE_USER_EMAIL' ? (
-                                  <span>Email: {log.details?.old_email} &rarr; {log.details?.new_email}</span>
-                                ) : (
-                                  <pre className="whitespace-pre-wrap text-[10px]">{JSON.stringify(log.details?.updated_fields, null, 2)}</pre>
-                                )}
-                              </td>
-                              <td className="px-4 py-3 text-xs text-slate-500 italic">{log.details?.reason || 'N/A'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                        ))}
+                      </tbody>
+                    </table>
                     </div>
                   )}
                 </div>
