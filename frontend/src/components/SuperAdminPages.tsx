@@ -2390,10 +2390,10 @@ useEffect(() => {
                     <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-200">
-                          <th className="px-4 py-2 font-bold text-slate-600">Date</th>
-                          <th className="px-4 py-2 font-bold text-slate-600">Target User</th>
-                          <th className="px-4 py-2 font-bold text-slate-600">Changed Details</th>
-                          <th className="px-4 py-2 font-bold text-slate-600">Reason</th>
+                          <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">Date</th>
+                          <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">Target User</th>
+                          <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">Changed Details</th>
+                          <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">Reason</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2402,20 +2402,24 @@ useEffect(() => {
                             <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
                               {new Date(log.created_at).toLocaleString()}
                             </td>
-                            <td className="px-4 py-3 text-xs font-medium text-slate-800">
-                              {log.users?.full_name || 'Unknown User'}
+                            <td className="px-4 py-3 text-xs font-bold text-[#091d64]">
+                              {log.details?.target_name || log.users?.full_name || 'Unknown User'}
                             </td>
-                            <td className="px-4 py-3 text-xs text-slate-600 font-mono">
-                              {log.action === 'UPDATE_USER_EMAIL' ? (
-                                <span>Email: {log.details?.old_email} &rarr; {log.details?.new_email}</span>
+                            <td className="px-4 py-3 text-xs text-slate-600">
+                              {log.details?.updated_fields ? (
+                                <div className="flex flex-col gap-1">
+                                  {Object.entries(log.details.updated_fields).map(([key, val]) => 
+                                    val ? <div key={key}><span className="text-slate-400 capitalize">{key.replace('_', ' ')}:</span> {String(val)}</div> : null
+                                  )}
+                                </div>
+                              ) : log.action === 'UPDATE_USER_EMAIL' ? (
+                                <div><span className="text-slate-400">Email updated to:</span> {log.details?.new_email || 'Unknown'}</div>
                               ) : (
-                                <pre className="whitespace-pre-wrap text-[10px]">
-                                  {JSON.stringify(log.details?.updated_fields, null, 2)}
-                                </pre>
+                                <span className="text-slate-400 italic">Legacy record</span>
                               )}
                             </td>
                             <td className="px-4 py-3 text-xs text-slate-500 italic">
-                              {log.details?.reason || 'N/A'}
+                              "{log.details?.reason || 'N/A'}"
                             </td>
                           </tr>
                         ))}

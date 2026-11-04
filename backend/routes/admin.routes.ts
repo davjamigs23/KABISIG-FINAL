@@ -110,7 +110,7 @@ router.put('/users/:userId/update-name', authenticateUser, async (req: Request, 
       action: 'UPDATE_USER_CREDENTIALS',
       entityName: 'users',
       entityId: userId,
-      details: { reason: reason || 'No reason provided', updated_fields: { full_name, email, phone, birthdate } },
+      details: { reason: reason || 'No reason provided', target_name: full_name, updated_fields: { full_name, email, phone, birthdate } },
       ipAddress: req.ip || null
     });
 
