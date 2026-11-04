@@ -596,7 +596,13 @@ export default function YouthPages({
       const rows = await kabisigApi.getProgramRegistrations(program.id);
       const mapped = (rows || []).map((row: any) => {
         const u = Array.isArray(row.users) ? row.users[0] : row.users;
-        return { id: row.id, name: u?.full_name || row.participantName || 'Youth', status: row.status };
+        const rp = Array.isArray(u?.resident_profile) ? u.resident_profile[0] : u?.resident_profile;
+        return {
+          id: row.id,
+          name: u?.full_name || row.participantName || 'Youth',
+          zone: rp?.zone || '—',
+          email: u?.email || '—'
+        };
       });
       setProgramParticipants(mapped);
     } catch (e) { console.error(e); } finally { setLoadingParticipants(false); }

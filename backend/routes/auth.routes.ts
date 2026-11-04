@@ -415,6 +415,27 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
         updated_at: new Date().toISOString()
       }).eq('user_id', existingUser!.id);
 
+
+      // 🔔 Notify the Barangay Chairperson about this new/re-submitted registration
+      try {
+        const targetTenantId = existingUser?.tenant_id || (req.body as any)?.tenant_id;
+        if (targetTenantId) {
+          const { data: chair } = await supabaseAdmin.from('users').select('id').eq('tenant_id', targetTenantId).eq('role_id', 2).maybeSingle();
+          if (chair) {
+            await supabaseAdmin.from('notifications').insert({
+              user_id: chair.id,
+              tenant_id: targetTenantId,
+              title: 'New Youth Registration',
+              message: 'A new youth has registered and is pending your approval.',
+              type: 'system',
+              is_read: false
+            });
+          }
+        }
+      } catch (notifErr) {
+        console.warn('Failed to create notification for chairperson:', notifErr);
+      }
+
       sendSuccess(res, { id: existingUser!.id, status: 'pending' }, 'Registration submitted successfully. Your updated profile is pending review.');
       return;
     }

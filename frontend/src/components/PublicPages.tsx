@@ -650,7 +650,7 @@ export default function PublicPages({
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600 transition-colors font-mono text-xs"
-                            placeholder="e.g. avinzon@gbox.adnu.edu.ph"
+                            placeholder=""
                             required
                           />
                           <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -668,7 +668,7 @@ export default function PublicPages({
                             value={chairpersonFullName}
                             onChange={(e) => setChairpersonFullName(e.target.value)}
                             className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600 transition-colors"
-                            placeholder="Hon. Ashley Kyla D. Vinzon"
+                            placeholder=""
                           />
                           <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                         </div>
@@ -685,7 +685,7 @@ export default function PublicPages({
                             value={chairpersonPassword}
                             onChange={(e) => setChairpersonPassword(e.target.value)}
                             className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600 transition-colors"
-                            placeholder="Create strong password"
+                            placeholder=""
                             required
                           />
                           <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -710,7 +710,7 @@ export default function PublicPages({
                             value={chairpersonConfirmPassword}
                             onChange={(e) => setChairpersonConfirmPassword(e.target.value)}
                             className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600 transition-colors"
-                            placeholder="Confirm strong password"
+                            placeholder=""
                             required
                           />
                           <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -818,7 +818,7 @@ export default function PublicPages({
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
-                            placeholder="Enter KABISIG Email"
+                            placeholder=""
                             required
                           />
                           <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -839,7 +839,7 @@ export default function PublicPages({
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
-                            placeholder="Enter Password"
+                            placeholder=""
                             required
                           />
                           <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -1081,7 +1081,7 @@ export default function PublicPages({
                             value={signUpForm.firstName}
                             onChange={(e) => setSignUpForm({...signUpForm, firstName: e.target.value})}
                             className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
-                            placeholder="Juan"
+                            placeholder=""
                             required
                           />
                         </div>
@@ -1094,7 +1094,7 @@ export default function PublicPages({
                             value={signUpForm.lastName}
                             onChange={(e) => setSignUpForm({...signUpForm, lastName: e.target.value})}
                             className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
-                            placeholder="Dela Cruz"
+                            placeholder=""
                             required
                           />
                         </div>
@@ -1107,7 +1107,7 @@ export default function PublicPages({
                             value={signUpForm.middleName}
                             onChange={(e) => setSignUpForm({...signUpForm, middleName: e.target.value})}
                             className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
-                            placeholder="Santos"
+                            placeholder=""
                           />
                         </div>
                         <div>
@@ -1160,7 +1160,7 @@ export default function PublicPages({
                             maxLength={10}
                             value={birthdateInput}
                             onChange={handleBirthdateChange}
-                            placeholder="MM-DD-YYYY (e.g. 12-23-2004)"
+                            placeholder=""
                             aria-label="Birthdate (month, day, year)"
                             className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none"
                             required
@@ -1183,7 +1183,7 @@ export default function PublicPages({
                         className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
                         value={signUpForm.mobile}
                         onChange={(e) => setSignUpForm({ ...signUpForm, mobile: e.target.value.replace(/[^0-9]/g, '') })}
-                        placeholder="09171234567"
+                        placeholder=""
                       />
                           <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                         </div>
@@ -1200,7 +1200,7 @@ export default function PublicPages({
                               value={signUpForm.address}
                               onChange={(e) => setSignUpForm({...signUpForm, address: e.target.value})}
                               className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none"
-                              placeholder="House No., Street"
+                              placeholder=""
                               required
                             />
                             <MapPin className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -1217,7 +1217,7 @@ export default function PublicPages({
                               value={signUpForm.zone}
                               onChange={(e) => setSignUpForm({...signUpForm, zone: e.target.value})}
                               className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none"
-                              placeholder="Enter zone / purok"
+                              placeholder=""
                               required
                             />
                           </div>
@@ -1233,7 +1233,7 @@ export default function PublicPages({
                             value={signUpForm.guardianName}
                             onChange={(e) => setSignUpForm(previous => ({ ...previous, guardianName: e.target.value }))}
                             className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none"
-                            placeholder="Enter parent or guardian name"
+                            placeholder=""
                             maxLength={200}
                             required
                           />
@@ -1248,7 +1248,7 @@ export default function PublicPages({
                         className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none"
                         value={signUpForm.guardianContact}
                         onChange={(e) => setSignUpForm({ ...signUpForm, guardianContact: e.target.value.replace(/[^0-9]/g, '') })}
-                        placeholder="09171234567"
+                        placeholder=""
                       />
                         </div>
                       </div>
@@ -1270,10 +1270,10 @@ export default function PublicPages({
 </select>
 
                 <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans mt-4">Course / Program</label>
-                <input type="text" value={signUpForm.course || ''} onChange={(e) => setSignUpForm({...signUpForm, course: e.target.value})} placeholder="e.g. BS Information Technology" className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none" />
+                <input type="text" value={signUpForm.course || ''} onChange={(e) => setSignUpForm({...signUpForm, course: e.target.value})} placeholder="" className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none" />
 
                 <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans mt-4">School / University</label>
-                <input type="text" value={signUpForm.school || ''} onChange={(e) => setSignUpForm({...signUpForm, school: e.target.value})} placeholder="e.g. Naga College Foundation" className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none" />
+                <input type="text" value={signUpForm.school || ''} onChange={(e) => setSignUpForm({...signUpForm, school: e.target.value})} placeholder="" className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none" />
 
 <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans mt-4">Employment Status <span className="text-red-500">*</span></label>
 <select value={signUpForm.employment_status || ''} onChange={(e) => setSignUpForm({...signUpForm, employment_status: e.target.value})} className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none appearance-none cursor-pointer" required>
@@ -1285,7 +1285,7 @@ export default function PublicPages({
 </select>
 
                 <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans mt-4">Year Level <span className="text-red-500">*</span></label>
-                <input type="text" value={signUpForm.year || ""} onChange={(e) => setSignUpForm({...signUpForm, year: e.target.value})} placeholder="e.g. 1st Year, 4th Year" className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none" required />
+                <input type="text" value={signUpForm.year || ""} onChange={(e) => setSignUpForm({...signUpForm, year: e.target.value})} placeholder="" className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none" required />
 
 
 <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans mt-4">Scholarship Status <span className="text-red-500">*</span></label>
@@ -1330,7 +1330,7 @@ export default function PublicPages({
                             value={signUpForm.email}
                             onChange={(e) => setSignUpForm({...signUpForm, email: e.target.value})}
                             className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
-                            placeholder="Enter your KABISIG email address"
+                            placeholder=""
                             required
                           />
                           <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -1347,7 +1347,7 @@ export default function PublicPages({
                             value={signUpForm.password}
                             onChange={(e) => setSignUpForm({...signUpForm, password: e.target.value})}
                             className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
-                            placeholder="Enter secure password"
+                            placeholder=""
                             required
                           />
                           <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -1416,7 +1416,7 @@ export default function PublicPages({
                             value={signUpForm.confirmPassword}
                             onChange={(e) => setSignUpForm({...signUpForm, confirmPassword: e.target.value})}
                             className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
-                            placeholder="Confirm your password"
+                            placeholder=""
                             required
                           />
                           <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -1468,7 +1468,7 @@ export default function PublicPages({
                               type="text"
                               value={signUpForm.idNumber} required
                               onChange={(e) => setSignUpForm({ ...signUpForm, idNumber: e.target.value })}
-                              placeholder="e.g. 2024-12345"
+                              placeholder=""
                               className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-[#091d64]"
                             />
                           </div>
