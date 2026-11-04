@@ -2331,7 +2331,7 @@ useEffect(() => {
       )}
       {showEmailModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
+          <div className="bg-white rounded-2xl max-w-5xl w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
             <div className="bg-[#091d64] p-4 flex justify-between items-center text-white shrink-0">
               <div>
                 <h3 className="font-bold text-lg">Email Management &amp; History</h3>
@@ -2387,52 +2387,71 @@ useEffect(() => {
                     <p className="text-center text-xs text-slate-500">No email changes recorded yet.</p>
                   ) : (
                     <div className="overflow-x-auto border border-slate-200 rounded-lg">
-                    <table className="w-full text-left border-collapse table-fixed">
+                    <table className="w-full text-left border-collapse">
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-200">
-                          <th className="px-3 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider w-[15%]">Date</th>
-                          <th className="px-3 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider w-[25%]">User Modified</th>
-                          <th className="px-3 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider w-[40%]">Changed Details</th>
-                          <th className="px-3 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider w-[20%]">Reason</th>
+                          <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider whitespace-nowrap">Date</th>
+                          <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">User Modified</th>
+                          <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">Changed Details</th>
+                          <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider whitespace-nowrap">Reason</th>
                         </tr>
                       </thead>
                       <tbody>
                         {emailHistoryList.map((log: any) => (
                           <tr key={log.id} className="border-b border-slate-100 hover:bg-slate-50">
-                            <td className="px-3 py-3 text-[11px] text-slate-500 align-top break-words">
+                            <td className="px-4 py-4 text-[11px] text-slate-500 align-top whitespace-nowrap">
                               {new Date(log.created_at).toLocaleString()}
                             </td>
-                            <td className="px-3 py-3 text-xs font-bold text-[#091d64] align-top break-words">
-                              {log.details?.target_name 
-                                ? log.details.target_name 
-                                : (log.details?.old_email || log.details?.new_email)
-                                  ? `User (${log.details?.old_email || log.details?.new_email})`
-                                  : 'System User'}
-                            </td>
-                            <td className="px-3 py-3 text-[11px] text-slate-600 align-top break-words">
-                              {log.details?.changes ? (
-                                <div className="flex flex-col gap-1.5">
-                                  {Object.entries(log.details.changes).map(([key, val]: any) => 
-                                    val ? (
-                                      <div key={key} className="flex flex-col">
-                                        <span className="font-bold text-slate-700 capitalize">{key.replace('_', ' ')}:</span>
-                                        <span className="line-through text-rose-400">{val.old || 'None'}</span>
-                                        <span className="text-emerald-600 font-medium">&rarr; {val.new || 'None'}</span>
-                                      </div>
-                                    ) : null
-                                  )}
-                                </div>
-                              ) : log.details?.old_email || log.details?.new_email ? (
+                            <td className="px-4 py-4 text-xs align-top">
+                              {log.details?.target_name ? (
+                                <span className="font-bold text-[#091d64]">{log.details.target_name}</span>
+                              ) : (log.details?.old_email || log.details?.new_email) ? (
                                 <div className="flex flex-col">
-                                  <span className="font-bold text-slate-700">Email:</span>
-                                  <span className="line-through text-rose-400">{log.details?.old_email || 'None'}</span>
-                                  <span className="text-emerald-600 font-medium">&rarr; {log.details?.new_email || 'None'}</span>
+                                  <span className="font-bold text-slate-700">Legacy User</span>
+                                  <span className="text-[10px] text-slate-500 font-normal break-words">
+                                    {log.details?.old_email || log.details?.new_email}
+                                  </span>
                                 </div>
                               ) : (
-                                <span className="text-slate-400 italic">No details recorded</span>
+                                <span className="font-bold text-slate-700">System User</span>
                               )}
                             </td>
-                            <td className="px-3 py-3 text-[11px] text-slate-500 italic align-top break-words">
+                            <td className="px-4 py-4 text-xs text-slate-600 align-top">
+                              <div className="flex flex-col gap-3">
+                                {log.details?.changes ? (
+                                  Object.entries(log.details.changes).map(([key, val]: any) =>
+                                    val ? (
+                                      <div key={key} className="flex flex-col border-b border-slate-100 last:border-0 pb-2 last:pb-0">
+                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">{key.replace('_', ' ')}</span>
+                                        <div className="flex items-start gap-2 text-[11px]">
+                                          <span className="text-slate-400 font-semibold shrink-0 w-9">Old:</span>
+                                          <span className="text-rose-500 break-words">{val.old || 'None'}</span>
+                                        </div>
+                                        <div className="flex items-start gap-2 text-[11px] mt-0.5">
+                                          <span className="text-slate-400 font-semibold shrink-0 w-9">New:</span>
+                                          <span className="text-emerald-600 font-medium break-words">{val.new || 'None'}</span>
+                                        </div>
+                                      </div>
+                                    ) : null
+                                  )
+                                ) : log.details?.old_email || log.details?.new_email ? (
+                                  <div className="flex flex-col border-b border-slate-100 last:border-0 pb-2 last:pb-0">
+                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Email</span>
+                                    <div className="flex items-start gap-2 text-[11px]">
+                                      <span className="text-slate-400 font-semibold shrink-0 w-9">Old:</span>
+                                      <span className="text-rose-500 break-words">{log.details?.old_email || 'None'}</span>
+                                    </div>
+                                    <div className="flex items-start gap-2 text-[11px] mt-0.5">
+                                      <span className="text-slate-400 font-semibold shrink-0 w-9">New:</span>
+                                      <span className="text-emerald-600 font-medium break-words">{log.details?.new_email || 'None'}</span>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-400 italic text-[11px]">No details recorded</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-4 text-[11px] text-slate-500 italic align-top">
                               "{log.details?.reason || 'N/A'}"
                             </td>
                           </tr>
