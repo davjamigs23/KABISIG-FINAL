@@ -983,7 +983,7 @@ export default function YouthPages({
                       <ShieldAlert className="w-5 h-5" />
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-amber-900">Your profile is incomplete ({countCompletedFields}/18 fields)</h3>
+                      <h3 className="text-sm font-bold text-amber-900">Your profile is incomplete ({countCompletedFields}/18 required fields)</h3>
                       <p className="text-xs text-amber-700 mt-0.5">Please update your details (Zone, Employment, Guardian Info) to ensure you receive accurate program recommendations.</p>
                     </div>
                   </div>
@@ -1443,7 +1443,7 @@ export default function YouthPages({
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="text-[11px] font-mono font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-md">
-                        {countCompletedFields} / 18 Fields Complete
+                        {countCompletedFields} / 18 Required Fields Complete
                       </span>
                       {currentYouth.is_demoted === true && currentYouth.has_edited_profile !== true && !isEditingProfile && (
                         <button
