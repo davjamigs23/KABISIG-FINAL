@@ -2387,42 +2387,52 @@ useEffect(() => {
                     <p className="text-center text-xs text-slate-500">No email changes recorded yet.</p>
                   ) : (
                     <div className="overflow-x-auto border border-slate-200 rounded-lg">
-                    <table className="w-full text-left border-collapse">
+                    <table className="w-full text-left border-collapse table-fixed">
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-200">
-                          <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">Date</th>
-                          <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">User Modified</th>
-                          <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">Changed Details</th>
-                          <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">Reason</th>
+                          <th className="px-3 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider w-[15%]">Date</th>
+                          <th className="px-3 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider w-[25%]">User Modified</th>
+                          <th className="px-3 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider w-[40%]">Changed Details</th>
+                          <th className="px-3 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider w-[20%]">Reason</th>
                         </tr>
                       </thead>
                       <tbody>
                         {emailHistoryList.map((log: any) => (
                           <tr key={log.id} className="border-b border-slate-100 hover:bg-slate-50">
-                            <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
+                            <td className="px-3 py-3 text-[11px] text-slate-500 align-top break-words">
                               {new Date(log.created_at).toLocaleString()}
                             </td>
-                            <td className="px-4 py-3 text-xs font-bold text-[#091d64]">
+                            <td className="px-3 py-3 text-xs font-bold text-[#091d64] align-top break-words">
                               {log.details?.target_name 
                                 ? log.details.target_name 
                                 : (log.details?.old_email || log.details?.new_email)
                                   ? `User (${log.details?.old_email || log.details?.new_email})`
                                   : 'System User'}
                             </td>
-                            <td className="px-4 py-3 text-xs text-slate-600">
-                              {log.details?.updated_fields ? (
-                                <div className="flex flex-col gap-1">
-                                  {Object.entries(log.details.updated_fields).map(([key, val]) => 
-                                    val ? <div key={key}><span className="text-slate-400 capitalize">{key.replace('_', ' ')}:</span> {String(val)}</div> : null
+                            <td className="px-3 py-3 text-[11px] text-slate-600 align-top break-words">
+                              {log.details?.changes ? (
+                                <div className="flex flex-col gap-1.5">
+                                  {Object.entries(log.details.changes).map(([key, val]: any) => 
+                                    val ? (
+                                      <div key={key} className="flex flex-col">
+                                        <span className="font-bold text-slate-700 capitalize">{key.replace('_', ' ')}:</span>
+                                        <span className="line-through text-rose-400">{val.old || 'None'}</span>
+                                        <span className="text-emerald-600 font-medium">&rarr; {val.new || 'None'}</span>
+                                      </div>
+                                    ) : null
                                   )}
                                 </div>
-                              ) : log.action === 'UPDATE_USER_EMAIL' ? (
-                                <div><span className="text-slate-400">Email updated to:</span> {log.details?.new_email || 'Unknown'}</div>
+                              ) : log.details?.old_email || log.details?.new_email ? (
+                                <div className="flex flex-col">
+                                  <span className="font-bold text-slate-700">Email:</span>
+                                  <span className="line-through text-rose-400">{log.details?.old_email || 'None'}</span>
+                                  <span className="text-emerald-600 font-medium">&rarr; {log.details?.new_email || 'None'}</span>
+                                </div>
                               ) : (
-                                <span className="text-slate-400 italic">Legacy record</span>
+                                <span className="text-slate-400 italic">No details recorded</span>
                               )}
                             </td>
-                            <td className="px-4 py-3 text-xs text-slate-500 italic">
+                            <td className="px-3 py-3 text-[11px] text-slate-500 italic align-top break-words">
                               "{log.details?.reason || 'N/A'}"
                             </td>
                           </tr>

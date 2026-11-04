@@ -46,6 +46,10 @@ router.put('/users/:userId/update-name', authenticateUser, async (req: Request, 
     if (authUser.role_id !== 1) { sendError(res, 'Forbidden. Super Admin access only.', 403); return; }
     const userId = String(req.params.userId || '');
     const { full_name, first_name, middle_name, last_name, suffix, email, phone, birthdate, reason } = req.body;
+
+    // Fetch old data for true diff
+    const { data: oldUser } = await supabaseAdmin.from('users').select('full_name, email, phone').eq('id', userId).single();
+    const { data: oldProfile } = await supabaseAdmin.from('resident_profile').select('birthdate').eq('user_id', userId).single();
     if (!full_name) { sendError(res, 'Full name is required.', 400); return; }
 
     // 1. Fetch old email for notification
@@ -110,7 +114,16 @@ router.put('/users/:userId/update-name', authenticateUser, async (req: Request, 
       action: 'UPDATE_USER_CREDENTIALS',
       entityName: 'users',
       entityId: userId,
-      details: { reason: reason || 'No reason provided', target_name: full_name, updated_fields: { full_name, email, phone, birthdate } },
+      details: { 
+        reason: reason || 'No reason provided', 
+        target_name: full_name, 
+        changes: {
+          full_name: oldUser?.full_name !== full_name ? { old: oldUser?.full_name, new: full_name } : undefined,
+          email: oldUser?.email !== email && email ? { old: oldUser?.email, new: email } : undefined,
+          phone: oldUser?.phone !== phone ? { old: oldUser?.phone, new: phone } : undefined,
+          birthdate: oldProfile?.birthdate !== birthdate && birthdate ? { old: oldProfile?.birthdate, new: birthdate } : undefined
+        }
+      },
       ipAddress: req.ip || null
     });
 
@@ -1562,6 +1575,21 @@ router.get(
       sendError(res, 'Failed to load history: ' + error.message, 500);
       return;
     }
-    sendSuccess(res, data, 'Email history retrieved.');
+    // Enrich legacy records with actual user names based on email
+    const enrichedData = await Promise.all((data || []).map(async (log: any) => {
+      if (!log.details?.target_name) {
+        const emailToFind = log.details?.old_email || log.details?.new_email;
+        if (emailToFind) {
+          const { data: user } = await supabaseAdmin.from('users').select('full_name').eq('email', emailToFind).single();
+          if (user) {
+            if (!log.details) log.details = {};
+            log.details.target_name = user.full_name;
+          }
+        }
+      }
+      return log;
+    }));
+
+    sendSuccess(res, enrichedData, 'Email history retrieved.');
   }
 );
