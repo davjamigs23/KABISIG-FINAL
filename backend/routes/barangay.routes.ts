@@ -25,6 +25,7 @@ const UpdateBarangaySchema = z.object({
   status: z.enum(['Active', 'Inactive']).optional(),
   logo_url: z.string().optional().or(z.literal('')),
   logo: z.string().optional().or(z.literal('')),
+  active_fiscal_year: z.number().int().optional(),
 });
 
 const AssignChairpersonSchema = z.object({
@@ -422,6 +423,11 @@ router.patch(
       saveCustomLogo(existingBgy.name, newLogo);
     }
 
+    // 4. Finally update the barangay table itself
+    if (updates.active_fiscal_year) {
+      await supabaseAdmin.from('barangay').update({ active_fiscal_year: updates.active_fiscal_year }).eq('id', id);
+    }
+
     await recordAuditLog({
       tenantId: id,
       userId: admin.id,
@@ -467,7 +473,10 @@ router.patch(
     }
     const { error } = await supabaseAdmin
       .from('barangay')
-      .update({ allocated_budget: numericAmount })
+      .update({
+        allocated_budget: numericAmount,
+        active_fiscal_year: body.fiscal_year ? Number(body.fiscal_year) : undefined
+      })
       .eq('id', id);
     if (error) {
       sendError(res, `Failed to update total SK budget: ${error.message}`, 500);

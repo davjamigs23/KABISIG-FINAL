@@ -423,7 +423,7 @@ export default function BarangayAdminPages({
     status: 'Upcoming' as 'Draft' | 'Published' | 'Upcoming' | 'Ongoing' | 'Completed'
   });
 
-  const [budgetYear, setBudgetYear] = useState(String(new Date().getFullYear()));
+  const [budgetYear, setBudgetYear] = useState(String(currentBarangay?.active_fiscal_year || new Date().getFullYear()));
   const [availableYears, setAvailableYears] = useState<number[]>([new Date().getFullYear()]);
   const [budgetProgramFilter, setBudgetProgramFilter] = useState('All Programs');
   const [budgetAllocations, setBudgetAllocations] = useState<any[]>([]);
@@ -2276,7 +2276,7 @@ return (
                   <p className="mt-1 text-xs text-slate-400">Live allocation and expenditure view for Barangay {currentBarangay?.name || 'Barangay'}.</p>
                   <div className="mt-4 flex flex-wrap items-end gap-x-4 gap-y-2">
                     <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Fiscal year
-                      <select value={budgetYear} onChange={event => setBudgetYear(event.target.value)} className="mt-1 block rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700">
+                      <select value={budgetYear} onChange={async (event) => { const newYear = event.target.value; setBudgetYear(newYear); if (currentBarangay?.id) { try { await kabisigApi.updateBarangaySettings(currentBarangay.id, { active_fiscal_year: Number(newYear) }); } catch (err) { console.error("Failed to sync fiscal year:", err); } } }} className="mt-1 block rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700">
                         {availableYears.map(year => (
                           <option key={year} value={year}>{year}</option>
                         ))}

@@ -412,6 +412,11 @@ export default function OfficialPages({
   });
   const [budgetOptions, setBudgetOptions] = useState<any[]>([]);
   const [treasurerBudgetYear, setTreasurerBudgetYear] = useState(String(new Date().getFullYear()));
+  useEffect(() => {
+    if (currentTenant?.active_fiscal_year) {
+      setTreasurerBudgetYear(String(currentTenant.active_fiscal_year));
+    }
+  }, [currentTenant?.active_fiscal_year]);
   const [isLoadingBudgets, setIsLoadingBudgets] = useState(false);
   const [isSavingExpense, setIsSavingExpense] = useState(false);
 

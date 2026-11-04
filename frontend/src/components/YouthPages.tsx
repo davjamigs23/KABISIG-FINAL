@@ -1496,15 +1496,15 @@ export default function YouthPages({
                             <div className="space-y-1">
                               <div className="flex items-baseline gap-2">
                                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 w-16 flex-shrink-0">First Name:</span>
-                                <span className="text-slate-900 font-bold">{(youth as any).first_name || youth.name?.split(" ")[0] || "—"}</span>
+                                <span className="text-slate-900 font-bold">{((youth as any).first_name && (youth as any).first_name.trim() !== "" ? (youth as any).first_name : (youth.name?.split(" ")[0] || "—"))}</span>
                               </div>
                               <div className="flex items-baseline gap-2">
                                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 w-16 flex-shrink-0">Middle Name:</span>
-                                <span className="text-slate-900 font-bold">{(youth as any).middle_name || "—"}</span>
+                                <span className="text-slate-900 font-bold">{((youth as any).middle_name && (youth as any).middle_name.trim() !== "" ? (youth as any).middle_name : (youth.name?.split(" ").length && youth.name.split(" ").length > 2 ? youth.name.split(" ")[1] : "—"))}</span>
                               </div>
                               <div className="flex items-baseline gap-2">
                                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 w-16 flex-shrink-0">Last Name:</span>
-                                <span className="text-slate-900 font-bold">{(youth as any).last_name || "—"}</span>
+                                <span className="text-slate-900 font-bold">{((youth as any).last_name && (youth as any).last_name.trim() !== "" ? (youth as any).last_name : (youth.name?.split(" ").length && youth.name.split(" ").length > 1 ? youth.name.split(" ").pop() : "—"))}</span>
                               </div>
                               <div className="flex items-baseline gap-2">
                                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 w-16 flex-shrink-0">Suffix:</span>

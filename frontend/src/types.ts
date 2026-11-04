@@ -14,6 +14,7 @@ export type UserRole =
   | 'Viewer';
 
 export interface BarangayTenant {
+  active_fiscal_year?: number;
   id: string;
   name: string;
   chairperson: string;
