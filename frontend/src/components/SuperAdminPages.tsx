@@ -2334,8 +2334,8 @@ useEffect(() => {
           <div className="bg-white rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
             <div className="bg-[#091d64] p-4 flex justify-between items-center text-white shrink-0">
               <div>
-                <h3 className="font-bold text-lg">Manage User Credentials</h3>
-                <p className="text-xs text-blue-200">Update email addresses and view history securely.</p>
+                <h3 className="font-bold text-lg">Email Management &amp; History</h3>
+                <p className="text-xs text-blue-200">Update user emails and view the audit trail securely.</p>
               </div>
               <button onClick={() => setShowEmailModal(false)} className="text-white hover:text-blue-200">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
