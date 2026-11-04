@@ -2391,18 +2391,26 @@ useEffect(() => {
                         <thead className="bg-slate-50 border-b border-slate-200">
                           <tr>
                             <th className="px-4 py-2 font-bold text-slate-600">Date</th>
-                            <th className="px-4 py-2 font-bold text-slate-600">Old Email</th>
-                            <th className="px-4 py-2 font-bold text-slate-600">New Email</th>
+                          <th className="px-4 py-2 font-bold text-slate-600">Date</th>
+                          <th className="px-4 py-2 font-bold text-slate-600">Target User</th>
+                          <th className="px-4 py-2 font-bold text-slate-600">Changed Details</th>
+                          <th className="px-4 py-2 font-bold text-slate-600">Reason</th>
                             <th className="px-4 py-2 font-bold text-slate-600">Reason</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                           {emailHistoryList.map((log: any) => (
-                            <tr key={log.id} className="hover:bg-slate-50">
-                              <td className="px-4 py-2 text-slate-500">{new Date(log.created_at).toLocaleString()}</td>
-                              <td className="px-4 py-2 text-slate-500">{log.details?.old_email || 'N/A'}</td>
-                              <td className="px-4 py-2 text-blue-600">{log.details?.new_email}</td>
-                              <td className="px-4 py-2 italic text-slate-500">{log.details?.reason}</td>
+                            <tr key={log.id} className="border-b border-slate-100 hover:bg-slate-50">
+                              <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{new Date(log.created_at).toLocaleString()}</td>
+                              <td className="px-4 py-3 text-xs font-medium text-slate-800">{log.users?.full_name || 'Unknown User'}</td>
+                              <td className="px-4 py-3 text-xs text-slate-600 font-mono">
+                                {log.action === 'UPDATE_USER_EMAIL' ? (
+                                  <span>Email: {log.details?.old_email} &rarr; {log.details?.new_email}</span>
+                                ) : (
+                                  <pre className="whitespace-pre-wrap text-[10px]">{JSON.stringify(log.details?.updated_fields, null, 2)}</pre>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-xs text-slate-500 italic">{log.details?.reason || 'N/A'}</td>
                             </tr>
                           ))}
                         </tbody>

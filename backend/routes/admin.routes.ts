@@ -48,7 +48,11 @@ router.put('/users/:userId/update-name', authenticateUser, async (req: Request, 
     const { full_name, first_name, middle_name, last_name, suffix, email, phone, birthdate, reason } = req.body;
     if (!full_name) { sendError(res, 'Full name is required.', 400); return; }
 
-    // 1. Update public.users
+    // 1. Fetch old email for notification
+    const { data: oldUserData } = await supabaseAdmin.from('users').select('email').eq('id', userId).single();
+    const oldEmail = oldUserData?.email;
+
+    // 2. Update public.users
     const { error: userError } = await supabaseAdmin.from('users').update({
       full_name: full_name.trim(),
       first_name: first_name?.trim() || null,
@@ -62,25 +66,45 @@ router.put('/users/:userId/update-name', authenticateUser, async (req: Request, 
 
     if (userError) { sendError(res, 'Failed to update user: ' + userError.message, 500); return; }
 
-    // 2. Update auth.users (Email & Metadata)
+    // 3. Update auth.users
     const authUpdate: any = { user_metadata: { full_name: full_name.trim() } };
     if (email && email.trim()) {
       authUpdate.email = email.trim();
-      authUpdate.email_confirm = true; // Bypass confirmation email
+      authUpdate.email_confirm = true;
     }
     const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(userId, authUpdate);
     if (authError) { sendError(res, 'Auth update failed: ' + authError.message, 500); return; }
 
-    // 3. Update resident_profile (Birthdate)
+    // 4. Update resident_profile
     if (birthdate) {
-      const { error: profileError } = await supabaseAdmin.from('resident_profile').update({
-        birthdate: birthdate
-      }).eq('user_id', userId);
+      const { error: profileError } = await supabaseAdmin.from('resident_profile').update({ birthdate: birthdate }).eq('user_id', userId);
       if (profileError) { console.warn('Profile update failed:', profileError.message); }
     }
 
-    // Log to audit trail if reason is provided or if fields changed
- recordAuditLog({
+    // 5. Send Email Alerts
+    if (email && oldEmail && email.trim() !== oldEmail) {
+      const emailSubject = 'Security Alert: KABISIG Account Email Updated';
+      const emailHtml = '<p>Hello ' + full_name + ',</p>' +
+                        '<p>The email address associated with your KABISIG account was changed.</p>' +
+                        '<p><strong>Old Email:</strong> ' + oldEmail + '<br/><strong>New Email:</strong> ' + email + '</p>' +
+                        '<p>If you did not request this change, please contact the SK Federation President immediately.</p>';
+      
+      const resendApiKey = process.env.RESEND_API_KEY;
+      if (resendApiKey) {
+        try {
+          await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + resendApiKey, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ from: 'KABISIG Security <security@kabisig.com>', to: [oldEmail, email], subject: emailSubject, html: emailHtml })
+          });
+        } catch (err) { console.warn('Failed to send email alert:', err); }
+      } else {
+        console.log('[MOCK EMAIL] To: ' + oldEmail + ' & ' + email + ' | Subject: ' + emailSubject);
+      }
+    }
+
+    // 6. Audit Log
+    await recordAuditLog({
       tenantId: null,
       userId: authUser.id,
       action: 'UPDATE_USER_CREDENTIALS',
@@ -1531,7 +1555,7 @@ router.get(
     const { data, error } = await supabaseAdmin
       .from('audit_logs')
       .select('id, created_at, user_id, details, users(full_name)')
-      .eq('action', 'UPDATE_USER_EMAIL')
+      .in('action', ['UPDATE_USER_EMAIL', 'UPDATE_USER_CREDENTIALS'])
       .order('created_at', { ascending: false });
 
     if (error) {
