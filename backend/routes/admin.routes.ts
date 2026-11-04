@@ -45,7 +45,7 @@ router.put('/users/:userId/update-name', authenticateUser, async (req: Request, 
     const authUser = (req as AuthRequest).user!;
     if (authUser.role_id !== 1) { sendError(res, 'Forbidden. Super Admin access only.', 403); return; }
     const userId = String(req.params.userId || '');
-    const { full_name, first_name, middle_name, last_name, suffix, email, phone, birthdate } = req.body;
+    const { full_name, first_name, middle_name, last_name, suffix, email, phone, birthdate, reason } = req.body;
     if (!full_name) { sendError(res, 'Full name is required.', 400); return; }
 
     // 1. Update public.users
@@ -78,6 +78,17 @@ router.put('/users/:userId/update-name', authenticateUser, async (req: Request, 
       }).eq('user_id', userId);
       if (profileError) { console.warn('Profile update failed:', profileError.message); }
     }
+
+    // Log to audit trail if reason is provided or if fields changed
+ recordAuditLog({
+      tenantId: null,
+      userId: authUser.id,
+      action: 'UPDATE_USER_CREDENTIALS',
+      entityName: 'users',
+      entityId: userId,
+      details: { reason: reason || 'No reason provided', updated_fields: { full_name, email, phone, birthdate } },
+      ipAddress: req.ip || null
+    });
 
     sendSuccess(res, { id: userId, full_name: full_name.trim() }, 'User profile corrected successfully.');
   } catch (err: any) {

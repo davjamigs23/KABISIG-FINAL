@@ -86,6 +86,7 @@ useEffect(() => {
   const [typoEmail, setTypoEmail] = useState('');
   const [typoPhone, setTypoPhone] = useState('');
   const [typoBirthdate, setTypoBirthdate] = useState('');
+  const [typoReason, setTypoReason] = useState('');
   const [isFixingTypo, setIsFixingTypo] = useState(false);
   const [emailForm, setEmailForm] = useState({ current_email: '', new_email: '', reason: '' });
   const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
@@ -2431,7 +2432,8 @@ useEffect(() => {
                   full_name: typoFullName,
                   email: typoEmail.trim() || undefined,
                   phone: typoPhone.trim() || undefined,
-                  birthdate: typoBirthdate || undefined
+                  birthdate: typoBirthdate || undefined,
+                  reason: typoReason.trim() || undefined
                 });
                 if (res.success) {
                   alert('User name corrected successfully!');
@@ -2441,6 +2443,7 @@ useEffect(() => {
                   setTypoEmail('');
                   setTypoPhone('');
                   setTypoBirthdate('');
+                  setTypoReason('');
                 } else {
                   alert(res.message || 'Failed to update.');
                 }
@@ -2476,11 +2479,21 @@ useEffect(() => {
                 <input type="date" value={typoBirthdate} onChange={e => setTypoBirthdate(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" />
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
-                <button type="button" onClick={() => setShowFixTypoModal(false)} className="px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-50 rounded-lg">Cancel</button>
-                <button type="submit" disabled={isFixingTypo} className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg disabled:opacity-50">
-                  {isFixingTypo ? 'Saving...' : 'Update Credentials'}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Purpose / Reason for Change</label>
+                <textarea value={typoReason} onChange={e => setTypoReason(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" rows={2} placeholder="E.g., Corrected birthdate typo upon user request" />
+              </div>
+
+              <div className="flex justify-between items-center pt-2 border-t border-slate-100">
+                <button type="button" onClick={() => { setShowFixTypoModal(false); setShowEmailModal(true); setEmailModalTab('history'); setIsFetchingEmailHistory(true); kabisigApi.getEmailHistory().then(res => { if (res.success && res.data) setEmailHistoryList(res.data); setIsFetchingEmailHistory(false); }); }} className="text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline">
+                  View Change History
                 </button>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setShowFixTypoModal(false)} className="px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-50 rounded-lg">Cancel</button>
+                  <button type="submit" disabled={isFixingTypo} className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg disabled:opacity-50">
+                    {isFixingTypo ? 'Saving...' : 'Update Credentials'}
+                  </button>
+                </div>
               </div>
             </form>
           </div>
