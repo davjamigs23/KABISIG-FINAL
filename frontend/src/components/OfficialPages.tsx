@@ -477,6 +477,7 @@ export default function OfficialPages({
           id: row.id,
           programId: row.program_id,
           participantId: profile?.id || row.user_id,
+          userId: row.user_id,
           participantName: user?.full_name || profile?.name || 'Youth Constituent',
           checkInTime: row.checked_in_at,
           status: 'Present' as const,
@@ -508,6 +509,7 @@ export default function OfficialPages({
           programId: row.program_id,
           programTitle: programs.find(program => program.id === row.program_id)?.title || '',
           participantId: profile?.id || row.user_id,
+          userId: row.user_id,
           participantName: user?.full_name || profile?.name || 'Youth Constituent',
           dateRegistered: row.registered_at || '',
           status: row.status === 'attended' ? 'Completed' : 'Approved',
@@ -1056,10 +1058,15 @@ export default function OfficialPages({
       (scannedDigitalYouthId && y.id === scannedDigitalYouthId) ||
       y.id === partId || y.id === scannedText || y.qrCode === scannedText
     );
-    const reg = selectedProgramRegistrations.find(r =>
-      r.programId === activeProgId && 
-      (r.participantId === partId || r.qrCode === scannedText || r.participantId === scannedText || (youthProf && r.participantId === youthProf.id)) && 
-      ['Approved', 'registered', 'attended'].includes(r.status)
+    const reg = selectedProgramRegistrations.find((r: any) =>
+      r.programId === activeProgId && (
+        r.userId === partId || r.userId === scannedUserId ||
+        r.participantId === partId || r.participantId === scannedUserId ||
+        (scannedUserId && r.participantId === scannedUserId) ||
+        r.qrCode === scannedText || r.participantId === scannedText ||
+        (youthProf && (r.participantId === youthProf.id || r.userId === youthProf.userId))
+      ) &&
+      ['approved', 'registered', 'attended', 'completed'].includes(String(r.status || '').toLowerCase())
     );
 
     // Widened lookup for display — includes any registration status and matches by user_id, participantId, or qrCode
