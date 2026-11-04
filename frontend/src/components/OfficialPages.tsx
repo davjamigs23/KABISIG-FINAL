@@ -1064,16 +1064,27 @@ export default function OfficialPages({
     console.log("scannedUserId:", scannedUserId);
     console.log("partId:", partId);
     console.log("Available Regs:", selectedProgramRegistrations.map(r => ({ userId: r.userId, participantId: r.participantId, status: r.status, programId: r.programId })));
-    const reg = selectedProgramRegistrations.find((r: any) =>
-      r.programId === activeProgId && (
-        r.userId === partId || r.userId === scannedUserId ||
-        r.participantId === partId || r.participantId === scannedUserId ||
-        (scannedUserId && r.participantId === scannedUserId) ||
-        r.qrCode === scannedText || r.participantId === scannedText ||
-        (youthProf && (r.participantId === youthProf.id || r.userId === youthProf.userId))
-      ) &&
-      ['approved', 'registered', 'attended', 'completed'].includes(String(r.status || '').toLowerCase())
-    );
+    const _regs = Array.isArray(registrations) ? registrations : [];
+    const reg = _regs.find((r: any) => {
+      const _rProg = String(r.programId || r.program_id || "");
+      if (_rProg !== String(activeProgId)) return false;
+      const _rUser = String(r.userId || r.user_id || "");
+      const _rPart = String(r.participantId || "");
+      const _rQR = String(r.qrCode || "");
+      const _sText = String(scannedText || "");
+      const _sUser = String(scannedUserId || "");
+      const _pId = String(partId || "");
+      const _userMatch = (
+        (_rUser !== "" && (_rUser === _pId || _rUser === _sUser)) ||
+        (_rPart !== "" && (_rPart === _pId || _rPart === _sUser)) ||
+        (_rQR !== "" && _rQR === _sText) ||
+        (youthProf && (_rPart === String(youthProf.id) || _rUser === String(youthProf.userId)))
+      );
+      const _status = String(r.status || "").toLowerCase();
+      const _statusOk = ["approved", "registered", "attended", "completed", "pending"].includes(_status);
+      return _userMatch && _statusOk;
+    });
+    console.log("=== SCAN MATCH RESULT ===", { found: !!reg, activeProgId, partId });
 
     // Widened lookup for display — includes any registration status and matches by user_id, participantId, or qrCode
     const regAny = selectedProgramRegistrations.find(r =>
