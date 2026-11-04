@@ -2391,7 +2391,7 @@ useEffect(() => {
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-200">
                           <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">Date</th>
-                          <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">Target User</th>
+                          <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">User Modified</th>
                           <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">Changed Details</th>
                           <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">Reason</th>
                         </tr>
@@ -2403,7 +2403,11 @@ useEffect(() => {
                               {new Date(log.created_at).toLocaleString()}
                             </td>
                             <td className="px-4 py-3 text-xs font-bold text-[#091d64]">
-                              {log.details?.target_name || log.users?.full_name || 'Unknown User'}
+                              {log.details?.target_name 
+                                ? log.details.target_name 
+                                : (log.details?.old_email || log.details?.new_email)
+                                  ? `User (${log.details?.old_email || log.details?.new_email})`
+                                  : 'System User'}
                             </td>
                             <td className="px-4 py-3 text-xs text-slate-600">
                               {log.details?.updated_fields ? (
