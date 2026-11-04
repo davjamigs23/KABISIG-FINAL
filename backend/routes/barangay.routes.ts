@@ -265,12 +265,12 @@ router.patch(
 
     // 1. If allocating budget, upsert into budget table for current year
     if (typeof allocatedBudget === 'number' && allocatedBudget >= 0) {
-      const currentYear = new Date().getFullYear();
+      const requestedYear = updates.active_fiscal_year || new Date().getFullYear();
       const { data: currentBudget, error: budgetFetchError } = await supabaseAdmin
         .from('budget')
         .select('id, allocated_amount, remaining_amount')
         .eq('tenant_id', id)
-        .eq('fiscal_year', currentYear)
+        .eq('fiscal_year', requestedYear)
         .eq('category', 'General Youth Development Fund')
         .maybeSingle();
 
@@ -302,7 +302,7 @@ router.patch(
         ? await supabaseAdmin.from('budget').update(budgetValues).eq('id', currentBudget.id)
         : await supabaseAdmin.from('budget').insert({
             tenant_id: id,
-            fiscal_year: currentYear,
+            fiscal_year: requestedYear,
             category: 'General Youth Development Fund',
             ...budgetValues,
           });
@@ -471,18 +471,50 @@ router.patch(
       sendError(res, 'Total amount must be a positive number.', 400);
       return;
     }
-    const { error } = await supabaseAdmin
+    const fiscalYear = body.fiscal_year ? Number(body.fiscal_year) : new Date().getFullYear();
+
+    const { error: bgyError } = await supabaseAdmin
       .from('barangay')
-      .update({
-        allocated_budget: numericAmount,
-        active_fiscal_year: body.fiscal_year ? Number(body.fiscal_year) : undefined
-      })
+      .update({ allocated_budget: numericAmount, active_fiscal_year: fiscalYear })
       .eq('id', id);
-    if (error) {
-      sendError(res, `Failed to update total SK budget: ${error.message}`, 500);
+    if (bgyError) { sendError(res, 'Failed to update barangay: ' + bgyError.message, 500); return; }
+
+    const { data: existingBudget } = await supabaseAdmin
+      .from('budget')
+      .select('id, allocated_amount, remaining_amount')
+      .eq('tenant_id', id)
+      .eq('fiscal_year', fiscalYear)
+      .eq('category', 'General Youth Development Fund')
+      .maybeSingle();
+
+    const previouslySpent = existingBudget
+      ? round2(Number(existingBudget.allocated_amount) - Number(existingBudget.remaining_amount))
+      : 0;
+
+    if (numericAmount < previouslySpent) {
+      sendError(res, 'Cannot set budget below already spent amount: ' + previouslySpent.toLocaleString(), 422);
       return;
     }
-    sendSuccess(res, { total_amount: numericAmount, fiscal_year: body.fiscal_year }, 'Total SK budget updated.');
+
+    const budgetValues = {
+      allocated_amount: numericAmount,
+      remaining_amount: round2(numericAmount - previouslySpent),
+      description: 'Annual budget allocation set by SK Chairperson for FY ' + fiscalYear,
+      updated_at: new Date().toISOString(),
+    };
+
+    const budgetWrite = existingBudget
+      ? await supabaseAdmin.from('budget').update(budgetValues).eq('id', existingBudget.id)
+      : await supabaseAdmin.from('budget').insert({
+          tenant_id: id,
+          fiscal_year: fiscalYear,
+          category: 'General Youth Development Fund',
+          ...budgetValues,
+        });
+
+    if (budgetWrite.error) { sendError(res, 'Failed to save budget: ' + budgetWrite.error.message, 500); return; }
+
+    sendSuccess(res, { total_amount: numericAmount, fiscal_year: fiscalYear }, 'Total SK budget updated.');
   }
 );
 router.post(
