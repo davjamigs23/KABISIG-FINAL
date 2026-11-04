@@ -2420,7 +2420,7 @@ useEffect(() => {
         <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
             <h3 className="font-bold text-slate-800 text-lg mb-1">Manage User Credentials</h3>
-            <p className="text-xs text-slate-500 mb-4">Correct a user's profile, contact info, or birthdate directly in the database. Leave fields blank to keep them unchanged.</p>
+            <p className="text-xs text-slate-500 mb-4">Correct a user&apos;s profile, contact info, or birthdate directly in the database. Leave fields blank to keep them unchanged.</p>
             
             <form onSubmit={async (e) => {
               e.preventDefault();
