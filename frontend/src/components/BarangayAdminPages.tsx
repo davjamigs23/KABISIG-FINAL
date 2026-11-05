@@ -2292,7 +2292,7 @@ return (
                   </div>
                 </div>
                 <div className="flex w-full shrink-0 justify-end gap-2 sm:w-auto">
-                  <button type="button" onClick={() => { setTotalFormError(''); setShowSetTotal(true); }} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-amber-400 px-3 py-2.5 text-center text-xs font-bold text-amber-950 hover:bg-amber-300">
+                  <button type="button" onClick={() => { setTotalFormError(''); setTotalForm(prev => ({ ...prev, fiscalYear: budgetYear })); setShowSetTotal(true); }} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-amber-400 px-3 py-2.5 text-center text-xs font-bold text-amber-950 hover:bg-amber-300">
                     <Coins className="h-4 w-4 shrink-0" /> <span>Set total SK budget</span>
                   </button>
                 </div>
@@ -2349,7 +2349,8 @@ return (
                 const filteredAllocated = budgetPrograms.reduce((sum, program) => sum + (Number(program.budgetAllocation) || 0), 0);
                 const filteredSpent = budgetPrograms.reduce((sum, program) => sum + (expenses.filter(expense => expense.programId === program.id).reduce((total, expense) => total + (Number(expense.amount) || Number(expense.gross_amount) || 0), 0) || 0), 0);
                 const isAllPrograms = budgetProgramFilter === 'All Programs';
-                const barangayTotalBudget = savedTotalBudget !== null ? savedTotalBudget : (Number(currentBarangay?.totalBudget) || 0);
+                const currentYearGeneralBudget = (budgetAllocations || []).find((b: any) => b.category === 'General Youth Development Fund' && b.fiscal_year === Number(budgetYear));
+                const barangayTotalBudget = currentYearGeneralBudget ? Number(currentYearGeneralBudget.allocated_amount) : 0;
                 const useBudgetTable = isAllPrograms;
                 const displaySpent = useBudgetTable ? (Number(currentBarangay?.spentBudget) || 0) : filteredSpent;
                 const displayBase = useBudgetTable ? barangayTotalBudget : filteredAllocated;
