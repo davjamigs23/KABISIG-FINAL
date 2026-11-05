@@ -213,7 +213,13 @@ export function detectLowEngagement(
   return profiles
     .filter(p => p.status === 'Approved')
     .map(p => {
-      const pRegs = registrations.filter(r => r.participantId === p.userId || r.participantId === p.id);
+      const _pAny: any = p as any;
+      const _pUserId = _pAny.userId || _pAny.user_id || _pAny.id;
+      const pRegs = registrations.filter((r: any) => {
+        const _rAny: any = r as any;
+        const _regUser = _rAny.userId || _rAny.user_id || _rAny.participantId || _rAny.participant_id;
+        return _regUser === _pUserId;
+      });
       const attendanceCount = pRegs.filter(r => r.status === 'Completed').length;
       
       // Compute proxy score if engagementScore is undefined
