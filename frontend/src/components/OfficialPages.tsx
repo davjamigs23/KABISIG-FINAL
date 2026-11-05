@@ -1364,14 +1364,17 @@ export default function OfficialPages({
 
   // Filtered lists
   const filteredPrograms = programs.filter(p => {
-    // ---- Fiscal Year Isolation ----
+    // ---- Fiscal Year Isolation (bulletproof, fail-closed) ----
     const _p: any = p as any;
-    const _progYear: number | null = _p.fiscal_year != null
-      ? Number(_p.fiscal_year)
-      : (_p.startDate ? new Date(_p.startDate).getFullYear()
-        : (_p.start_date ? new Date(_p.start_date).getFullYear()
-        : (_p.created_at ? new Date(_p.created_at).getFullYear() : null)));
-    if (_progYear != null && _progYear !== Number(treasurerBudgetYear)) return false;
+    const _dateStr = _p.startDate || _p.start_date || _p.created_at;
+    if (!_dateStr) {
+      console.warn('[FY-FILTER] Program has no date info, excluding:', _p.title);
+      return false;
+    }
+    const _progYear = new Date(_dateStr).getFullYear();
+    const _matches = _progYear === Number(treasurerBudgetYear);
+    console.log('[FY-FILTER]', _p.title, '| startDate:', _p.startDate, '| start_date:', _p.start_date, '| created_at:', _p.created_at, '| resolvedYear:', _progYear, '| targetYear:', treasurerBudgetYear, '| matches:', _matches);
+    if (!_matches) return false;
     // ---- End Fiscal Year Isolation ----
     const matchSearch = p.title.toLowerCase().includes(searchTerm.toLowerCase()) || p.location.toLowerCase().includes(searchTerm.toLowerCase());
     const matchCat = filterCategory === 'All' ? true : p.category === filterCategory;
