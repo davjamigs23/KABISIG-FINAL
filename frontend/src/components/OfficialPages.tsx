@@ -708,12 +708,17 @@ export default function OfficialPages({
   };
 
   // --- STATS COMPUTATIONS ---
-  const totalSpentExpenses = expenses.reduce((acc, curr) => acc + curr.amount, 0);
+  const filteredExpenses = (expenses || []).filter((e: any) => {
+    const dateStr = e.expense_date || e.created_at || e.date;
+    if (!dateStr) return true;
+    return new Date(dateStr).getFullYear() === Number(treasurerBudgetYear);
+  });
+  const totalSpentExpenses = filteredExpenses.reduce((acc: number, curr: any) => acc + Number(curr.amount || 0), 0);
   // Calculate total based on the specific fiscal year's budget data
   const currentYearGeneralFund = budgetOptions.find((b: any) => b.category === 'General Youth Development Fund');
   const totalBarangayBudget = currentYearGeneralFund ? Number(currentYearGeneralFund.allocated_amount) : 0;
   const remainingCash = totalBarangayBudget - totalSpentExpenses;
-  const budgetUtilizationRate = (totalSpentExpenses / totalBarangayBudget) * 100;
+  const budgetUtilizationRate = totalBarangayBudget > 0 ? (totalSpentExpenses / totalBarangayBudget) * 100 : 0;
 
   // --- ACTIONS HANDLERS ---
   const handlePublishProgram = async () => {
