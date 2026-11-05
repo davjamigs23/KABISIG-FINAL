@@ -357,6 +357,18 @@ export default function OfficialPages({
   };
 
     const [treasurerBudgetYear, setTreasurerBudgetYear] = useState(String(currentTenant?.active_fiscal_year || new Date().getFullYear()));
+  const [availableYears, setAvailableYears] = useState<string[]>([String(new Date().getFullYear())]);
+
+    // Fetch all available fiscal years from the database
+  useEffect(() => {
+    if (!currentTenant?.id) return;
+    kabisigApi.getBudgets(currentTenant.id).then((budgets) => {
+      const years = budgets.map((b: any) => String(b.fiscal_year));
+      const active = String(currentTenant.active_fiscal_year || new Date().getFullYear());
+      const current = String(new Date().getFullYear());
+      setAvailableYears(Array.from(new Set([...years, active, current])).sort((a, b) => Number(b) - Number(a)));
+    }).catch(console.error);
+  }, [currentTenant?.id, currentTenant?.active_fiscal_year]);
 
   // Sync documents prop to localDocs
   useEffect(() => {
@@ -1582,14 +1594,10 @@ export default function OfficialPages({
               <div className="flex items-center gap-3 mb-4">
                 <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Fiscal Year</label>
                 <select value={treasurerBudgetYear} onChange={e => setTreasurerBudgetYear(e.target.value)} className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700">
-                  {(() => {
-                    const _yrs = Array.from(new Set([
-                      new Date().getFullYear(),
-                      ...(budgetOptions || []).map((b: any) => Number(b.fiscal_year)).filter(Boolean)
-                    ])).sort((a: any, b: any) => b - a);
-                    return _yrs.map(y => <option key={y} value={y}>{y}</option>);
-                  })()}
-                </select>
+                    {availableYears.map((yr) => (
+                      <option key={yr} value={yr}>{yr}</option>
+                    ))}
+                  </select>
               </div>
               {/* 4 Metric Cards */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">

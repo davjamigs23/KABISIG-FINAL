@@ -811,8 +811,9 @@ class KabisigApiClient {
       body: JSON.stringify(payload),
     });
   }
-  async getBudgets(tenantId?: string, fiscalYear = new Date().getFullYear()): Promise<any[]> {
-    const params = new URLSearchParams({ fiscal_year: String(fiscalYear) });
+  async getBudgets(tenantId?: string, fiscalYear?: number): Promise<any[]> {
+    const params = new URLSearchParams();
+    if (fiscalYear) params.set('fiscal_year', String(fiscalYear));
     if (tenantId) params.set('tenant_id', tenantId);
     const url = `/budget?${params.toString()}`;
     const res = await this.request<any>(url, { method: 'GET' });

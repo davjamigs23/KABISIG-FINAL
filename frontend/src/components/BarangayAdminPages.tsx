@@ -475,6 +475,17 @@ export default function BarangayAdminPages({
     };
   }, [currentBarangay?.id, budgetYear]);
 
+  // Fetch all available years for the dropdown
+  useEffect(() => {
+    if (!currentBarangay?.id) return;
+    kabisigApi.getBudgets(currentBarangay.id).then((budgets) => {
+      const years = budgets.map((b: any) => Number(b.fiscal_year));
+      const active = Number(currentBarangay.active_fiscal_year || new Date().getFullYear());
+      const current = Number(new Date().getFullYear());
+      setAvailableYears(prev => Array.from(new Set([...prev, ...years, active, current].filter(y => !isNaN(y)))).sort((a, b) => b - a));
+    }).catch(console.error);
+  }, [currentBarangay?.id, currentBarangay?.active_fiscal_year]);
+
   const handleRecordExpense = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setExpenseFormError('');
