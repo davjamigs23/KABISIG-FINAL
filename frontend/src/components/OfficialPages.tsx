@@ -4649,7 +4649,7 @@ export default function OfficialPages({
                       setIsSavingAllocate(true);
                       try {
                         const res = await kabisigApi.allocateBudget({
-      program_id: selectedProgId,
+      program_id: programs.find((p: any) => p.title === allocateForm.category)?.id || undefined,
                           fiscal_year: Number(allocateForm.fiscalYear),
                           category: allocateForm.category.trim(),
                           allocated_amount: Number(String(allocateForm.allocatedAmount).replace(/[^0-9.]/g, '')),
