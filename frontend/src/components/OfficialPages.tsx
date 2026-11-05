@@ -356,10 +356,18 @@ export default function OfficialPages({
     return analyzeFeedbackSentiment(item.content, item.type);
   };
 
+    const [treasurerBudgetYear, setTreasurerBudgetYear] = useState(String(currentTenant?.active_fiscal_year || new Date().getFullYear()));
+
   // Sync documents prop to localDocs
   useEffect(() => {
-    setLocalDocs(documents || []);
-  }, [documents]);
+    const filteredDocs = (documents || []).filter((d: any) => {
+      const docYear: number | null = d.fiscal_year != null
+        ? Number(d.fiscal_year)
+        : (d.created_at ? new Date(d.created_at).getFullYear() : null);
+      return docYear === null || docYear === Number(treasurerBudgetYear);
+    });
+    setLocalDocs(filteredDocs);
+  }, [documents, treasurerBudgetYear]);
 
   useEffect(() => {
     setLocalFeedback(feedback || []);
@@ -411,7 +419,6 @@ export default function OfficialPages({
     programId: programs[0]?.id || '', budgetId: '', amount: 0, supplier: '', taxType: 'VAT' as any, category: 'Supplies' as any
   });
   const [budgetOptions, setBudgetOptions] = useState<any[]>([]);
-  const [treasurerBudgetYear, setTreasurerBudgetYear] = useState(String(new Date().getFullYear()));
   useEffect(() => {
     if (currentTenant?.active_fiscal_year) {
       setTreasurerBudgetYear(String(currentTenant.active_fiscal_year));
@@ -1324,12 +1331,29 @@ export default function OfficialPages({
 
   // Filtered lists
   const filteredPrograms = programs.filter(p => {
+    // ---- Fiscal Year Isolation ----
+    const _p: any = p as any;
+    const _progYear: number | null = _p.fiscal_year != null
+      ? Number(_p.fiscal_year)
+      : (_p.startDate ? new Date(_p.startDate).getFullYear()
+        : (_p.start_date ? new Date(_p.start_date).getFullYear()
+        : (_p.created_at ? new Date(_p.created_at).getFullYear() : null)));
+    if (_progYear != null && _progYear !== Number(treasurerBudgetYear)) return false;
+    // ---- End Fiscal Year Isolation ----
     const matchSearch = p.title.toLowerCase().includes(searchTerm.toLowerCase()) || p.location.toLowerCase().includes(searchTerm.toLowerCase());
     const matchCat = filterCategory === 'All' ? true : p.category === filterCategory;
     return matchSearch && matchCat;
   });
 
   const filteredYouth = localYouthProfiles.filter(y => {
+    // ---- Fiscal Year Isolation ----
+    const _y: any = y as any;
+    const _youthYear: number | null = _y.fiscal_year != null
+      ? Number(_y.fiscal_year)
+      : (_y.created_at ? new Date(_y.created_at).getFullYear()
+        : (_y.createdAt ? new Date(_y.createdAt).getFullYear() : null));
+    if (_youthYear != null && _youthYear !== Number(treasurerBudgetYear)) return false;
+    // ---- End Fiscal Year Isolation ----
     const matchSearch = y.name.toLowerCase().includes(searchTerm.toLowerCase()) || y.email.toLowerCase().includes(searchTerm.toLowerCase());
     const matchCat = filterCategory === 'All' ? true : y.zone === filterCategory || y.scholarStatus === filterCategory;
     return matchSearch && matchCat;
@@ -1584,6 +1608,19 @@ export default function OfficialPages({
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">AYDP 8 Participation Centers</p>
                       </div>
                     </div>
+                    <div className="bg-white rounded-xl border border-slate-100 p-3.5 sm:p-5 flex items-center gap-2.5 sm:gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
+                      <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-blue-50 text-[#091d64] flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-[#091d64] group-hover:text-white transition-colors">
+                        <Coins className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Total Budget</span>
+                          <span className="hidden sm:inline text-[9px] font-bold bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded">Active</span>
+                        </div>
+                        <h3 className="text-base sm:text-xl font-black text-[#091d64] mt-0.5">₱{totalBarangayBudget.toLocaleString()}</h3>
+                        <p className="text-[10px] text-slate-500 truncate mt-0.5">For FY {treasurerBudgetYear}</p>
+                      </div>
+                    </div>
 
                     <div className="bg-white rounded-xl border border-slate-100 p-3.5 sm:p-5 flex items-center gap-2.5 sm:gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
                       <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-violet-600 group-hover:text-white transition-colors">
@@ -1642,6 +1679,19 @@ export default function OfficialPages({
                         </div>
                         <h3 className="text-lg sm:text-2xl font-black text-[#091d64] mt-0.5">{youthProfiles.length} <span className="text-xs font-semibold text-slate-400">Residents</span></h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">Katipunan ng Kabataan (Ages 15–30 yrs)</p>
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-xl border border-slate-100 p-3.5 sm:p-5 flex items-center gap-2.5 sm:gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
+                      <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-blue-50 text-[#091d64] flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-[#091d64] group-hover:text-white transition-colors">
+                        <Coins className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Total Budget</span>
+                          <span className="hidden sm:inline text-[9px] font-bold bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded">Active</span>
+                        </div>
+                        <h3 className="text-base sm:text-xl font-black text-[#091d64] mt-0.5">₱{totalBarangayBudget.toLocaleString()}</h3>
+                        <p className="text-[10px] text-slate-500 truncate mt-0.5">For FY {treasurerBudgetYear}</p>
                       </div>
                     </div>
 
