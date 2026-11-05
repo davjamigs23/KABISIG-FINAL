@@ -235,10 +235,15 @@ router.get('/:id', optionalAuthenticateUser, async (req: Request, res: Response)
 router.patch(
   '/:id',
   authenticateUser,
-  requireRoles('SUPER_ADMIN'),
+  requireRoles('SUPER_ADMIN', 'BARANGAY_ADMIN'),
   async (req: Request, res: Response): Promise<void> => {
     const id = String(req.params.id);
     const admin = (req as AuthRequest).user!;
+    if (admin.role_id === 2 && admin.tenant_id !== id) {
+      sendError(res, 'Forbidden. You can only update your own Barangay settings.', 403);
+      return;
+    }
+
 
     const parseResult = UpdateBarangaySchema.safeParse(req.body);
     if (!parseResult.success) {

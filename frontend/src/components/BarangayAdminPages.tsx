@@ -2182,6 +2182,15 @@ return (
                         setSavedTotalBudget(amount);
                         setTotalBudgetNotice('Total SK budget saved: P' + amount.toLocaleString());
                         window.setTimeout(() => setTotalBudgetNotice(''), 5000);
+
+                        // Force refetch so display updates even if budgetYear didn't change
+                        void kabisigApi.getBudgets(currentBarangay.id, Number(totalForm.fiscalYear)).then(fresh => {
+                          setBudgetAllocations(fresh);
+                          setExpenseForm(prev => ({
+                            ...prev,
+                            budgetId: fresh.some((a: any) => a.id === prev.budgetId) ? prev.budgetId : (fresh[0]?.id || ''),
+                          }));
+                        }).catch(err => console.error('Refetch failed:', err));
                       } catch (err) {
                         setTotalFormError((err && err.message) ? err.message : 'Network error saving total budget.');
                       } finally {
@@ -2361,7 +2370,7 @@ return (
                   <>
                     {isAllPrograms && barangayTotalBudget === 0 && (
                       <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs font-semibold text-amber-800">
-                        No FY {new Date().getFullYear()} budget has been configured for this barangay yet. Per DILG JMC No. 1 s. 2025, the SK Chairperson prepares the barangay SK budget.
+                        No FY {budgetYear} budget has been configured for this barangay yet. Per DILG JMC No. 1 s. 2025, the SK Chairperson prepares the barangay SK budget.
                       </div>
                     )}
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
