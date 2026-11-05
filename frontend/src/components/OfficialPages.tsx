@@ -1616,19 +1616,6 @@ export default function OfficialPages({
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">AYDP 8 Participation Centers</p>
                       </div>
                     </div>
-                    <div className="bg-white rounded-xl border border-slate-100 p-3.5 sm:p-5 flex items-center gap-2.5 sm:gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
-                      <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-blue-50 text-[#091d64] flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-[#091d64] group-hover:text-white transition-colors">
-                        <Coins className="w-5 h-5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Total Budget</span>
-                          <span className="hidden sm:inline text-[9px] font-bold bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded">Active</span>
-                        </div>
-                        <h3 className="text-base sm:text-xl font-black text-[#091d64] mt-0.5">₱{totalBarangayBudget.toLocaleString()}</h3>
-                        <p className="text-[10px] text-slate-500 truncate mt-0.5">For FY {treasurerBudgetYear}</p>
-                      </div>
-                    </div>
 
                     <div className="bg-white rounded-xl border border-slate-100 p-3.5 sm:p-5 flex items-center gap-2.5 sm:gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
                       <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-violet-600 group-hover:text-white transition-colors">
@@ -1687,19 +1674,6 @@ export default function OfficialPages({
                         </div>
                         <h3 className="text-lg sm:text-2xl font-black text-[#091d64] mt-0.5">{youthProfiles.length} <span className="text-xs font-semibold text-slate-400">Residents</span></h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">Katipunan ng Kabataan (Ages 15–30 yrs)</p>
-                      </div>
-                    </div>
-                    <div className="bg-white rounded-xl border border-slate-100 p-3.5 sm:p-5 flex items-center gap-2.5 sm:gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
-                      <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-blue-50 text-[#091d64] flex items-center justify-center flex-shrink-0 shadow-2xs group-hover:bg-[#091d64] group-hover:text-white transition-colors">
-                        <Coins className="w-5 h-5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Total Budget</span>
-                          <span className="hidden sm:inline text-[9px] font-bold bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded">Active</span>
-                        </div>
-                        <h3 className="text-base sm:text-xl font-black text-[#091d64] mt-0.5">₱{totalBarangayBudget.toLocaleString()}</h3>
-                        <p className="text-[10px] text-slate-500 truncate mt-0.5">For FY {treasurerBudgetYear}</p>
                       </div>
                     </div>
 
@@ -4678,7 +4652,7 @@ export default function OfficialPages({
       program_id: selectedProgId,
                           fiscal_year: Number(allocateForm.fiscalYear),
                           category: allocateForm.category.trim(),
-                          allocated_amount: amount,
+                          allocated_amount: Number(String(allocateForm.allocatedAmount).replace(/[^0-9.]/g, '')),
                           description: allocateForm.description.trim() || undefined,
                         });
                         if (!res.success) { setAllocateError(res.message || 'Budget allocation failed.'); return; }
@@ -4704,15 +4678,19 @@ export default function OfficialPages({
                       <button type="button" onClick={() => setShowAllocateProgram(false)} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close allocation form"><X className="h-4 w-4" /></button>
                     </div>
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Fiscal year
-                      <input required type="number" min="2020" max="2100" value={allocateForm.fiscalYear} onChange={(event) => setAllocateForm((previous) => ({ ...previous, fiscalYear: event.target.value }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800" />
+                      <select required value={allocateForm.fiscalYear} onChange={(event) => setAllocateForm((previous) => ({ ...previous, fiscalYear: event.target.value }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800">
+                        {availableYears.map((yr) => (
+                          <option key={yr} value={yr}>{yr}</option>
+                        ))}
+                      </select>
                     </label>
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Program
                       <select required value={allocateForm.category} onChange={(event) => setAllocateForm((previous) => ({ ...previous, category: event.target.value }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800">
                         <option value="">Select a created program...</option>
-                        {programs.filter(p => !currentTenant?.id || p.barangayId === currentTenant.id).map(p => <option key={p.id} value={p.title}>{p.title}</option>)}
+                        {programs
+                          .filter(p => (!currentTenant?.id || p.barangayId === currentTenant.id) && (p.status === 'Published' || p.status === 'Upcoming' || p.status === 'Ongoing'))
+                          .map(p => <option key={p.id} value={p.title}>{p.title}</option>)}
                       </select>
-                    </label>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Allocated amount
                       <input required type="text" inputMode="decimal" value={allocateForm.allocatedAmount} onChange={(event) => setAllocateForm((previous) => ({ ...previous, allocatedAmount: formatCurrencyInput(event.target.value) }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800" placeholder="0.00" />
                     </label>
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Description <span className="text-slate-400 font-normal normal-case tracking-normal">(Optional)</span>
