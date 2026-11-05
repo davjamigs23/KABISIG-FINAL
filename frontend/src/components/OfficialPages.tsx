@@ -690,7 +690,9 @@ export default function OfficialPages({
 
   // --- STATS COMPUTATIONS ---
   const totalSpentExpenses = expenses.reduce((acc, curr) => acc + curr.amount, 0);
-  const totalBarangayBudget = Number(currentTenant?.totalBudget) || Number(currentTenant?.allocatedBudget) || programs.reduce((sum, program) => sum + (Number(program.budgetAllocation) || 0), 0);
+  // Calculate total based on the specific fiscal year's budget data
+  const currentYearGeneralFund = budgetOptions.find((b: any) => b.category === 'General Youth Development Fund');
+  const totalBarangayBudget = currentYearGeneralFund ? Number(currentYearGeneralFund.allocated_amount) : 0;
   const remainingCash = totalBarangayBudget - totalSpentExpenses;
   const budgetUtilizationRate = (totalSpentExpenses / totalBarangayBudget) * 100;
 
@@ -5257,7 +5259,7 @@ export default function OfficialPages({
               <div>
                 <div className="mb-3 p-3 rounded-lg bg-blue-50/50 border border-blue-100">
                   <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Total SK Budget (Chairperson)</span>
-                  <span className="text-sm font-black text-[#091d64] mt-0.5 block">₱{Number(currentTenant?.totalBudget || currentTenant?.allocatedBudget || 0).toLocaleString()}</span>
+                  <span className="text-sm font-black text-[#091d64] mt-0.5 block">₱{totalBarangayBudget.toLocaleString()}</span>
                   <span className="text-[10px] text-slate-400 block mt-0.5">Pick a program allocation below to deduct from</span>
                 </div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Program Budget Allocation *</label>
