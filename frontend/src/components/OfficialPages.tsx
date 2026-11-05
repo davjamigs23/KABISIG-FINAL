@@ -643,26 +643,42 @@ export default function OfficialPages({
         }
       ];
 
-  const treasurerProgramsBudget = programs.map(p => {
-    const actual = expenses
-      .filter(e => e.programId === p.id)
-      .reduce((acc, e) => acc + (e.amount || 0), 0);
+  const treasurerProgramsBudget = programs.filter((p: any) => {
+    const _year = p.fiscal_year != null ? Number(p.fiscal_year)
+      : (p.startDate ? new Date(p.startDate).getFullYear()
+      : (p.start_date ? new Date(p.start_date).getFullYear()
+      : (p.created_at ? new Date(p.created_at).getFullYear() : null)));
+    return _year === null || _year === Number(treasurerBudgetYear);
+  }).map((p: any) => {
+    const _yearExp = expenses.filter((e: any) => {
+      if (e.programId !== p.id) return false;
+      const _d = e.expense_date || e.created_at || e.date;
+      return !_d || new Date(_d).getFullYear() === Number(treasurerBudgetYear);
+    });
+    const actual = _yearExp.reduce((acc: number, e: any) => acc + Number(e.gross_amount || e.amount || 0), 0);
+    const _yearAlloc = (budgetOptions || []).find((b: any) => b.category === p.title)?.allocated_amount || 0;
     return {
       program: p.title,
-      allocated: p.budgetAllocation || 0,
+      allocated: Number(_yearAlloc),
       actual: actual
     };
   });
 
   const getSectorStats = (categoryName: string) => {
-    const categoryProgs = programs.filter(p => p.category === categoryName);
-    const alloc = categoryProgs.reduce((acc, p) => acc + (p.budgetAllocation || 0), 0);
+    const categoryProgs = programs.filter((p: any) => {
+      if (p.category !== categoryName) return false;
+      const _y = p.fiscal_year != null ? Number(p.fiscal_year) : (p.startDate ? new Date(p.startDate).getFullYear() : (p.start_date ? new Date(p.start_date).getFullYear() : (p.created_at ? new Date(p.created_at).getFullYear() : null)));
+      return _y === null || _y === Number(treasurerBudgetYear);
+    });
+    const alloc = categoryProgs.reduce((acc: number, p: any) => acc + Number((budgetOptions || []).find((b: any) => b.category === p.title)?.allocated_amount || 0), 0);
     const disb = expenses
-      .filter(e => {
-        const prog = programs.find(p => p.id === e.programId);
+      .filter((e: any) => {
+        const _d = e.expense_date || e.created_at || e.date;
+        if (_d && new Date(_d).getFullYear() !== Number(treasurerBudgetYear)) return false;
+        const prog = programs.find((pp: any) => pp.id === e.programId);
         return prog?.category === categoryName;
       })
-      .reduce((acc, e) => acc + (e.amount || 0), 0);
+      .reduce((acc: number, e: any) => acc + Number(e.gross_amount || e.amount || 0), 0);
     const rate = alloc > 0 ? (disb / alloc) * 100 : 0;
     return { alloc, disb, rate };
   };
@@ -713,7 +729,7 @@ export default function OfficialPages({
     if (!dateStr) return true;
     return new Date(dateStr).getFullYear() === Number(treasurerBudgetYear);
   });
-  const totalSpentExpenses = filteredExpenses.reduce((acc: number, curr: any) => acc + Number(curr.amount || 0), 0);
+  const totalSpentExpenses = filteredExpenses.reduce((acc: number, curr: any) => acc + Number(curr.gross_amount || curr.amount || 0), 0);
   // Calculate total based on the specific fiscal year's budget data
   const currentYearGeneralFund = budgetOptions.find((b: any) => b.category === 'General Youth Development Fund');
   const totalBarangayBudget = currentYearGeneralFund ? Number(currentYearGeneralFund.allocated_amount) : 0;
@@ -4837,7 +4853,7 @@ export default function OfficialPages({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50 font-medium">
-                      {programs.length === 0 ? (
+                      {filteredPrograms.length === 0 ? (
                         <tr>
                           <td colSpan={6} className="px-5 py-8 text-center text-slate-400">
                             No program budget allocations registered. Allocations will appear when a real program budget is approved.
