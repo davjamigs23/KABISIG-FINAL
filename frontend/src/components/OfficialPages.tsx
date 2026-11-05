@@ -4860,9 +4860,13 @@ export default function OfficialPages({
                           </td>
                         </tr>
                       ) : (
-                        programs.map(p => {
-                          const spent = expenses
-                            .filter(e => e.programId === p.id)
+                        filteredPrograms.map(p => {
+                          const spent = (expenses || [])
+                            .filter((e: any) => {
+                              if (e.programId !== p.id) return false;
+                              const _d = e.expense_date || e.created_at || e.date;
+                              return !_d || new Date(_d).getFullYear() === Number(treasurerBudgetYear);
+                            })
                             .reduce((sum, e) => sum + (e.amount || 0), 0);
                           const _yearAlloc = (budgetOptions || []).find((b: any) => b.category === p.title)?.allocated_amount || 0; const isOver = spent > _yearAlloc && _yearAlloc > 0;
                           return (
