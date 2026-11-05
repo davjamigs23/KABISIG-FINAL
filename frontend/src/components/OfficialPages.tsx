@@ -3737,7 +3737,7 @@ export default function OfficialPages({
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 font-medium">
-                            {expenses.map(exp => (
+                            {filteredExpenses.map(exp => (
                               <tr key={exp.id} className="hover:bg-slate-50">
                                 <td className="px-5 py-3.5 font-bold text-slate-800">{exp.programTitle}</td>
                                 <td className="px-5 py-3.5 text-right font-mono text-slate-800 font-bold">₱{exp.amount.toLocaleString()}</td>
@@ -3910,7 +3910,7 @@ export default function OfficialPages({
                               <table>
                                 <thead><tr><th>Program Name</th><th>Category</th><th>Target Beneficiaries</th><th>Actual Attendance</th><th>Allocated Budget</th><th>Disbursed</th></tr></thead>
                                 <tbody>
-                                  ${programs.map(p => `<tr><td><strong>${p.title}</strong></td><td>${p.category}</td><td>${p.maxParticipants}</td><td>${p.registeredCount || 0}</td><td>₱${p.budgetAllocation.toLocaleString()}</td><td>₱${expenses.filter(expense => expense.programId === p.id).reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0).toLocaleString()}</td></tr>`).join('')}
+                                  ${programs.map(p => `<tr><td><strong>${p.title}</strong></td><td>${p.category}</td><td>${p.maxParticipants}</td><td>${p.registeredCount || 0}</td><td>₱${p.budgetAllocation.toLocaleString()}</td><td>₱${filteredExpenses.filter(expense => expense.programId === p.id).reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0).toLocaleString()}</td></tr>`).join('')}
                                 </tbody>
                               </table>
                             `);
@@ -4130,7 +4130,7 @@ export default function OfficialPages({
                                 <td className="px-5 py-3 font-bold text-slate-600">{p.category}</td>
                                 <td className="px-5 py-3 text-center font-bold text-[#091d64]">{p.registeredCount} / {p.maxParticipants}</td>
                                 <td className="px-5 py-3 text-right font-mono text-slate-700">₱{p.budgetAllocation.toLocaleString()}</td>
-                                <td className="px-5 py-3 text-right font-mono font-bold text-emerald-600">₱{expenses.filter(expense => expense.programId === p.id).reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0).toLocaleString()}</td>
+                                <td className="px-5 py-3 text-right font-mono font-bold text-emerald-600">₱{filteredExpenses.filter(expense => expense.programId === p.id).reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0).toLocaleString()}</td>
                                 <td className="px-5 py-3 text-center">
                                   <span className="px-2 py-0.5 bg-blue-50 text-[#091d64] rounded text-[9px] font-bold uppercase">{p.aipReference || 'No AIP reference'}</span>
                                 </td>
@@ -4729,7 +4729,7 @@ export default function OfficialPages({
                 </div>
                 <div className="p-5 rounded-xl border border-blue-100 bg-blue-50/30">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 block">Allocated to Programs</span>
-                  <h4 className="text-xl font-black text-blue-700 mt-1">₱{programs.reduce((s, p) => s + (Number(p.budgetAllocation) || 0), 0).toLocaleString()}</h4>
+                  <h4 className="text-xl font-black text-blue-700 mt-1">₱{(budgetOptions || []).filter((b: any) => b.category !== "General Youth Development Fund").reduce((s: number, b: any) => s + Number(b.allocated_amount || 0), 0).toLocaleString()}</h4>
                   <p className="text-[10px] text-slate-400 mt-0.5">Sum of program allocations</p>
                 </div>
                 <div className="p-5 rounded-xl border border-rose-100 bg-rose-50/30">
@@ -4848,13 +4848,13 @@ export default function OfficialPages({
                           const spent = expenses
                             .filter(e => e.programId === p.id)
                             .reduce((sum, e) => sum + (e.amount || 0), 0);
-                          const isOver = spent > p.budgetAllocation && p.budgetAllocation > 0;
+                          const _yearAlloc = (budgetOptions || []).find((b: any) => b.category === p.title)?.allocated_amount || 0; const isOver = spent > _yearAlloc && _yearAlloc > 0;
                           return (
                             <tr key={p.id} className="hover:bg-slate-50">
                               <td className="px-5 py-4 font-mono text-[11px] text-slate-400">{p.aipReference || 'No AIP reference'}</td>
                               <td className="px-5 py-4 font-bold text-slate-800">{p.title}</td>
                               <td className="px-5 py-4"><span className="px-2 py-0.5 bg-blue-50 text-[#091d64] rounded text-[9px] font-bold uppercase">{p.category}</span></td>
-                              <td className="px-5 py-4 text-right font-mono font-bold text-slate-800">₱{p.budgetAllocation.toLocaleString()}</td>
+                              <td className="px-5 py-4 text-right font-mono font-bold text-slate-800">₱{((budgetOptions || []).find((b: any) => b.category === p.title)?.allocated_amount || 0).toLocaleString()}</td>
                               <td className="px-5 py-4 text-right font-mono text-slate-600 font-semibold">₱{spent.toLocaleString()}</td>
                               <td className="px-5 py-4 text-center">
                                 <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${isOver ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>
@@ -4913,7 +4913,7 @@ export default function OfficialPages({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-xs font-medium bg-white">
-                      {expenses.map(exp => (
+                      {filteredExpenses.map(exp => (
                         <tr key={exp.id} className="hover:bg-slate-50 transition-colors">
                           <td className="px-5 py-4 font-bold text-slate-800 tracking-tight">{exp.programTitle}</td>
                           <td className="px-5 py-4 text-right font-mono text-slate-800 font-bold">₱{exp.amount.toLocaleString()}</td>
