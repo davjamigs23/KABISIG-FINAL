@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { Eye, EyeOff, Lock, ShieldCheck, ChevronLeft, CheckCircle2 } from 'lucide-react';
+import { kabisigApi } from '../../src/lib/api';
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const SB_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -79,7 +80,10 @@ export default function ResetPasswordPage() {
     }
     setBusy(true);
     try {
-      const { error: upErr } = await client.auth.updateUser({ password });
+      const { data: upData, error: upErr } = await client.auth.updateUser({ password });
+      if (!upErr && upData?.user?.email) {
+        try { await kabisigApi.notifyPasswordChange(upData.user.email); } catch (e) { console.warn('Password-change notification failed:', e); }
+      }
       if (upErr) { setError(upErr.message); setBusy(false); return; }
       await client.auth.signOut();
       setStatus('success');

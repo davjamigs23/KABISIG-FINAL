@@ -999,6 +999,55 @@ router.post('/forgot-password', async (req: Request, res: Response): Promise<voi
 
   sendSuccess(res, null, 'Password reset instructions sent to your email.');
 });
+// POST /api/auth/password-changed-notification
+router.post('/password-changed-notification', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email } = req.body;
+    if (!email) { sendError(res, 'Email is required.', 400); return; }
+
+    const emailSubject = 'Security Alert: Your KABISIG Password Was Changed';
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+        <div style="background-color: #091d64; padding: 24px; text-align: center;">
+          <h1 style="color: #ffffff; margin: 0; font-size: 24px;">KABISIG</h1>
+          <p style="color: #93c5fd; margin: 4px 0 0 0; font-size: 14px;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p>
+        </div>
+        <div style="padding: 32px; background-color: #ffffff;">
+          <h2 style="color: #091d64; margin-top: 0;">Password Successfully Changed</h2>
+          <p style="color: #334155; font-size: 16px; line-height: 1.6;">Hello,</p>
+          <p style="color: #334155; font-size: 16px; line-height: 1.6;">The password for your KABISIG account (<strong>${email}</strong>) has been successfully updated.</p>
+          <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 24px 0;">
+            <p style="margin: 0; color: #64748b; font-size: 12px; text-transform: uppercase; font-weight: bold;">Security Notice</p>
+            <p style="margin: 8px 0 0 0; color: #334155; font-size: 14px;">If you did not make this change, please contact the SK Federation President immediately. Your account may be compromised.</p>
+          </div>
+          <div style="text-align: center; margin: 32px 0;">
+            <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Log In to KABISIG</a>
+          </div>
+        </div>
+        <div style="background-color: #f8fafc; padding: 16px; text-align: center; border-top: 1px solid #e2e8f0;">
+          <p style="color: #94a3b8; font-size: 12px; margin: 0;">&copy; ${new Date().getFullYear()} KABISIG. All rights reserved.</p>
+        </div>
+      </div>
+    `;
+
+    try {
+      await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: { 'accept': 'application/json', 'api-key': process.env.BREVO_API_KEY || '', 'content-type': 'application/json' },
+        body: JSON.stringify({
+          sender: { email: process.env.BREVO_SENDER_EMAIL || 'noreply@kabisig.com', name: 'KABISIG Security' },
+          to: [{ email: email }],
+          subject: emailSubject,
+          htmlContent: emailHtml
+        })
+      });
+    } catch (err) { console.warn('Failed to send password change alert:', err); }
+
+    sendSuccess(res, null, 'Password changed notification sent.');
+  } catch (err: any) {
+    sendError(res, 'Unexpected error: ' + err.message, 500);
+  }
+});
 
 // POST /api/auth/register-official
 const RegisterOfficialSchema = z.object({

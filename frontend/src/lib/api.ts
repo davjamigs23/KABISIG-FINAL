@@ -371,6 +371,11 @@ class KabisigApiClient {
     });
   }
 
+    
+  async notifyPasswordChange(email: string): Promise<{ success: boolean; message?: string }> {
+    return this.request<any>('/auth/password-changed-notification', { method: 'POST', body: JSON.stringify({ email }) });
+  }
+
   async requestPasswordReset(email: string): Promise<{ success: boolean; message?: string }> {
     return await this.request('/auth/forgot-password', {
       method: 'POST',

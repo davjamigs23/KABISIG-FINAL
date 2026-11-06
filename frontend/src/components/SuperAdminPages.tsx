@@ -2556,6 +2556,7 @@ useEffect(() => {
             <form onSubmit={async (e) => {
               e.preventDefault();
               if (!typoUserId || !typoFullName) return alert('Both fields are required.');
+              if (typoPhone && !/^09\d{9}$/.test(typoPhone)) { return alert('Phone number must be exactly 11 digits and start with 09 (e.g., 09171234567).'); }
               setIsFixingTypo(true);
               try {
                 const combinedName = [typoFirstName.trim(), typoMiddleName.trim(), typoLastName.trim(), typoSuffix.trim()].filter(Boolean).join(' ');
@@ -2633,7 +2634,7 @@ useEffect(() => {
 
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Corrected Phone</label>
-                <input type="text" value={typoPhone} onChange={e => setTypoPhone(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank if unchanged" />
+                <input type="text" value={typoPhone} onChange={(e) => { let val = e.target.value.replace(/\D/g, ''); if (val.length > 11) val = val.slice(0, 11); setTypoPhone(val); }} maxLength={11} inputMode="numeric" className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank if unchanged" />
               </div>
 
               <div>
