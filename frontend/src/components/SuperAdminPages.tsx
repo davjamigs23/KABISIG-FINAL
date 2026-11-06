@@ -89,14 +89,44 @@ useEffect(() => {
     try {
       const res = await kabisigApi.lookupUser(typoUserId.trim());
       if (res.success && res.data) {
-        setTypoFirstName(res.data.first_name || '');
-        setTypoMiddleName(res.data.middle_name || '');
-        setTypoLastName(res.data.last_name || '');
-        setTypoSuffix(res.data.suffix || '');
-        setTypoEmail(res.data.email || '');
-        setTypoPhone(res.data.phone || '');
-        setTypoBirthdate(res.data.resident_profile?.birthdate || '');
-        setTypoFullName(res.data.full_name || '');
+        const user = res.data;
+        // If split name fields are missing, parse from full_name
+        const _fullName = (user.full_name || '').trim();
+        const _nameParts = _fullName.split(/\s+/);
+        const _hasSplit = (user.first_name && user.first_name.trim()) || (user.last_name && user.last_name.trim());
+
+        if (_hasSplit) {
+          setTypoFirstName(user.first_name || '');
+          setTypoMiddleName(user.middle_name || '');
+          setTypoLastName(user.last_name || '');
+          setTypoSuffix(user.suffix || '');
+        } else {
+          // Parse from full_name
+          if (_nameParts.length === 1) {
+            setTypoFirstName(_nameParts[0] || '');
+            setTypoMiddleName('');
+            setTypoLastName('');
+          } else if (_nameParts.length === 2) {
+            setTypoFirstName(_nameParts[0] || '');
+            setTypoMiddleName('');
+            setTypoLastName(_nameParts[1] || '');
+          } else {
+            setTypoFirstName(_nameParts[0] || '');
+            setTypoMiddleName(_nameParts.slice(1, -1).join(' ') || '');
+            setTypoLastName(_nameParts[_nameParts.length - 1] || '');
+          }
+          setTypoSuffix('');
+        }
+
+        setTypoEmail(user.email || '');
+        setTypoPhone(user.phone || '');
+        setTypoBirthdate(user.resident_profile?.birthdate || '');
+        setTypoFullName(_fullName);
+
+        // Notify user if profile is missing (SK Officials, Chairpersons)
+        if (!user.resident_profile) {
+          // Silently populate the rest — birthdate stays empty
+        }
       } else {
         alert(res.message || 'User not found.');
       }
@@ -1458,9 +1488,9 @@ useEffect(() => {
                     <thead className="bg-slate-50 text-[10px] text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100">
                       <tr>
                         <th className="p-3 w-[12%]">Timestamp</th>
-                        <th className="p-3 w-[20%]">SK Chairperson & Barangay</th>
-                        <th className="p-3 w-[15%]">Action Code</th>
-                        <th className="p-3 w-[65%]">Activity & Executive Details</th>
+                        <th className="p-3 w-[22%]">SK Chairperson & Barangay</th>
+                        <th className="p-3 w-[18%]">Action</th>
+                        <th className="p-3 w-[48%]">Activity & Executive Details</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50 font-medium">
@@ -1472,11 +1502,11 @@ useEffect(() => {
                             <span className="block text-[10px] text-slate-400 font-semibold">{log.role === 'Barangay Admin' ? 'SK Chairperson' : log.role}</span>
                           </td>
                           <td className="p-3">
-                            <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-800 font-mono font-bold text-[11px]">
+                            <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-800 font-mono font-bold text-[11px] break-words inline-block max-w-full">
                               {formatAuditAction(log.action)}
                             </span>
                           </td>
-                          <td className="p-3 text-slate-600 break-words">{formatAuditDetails(log.action, log.details)}</td>
+                          <td className="p-3 text-slate-600 whitespace-normal break-words align-top">{formatAuditDetails(log.action, log.details)}</td>
                         </tr>
                       ))}
                       {filteredAuditLogs.length === 0 && (
@@ -2550,9 +2580,9 @@ useEffect(() => {
             }} className="space-y-4">
               
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">User ID or Email</label>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Email</label>
                 <div className="flex gap-2">
-                  <input required type="text" value={typoUserId} onChange={e => setTypoUserId(e.target.value)} className="flex-1 border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Paste UUID or email..." />
+                  <input required type="text" value={typoUserId} onChange={e => setTypoUserId(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleLookupUser(); } }} className="flex-1 border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="user@example.com" />
                   <button type="button" onClick={handleLookupUser} disabled={isFixingTypo} className="px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-lg border border-slate-200 transition-colors disabled:opacity-50">
                     {isFixingTypo ? '...' : 'Search'}
                   </button>

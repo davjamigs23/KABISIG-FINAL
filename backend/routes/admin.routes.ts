@@ -44,13 +44,41 @@ const AssignChairpersonByEmailSchema = z.object({
 router.get('/users/lookup', authenticateUser, async (req: Request, res: Response): Promise<void> => {
   try {
     const authUser = (req as AuthRequest).user!;
-    if (authUser.role_id !== 1) { sendError(res, 'Forbidden.', 403); return; }
-    const identifier = String(req.query.identifier || '');
-    const { data: user, error } = await supabaseAdmin.from('users').select('*, resident_profile(birthdate)').or('id.eq.' + identifier + ',email.eq.' + identifier).maybeSingle();
-    if (error) { sendError(res, error.message, 500); return; }
+    if (authUser.role_id !== 1) { sendError(res, 'Forbidden. Super Admin access only.', 403); return; }
+    const identifier = String(req.query.identifier || '').trim();
+    if (!identifier) { sendError(res, 'Identifier is required.', 400); return; }
+
+    // Detect UUID format to avoid PostgreSQL type cast errors
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const isUuid = uuidRegex.test(identifier);
+
+    // Query user WITHOUT join (avoids FK ambiguity + works for all roles)
+    let userQuery = supabaseAdmin.from('users').select('*');
+    if (isUuid) {
+      userQuery = userQuery.eq('id', identifier);
+    } else {
+      userQuery = userQuery.eq('email', identifier.toLowerCase());
+    }
+
+    const { data: user, error: userErr } = await userQuery.maybeSingle();
+    if (userErr) { sendError(res, 'Lookup failed: ' + userErr.message, 500); return; }
     if (!user) { sendError(res, 'User not found.', 404); return; }
-    sendSuccess(res, user, 'User found.');
-  } catch (err: any) { sendError(res, err.message, 500); }
+
+    // Profile is optional — only youth constituents have it
+    const { data: profile } = await supabaseAdmin
+      .from('resident_profile')
+      .select('birthdate')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    sendSuccess(res, {
+      ...user,
+      resident_profile: profile || null,
+      has_profile: !!profile
+    }, 'User found.');
+  } catch (err: any) {
+    sendError(res, 'Unexpected error: ' + err.message, 500);
+  }
 });
 
 router.put('/users/:userId/update-name', authenticateUser, async (req: Request, res: Response): Promise<void> => {

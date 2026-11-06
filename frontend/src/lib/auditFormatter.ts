@@ -44,7 +44,7 @@ export function formatAuditDetails(detailsOrAction: any, maybeDetails?: any): st
   let details = maybeDetails !== undefined ? maybeDetails : detailsOrAction;
   if (!details) return 'N/A';
 
-  // Extract JSON from potentially messy strings
+  // Parse JSON string if needed
   if (typeof details === 'string') {
     const cleaned = details.replace(/\s*\(Barangay:\s*[^)]*\)\s*$/, '').trim();
     try {
@@ -52,37 +52,21 @@ export function formatAuditDetails(detailsOrAction: any, maybeDetails?: any): st
       if (parsed && typeof parsed === 'object') details = parsed;
       else return cleaned;
     } catch {
-      // If it's a broken string, try to extract key-value pairs manually
-      if (cleaned.includes('updated_by') || cleaned.includes('chairperson')) {
-         const updatedBy = cleaned.match(/"updated_by":"([^"]+)"/)?.[1];
-         const chairperson = cleaned.match(/"chairperson":"([^"]+)"/)?.[1];
-         const email = cleaned.match(/"chairpersonEmail":"([^"]+)"/)?.[1];
-         const bgy = cleaned.match(/"barangay_name":"([^"]+)"/)?.[1];
-         const fy = cleaned.match(/"active_fiscal_year":(\d+)/)?.[1];
-         const parts = [];
-         if (updatedBy) parts.push('Updated By: ' + updatedBy);
-         else if (chairperson) parts.push('Chairperson: ' + chairperson);
-         if (email) parts.push('Email: ' + email);
-         if (bgy) parts.push('Barangay: ' + bgy);
-         if (fy) parts.push('FY: ' + fy);
-         if (parts.length > 0) return parts.join(' | ');
-      }
-      return cleaned; // Return the cleaned string if we can't parse it
+      return cleaned;
     }
   }
 
-  // 1. Barangay Settings Update
+  // Barangay Settings Update (clean output - skip FY unless changed)
   if (details.updated_by || details.chairperson || details.active_fiscal_year) {
     const parts: string[] = [];
     if (details.updated_by) parts.push('Updated By: ' + details.updated_by);
     else if (details.chairperson) parts.push('Chairperson: ' + details.chairperson);
     if (details.chairpersonEmail) parts.push('Email: ' + details.chairpersonEmail);
     if (details.barangay_name) parts.push('Barangay: ' + details.barangay_name);
-    if (details.active_fiscal_year) parts.push('FY: ' + details.active_fiscal_year);
-    return parts.join(' | ');
+    if (parts.length > 0) return parts.join(' | ');
   }
 
-  // 2. Diff format
+  // Diff format
   if (details.changes && typeof details.changes === 'object') {
     const parts: string[] = [];
     for (const [key, val] of Object.entries(details.changes)) {
@@ -93,12 +77,12 @@ export function formatAuditDetails(detailsOrAction: any, maybeDetails?: any): st
     if (parts.length > 0) return parts.join(' | ');
   }
 
-  // 3. Email change
+  // Email change
   if (details.old_email || details.new_email) {
     return 'Email: ' + (details.old_email || 'None') + ' -> ' + (details.new_email || 'None');
   }
 
-  // 4. Expense
+  // Expense
   if (details.gross_amount !== undefined || details.net_amount !== undefined) {
     const amt = details.gross_amount !== undefined ? details.gross_amount : details.net_amount;
     const parts: string[] = ['Recorded ' + fmtAmount(amt)];
@@ -107,7 +91,7 @@ export function formatAuditDetails(detailsOrAction: any, maybeDetails?: any): st
     return parts.join(' ');
   }
 
-  // 5. Budget
+  // Budget
   if (details.amount !== undefined && details.category) {
     const parts: string[] = ['Allocated ' + fmtAmount(details.amount)];
     parts.push('to ' + details.category);
@@ -115,8 +99,8 @@ export function formatAuditDetails(detailsOrAction: any, maybeDetails?: any): st
     return parts.join(' ');
   }
 
-  // 6. Smart fallback
-  const skipKeys = ['reason', 'updated_by', 'barangay_name', 'target_name', 'target_barangay'];
+  // Fallback (skip noisy keys — including active_fiscal_year now)
+  const skipKeys = ['reason', 'updated_by', 'barangay_name', 'target_name', 'target_barangay', 'active_fiscal_year'];
   try {
     const entries = Object.entries(details).filter(([k, v]) => v !== undefined && v !== null && !skipKeys.includes(k));
     if (entries.length > 0) {
