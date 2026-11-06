@@ -41,11 +41,11 @@ const AssignChairpersonByEmailSchema = z.object({
 
 // PUT /api/admin/users/:userId/update-name - SA only
 // GET /api/admin/users/lookup/:identifier - SA only
-router.get('/users/lookup/:identifier', authenticateUser, async (req: Request, res: Response): Promise<void> => {
+router.get('/users/lookup', authenticateUser, async (req: Request, res: Response): Promise<void> => {
   try {
     const authUser = (req as AuthRequest).user!;
     if (authUser.role_id !== 1) { sendError(res, 'Forbidden.', 403); return; }
-    const identifier = String(req.params.identifier);
+    const identifier = String(req.query.identifier || '');
     const { data: user, error } = await supabaseAdmin.from('users').select('*, resident_profile(birthdate)').or('id.eq.' + identifier + ',email.eq.' + identifier).maybeSingle();
     if (error) { sendError(res, error.message, 500); return; }
     if (!user) { sendError(res, 'User not found.', 404); return; }

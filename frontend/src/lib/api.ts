@@ -514,7 +514,7 @@ class KabisigApiClient {
     return await this.request<any>('/users/upload-avatar', { method: 'POST', body: JSON.stringify({ base64, mime_type }) });
   }
   async lookupUser(identifier: string): Promise<{ success: boolean; data?: any; message?: string }> {
-    return this.request<any>(`/admin/users/lookup/${encodeURIComponent(identifier)}`, { method: 'GET' });
+    return this.request<any>(`/admin/users/lookup?identifier=${encodeURIComponent(identifier)}`, { method: 'GET' });
   }
 
   async updateUserName(userId: string, payload: { full_name: string; first_name?: string; middle_name?: string; last_name?: string; suffix?: string; email?: string; phone?: string; birthdate?: string; reason?: string }): Promise<{ success: boolean; data?: any; message?: string }> {

@@ -44,18 +44,30 @@ export function formatAuditDetails(detailsOrAction: any, maybeDetails?: any): st
   let details = maybeDetails !== undefined ? maybeDetails : detailsOrAction;
   if (!details) return 'N/A';
 
-  // CRITICAL FIX: Parse JSON strings, strip "(Barangay: X)" suffix
+  // Extract JSON from potentially messy strings
   if (typeof details === 'string') {
     const cleaned = details.replace(/\s*\(Barangay:\s*[^)]*\)\s*$/, '').trim();
     try {
       const parsed = JSON.parse(cleaned);
-      if (parsed && typeof parsed === 'object') {
-        details = parsed;
-      } else {
-        return cleaned;
-      }
+      if (parsed && typeof parsed === 'object') details = parsed;
+      else return cleaned;
     } catch {
-      return cleaned;
+      // If it's a broken string, try to extract key-value pairs manually
+      if (cleaned.includes('updated_by') || cleaned.includes('chairperson')) {
+         const updatedBy = cleaned.match(/"updated_by":"([^"]+)"/)?.[1];
+         const chairperson = cleaned.match(/"chairperson":"([^"]+)"/)?.[1];
+         const email = cleaned.match(/"chairpersonEmail":"([^"]+)"/)?.[1];
+         const bgy = cleaned.match(/"barangay_name":"([^"]+)"/)?.[1];
+         const fy = cleaned.match(/"active_fiscal_year":(\d+)/)?.[1];
+         const parts = [];
+         if (updatedBy) parts.push('Updated By: ' + updatedBy);
+         else if (chairperson) parts.push('Chairperson: ' + chairperson);
+         if (email) parts.push('Email: ' + email);
+         if (bgy) parts.push('Barangay: ' + bgy);
+         if (fy) parts.push('FY: ' + fy);
+         if (parts.length > 0) return parts.join(' | ');
+      }
+      return cleaned; // Return the cleaned string if we can't parse it
     }
   }
 
