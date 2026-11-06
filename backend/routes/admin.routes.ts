@@ -85,8 +85,23 @@ router.put('/users/:userId/update-name', authenticateUser, async (req: Request, 
   try {
     const authUser = (req as AuthRequest).user!;
     if (authUser.role_id !== 1) { sendError(res, 'Forbidden. Super Admin access only.', 403); return; }
-    const userId = String(req.params.userId || '');
+    const rawId = String(req.params.userId || '').trim();
     const { full_name, first_name, middle_name, last_name, suffix, email, phone, birthdate, reason } = req.body;
+    if (!full_name) { sendError(res, 'Full name is required.', 400); return; }
+
+    // --- Resolve UUID from Email or use as-is if already a UUID ---
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let userId = rawId;
+    if (!uuidRegex.test(rawId)) {
+      // Not a UUID, assume it's an email and look up the user
+      const { data: resolvedUser, error: resolveErr } = await supabaseAdmin
+        .from('users')
+        .select('id')
+        .eq('email', rawId.toLowerCase())
+        .maybeSingle();
+      if (resolveErr || !resolvedUser) { sendError(res, 'User not found with that email.', 404); return; }
+      userId = resolvedUser.id;
+    }
 
     // --- Check for duplicate email ---
     if (email && email.trim()) {
@@ -96,24 +111,19 @@ router.put('/users/:userId/update-name', authenticateUser, async (req: Request, 
         .eq('email', email.trim().toLowerCase())
         .neq('id', userId)
         .maybeSingle();
-        
-      if (existingEmail) {
-        sendError(res, 'Email is already in use by another account.', 400);
-        return;
-      }
+      if (existingEmail) { sendError(res, 'Email is already in use by another account.', 400); return; }
     }
 
-
-    // Fetch old data for true diff
+    // --- Fetch old data for diff ---
     const { data: oldUser } = await supabaseAdmin.from('users').select('full_name, email, phone').eq('id', userId).single();
     const { data: oldProfile } = await supabaseAdmin.from('resident_profile').select('birthdate').eq('user_id', userId).single();
-    if (!full_name) { sendError(res, 'Full name is required.', 400); return; }
 
-    // 1. Fetch old email for notification
-    const { data: oldUserData } = await supabaseAdmin.from('users').select('email').eq('id', userId).single();
-    const oldEmail = oldUserData?.email;
+    // --- Fetch target's barangay for audit trail ---
+    const { data: _targetBgy } = await supabaseAdmin.from('users').select('barangay(name)').eq('id', userId).maybeSingle();
+    const _bgyData: any = (_targetBgy as any)?.barangay;
+    const targetBarangayName = (Array.isArray(_bgyData) ? _bgyData[0]?.name : _bgyData?.name) || 'N/A';
 
-    // 2. Update public.users
+    // --- Update public.users ---
     const { error: userError } = await supabaseAdmin.from('users').update({
       full_name: full_name.trim(),
       first_name: first_name?.trim() || null,
@@ -127,7 +137,7 @@ router.put('/users/:userId/update-name', authenticateUser, async (req: Request, 
 
     if (userError) { sendError(res, 'Failed to update user: ' + userError.message, 500); return; }
 
-    // 3. Update auth.users
+    // --- Update auth.users ---
     const authUpdate: any = { user_metadata: { full_name: full_name.trim() } };
     if (email && email.trim()) {
       authUpdate.email = email.trim();
@@ -136,49 +146,43 @@ router.put('/users/:userId/update-name', authenticateUser, async (req: Request, 
     const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(userId, authUpdate);
     if (authError) { sendError(res, 'Auth update failed: ' + authError.message, 500); return; }
 
-    // 4. Update resident_profile
+    // --- Update resident_profile ---
     if (birthdate) {
       const { error: profileError } = await supabaseAdmin.from('resident_profile').update({ birthdate: birthdate }).eq('user_id', userId);
       if (profileError) { console.warn('Profile update failed:', profileError.message); }
     }
 
-    // 5. Send Email Alerts
-    if (email && oldEmail && email.trim() !== oldEmail) {
+    // --- Send Email Alerts ---
+    if (email && oldUser?.email && email.trim() !== oldUser.email) {
       const emailSubject = 'Security Alert: KABISIG Account Email Updated';
       const emailHtml = '<p>Hello ' + full_name + ',</p>' +
                         '<p>The email address associated with your KABISIG account was changed.</p>' +
-                        '<p><strong>Old Email:</strong> ' + oldEmail + '<br/><strong>New Email:</strong> ' + email + '</p>' +
+                        '<p><strong>Old Email:</strong> ' + oldUser.email + '<br/><strong>New Email:</strong> ' + email + '</p>' +
                         '<p>If you did not request this change, please contact the SK Federation President immediately.</p>';
-      
       const resendApiKey = process.env.RESEND_API_KEY;
       if (resendApiKey) {
         try {
           await fetch('https://api.resend.com/emails', {
             method: 'POST',
             headers: { 'Authorization': 'Bearer ' + resendApiKey, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ from: 'KABISIG Security <security@kabisig.com>', to: [oldEmail, email], subject: emailSubject, html: emailHtml })
+            body: JSON.stringify({ from: 'KABISIG Security <security@kabisig.com>', to: [oldUser.email, email], subject: emailSubject, html: emailHtml })
           });
         } catch (err) { console.warn('Failed to send email alert:', err); }
       } else {
-        console.info('[EMAIL-DISPATCH] Email notification queued (RESEND_API_KEY not configured in this environment). Recipients: ' + [oldEmail, email].length + ', Subject: ' + emailSubject);
+        console.info('[EMAIL-DISPATCH] Email notification queued (RESEND_API_KEY not configured in this environment). Recipients: ' + [oldUser.email, email].length + ', Subject: ' + emailSubject);
       }
     }
 
-    // 6. Audit Log
-    // Fetch target user's barangay for audit trail
-    const { data: _targetBgy } = await supabaseAdmin.from('users').select('barangay(name)').eq('id', userId).maybeSingle();
-    const _bgyData: any = (_targetBgy as any)?.barangay;
-    const targetBarangayName = (Array.isArray(_bgyData) ? _bgyData[0]?.name : _bgyData?.name) || 'N/A';
-
+    // --- Audit Log ---
     await recordAuditLog({
       tenantId: null,
       userId: authUser.id,
       action: 'UPDATE_USER_CREDENTIALS',
       entityName: 'users',
       entityId: userId,
-      details: { 
-        reason: reason || 'No reason provided', 
-        target_name: full_name, 
+      details: {
+        reason: reason || 'No reason provided',
+        target_name: full_name,
         target_barangay: targetBarangayName,
         changes: {
           full_name: oldUser?.full_name !== full_name ? { old: oldUser?.full_name, new: full_name } : undefined,
