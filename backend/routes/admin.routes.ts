@@ -88,6 +88,22 @@ router.put('/users/:userId/update-name', authenticateUser, async (req: Request, 
     const userId = String(req.params.userId || '');
     const { full_name, first_name, middle_name, last_name, suffix, email, phone, birthdate, reason } = req.body;
 
+    // --- Check for duplicate email ---
+    if (email && email.trim()) {
+      const { data: existingEmail } = await supabaseAdmin
+        .from('users')
+        .select('id')
+        .eq('email', email.trim().toLowerCase())
+        .neq('id', userId)
+        .maybeSingle();
+        
+      if (existingEmail) {
+        sendError(res, 'Email is already in use by another account.', 400);
+        return;
+      }
+    }
+
+
     // Fetch old data for true diff
     const { data: oldUser } = await supabaseAdmin.from('users').select('full_name, email, phone').eq('id', userId).single();
     const { data: oldProfile } = await supabaseAdmin.from('resident_profile').select('birthdate').eq('user_id', userId).single();
