@@ -3,7 +3,7 @@ import { generateBudgetUtilizationReport } from '../lib/pdfReports';
 import ProfileSettings from './ProfileSettings';
 import RestrictedUsersPanel from './RestrictedUsersPanel';
 import RestrictedUsers from './RestrictedUsers';
-import { formatAuditDetails } from '../lib/auditFormatter';
+import { formatAuditAction, formatAuditDetails } from '../lib/auditFormatter';
 import React, { useEffect, useState } from 'react';
 import { CartesianGrid } from 'recharts';
 import { FolderClosed } from 'lucide-react';
@@ -3070,7 +3070,7 @@ return (
                           <td className="p-3.5 font-bold text-slate-800">
                             {log.user} ({log.role})
                           </td>
-                          <td className="p-3.5 font-mono text-[10px]">{log.action}</td>
+                          <td className="p-3.5 font-mono text-[10px]">{formatAuditAction(log.action)}</td>
                           <td className="p-3.5 text-slate-600 max-w-md whitespace-normal break-words">{formatAuditDetails(log.action, log.details)}</td>
                         </tr>
                       ))}

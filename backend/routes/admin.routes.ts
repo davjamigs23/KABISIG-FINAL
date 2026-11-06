@@ -40,6 +40,19 @@ const AssignChairpersonByEmailSchema = z.object({
 });
 
 // PUT /api/admin/users/:userId/update-name - SA only
+// GET /api/admin/users/lookup/:identifier - SA only
+router.get('/users/lookup/:identifier', authenticateUser, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const authUser = (req as AuthRequest).user!;
+    if (authUser.role_id !== 1) { sendError(res, 'Forbidden.', 403); return; }
+    const identifier = String(req.params.identifier);
+    const { data: user, error } = await supabaseAdmin.from('users').select('*, resident_profile(birthdate)').or('id.eq.' + identifier + ',email.eq.' + identifier).maybeSingle();
+    if (error) { sendError(res, error.message, 500); return; }
+    if (!user) { sendError(res, 'User not found.', 404); return; }
+    sendSuccess(res, user, 'User found.');
+  } catch (err: any) { sendError(res, err.message, 500); }
+});
+
 router.put('/users/:userId/update-name', authenticateUser, async (req: Request, res: Response): Promise<void> => {
   try {
     const authUser = (req as AuthRequest).user!;
@@ -108,6 +121,11 @@ router.put('/users/:userId/update-name', authenticateUser, async (req: Request, 
     }
 
     // 6. Audit Log
+    // Fetch target user's barangay for audit trail
+    const { data: _targetBgy } = await supabaseAdmin.from('users').select('barangay(name)').eq('id', userId).maybeSingle();
+    const _bgyData: any = (_targetBgy as any)?.barangay;
+    const targetBarangayName = (Array.isArray(_bgyData) ? _bgyData[0]?.name : _bgyData?.name) || 'N/A';
+
     await recordAuditLog({
       tenantId: null,
       userId: authUser.id,
@@ -117,6 +135,7 @@ router.put('/users/:userId/update-name', authenticateUser, async (req: Request, 
       details: { 
         reason: reason || 'No reason provided', 
         target_name: full_name, 
+        target_barangay: targetBarangayName,
         changes: {
           full_name: oldUser?.full_name !== full_name ? { old: oldUser?.full_name, new: full_name } : undefined,
           email: oldUser?.email !== email && email ? { old: oldUser?.email, new: email } : undefined,
@@ -1567,7 +1586,7 @@ router.get(
   async (req: Request, res: Response): Promise<void> => {
     const { data, error } = await supabaseAdmin
       .from('audit_logs')
-      .select('id, created_at, user_id, details, users(full_name)')
+      .select('id, created_at, user_id, details, users(full_name, barangay(name))')
       .in('action', ['UPDATE_USER_EMAIL', 'UPDATE_USER_CREDENTIALS'])
       .order('created_at', { ascending: false });
 

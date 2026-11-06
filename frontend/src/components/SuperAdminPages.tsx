@@ -2,7 +2,7 @@ import NotificationMenu from './NotificationMenu';
 /* PDF Export Available */ import { generateBudgetUtilizationReport } from '../lib/pdfReports';
 import { useEffect, useState } from 'react';
 import ProfileSettings from './ProfileSettings';
-import { formatAuditDetails } from '../lib/auditFormatter';
+import { formatAuditAction, formatAuditDetails } from '../lib/auditFormatter';
 import { 
   LayoutDashboard, Building2, BarChart3, History, 
   Plus, Edit2, Search, Filter, Download, FileSpreadsheet,
@@ -82,7 +82,35 @@ useEffect(() => {
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showFixTypoModal, setShowFixTypoModal] = useState(false);
   const [typoUserId, setTypoUserId] = useState('');
-  const [typoFullName, setTypoFullName] = useState('');
+
+  const handleLookupUser = async () => {
+    if (!typoUserId.trim()) return;
+    setIsFixingTypo(true);
+    try {
+      const res = await kabisigApi.lookupUser(typoUserId.trim());
+      if (res.success && res.data) {
+        setTypoFirstName(res.data.first_name || '');
+        setTypoMiddleName(res.data.middle_name || '');
+        setTypoLastName(res.data.last_name || '');
+        setTypoSuffix(res.data.suffix || '');
+        setTypoEmail(res.data.email || '');
+        setTypoPhone(res.data.phone || '');
+        setTypoBirthdate(res.data.resident_profile?.birthdate || '');
+        setTypoFullName(res.data.full_name || '');
+      } else {
+        alert(res.message || 'User not found.');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Lookup failed.');
+    } finally {
+      setIsFixingTypo(false);
+    }
+  };
+  const [typoFirstName, setTypoFirstName] = useState('');
+  const [typoMiddleName, setTypoMiddleName] = useState('');
+  const [typoLastName, setTypoLastName] = useState('');
+  const [typoSuffix, setTypoSuffix] = useState('');
+  const [typoFullName, setTypoFullName] = useState(''); // Keep for backward compatibility if needed
   const [typoEmail, setTypoEmail] = useState('');
   const [typoPhone, setTypoPhone] = useState('');
   const [typoBirthdate, setTypoBirthdate] = useState('');
@@ -1426,13 +1454,13 @@ useEffect(() => {
                 </div>
 
                 <div className="overflow-x-auto border border-slate-100 rounded-xl">
-                  <table className="w-full text-left text-xs text-slate-600 max-w-md whitespace-normal break-words">
+                  <table className="w-full text-left text-xs text-slate-600 table-fixed">
                     <thead className="bg-slate-50 text-[10px] text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100">
                       <tr>
-                        <th className="p-3">Timestamp</th>
-                        <th className="p-3">SK Chairperson & Barangay</th>
-                        <th className="p-3">Action Code</th>
-                        <th className="p-3">Activity & Executive Details</th>
+                        <th className="p-3 w-[12%]">Timestamp</th>
+                        <th className="p-3 w-[20%]">SK Chairperson & Barangay</th>
+                        <th className="p-3 w-[15%]">Action Code</th>
+                        <th className="p-3 w-[65%]">Activity & Executive Details</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50 font-medium">
@@ -1445,10 +1473,10 @@ useEffect(() => {
                           </td>
                           <td className="p-3">
                             <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-800 font-mono font-bold text-[11px]">
-                              {log.action}
+                              {formatAuditAction(log.action)}
                             </span>
                           </td>
-                          <td className="p-3 text-slate-600 max-w-md whitespace-normal break-words">{formatAuditDetails(log.action, log.details)}</td>
+                          <td className="p-3 text-slate-600 break-words">{formatAuditDetails(log.action, log.details)}</td>
                         </tr>
                       ))}
                       {filteredAuditLogs.length === 0 && (
@@ -1501,7 +1529,7 @@ useEffect(() => {
                 )}
 
                 <div className="overflow-x-auto border border-slate-100 rounded-xl">
-                  <table className="w-full text-left text-xs text-slate-600 max-w-md whitespace-normal break-words">
+                  <table className="w-full text-left text-xs text-slate-600 table-fixed">
                     <thead className="bg-slate-50 text-[10px] text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100">
                       <tr>
                         <th className="p-3">Detected</th>
@@ -2334,7 +2362,12 @@ useEffect(() => {
           <div className="bg-white rounded-2xl max-w-5xl w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
             <div className="bg-[#091d64] p-4 flex justify-between items-center text-white shrink-0">
               <div>
-                <h3 className="font-bold text-lg">Email Management &amp; History</h3>
+                <div className="flex items-center gap-2 mb-1">
+                  <button type="button" onClick={() => { setShowEmailModal(false); setShowFixTypoModal(true); }} className="p-1 rounded-lg hover:bg-white/10 text-white transition-colors" title="Back to form">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                  </button>
+                  <h3 className="font-bold text-lg">Email Management &amp; History</h3>
+                </div>
                 <p className="text-xs text-blue-200">Update user emails and view the audit trail securely.</p>
               </div>
               <button onClick={() => setShowEmailModal(false)} className="text-white hover:text-blue-200">
@@ -2392,6 +2425,7 @@ useEffect(() => {
                         <tr className="bg-slate-50 border-b border-slate-200">
                           <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider whitespace-nowrap">Date</th>
                           <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">User Modified</th>
+                          <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">Barangay</th>
                           <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">Changed Details</th>
                           <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider whitespace-nowrap">Reason</th>
                         </tr>
@@ -2415,6 +2449,9 @@ useEffect(() => {
                               ) : (
                                 <span className="font-bold text-slate-700">System User</span>
                               )}
+                            </td>
+                            <td className="px-4 py-4 text-xs text-slate-600 align-top">
+                              {log.details?.target_barangay || log.users?.barangay?.name || 'N/A'}
                             </td>
                             <td className="px-4 py-4 text-xs text-slate-600 align-top">
                               <div className="flex flex-col gap-3">
@@ -2479,8 +2516,15 @@ useEffect(() => {
               if (!typoUserId || !typoFullName) return alert('Both fields are required.');
               setIsFixingTypo(true);
               try {
+                const combinedName = [typoFirstName.trim(), typoMiddleName.trim(), typoLastName.trim(), typoSuffix.trim()].filter(Boolean).join(' ');
+                if (!combinedName) { alert('Please enter at least a First or Last name.'); setIsFixingTypo(false); return; }
+                
                 const res = await kabisigApi.updateUserName(typoUserId, { 
-                  full_name: typoFullName,
+                  full_name: combinedName,
+                  first_name: typoFirstName.trim() || undefined,
+                  middle_name: typoMiddleName.trim() || undefined,
+                  last_name: typoLastName.trim() || undefined,
+                  suffix: typoSuffix.trim() || undefined,
                   email: typoEmail.trim() || undefined,
                   phone: typoPhone.trim() || undefined,
                   birthdate: typoBirthdate || undefined,
@@ -2507,26 +2551,45 @@ useEffect(() => {
               
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">User ID or Email</label>
-                <input required type="text" value={typoUserId} onChange={e => setTypoUserId(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" />
+                <div className="flex gap-2">
+                  <input required type="text" value={typoUserId} onChange={e => setTypoUserId(e.target.value)} className="flex-1 border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Paste UUID or email..." />
+                  <button type="button" onClick={handleLookupUser} disabled={isFixingTypo} className="px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-lg border border-slate-200 transition-colors disabled:opacity-50">
+                    {isFixingTypo ? '...' : 'Search'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">First Name</label>
+                  <input required type="text" value={typoFirstName} onChange={e => setTypoFirstName(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Middle Name</label>
+                  <input type="text" value={typoMiddleName} onChange={e => setTypoMiddleName(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Last Name</label>
+                  <input required type="text" value={typoLastName} onChange={e => setTypoLastName(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Suffix</label>
+                  <input type="text" value={typoSuffix} onChange={e => setTypoSuffix(e.target.value)} placeholder="e.g. Jr., III" className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" />
+                </div>
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Corrected Full Name</label>
-                <input required type="text" value={typoFullName} onChange={e => setTypoFullName(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" />
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Corrected Email</label>
+                <input type="email" value={typoEmail} onChange={e => setTypoEmail(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank if unchanged" />
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Corrected Email (Optional)</label>
-                <input type="email" value={typoEmail} onChange={e => setTypoEmail(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank to keep current" />
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Corrected Phone</label>
+                <input type="text" value={typoPhone} onChange={e => setTypoPhone(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank if unchanged" />
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Corrected Phone (Optional)</label>
-                <input type="text" value={typoPhone} onChange={e => setTypoPhone(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank to keep current" />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Corrected Birthdate (Optional)</label>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Corrected Birthdate</label>
                 <input type="date" value={typoBirthdate} onChange={e => setTypoBirthdate(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" />
               </div>
 
