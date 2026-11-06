@@ -115,7 +115,7 @@ router.put('/users/:userId/update-name', authenticateUser, async (req: Request, 
     }
 
     // --- Fetch old data for diff ---
-    const { data: oldUser } = await supabaseAdmin.from('users').select('full_name, email, phone').eq('id', userId).single();
+    const { data: oldUser } = await supabaseAdmin.from('users').select('full_name, first_name, middle_name, last_name, email, phone').eq('id', userId).single();
     const { data: oldProfile } = await supabaseAdmin.from('resident_profile').select('birthdate').eq('user_id', userId).single();
 
     // --- Fetch target's barangay for audit trail ---
@@ -152,9 +152,20 @@ router.put('/users/:userId/update-name', authenticateUser, async (req: Request, 
       if (profileError) { console.warn('Profile update failed:', profileError.message); }
     }
 
-    // --- Send Professional Email Alert ---
-    if (email && oldUser?.email && email.trim() !== oldUser.email) {
-      const emailSubject = 'Security Alert: Your KABISIG Account Email Was Updated';
+        // --- Send Professional Email Alert with Full Change Log ---
+    const changesList: string[] = [];
+    if (oldUser?.full_name !== full_name) changesList.push(`Name: ${oldUser?.full_name || 'None'} &rarr; ${full_name}`);
+    if (oldUser?.email !== email && email) changesList.push(`Email: ${oldUser?.email || 'None'} &rarr; ${email}`);
+    if (oldUser?.phone !== phone) changesList.push(`Phone: ${oldUser?.phone || 'None'} &rarr; ${phone || 'None'}`);
+    if (oldProfile?.birthdate !== birthdate && birthdate) changesList.push(`Birthdate: ${oldProfile?.birthdate || 'None'} &rarr; ${birthdate}`);
+
+    if (changesList.length > 0) {
+      const emailSubject = 'Security Alert: Your KABISIG Account Was Updated';
+      
+      const changesHtml = changesList.map(change => 
+        `<li style="margin-bottom: 8px; color: #334155; font-size: 14px;">${change}</li>`
+      ).join('');
+
       const emailHtml = `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
           <div style="background-color: #091d64; padding: 24px; text-align: center;">
@@ -162,15 +173,17 @@ router.put('/users/:userId/update-name', authenticateUser, async (req: Request, 
             <p style="color: #93c5fd; margin: 4px 0 0 0; font-size: 14px;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p>
           </div>
           <div style="padding: 32px; background-color: #ffffff;">
-            <h2 style="color: #091d64; margin-top: 0;">Account Email Updated</h2>
+            <h2 style="color: #091d64; margin-top: 0;">Account Details Updated</h2>
             <p style="color: #334155; font-size: 16px; line-height: 1.6;">Hello <strong>${full_name}</strong>,</p>
-            <p style="color: #334155; font-size: 16px; line-height: 1.6;">The email address associated with your KABISIG account has been successfully updated by an administrator.</p>
-            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 24px 0;">
-              <p style="margin: 0 0 8px 0; color: #64748b; font-size: 12px; text-transform: uppercase; font-weight: bold;">Change Details</p>
-              <p style="margin: 0; color: #334155; font-size: 14px;"><strong>Old Email:</strong> <span style="color: #ef4444;">${oldUser.email}</span></p>
-              <p style="margin: 8px 0 0 0; color: #334155; font-size: 14px;"><strong>New Email:</strong> <span style="color: #10b981;">${email}</span></p>
+            <p style="color: #334155; font-size: 16px; line-height: 1.6;">The following information on your KABISIG account has been updated by an administrator:</p>
+            
+            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin: 24px 0;">
+              <ul style="margin: 0; padding-left: 20px;">
+                ${changesHtml}
+              </ul>
             </div>
-            <p style="color: #334155; font-size: 16px; line-height: 1.6;">If you did not request this change, please contact the SK Federation President immediately.</p>
+            
+            <p style="color: #334155; font-size: 16px; line-height: 1.6;">If you did not request these changes, please contact the SK Federation President immediately.</p>
             <div style="text-align: center; margin: 32px 0;">
               <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Log In to KABISIG</a>
             </div>
@@ -182,20 +195,21 @@ router.put('/users/:userId/update-name', authenticateUser, async (req: Request, 
       `;
       
       const resendApiKey = process.env.RESEND_API_KEY;
+      const recipients = [oldUser?.email, email].filter((e): e is string => !!e);
+
       if (resendApiKey) {
         try {
           await fetch('https://api.resend.com/emails', {
             method: 'POST',
             headers: { 'Authorization': 'Bearer ' + resendApiKey, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ from: 'KABISIG Security <security@kabisig.com>', to: [oldUser.email, email], subject: emailSubject, html: emailHtml })
+            body: JSON.stringify({ from: 'KABISIG Security <onboarding@resend.dev>', to: recipients, subject: emailSubject, html: emailHtml })
           });
         } catch (err) { console.warn('Failed to send email alert:', err); }
       } else {
-        console.info('[EMAIL-DISPATCH] Email notification queued. Recipients: ' + [oldUser.email, email].length + ', Subject: ' + emailSubject);
+        console.info('[EMAIL-DISPATCH] Email notification queued. Recipients: ' + recipients.length + ', Subject: ' + emailSubject);
       }
     }
-
-    // --- Audit Log ---
+// --- Audit Log ---
     await recordAuditLog({
       tenantId: null,
       userId: authUser.id,
@@ -205,9 +219,12 @@ router.put('/users/:userId/update-name', authenticateUser, async (req: Request, 
       details: {
         reason: reason || 'No reason provided',
         target_name: full_name,
+        old_full_name: oldUser?.full_name || 'Unknown',
         target_barangay: targetBarangayName,
         changes: {
-          full_name: oldUser?.full_name !== full_name ? { old: oldUser?.full_name, new: full_name } : undefined,
+          first_name: (oldUser?.first_name || '') !== (first_name || '') ? { old: oldUser?.first_name || '', new: first_name || '' } : undefined,
+          middle_name: (oldUser?.middle_name || '') !== (middle_name || '') ? { old: oldUser?.middle_name || '', new: middle_name || '' } : undefined,
+          last_name: (oldUser?.last_name || '') !== (last_name || '') ? { old: oldUser?.last_name || '', new: last_name || '' } : undefined,
           email: oldUser?.email !== email && email ? { old: oldUser?.email, new: email } : undefined,
           phone: oldUser?.phone !== phone ? { old: oldUser?.phone, new: phone } : undefined,
           birthdate: oldProfile?.birthdate !== birthdate && birthdate ? { old: oldProfile?.birthdate, new: birthdate } : undefined

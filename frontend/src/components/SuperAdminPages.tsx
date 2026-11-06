@@ -2479,7 +2479,7 @@ useEffect(() => {
                               {new Date(log.created_at).toLocaleString()}
                             </td>
                             <td className="px-4 py-4 text-xs align-top">
-                              {log.details?.target_name ? (
+                              {log.details?.old_full_name || log.details?.target_name ? (
                                 <span className="font-bold text-[#091d64]">{log.details.target_name}</span>
                               ) : (log.details?.old_email || log.details?.new_email) ? (
                                 <div className="flex flex-col">
