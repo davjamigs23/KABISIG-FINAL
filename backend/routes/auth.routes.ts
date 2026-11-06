@@ -939,8 +939,29 @@ router.post('/forgot-password', async (req: Request, res: Response): Promise<voi
   });
 
   if (linkError || !linkData?.properties?.action_link) {
-    console.warn('Forgot-password generateLink error:', linkError?.message);
-    sendError(res, 'Failed to generate reset link. Please try again.', 500);
+    console.error('[FORGOT-PASSWORD] generateLink failed:', JSON.stringify({
+      error: linkError?.message,
+      code: (linkError as any)?.code,
+      status: (linkError as any)?.status,
+      hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+      hasAnonKey: !!process.env.SUPABASE_ANON_KEY,
+      email: email,
+      redirectTo: finalRedirect
+    }));
+
+    // Fallback: Use Supabase's built-in resetPasswordForEmail
+    console.warn('[FORGOT-PASSWORD] Falling back to supabase.auth.resetPasswordForEmail');
+    const { error: fallbackErr } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: finalRedirect
+    });
+
+    if (fallbackErr) {
+      console.error('[FORGOT-PASSWORD] Fallback also failed:', fallbackErr.message);
+      sendError(res, 'Could not send reset email. Please try again later.', 500);
+      return;
+    }
+
+    sendSuccess(res, null, 'Password reset link sent (via Supabase fallback).');
     return;
   }
 
