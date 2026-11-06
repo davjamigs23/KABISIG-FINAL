@@ -194,19 +194,11 @@ router.put('/users/:userId/update-name', authenticateUser, async (req: Request, 
         </div>
       `;
       
-      const resendApiKey = process.env.RESEND_API_KEY;
       const recipients = [oldUser?.email, email].filter((e): e is string => !!e);
-
-      if (resendApiKey) {
+      for (const recipient of recipients) {
         try {
-          await fetch('https://api.resend.com/emails', {
-            method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + resendApiKey, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ from: 'KABISIG Security <onboarding@resend.dev>', to: recipients, subject: emailSubject, html: emailHtml })
-          });
-        } catch (err) { console.warn('Failed to send email alert:', err); }
-      } else {
-        console.info('[EMAIL-DISPATCH] Email notification queued. Recipients: ' + recipients.length + ', Subject: ' + emailSubject);
+          await sendEmail(recipient, emailSubject, emailHtml);
+        } catch (err) { console.warn('Failed to send email alert to ' + recipient + ':', err); }
       }
     }
 // --- Audit Log ---

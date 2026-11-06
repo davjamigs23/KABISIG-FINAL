@@ -929,15 +929,75 @@ router.post('/forgot-password', async (req: Request, res: Response): Promise<voi
 
   const { email, redirectTo } = parseResult.data;
 
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: redirectTo || ((process.env.FRONTEND_URL || (process.env.FRONTEND_URL || 'http://localhost:3000')) + '/reset-password'),
+  const finalRedirect = redirectTo || ((process.env.FRONTEND_URL || (process.env.FRONTEND_URL || 'http://localhost:3000')) + '/reset-password');
+
+  // 1. Generate recovery link via Supabase Admin (doesn't send email)
+  const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+    type: 'recovery',
+    email: email.trim().toLowerCase(),
+    options: { redirectTo: finalRedirect }
   });
 
-  if (error) {
-    sendError(res, error.message, 400);
+  if (linkError || !linkData?.properties?.action_link) {
+    console.warn('Forgot-password generateLink error:', linkError?.message);
+    sendError(res, 'Failed to generate reset link. Please try again.', 500);
     return;
   }
-    sendSuccess(res, null, 'Password reset instructions sent to your email.');
+
+  const resetLink = linkData.properties.action_link;
+
+  // 2. Send via Brevo (bypasses Supabase email sender)
+  const emailSubject = 'Reset Your KABISIG Password';
+  const emailHtml = [
+    '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">',
+    '<div style="background-color: #091d64; padding: 24px; text-align: center;">',
+    '<h1 style="color: #ffffff; margin: 0; font-size: 24px;">KABISIG</h1>',
+    '<p style="color: #93c5fd; margin: 4px 0 0 0; font-size: 14px;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p>',
+    '</div>',
+    '<div style="padding: 32px; background-color: #ffffff;">',
+    '<h2 style="color: #091d64; margin-top: 0;">Password Reset Request</h2>',
+    '<p style="color: #334155; font-size: 16px; line-height: 1.6;">We received a request to reset the password for your KABISIG account.</p>',
+    '<p style="color: #334155; font-size: 16px; line-height: 1.6;">Click the button below to set a new password. This link is valid for 1 hour.</p>',
+    '<div style="text-align: center; margin: 32px 0;">',
+    '<a href="' + resetLink + '" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; display: inline-block;">Reset Password</a>',
+    '</div>',
+    '<p style="color: #64748b; font-size: 14px; line-height: 1.6;">If you did not request this, you can safely ignore this email.</p>',
+    '</div>',
+    '<div style="background-color: #f8fafc; padding: 16px; text-align: center; border-top: 1px solid #e2e8f0;">',
+    '<p style="color: #94a3b8; font-size: 12px; margin: 0;">&copy; ' + new Date().getFullYear() + ' KABISIG. All rights reserved.</p>',
+    '</div>',
+    '</div>'
+  ].join('');
+
+  try {
+    const brevoRes = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'api-key': process.env.BREVO_API_KEY || '',
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        sender: { email: process.env.BREVO_SENDER_EMAIL || 'noreply@kabisig.com', name: 'KABISIG' },
+        to: [{ email: email.trim() }],
+        subject: emailSubject,
+        htmlContent: emailHtml
+      })
+    });
+
+    if (!brevoRes.ok) {
+      const errText = await brevoRes.text();
+      console.warn('Brevo send failed:', brevoRes.status, errText);
+      sendError(res, 'Failed to send reset email. Please try again.', 500);
+      return;
+    }
+  } catch (mailErr: any) {
+    console.warn('Brevo exception:', mailErr.message);
+    sendError(res, 'Failed to send reset email. Please try again.', 500);
+    return;
+  }
+
+  sendSuccess(res, null, 'Password reset instructions sent to your email.');
 });
 
 // POST /api/auth/register-official
