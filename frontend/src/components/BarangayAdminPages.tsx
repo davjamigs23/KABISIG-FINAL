@@ -598,13 +598,41 @@ export default function BarangayAdminPages({
 
   const localProfiles = youthProfiles.filter(p => isMatchBarangay(p));
   const programAllocatedBudget = programs.reduce((sum, program) => sum + (Number(program.budgetAllocation) || 0), 0);
-  const budgetAnalytics = getBudgetAnalytics(programAllocatedBudget, programs, expenses);
-  const budgetAlerts = monitorBudgets(currentBarangay || fallbackBarangay, programs, expenses);
+  // ===== Fiscal Year Filtered Arrays (PATCH 205) =====
+  const _filterPrograms = (programs || []).filter((p: any) => {
+    const _d = p.startDate || p.start_date || p.created_at;
+    if (!_d) return true;
+    return new Date(_d).getFullYear() === Number(budgetYear);
+  });
+  const _filterExpenses = (expenses || []).filter((e: any) => {
+    const _d = e.expense_date || e.created_at || e.date;
+    if (!_d) return true;
+    return new Date(_d).getFullYear() === Number(budgetYear);
+  });
+  const _filterYouth = (localProfiles || youthProfiles || []).filter((y: any) => {
+    const _d = y.created_at || y.createdAt || y.registered_at;
+    if (!_d) return true;
+    return new Date(_d).getFullYear() === Number(budgetYear);
+  });
+  const _filterDocs = (documents || localDocs || []).filter((d: any) => {
+    const _d = d.created_at || d.createdAt;
+    if (!_d) return true;
+    return new Date(_d).getFullYear() === Number(budgetYear);
+  });
+  const _filterRegs = (registrations || []).filter((r: any) => {
+    const _d = r.created_at || r.registered_at || r.registeredAt;
+    if (!_d) return true;
+    return new Date(_d).getFullYear() === Number(budgetYear);
+  });
+  // ===== End Filtered Arrays =====
+
+  const budgetAnalytics = getBudgetAnalytics(programAllocatedBudget, _filterPrograms, _filterExpenses);
+  const budgetAlerts = monitorBudgets(currentBarangay || fallbackBarangay, _filterPrograms, _filterExpenses);
   const budgetAlertSignature = budgetAlerts
     .map(alert => `${alert.code}:${alert.level}:${alert.message}`)
     .join('|');
-  const complianceIssues = getComplianceIssues('SK Chairperson', localProfiles, programs, documents, expenses);
-  const lowEngagementItems = detectLowEngagement(localProfiles, registrations);
+  const complianceIssues = getComplianceIssues('SK Chairperson', _filterYouth, _filterPrograms, _filterDocs, _filterExpenses);
+  const lowEngagementItems = detectLowEngagement(_filterYouth, _filterRegs);
   const complianceIssueSignature = complianceIssues
     .map(issue => `${issue.code}:${issue.level}:${issue.message}`)
     .join('|');
@@ -1735,7 +1763,7 @@ return (
                   </div>
                   <div className="h-72 w-full min-w-0">
                     <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                      <BarChart data={programs.slice(0, 5).map(p => ({ name: p.title.substring(0, 15) + '...', registered: p.registeredCount || 0, capacity: p.maxParticipants || 10 }))} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <BarChart data={_filterPrograms.slice(0, 5).map(p => ({ name: p.title.substring(0, 15) + '...', registered: p.registeredCount || 0, capacity: p.maxParticipants || 10 }))} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                         <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
                         <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />

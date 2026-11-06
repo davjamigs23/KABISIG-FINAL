@@ -1448,7 +1448,7 @@ export default function OfficialPages({
     const matchCat = filterCategory === 'All' ? true : y.zone === filterCategory || y.scholarStatus === filterCategory;
     return matchSearch && matchCat;
   });
-  const complianceIssues = getComplianceIssues(currentRole || 'SK Secretary', localYouthProfiles, programs, localDocs, expenses);
+  const complianceIssues = getComplianceIssues(currentRole || 'SK Secretary', filteredYouth, filteredPrograms, localDocs, filteredExpenses);
 
   return (
     <div className="flex flex-col lg:flex-row h-screen bg-[#f8fafc] overflow-hidden font-sans text-slate-800">

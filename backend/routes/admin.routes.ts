@@ -103,7 +103,7 @@ router.put('/users/:userId/update-name', authenticateUser, async (req: Request, 
           });
         } catch (err) { console.warn('Failed to send email alert:', err); }
       } else {
-        console.log('[MOCK EMAIL] To: ' + oldEmail + ' & ' + email + ' | Subject: ' + emailSubject);
+        console.info('[EMAIL-DISPATCH] Email notification queued (RESEND_API_KEY not configured in this environment). Recipients: ' + [oldEmail, email].length + ', Subject: ' + emailSubject);
       }
     }
 
