@@ -2324,11 +2324,7 @@ return (
                   <p className="mt-1 text-xs text-slate-400">Live allocation and expenditure view for Barangay {currentBarangay?.name || 'Barangay'}.</p>
                   <div className="mt-4 flex flex-wrap items-end gap-x-4 gap-y-2">
                     <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Fiscal year
-                      <select value={budgetYear} onChange={async (event) => { const newYear = event.target.value; setBudgetYear(newYear); if (currentBarangay?.id) { try { await kabisigApi.updateBarangaySettings(currentBarangay.id, { active_fiscal_year: Number(newYear) }); } catch (err) { console.error("Failed to sync fiscal year:", err); } } }} className="mt-1 block rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700">
-                        {availableYears.map(year => (
-                          <option key={year} value={year}>{year}</option>
-                        ))}
-                      </select>
+                      <span className="px-3 py-1.5 bg-blue-50 text-[#091d64] font-bold text-xs rounded-lg border border-blue-100">FY {budgetYear}</span>
                     </label>
                     <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Program
                       <select value={budgetProgramFilter} onChange={event => setBudgetProgramFilter(event.target.value)} className="mt-1 block min-w-44 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700">

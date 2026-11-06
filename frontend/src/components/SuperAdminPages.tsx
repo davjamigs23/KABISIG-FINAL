@@ -944,7 +944,19 @@ useEffect(() => {
                     <Building2 className="w-4 h-4" /> Manage Barangays
                   </button>
                   <button 
-                     onClick={() => setShowFixTypoModal(true)}
+                     onClick={() => {
+    setTypoUserId('');
+    setTypoFullName('');
+    setTypoFirstName('');
+    setTypoMiddleName('');
+    setTypoLastName('');
+    setTypoSuffix('');
+    setTypoEmail('');
+    setTypoPhone('');
+    setTypoBirthdate('');
+    setTypoReason('');
+    setShowFixTypoModal(true);
+  }}
                     className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-xs transition-colors flex items-center gap-2 cursor-pointer shadow-xs"
                   >
                     <span className="font-black text-sm">@</span> Manage Credentials
@@ -2565,8 +2577,14 @@ useEffect(() => {
                   setShowFixTypoModal(false);
                   setTypoUserId('');
                   setTypoFullName('');
+                  setTypoFirstName('');
+                  setTypoMiddleName('');
+                  setTypoLastName('');
+                  setTypoSuffix('');
                   setTypoEmail('');
                   setTypoPhone('');
+                  setTypoBirthdate('');
+                  setTypoReason('');
                   setTypoBirthdate('');
                   setTypoReason('');
                 } else {

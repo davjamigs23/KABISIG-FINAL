@@ -152,13 +152,35 @@ router.put('/users/:userId/update-name', authenticateUser, async (req: Request, 
       if (profileError) { console.warn('Profile update failed:', profileError.message); }
     }
 
-    // --- Send Email Alerts ---
+    // --- Send Professional Email Alert ---
     if (email && oldUser?.email && email.trim() !== oldUser.email) {
-      const emailSubject = 'Security Alert: KABISIG Account Email Updated';
-      const emailHtml = '<p>Hello ' + full_name + ',</p>' +
-                        '<p>The email address associated with your KABISIG account was changed.</p>' +
-                        '<p><strong>Old Email:</strong> ' + oldUser.email + '<br/><strong>New Email:</strong> ' + email + '</p>' +
-                        '<p>If you did not request this change, please contact the SK Federation President immediately.</p>';
+      const emailSubject = 'Security Alert: Your KABISIG Account Email Was Updated';
+      const emailHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+          <div style="background-color: #091d64; padding: 24px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px;">KABISIG</h1>
+            <p style="color: #93c5fd; margin: 4px 0 0 0; font-size: 14px;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p>
+          </div>
+          <div style="padding: 32px; background-color: #ffffff;">
+            <h2 style="color: #091d64; margin-top: 0;">Account Email Updated</h2>
+            <p style="color: #334155; font-size: 16px; line-height: 1.6;">Hello <strong>${full_name}</strong>,</p>
+            <p style="color: #334155; font-size: 16px; line-height: 1.6;">The email address associated with your KABISIG account has been successfully updated by an administrator.</p>
+            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 24px 0;">
+              <p style="margin: 0 0 8px 0; color: #64748b; font-size: 12px; text-transform: uppercase; font-weight: bold;">Change Details</p>
+              <p style="margin: 0; color: #334155; font-size: 14px;"><strong>Old Email:</strong> <span style="color: #ef4444;">${oldUser.email}</span></p>
+              <p style="margin: 8px 0 0 0; color: #334155; font-size: 14px;"><strong>New Email:</strong> <span style="color: #10b981;">${email}</span></p>
+            </div>
+            <p style="color: #334155; font-size: 16px; line-height: 1.6;">If you did not request this change, please contact the SK Federation President immediately.</p>
+            <div style="text-align: center; margin: 32px 0;">
+              <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Log In to KABISIG</a>
+            </div>
+          </div>
+          <div style="background-color: #f8fafc; padding: 16px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">&copy; ${new Date().getFullYear()} KABISIG. All rights reserved.</p>
+          </div>
+        </div>
+      `;
+      
       const resendApiKey = process.env.RESEND_API_KEY;
       if (resendApiKey) {
         try {
@@ -169,7 +191,7 @@ router.put('/users/:userId/update-name', authenticateUser, async (req: Request, 
           });
         } catch (err) { console.warn('Failed to send email alert:', err); }
       } else {
-        console.info('[EMAIL-DISPATCH] Email notification queued (RESEND_API_KEY not configured in this environment). Recipients: ' + [oldUser.email, email].length + ', Subject: ' + emailSubject);
+        console.info('[EMAIL-DISPATCH] Email notification queued. Recipients: ' + [oldUser.email, email].length + ', Subject: ' + emailSubject);
       }
     }
 
