@@ -183,6 +183,7 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
         youthPopulationAvailable: !youthUsersError,
         activePrograms: progCountMap.get(b.id) || 0,
         totalBudget: (b.allocated_budget && Number(b.allocated_budget) > 0) ? Number(b.allocated_budget) : budget.allocated,
+        allocated_budget: Number(b.allocated_budget) || 0,
         allocatedBudget: budget.allocated,
         spentBudget: budget.spent,
         status: 'Active',
@@ -471,26 +472,24 @@ router.patch(
       return;
     }
     const body = req.body || {};
-    const numericAmount = Number(body.total_amount ?? body.totalBudget ?? body.allocatedBudget);
-    if (!numericAmount || numericAmount <= 0) {
+    const numericAmount = Number(body.allocated_budget ?? body.total_amount ?? body.totalBudget ?? body.allocatedBudget);
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
       sendError(res, 'Total amount must be a positive number.', 400);
       return;
     }
     const fiscalYear = body.fiscal_year ? Number(body.fiscal_year) : new Date().getFullYear();
 
-    const { error: bgyError } = await supabaseAdmin
-      .from('barangay')
-      .update({ allocated_budget: numericAmount, active_fiscal_year: fiscalYear })
-      .eq('id', id);
-    if (bgyError) { sendError(res, 'Failed to update barangay: ' + bgyError.message, 500); return; }
-
-    const { data: existingBudget } = await supabaseAdmin
+    const { data: existingBudget, error: existingBudgetError } = await supabaseAdmin
       .from('budget')
       .select('id, allocated_amount, remaining_amount')
       .eq('tenant_id', id)
       .eq('fiscal_year', fiscalYear)
       .eq('category', 'General Youth Development Fund')
       .maybeSingle();
+    if (existingBudgetError) {
+      sendError(res, 'Failed to retrieve existing total budget: ' + existingBudgetError.message, 500);
+      return;
+    }
 
     const previouslySpent = existingBudget
       ? round2(Number(existingBudget.allocated_amount) - Number(existingBudget.remaining_amount))
@@ -500,6 +499,15 @@ router.patch(
       sendError(res, 'Cannot set budget below already spent amount: ' + previouslySpent.toLocaleString(), 422);
       return;
     }
+
+    const { data: updatedBarangay, error: bgyError } = await supabaseAdmin
+      .from('barangay')
+      .update({ allocated_budget: numericAmount, active_fiscal_year: fiscalYear })
+      .eq('id', id)
+      .select('allocated_budget')
+      .single();
+    if (bgyError) { sendError(res, 'Failed to update barangay: ' + bgyError.message, 500); return; }
+    if (!updatedBarangay) { sendError(res, 'Barangay budget update returned no record.', 500); return; }
 
     const budgetValues = {
       allocated_amount: numericAmount,
@@ -519,7 +527,11 @@ router.patch(
 
     if (budgetWrite.error) { sendError(res, 'Failed to save budget: ' + budgetWrite.error.message, 500); return; }
 
-    sendSuccess(res, { total_amount: numericAmount, fiscal_year: fiscalYear }, 'Total SK budget updated.');
+    sendSuccess(
+      res,
+      { allocated_budget: Number(updatedBarangay.allocated_budget), fiscal_year: fiscalYear },
+      'Total SK budget updated.'
+    );
   }
 );
 router.post(

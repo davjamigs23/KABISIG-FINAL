@@ -626,7 +626,7 @@ export default function App() {
           taxType: e.tax_type === 'EXEMPT' ? 'Exempt' : e.tax_type || e.taxType || 'Non-VAT',
           vatAmount: Number(e.vat_amount ?? e.vatAmount) || 0,
           withholdingTax: Number(e.withholding_tax ?? e.withholdingTax) || 0,
-          netAmount: Number(e.net_amount ?? e.netAmount ?? e.gross_amount ?? e.amount) || 0,
+          netAmount: Number(e.net_amount ?? e.netAmount) || 0,
           description: e.description || '',
           date: e.expense_date || e.created_at?.split('T')[0] || '',
           dateLogged: e.expense_date || e.dateLogged || e.created_at?.split('T')[0] || '',
@@ -1446,7 +1446,25 @@ export default function App() {
         ) : (
           <BarangayAdminPages 
             currentBarangay={currentTenant}
-            currentUser={currentUser}
+          onTotalBudgetSaved={(allocatedBudget, fiscalYear) => {
+            setTenants(prev => prev.map(tenant => tenant.id === currentTenant.id
+              ? {
+                  ...tenant,
+                  allocated_budget: allocatedBudget,
+                  totalBudget: allocatedBudget,
+                  active_fiscal_year: fiscalYear,
+                }
+              : tenant));
+            setCurrentTenant(prev => prev && prev.id === currentTenant.id
+              ? {
+                  ...prev,
+                  allocated_budget: allocatedBudget,
+                  totalBudget: allocatedBudget,
+                  active_fiscal_year: fiscalYear,
+                }
+              : prev);
+          }}
+          currentUser={currentUser}
             notifications={notifications}
             programs={programs}
             youthProfiles={youthProfiles}
@@ -1535,7 +1553,7 @@ export default function App() {
               taxType: e.tax_type === 'EXEMPT' ? 'Exempt' : e.tax_type || e.taxType || 'Non-VAT',
               vatAmount: Number(e.vat_amount ?? e.vatAmount) || 0,
               withholdingTax: Number(e.withholding_tax ?? e.withholdingTax) || 0,
-              netAmount: Number(e.net_amount ?? e.netAmount ?? e.gross_amount ?? e.amount) || 0,
+              netAmount: Number(e.net_amount ?? e.netAmount) || 0,
               description: e.description || '',
               date: e.expense_date || e.created_at?.split('T')[0] || '',
               dateLogged: e.expense_date || e.dateLogged || e.created_at?.split('T')[0] || '',

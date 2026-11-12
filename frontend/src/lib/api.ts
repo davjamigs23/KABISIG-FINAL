@@ -238,7 +238,7 @@ class KabisigApiClient {
     });
   }
 
-  async setSkTotalBudget(barangayId: string, payload: { total_amount: number; fiscal_year?: number }): Promise<{ success: boolean; data?: any; message?: string }> {
+  async setSkTotalBudget(barangayId: string, payload: { allocated_budget: number; fiscal_year?: number }): Promise<{ success: boolean; data?: { allocated_budget?: number; fiscal_year?: number }; message?: string }> {
     return await this.request(`/barangays/${barangayId}/sk-budget`, {
       method: 'PATCH',
       body: JSON.stringify(payload),

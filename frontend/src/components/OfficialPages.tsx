@@ -750,7 +750,7 @@ export default function OfficialPages({
         program: program?.title || budget.category || 'Unallocated',
         allocated: Number(budget.allocated_amount),
         actual: budgetExpenses.reduce((sum: number, expense: any) =>
-          sum + Number(expense.gross_amount || expense.amount || 0), 0),
+          sum + Number(expense.net_amount ?? expense.netAmount ?? 0), 0),
         hasExpense: budgetExpenses.length > 0,
       };
     });
@@ -792,7 +792,7 @@ export default function OfficialPages({
           || (expenseProgramId && sectorProgramIds.has(String(expenseProgramId)));
       })
       .reduce((sum: number, expense: any) =>
-        sum + Number(expense.gross_amount || expense.amount || 0), 0);
+        sum + Number(expense.net_amount ?? expense.netAmount ?? 0), 0);
     const rate = alloc > 0 ? (disb / alloc) * 100 : 0;
     return { alloc, disb, rate };
   };
@@ -867,14 +867,14 @@ export default function OfficialPages({
   );
   const accomplishmentDisbursedAmount = expenses
     .filter(expense => accomplishmentPrograms.some(program => program.id === expense.programId))
-    .reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
+    .reduce((sum, expense) => sum + (Number(expense.netAmount) || 0), 0);
   const accomplishmentBeneficiaries = accomplishmentPrograms.reduce(
     (sum, program) => sum + (program.registeredCount || (registrations || []).filter(registration => registration.programId === program.id).length),
     0
   );
-  const currentBarangayBudget = currentTenant as (BarangayTenant & { allocated_budget?: number }) | undefined;
-  const totalBarangayBudget = Number(currentBarangayBudget?.allocated_budget || currentTenant?.allocatedBudget || 100000);
-  const totalSpentExpenses = expenses.reduce((sum: number, expense: any) => sum + Number(expense.gross_amount || expense.amount || 0), 0);
+  const totalBarangayBudget = Number(currentTenant?.allocated_budget ?? 0);
+  const totalSpentExpenses = expenses.reduce((sum: number, expense: any) =>
+    sum + Number(expense.net_amount ?? expense.netAmount ?? 0), 0);
   const remainingCash = totalBarangayBudget - totalSpentExpenses;
   const budgetUtilizationRate = (totalSpentExpenses / totalBarangayBudget) * 100;
   const allocatedToPrograms = budgetOptions
@@ -4629,7 +4629,7 @@ export default function OfficialPages({
                               <table>
                                 <thead><tr><th>Program Name</th><th>Category</th><th>Target Beneficiaries</th><th>Actual Attendance</th><th>Allocated Budget</th><th>Disbursed</th></tr></thead>
                                 <tbody>
-                                  ${accomplishmentPrograms.map(p => `<tr><td><strong>${p.title}</strong></td><td>${p.category}</td><td>${p.maxParticipants}</td><td>${p.registeredCount || 0}</td><td>₱${(Number(p.budgetAllocation) || 0).toLocaleString()}</td><td>₱${expenses.filter(expense => expense.programId === p.id).reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0).toLocaleString()}</td></tr>`).join('')}
+                                  ${accomplishmentPrograms.map(p => `<tr><td><strong>${p.title}</strong></td><td>${p.category}</td><td>${p.maxParticipants}</td><td>${p.registeredCount || 0}</td><td>₱${(Number(p.budgetAllocation) || 0).toLocaleString()}</td><td>₱${expenses.filter(expense => expense.programId === p.id).reduce((sum, expense) => sum + (Number(expense.netAmount) || 0), 0).toLocaleString()}</td></tr>`).join('')}
                                 </tbody>
                               </table>
                             `);
@@ -4912,7 +4912,7 @@ export default function OfficialPages({
                                 <td className="px-5 py-3 font-bold text-slate-600 whitespace-nowrap">{p.category}</td>
                                 <td className="px-5 py-3 text-center font-bold text-[#091d64] whitespace-nowrap">{p.registeredCount || filteredRegistrations.filter(registration => registration.programId === p.id).length} / {p.maxParticipants}</td>
                                 <td className="px-5 py-3 text-right font-mono text-slate-700 whitespace-nowrap">₱{(Number(p.budgetAllocation) || 0).toLocaleString()}</td>
-                                <td className="px-5 py-3 text-right font-mono font-bold text-emerald-600 whitespace-nowrap">₱{expenses.filter(expense => expense.programId === p.id).reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0).toLocaleString()}</td>
+                                <td className="px-5 py-3 text-right font-mono font-bold text-emerald-600 whitespace-nowrap">₱{expenses.filter(expense => expense.programId === p.id).reduce((sum, expense) => sum + (Number(expense.netAmount) || 0), 0).toLocaleString()}</td>
                                 <td className="px-5 py-3 text-center whitespace-nowrap">
                                   <span className="px-2 py-0.5 bg-blue-50 text-[#091d64] rounded text-[9px] font-bold uppercase">{p.category}</span>
                                 </td>
@@ -5621,7 +5621,7 @@ export default function OfficialPages({
                               const _d = e.expense_date || e.created_at || e.date;
                               return !_d || new Date(_d).getFullYear() === Number(treasurerBudgetYear);
                             })
-                            .reduce((sum, e) => sum + Number((e as ExpenseRecord & { gross_amount?: number }).gross_amount || e.amount || 0), 0);
+                            .reduce((sum, e) => sum + Number((e as ExpenseRecord & { net_amount?: number }).net_amount ?? e.netAmount ?? 0), 0);
                           const allocatedAmount = Number(budget.allocated_amount) || 0;
                           const isOver = spent > allocatedAmount && allocatedAmount > 0;
                           return (

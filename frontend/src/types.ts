@@ -22,6 +22,7 @@ export interface BarangayTenant {
   youthPopulationAvailable?: boolean;
   activePrograms: number;
   totalBudget: number;
+  allocated_budget?: number;
   spentBudget: number;
   allocatedBudget: number;
   contact: string;

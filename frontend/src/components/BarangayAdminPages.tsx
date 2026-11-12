@@ -177,6 +177,7 @@ export interface BarangayAdminPagesProps {
   onUpdateProgram: (program: Program) => Promise<boolean>;
   onDeleteProgram: (programId: string) => Promise<boolean>;
   onAnnouncementsChanged?: (announcements: AnnouncementRecord[]) => void;
+  onTotalBudgetSaved?: (allocatedBudget: number, fiscalYear: number) => void;
   onLogout: () => void;
 }
 
@@ -205,6 +206,7 @@ export default function BarangayAdminPages({
   onUpdateProgram,
   onDeleteProgram,
   onAnnouncementsChanged,
+  onTotalBudgetSaved,
   onLogout
 }: BarangayAdminPagesProps) {
   const [popupMsg, setPopupMsg] = useState<{ title: string; text: string; type: 'success' | 'error' } | null>(null);
@@ -433,10 +435,7 @@ export default function BarangayAdminPages({
             const linkedExpense = expense as ExpenseRecord & { program_id?: string; gross_amount?: number };
             return expense.programId === program.id || linkedExpense.program_id === program.id;
           });
-          const spent = programExpenses.reduce((sum, expense) => {
-            const linkedExpense = expense as ExpenseRecord & { gross_amount?: number };
-            return sum + (Number(expense.amount ?? linkedExpense.gross_amount) || 0);
-          }, 0);
+          const spent = programExpenses.reduce((sum, expense) => sum + (Number(expense.netAmount) || 0), 0);
           totalAmount += spent;
           return [program.title, program.category, program.status, program.registeredCount, `₱${spent.toLocaleString()}`];
         });
@@ -472,10 +471,7 @@ export default function BarangayAdminPages({
             const linkedExpense = expense as ExpenseRecord & { program_id?: string; gross_amount?: number };
             return expense.programId === program.id || linkedExpense.program_id === program.id;
           });
-          const spent = programExpenses.reduce((sum, expense) => {
-            const linkedExpense = expense as ExpenseRecord & { gross_amount?: number };
-            return sum + (Number(expense.amount ?? linkedExpense.gross_amount) || 0);
-          }, 0);
+          const spent = programExpenses.reduce((sum, expense) => sum + (Number(expense.netAmount) || 0), 0);
           const allocated = Number(program.budgetAllocation) || 0;
           totalAmount += spent;
           return [program.title, `₱${allocated.toLocaleString()}`, `₱${spent.toLocaleString()}`, `₱${(allocated - spent).toLocaleString()}`];
@@ -588,7 +584,7 @@ export default function BarangayAdminPages({
   const [totalForm, setTotalForm] = useState({ amount: '', fiscalYear: String(new Date().getFullYear()) });
   const [totalFormError, setTotalFormError] = useState('');
   const [isSavingTotal, setIsSavingTotal] = useState(false);
-  const [savedTotalBudget, setSavedTotalBudget] = useState<number | null>(null);
+  const [savedTotalBudget, setSavedTotalBudget] = useState<{ amount: number; fiscalYear: string } | null>(null);
   const [totalBudgetNotice, setTotalBudgetNotice] = useState('');
   const [showSetBudget, setShowSetBudget] = useState(false);
   const [budgetForm, setBudgetForm] = useState({ category: '', allocatedAmount: '', description: '', fiscalYear: String(new Date().getFullYear()) });
@@ -1211,9 +1207,13 @@ export default function BarangayAdminPages({
     const matchesFilter = budgetProgramFilter === 'All Programs' || program.id === budgetProgramFilter;
     return inYear && matchesFilter;
   });
-  const barangayBudget = currentBarangay as BarangayTenant & { allocated_budget?: number };
-  const totalBudget = Number(currentBarangay?.allocatedBudget || barangayBudget.allocated_budget || 0);
-  const totalSpent = expenses.reduce((sum, expense) => sum + Number(expense.grossAmount || expense.amount || expense.gross_amount || 0), 0);
+  const savedTotalBudgetForYear = savedTotalBudget?.fiscalYear === budgetYear ? savedTotalBudget.amount : undefined;
+  const totalBudget = Number(
+    savedTotalBudgetForYear
+      ?? currentBarangay.allocated_budget
+      ?? 0
+  );
+  const totalSpent = expenses.reduce((sum, expense) => sum + Number(expense.netAmount ?? expense.net_amount ?? 0), 0);
   const allocatedToPrograms = budgetAllocations
     .filter((budget: any) =>
       budget.category !== 'General Youth Development Fund'
@@ -1240,7 +1240,7 @@ export default function BarangayAdminPages({
     ...(budgetProgramFilter === 'All Programs' && expenses.some(expense => !expense.programId) ? [{
       program: 'Unassigned expenses',
       allocated: 0,
-      spent: expenses.filter(expense => !expense.programId).reduce((sum, expense) => sum + (Number(expense.amount) || Number(expense.gross_amount) || 0), 0),
+      spent: expenses.filter(expense => !expense.programId).reduce((sum, expense) => sum + (Number(expense.netAmount) || 0), 0),
       remaining: 0,
       rate: 0,
     }] : []),
@@ -1914,7 +1914,7 @@ return (
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Budget</span>
                     <span className="text-2xl font-black text-slate-800 mt-1 block">₱{totalBudget.toLocaleString()}</span>
-                    <span className="text-[10px] text-slate-500 font-medium block mt-1">FY 2026 Budget</span>
+                    <span className="text-[10px] text-slate-500 font-medium block mt-1">FY {budgetYear} Budget</span>
                   </div>
                   <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center">
                     <Coins className="w-5 h-5" />
@@ -2492,26 +2492,33 @@ return (
                     onSubmit={async (event) => {
                       event.preventDefault();
                       setTotalFormError('');
-                      const amount = Number(totalForm.amount.replace(/[^0-9.]/g, ''));
-                      if (!amount || amount <= 0) { setTotalFormError('Amount must be greater than zero.'); return; }
+                      const amount = Number.parseFloat(totalForm.amount.replace(/,/g, ''));
+                      if (!Number.isFinite(amount) || amount <= 0) { setTotalFormError('Amount must be greater than zero.'); return; }
                       if (!currentBarangay?.id) { setTotalFormError('No Barangay selected.'); return; }
                       setIsSavingTotal(true);
                       try {
                         const res = await kabisigApi.setSkTotalBudget(currentBarangay.id, {
-                          total_amount: amount,
+                          allocated_budget: amount,
                           fiscal_year: Number(totalForm.fiscalYear),
                         });
                         if (!res.success) { setTotalFormError(res.message || 'Total budget save failed.'); return; }
+                        const savedAmount = Number(res.data?.allocated_budget);
+                        const savedFiscalYear = Number(res.data?.fiscal_year ?? totalForm.fiscalYear);
+                        if (!Number.isFinite(savedAmount) || savedAmount <= 0) {
+                          setTotalFormError('The server did not return the saved total budget. Please refresh and verify before continuing.');
+                          return;
+                        }
+                        onTotalBudgetSaved?.(savedAmount, savedFiscalYear);
                         setShowSetTotal(false);
-                        setBudgetYear(totalForm.fiscalYear);
-                        setAvailableYears(prev => Array.from(new Set([...prev, Number(totalForm.fiscalYear)])).sort((a,b)=>b-a));
+                        setBudgetYear(String(savedFiscalYear));
+                        setAvailableYears(prev => Array.from(new Set([...prev, savedFiscalYear])).sort((a,b)=>b-a));
                         setTotalForm({ amount: '', fiscalYear: String(new Date().getFullYear()) });
-                        setSavedTotalBudget(amount);
-                        setTotalBudgetNotice('Total SK budget saved: P' + amount.toLocaleString());
+                        setSavedTotalBudget({ amount: savedAmount, fiscalYear: String(savedFiscalYear) });
+                        setTotalBudgetNotice('Total SK budget saved: P' + savedAmount.toLocaleString());
                         window.setTimeout(() => setTotalBudgetNotice(''), 5000);
 
                         // Force refetch so display updates even if budgetYear didn't change
-                        void kabisigApi.getBudgets(currentBarangay.id, Number(totalForm.fiscalYear)).then(fresh => {
+                        void kabisigApi.getBudgets(currentBarangay.id, savedFiscalYear).then(fresh => {
                           setBudgetAllocations(fresh);
                           setExpenseForm(prev => ({
                             ...prev,

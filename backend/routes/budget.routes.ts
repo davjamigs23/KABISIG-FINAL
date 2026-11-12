@@ -24,6 +24,62 @@ function round2(num: number): number {
   return Math.round((num + Number.EPSILON) * 100) / 100;
 }
 
+type AllocationLimitCheck =
+  | { ok: true }
+  | { ok: false; status: number; message: string };
+
+async function checkAllocationLimit(
+  tenantId: string,
+  fiscalYear: number,
+  allocatedAmount: number,
+  excludedBudgetId?: string
+): Promise<AllocationLimitCheck> {
+  const { data: barangay, error: barangayError } = await supabaseAdmin
+    .from('barangay')
+    .select('allocated_budget, active_fiscal_year')
+    .eq('id', tenantId)
+    .maybeSingle();
+
+  if (barangayError) {
+    return { ok: false, status: 500, message: `Failed to retrieve the total SK budget: ${barangayError.message}` };
+  }
+
+  if (Number(barangay?.active_fiscal_year) !== fiscalYear) {
+    return { ok: false, status: 400, message: 'Total SK budget has not been set for this fiscal year.' };
+  }
+
+  const totalSkBudget = Number(barangay?.allocated_budget || 0);
+  if (!Number.isFinite(totalSkBudget) || totalSkBudget <= 0) {
+    return { ok: false, status: 400, message: 'Total SK budget has not been set for this fiscal year.' };
+  }
+
+  const { data: allocations, error: allocationsError } = await supabaseAdmin
+    .from('budget')
+    .select('id, category, allocated_amount')
+    .eq('tenant_id', tenantId)
+    .eq('fiscal_year', fiscalYear);
+
+  if (allocationsError) {
+    return { ok: false, status: 500, message: `Failed to verify existing budget allocations: ${allocationsError.message}` };
+  }
+
+  const otherAllocations = (allocations || []).reduce((total, allocation) => {
+    if (
+      allocation.id === excludedBudgetId
+      || String(allocation.category || '').trim().toLowerCase() === 'general youth development fund'
+    ) {
+      return total;
+    }
+    return total + Number(allocation.allocated_amount || 0);
+  }, 0);
+
+  if (round2(otherAllocations + allocatedAmount) > round2(totalSkBudget)) {
+    return { ok: false, status: 400, message: 'Allocation exceeds the total SK budget.' };
+  }
+
+  return { ok: true };
+}
+
 const CreateBudgetSchema = z.object({
   program_id: z.string().uuid().optional(),
   fiscal_year: z.number().int().min(2020).max(2100).default(new Date().getFullYear()),
@@ -116,13 +172,28 @@ router.post(
       return;
     }
 
-    const { data: existing } = await supabaseAdmin
+    if (category.trim().toLowerCase() === 'general youth development fund') {
+      sendError(res, 'The General Youth Development Fund total must be set by the Barangay Admin.', 400);
+      return;
+    }
+
+    const { data: existing, error: existingError } = await supabaseAdmin
       .from('budget')
       .select('id')
       .eq('tenant_id', tenantId)
       .eq('fiscal_year', fiscal_year)
       .ilike('category', category)
       .maybeSingle();
+    if (existingError) {
+      sendError(res, `Failed to check existing allocation: ${existingError.message}`, 500);
+      return;
+    }
+
+    const allocationLimit = await checkAllocationLimit(tenantId, fiscal_year, allocated_amount, existing?.id);
+    if (!allocationLimit.ok) {
+      sendError(res, allocationLimit.message, allocationLimit.status);
+      return;
+    }
 
     let newBudget: any;
     let error: any;
@@ -212,6 +283,23 @@ router.put(
       return;
     }
 
+    if (String(budget.category || '').trim().toLowerCase() === 'general youth development fund') {
+      sendError(res, 'The General Youth Development Fund total must be set by the Barangay Admin.', 400);
+      return;
+    }
+
+    const allocatedAmount = parseResult.data.allocated_amount;
+    const allocationLimit = await checkAllocationLimit(
+      budget.tenant_id,
+      Number(budget.fiscal_year),
+      allocatedAmount,
+      budget.id
+    );
+    if (!allocationLimit.ok) {
+      sendError(res, allocationLimit.message, allocationLimit.status);
+      return;
+    }
+
     const { data: existingExpenses, error: expensesError } = await supabaseAdmin
       .from('expense')
       .select('gross_amount')
@@ -222,7 +310,6 @@ router.put(
     }
 
     const spent = round2((existingExpenses || []).reduce((sum, expense) => sum + Number(expense.gross_amount || 0), 0));
-    const allocatedAmount = parseResult.data.allocated_amount;
     if (allocatedAmount < spent) {
       sendError(res, `Allocation cannot be lower than recorded expenses (₱${spent.toLocaleString()}).`, 422);
       return;
@@ -474,13 +561,34 @@ router.post(
     }
 
     const updatedRemaining = round2(remainingAmount - gross_amount);
-    await supabaseAdmin
+    const { error: balanceError } = await supabaseAdmin
       .from('budget')
       .update({
         remaining_amount: updatedRemaining,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', budget_id);
+      .eq('id', budget_id)
+      .select('id')
+      .single();
+
+    if (balanceError) {
+      const { error: cleanupError } = await supabaseAdmin
+        .from('expense')
+        .delete()
+        .eq('id', newExpense.id);
+
+      if (cleanupError) {
+        sendError(
+          res,
+          `Failed to update budget balance: ${balanceError.message}. Expense ${newExpense.id} could not be removed: ${cleanupError.message}`,
+          500
+        );
+        return;
+      }
+
+      sendError(res, `Failed to update budget balance: ${balanceError.message}. The expense record was removed.`, 500);
+      return;
+    }
 
     await recordAuditLog({
       tenantId: budget.tenant_id,

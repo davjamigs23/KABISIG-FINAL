@@ -2121,17 +2121,23 @@ export default function YouthPages({
                         <h4 className="font-bold text-slate-800 text-sm mt-2 leading-snug">{res.title}</h4>
                         <p className="text-xs text-slate-500 leading-relaxed font-medium">{res.content}</p>
                         <div className="flex flex-wrap gap-2 justify-end pt-3">
-                          {(Array.isArray(res.options) && res.options.length > 0 ? res.options : ['Support', 'Oppose']).map(option => (
-                            <button
-                              key={option}
-                              disabled={Boolean(currentYouth.userId && res.votedUsers.includes(currentYouth.userId)) || votingResolutionId !== null}
-                              onClick={() => handleResolutionVote(res.id, option)}
-                              className={`px-4 py-2 rounded-lg font-bold text-xs transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${option === 'Support' ? 'bg-emerald-500 hover:bg-emerald-600 text-white' : option === 'Oppose' ? 'bg-rose-500 hover:bg-rose-600 text-white' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}`}
-                            >
-                              {votingResolutionId === res.id ? <Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin" /> : null}
-                              {option}
-                            </button>
-                          ))}
+                          {Boolean(currentYouth.userId && res.votedUsers.includes(currentYouth.userId)) ? (
+                            <span role="status" className="rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">
+                              You have already voted on this resolution.
+                            </span>
+                          ) : (
+                            (Array.isArray(res.options) && res.options.length > 0 ? res.options : ['Support', 'Oppose']).map(option => (
+                              <button
+                                key={option}
+                                disabled={votingResolutionId !== null}
+                                onClick={() => handleResolutionVote(res.id, option)}
+                                className={`px-4 py-2 rounded-lg font-bold text-xs transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${option === 'Support' ? 'bg-emerald-500 hover:bg-emerald-600 text-white' : option === 'Oppose' ? 'bg-rose-500 hover:bg-rose-600 text-white' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}`}
+                              >
+                                {votingResolutionId === res.id ? <Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin" /> : null}
+                                {option}
+                              </button>
+                            ))
+                          )}
                         </div>
                       </div>
                     ))}
