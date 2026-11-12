@@ -290,7 +290,7 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
     const userId = authenticatedUser.id;
     const { data: user, error: userError } = await supabaseAdmin
       .from('users')
-      .select('id, email, tenant_id, role_id, status, full_name, first_name, middle_name, last_name, suffix, suspension_reason, is_demoted')
+      .select('id, email, tenant_id, role_id, status, full_name, first_name, middle_name, last_name, suffix, suspension_reason, is_demoted, has_edited_profile, phone')
       .eq('id', userId)
       .maybeSingle();
 
@@ -328,8 +328,10 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
       return;
     }
 
+    const isInDemotionCompletion = (user as any).is_demoted === true && (user as any).has_edited_profile !== true;
     const isVerifiedYouth = user.role_id === 4
-      && (user.status === 'active' || existingProfile?.verification_status === 'verified');
+      && (user.status === 'active' || existingProfile?.verification_status === 'verified')
+      && !isInDemotionCompletion;
     if (isVerifiedYouth) {
       const storedNameParts = splitFullName(user.full_name || '');
       const lockedFieldChanges: Array<{ field: string; submitted: unknown; stored: unknown }> = [
@@ -346,6 +348,16 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
         { field: 'youth_sector', submitted: body.youthSector ?? body.youth_sector, stored: existingProfile?.youth_sector },
         { field: 'id_type', submitted: body.idType ?? body.id_type, stored: existingProfile?.id_type },
         { field: 'id_number', submitted: body.idNumber ?? body.id_number, stored: existingProfile?.id_number },
+        { field: 'phone', submitted: body.mobile ?? body.phone, stored: user.phone },
+        { field: 'educational_status', submitted: body.educationalLevel ?? body.educational_status, stored: existingProfile?.educational_status },
+        { field: 'employment_status', submitted: body.employmentStatus ?? body.employment_status, stored: existingProfile?.employment_status },
+        { field: 'school', submitted: body.school, stored: existingProfile?.school },
+        { field: 'course', submitted: body.course, stored: existingProfile?.course },
+        { field: 'year_level', submitted: body.yearLevel ?? body.year_level, stored: existingProfile?.year_level },
+        { field: 'guardian_name', submitted: body.guardianName ?? body.guardian_name, stored: existingProfile?.guardian_name },
+        { field: 'guardian_contact', submitted: body.guardianContact ?? body.guardian_contact, stored: existingProfile?.guardian_contact },
+        { field: 'scholar_status', submitted: body.scholarStatus ?? body.scholar_status, stored: existingProfile?.scholar_status },
+        { field: 'scholarship_source', submitted: body.scholarshipSource ?? body.scholarship_source, stored: existingProfile?.scholarship_source },
       ];
 
       for (const { field, submitted, stored } of lockedFieldChanges) {
@@ -460,6 +472,20 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
         return;
       }
       const prevMeta = authData?.user?.user_metadata || {};
+      if (isVerifiedYouth) {
+        const lockedMetadataChanges: Array<{ field: string; submitted: unknown; stored: unknown }> = [
+          { field: 'scholarshipSourceDetail', submitted: body.scholarshipSourceDetail ?? body.scholarship_source_detail, stored: prevMeta.scholarshipSourceDetail },
+          { field: 'scholarshipType', submitted: body.scholarshipType, stored: prevMeta.scholarshipType },
+          { field: 'email', submitted: body.email, stored: prevMeta.email },
+          { field: 'year', submitted: body.year, stored: prevMeta.year },
+        ];
+        for (const { field, submitted, stored } of lockedMetadataChanges) {
+          if (submitted !== undefined && String(submitted ?? '').trim() !== String(stored ?? '').trim()) {
+            sendError(res, `${field} cannot be changed after verification.`, 403);
+            return;
+          }
+        }
+      }
       const safePrevMeta = Object.fromEntries(
         Object.entries(prevMeta).filter(([key]) => !['profilePic', 'qrCode', 'picture'].includes(key)),
       );

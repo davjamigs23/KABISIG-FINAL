@@ -188,6 +188,8 @@ export default function YouthPages({
   const isVerified = String(currentYouth.status || '').toLowerCase() === 'approved'
     || String(currentYouth.verificationStatus || (currentYouth as any).verification_status || '').toLowerCase() === 'verified'
     || String(verificationStatus?.verification_status || '').toLowerCase() === 'verified';
+  const isInDemotionCompletion = (currentYouth as any).is_demoted === true && (currentYouth as any).has_edited_profile !== true;
+  const isProfileLocked = isVerified && !isInDemotionCompletion;
   const isDemotedChair = verificationStatus?.is_demoted_chair === true;
     const isUnderReview = currentVerifStatus === 'submitted' || currentVerifStatus === 'pending_approval';
   const isRejected = currentVerifStatus === 'rejected';
@@ -1473,7 +1475,7 @@ export default function YouthPages({
                       </div>
                     </div>
                     <label className="cursor-pointer rounded-lg border border-blue-100 bg-blue-50 px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wide text-[#091d64] transition-colors hover:bg-blue-100">
-                      <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={handleProfilePictureChange} disabled={isUploadingProfilePicture} />
+                      <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={handleProfilePictureChange} disabled={isUploadingProfilePicture || isProfileLocked} />
                       {isUploadingProfilePicture ? 'Uploading...' : 'Upload Photo'}
                     </label>
                     {profilePictureNotice && (
@@ -2124,7 +2126,7 @@ export default function YouthPages({
                               key={option}
                               disabled={Boolean(currentYouth.userId && res.votedUsers.includes(currentYouth.userId)) || votingResolutionId !== null}
                               onClick={() => handleResolutionVote(res.id, option)}
-                              className="px-4 py-2 bg-indigo-50 text-indigo-700 rounded-lg font-bold text-xs transition-colors hover:bg-indigo-100 cursor-pointer disabled:opacity-50"
+                              className={`px-4 py-2 rounded-lg font-bold text-xs transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${option === 'Support' ? 'bg-emerald-500 hover:bg-emerald-600 text-white' : option === 'Oppose' ? 'bg-rose-500 hover:bg-rose-600 text-white' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'}`}
                             >
                               {votingResolutionId === res.id ? <Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin" /> : null}
                               {option}
@@ -2318,8 +2320,8 @@ export default function YouthPages({
                         type="text" 
                         value={editForm.first_name || ''} 
                         onChange={(e) => setEditForm({ ...editForm, first_name: e.target.value })}
-                        disabled={isVerified}
-                        readOnly={isVerified}
+                        disabled={isProfileLocked}
+                        readOnly={isProfileLocked}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                         required
                       />
@@ -2330,8 +2332,8 @@ export default function YouthPages({
                         type="text" 
                         value={editForm.last_name || ''} 
                         onChange={(e) => setEditForm({ ...editForm, last_name: e.target.value })}
-                        disabled={isVerified}
-                        readOnly={isVerified}
+                        disabled={isProfileLocked}
+                        readOnly={isProfileLocked}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                         required
                       />
@@ -2342,8 +2344,8 @@ export default function YouthPages({
                         type="text" 
                         value={editForm.middle_name || ''} 
                         onChange={(e) => setEditForm({ ...editForm, middle_name: e.target.value })}
-                        disabled={isVerified}
-                        readOnly={isVerified}
+                        disabled={isProfileLocked}
+                        readOnly={isProfileLocked}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                       />
                     </div>
@@ -2352,7 +2354,7 @@ export default function YouthPages({
                       <select 
                         value={editForm.suffix || ''} 
                         onChange={(e) => setEditForm({ ...editForm, suffix: e.target.value })}
-                        disabled={isVerified}
+                        disabled={isProfileLocked}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                       >
                         <option value="">None</option>
@@ -2369,7 +2371,7 @@ export default function YouthPages({
                       <select 
                         value={editForm.sex || 'Male'} 
                         onChange={(e) => setEditForm({ ...editForm, sex: e.target.value as 'Male' | 'Female' })}
-                        disabled={isVerified}
+                        disabled={isProfileLocked}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                       >
                         <option value="Male">Male</option>
@@ -2382,8 +2384,8 @@ export default function YouthPages({
                         type="date" 
                         value={editForm.birthdate || '2004-05-12'} 
                         onChange={(e) => setEditForm({ ...editForm, birthdate: e.target.value })}
-                        disabled={isVerified}
-                        readOnly={isVerified}
+                        disabled={isProfileLocked}
+                        readOnly={isProfileLocked}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                         required
                       />
@@ -2393,7 +2395,7 @@ export default function YouthPages({
                       <select 
                         value={editForm.civilStatus || 'Single'} 
                         onChange={(e) => setEditForm({ ...editForm, civilStatus: e.target.value as YouthProfile['civilStatus'] })}
-                        disabled={isVerified}
+                        disabled={isProfileLocked}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                       >
                         <option value="Single">Single</option>
@@ -2408,8 +2410,8 @@ export default function YouthPages({
                         type="text" 
                         value={editForm.address} 
                         onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
-                        disabled={isVerified}
-                        readOnly={isVerified}
+                        disabled={isProfileLocked}
+                        readOnly={isProfileLocked}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                         required
                       />
@@ -2419,7 +2421,7 @@ export default function YouthPages({
                       <select 
                         value={editForm.zone} 
                         onChange={(e) => setEditForm({ ...editForm, zone: e.target.value })}
-                        disabled={isVerified}
+                        disabled={isProfileLocked}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                       >
                         <option value="Zone 1">Zone 1</option>
@@ -2563,6 +2565,7 @@ export default function YouthPages({
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Mobile / Phone Number</label>
                       <input 
                         type="text" 
+                        disabled={isProfileLocked}
                         value={editForm.mobile} 
                         onChange={(e) => setEditForm({ ...editForm, mobile: e.target.value })}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
@@ -2573,6 +2576,7 @@ export default function YouthPages({
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Email Address</label>
                       <input 
                         type="email" 
+                        disabled={isProfileLocked}
                         value={editForm.email} 
                         onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
@@ -2583,6 +2587,7 @@ export default function YouthPages({
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Parent / Guardian Name</label>
                       <input 
                         type="text" 
+                        disabled={isProfileLocked}
                         value={editForm.guardianName} 
                         onChange={(e) => setEditForm({ ...editForm, guardianName: e.target.value })}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
@@ -2593,6 +2598,7 @@ export default function YouthPages({
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Parent / Guardian Contact No.</label>
                       <input 
                         type="text" 
+                        disabled={isProfileLocked}
                         value={editForm.guardianContact} 
                         onChange={(e) => setEditForm({ ...editForm, guardianContact: e.target.value })}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
@@ -2610,6 +2616,7 @@ export default function YouthPages({
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Educational Level</label>
                       <select 
+                        disabled={isProfileLocked}
                         value={editForm.educationalLevel} 
                         onChange={(e) => setEditForm({ ...editForm, educationalLevel: e.target.value as any })}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
@@ -2627,6 +2634,7 @@ export default function YouthPages({
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">School / Institution</label>
                       <input 
                         type="text" 
+                        disabled={isProfileLocked}
                         value={editForm.school || ''} 
                         onChange={(e) => setEditForm({ ...editForm, school: e.target.value })}
                         placeholder="e.g. Ateneo de Naga University"
@@ -2637,6 +2645,7 @@ export default function YouthPages({
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Course / Degree Program</label>
                       <input 
                         type="text" 
+                        disabled={isProfileLocked}
                         value={editForm.course || ''} 
                         onChange={(e) => setEditForm({ ...editForm, course: e.target.value })}
                         placeholder="e.g. BS Information Technology"
@@ -2646,6 +2655,7 @@ export default function YouthPages({
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Year Level</label>
                       <select 
+                        disabled={isProfileLocked}
                         value={editForm.year || '1st Year'} 
                         onChange={(e) => setEditForm({ ...editForm, year: e.target.value })}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
@@ -2663,6 +2673,7 @@ export default function YouthPages({
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Employment Status</label>
                       <select 
+                        disabled={isProfileLocked}
                         value={editForm.employmentStatus || 'Student'} 
                         onChange={(e) => setEditForm({ ...editForm, employmentStatus: e.target.value as YouthProfile['employmentStatus'] })}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
@@ -2677,6 +2688,7 @@ export default function YouthPages({
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Scholarship Status</label>
                       <select 
+                        disabled={isProfileLocked}
                         value={editForm.scholarStatus} 
                         onChange={(e) => setEditForm({
                           ...editForm,
@@ -2694,6 +2706,7 @@ export default function YouthPages({
                       <div>
                         <label className="block text-[11px] font-bold text-slate-700 mb-1">Scholarship Source</label>
                         <select
+                          disabled={isProfileLocked}
                           value={editForm.scholarshipSource || ''}
                           onChange={(e) => setEditForm({
                             ...editForm,
@@ -2713,6 +2726,7 @@ export default function YouthPages({
                           <input
                             type="text"
                             placeholder="e.g., Barangay-funded sports scholarship"
+                            disabled={isProfileLocked}
                             value={editForm.scholarshipSourceDetail || ''}
                             onChange={(e) => setEditForm({ ...editForm, scholarshipSourceDetail: e.target.value })}
                             className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64] mt-2"
@@ -2726,6 +2740,7 @@ export default function YouthPages({
                         <label className="block text-[11px] font-bold text-slate-700 mb-1">Scholarship Grant Type / Name</label>
                         <input 
                           type="text" 
+                          disabled={isProfileLocked}
                           value={editForm.scholarshipType || ''} 
                           onChange={(e) => setEditForm({ ...editForm, scholarshipType: e.target.value })}
                           placeholder="e.g. Naga City Educational Assistance Program"
@@ -2738,7 +2753,7 @@ export default function YouthPages({
                       <select 
                         value={editForm.youthSector || 'In-School Youth'} 
                         onChange={(e) => setEditForm({ ...editForm, youthSector: e.target.value as YouthProfile['youthSector'] })}
-                        disabled={isVerified}
+                        disabled={isProfileLocked}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                       >
                         <option value="In-School Youth">In-School Youth</option>
@@ -2762,7 +2777,7 @@ export default function YouthPages({
                   </button>
                   <button 
                     type="submit" 
-                    disabled={isSavingProfile}
+                    disabled={isSavingProfile || isProfileLocked}
                     className="px-6 py-2.5 bg-[#091d64] hover:bg-[#122878] disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs transition-colors shadow-md cursor-pointer flex items-center gap-2"
                   >
                     {isSavingProfile ? (
