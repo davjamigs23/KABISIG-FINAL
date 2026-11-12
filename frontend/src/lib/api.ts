@@ -18,7 +18,8 @@ export interface AnnouncementPayload {
   };
 }
 
-const CONFIGURED_API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://kabisig-backend.vercel.app/api';
+// HARDCODED FOR PRODUCTION DEPLOYMENT
+const CONFIGURED_API_BASE_URL = 'https://kabisig-backend.vercel.app/api';
 
 function resolveApiBaseUrl(): string {
   if (typeof window === 'undefined') return CONFIGURED_API_BASE_URL;
@@ -27,14 +28,14 @@ function resolveApiBaseUrl(): string {
     const apiUrl = new URL(CONFIGURED_API_BASE_URL, window.location.origin);
     const isLocalApiHost = apiUrl.hostname === 'localhost' || apiUrl.hostname === '127.0.0.1';
     const isLocalPageHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    if (isLocalApiHost && !isLocalPageHost) apiUrl.hostname = window.location.hostname;
+    // Removed: do not override hostname
     return apiUrl.toString().replace(/\/$/, '');
   } catch {
     return CONFIGURED_API_BASE_URL;
   }
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://kabisig-backend.vercel.app/api';
+const API_BASE_URL = 'https://kabisig-backend.vercel.app/api';
 
 export interface SystemNotification {
   id: string;
@@ -55,10 +56,13 @@ function toResolutionRecord(poll: any): ResolutionRecord {
   const votes = poll.vote_counts || {};
   return {
     id: poll.id,
+    tenant_id: poll.tenant_id,
+    end_date: poll.end_date,
     resolutionNumber: numberLine?.replace('Resolution Number: ', '') || `POLL-${String(poll.id).slice(0, 8)}`,
     author: authorLine?.replace('Proposed by: ', '') || '',
     title: poll.question,
     content: description,
+    options: Array.isArray(poll.options) ? poll.options : ['Support', 'Oppose'],
     status: !poll.is_active ? 'Archived' : new Date(poll.end_date) <= new Date() ? 'Closed' : 'Voting Open',
     validityPeriod: `${String(poll.start_date).slice(0, 10)} - ${String(poll.end_date).slice(0, 10)}`,
     votesSupport: Number(votes.support) || 0,
@@ -97,7 +101,7 @@ class KabisigApiClient {
     return this.token;
   }
 
-  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<{ success: boolean; data?: T; message?: string; error?: any; details?: any }> {
+  async request<T>(endpoint: string, options: RequestInit = {}): Promise<{ success: boolean; data?: T; message?: string; error?: any; details?: any }> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(options.headers as Record<string, string>),
@@ -456,6 +460,9 @@ class KabisigApiClient {
     educational_status?: string;
     employment_status?: string;
     scholar_status?: string;
+    scholarship_source?: 'Government' | 'Private' | 'Academic' | 'NGO' | 'Other';
+    scholarship_source_detail?: string;
+    civil_status?: string;
     marital_status?: string;
     is_pwd?: boolean;
     is_solo_parent?: boolean;
@@ -655,7 +662,7 @@ class KabisigApiClient {
     };
   }
 
-  async voteOnPoll(pollId: string, voteChoice: 'Support' | 'Oppose'): Promise<{ success: boolean; data?: ResolutionRecord; message?: string }> {
+  async voteOnPoll(pollId: string, voteChoice: string): Promise<{ success: boolean; data?: ResolutionRecord; message?: string }> {
     const res = await this.request<any>(`/polls/${encodeURIComponent(pollId)}/vote`, {
       method: 'POST',
       body: JSON.stringify({ vote_choice: voteChoice }),
@@ -841,6 +848,17 @@ class KabisigApiClient {
     return res.success && res.data ? res.data : [];
   }
 
+  async updateBudget(id: string, payload: { allocated_amount: number }): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request(`/budget/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async deleteBudget(id: string): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request(`/budget/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
   async recordExpense(payload: {
     budget_id: string;
     program_id?: string;
@@ -850,12 +868,32 @@ class KabisigApiClient {
     tax_type: 'VAT' | 'NON_VAT' | 'EXEMPT';
     tax_rate?: number;
     receipt_url?: string;
-    expense_date?: string;
   }): Promise<{ success: boolean; data?: any; message?: string; error?: any }> {
     return await this.request('/budget/expense', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
+  }
+
+  async updateExpense(id: string, payload: {
+    budget_id: string;
+    program_id?: string;
+    title: string;
+    description?: string;
+    gross_amount: number;
+    tax_type: 'VAT' | 'NON_VAT' | 'EXEMPT';
+    tax_rate?: number;
+    receipt_url?: string;
+    expense_date?: string;
+  }): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request(`/budget/expense/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async deleteExpense(id: string): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request(`/budget/expense/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
 
   // --- ANALYTICS ---
@@ -925,6 +963,10 @@ class KabisigApiClient {
   }
   async getProfile(): Promise<{ success: boolean; data?: YouthProfile; message?: string }> {
     return await this.request<YouthProfile>('/users/profile', { method: 'GET' });
+  }
+
+  async getFederationPresident(): Promise<{ success: boolean; data?: { full_name: string }; message?: string }> {
+    return await this.request<{ full_name: string }>('/users/federation-president', { method: 'GET' });
   }
 
   async getYouthProfiles(includeOfficials = false, scope?: 'all'): Promise<{ data: YouthProfile[] | null; error: string | null }> {

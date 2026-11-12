@@ -63,8 +63,8 @@ export default function ProfileSettings() {
       setNotice({ type: 'error', text: 'Choose a JPEG, PNG, or WebP image.' });
       return;
     }
-    if (file.size > 15 * 1024 * 1024) {
-      setNotice({ type: 'error', text: 'Image must be under 15 MB.' });
+    if (file.size > 3 * 1024 * 1024) {
+      setNotice({ type: 'error', text: 'Maximum file size is 3MB. Please compress your file.' });
       return;
     }
     // Read file → open crop modal

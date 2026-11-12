@@ -1,7 +1,7 @@
 
 import { formatCurrencyInput } from '../lib/utils';
 import ProfileSettings from './ProfileSettings';
-import { useRef,  useState, useEffect  } from 'react';
+import { useRef, useState, useEffect, type FormEvent } from 'react';
 import { composeFullName, splitFullName } from '../lib/name';
 import { 
   Building2, 
@@ -102,8 +102,36 @@ import ProfileAvatar from './ProfileAvatar';
 import kabisigApi from '../lib/api';
 import { openPrintableReport } from '../lib/reportGenerator';
 import { DEFAULT_BARANGAY_LOGOS } from '../data';
+import PopupDialog, { type PopupMessage } from './PopupDialog';
+
+function getStandardCategory(cat: string): string {
+  if (!cat) return 'Uncategorized';
+  const category = cat.toLowerCase();
+  if (category.includes('health')) return 'Health & Nutrition';
+  if (category.includes('education')) return 'Education & Scholarship';
+  if (category.includes('sports')) return 'Sports Development';
+  if (category.includes('livelihood')) return 'Livelihood & Skills';
+  if (category.includes('peace')) return 'Peace & Security';
+  if (category.includes('environment')) return 'Environmental Protection';
+  return cat;
+}
+
+function normalizeDocType(type: string): 'Resolutions' | 'Minutes' | 'Vouchers' | 'Reports' {
+  const category = String(type || '').toLowerCase();
+  if (category.includes('resolution') || category.includes('ordinance')) return 'Resolutions';
+  if (category.includes('minute')) return 'Minutes';
+  if (category.includes('voucher') || category.includes('transmittal')) return 'Vouchers';
+  return 'Reports';
+}
+
+function getNormalizedDocumentType(document: DocumentRecord): 'Resolutions' | 'Minutes' | 'Vouchers' | 'Reports' {
+  const rawDocumentType = (document as DocumentRecord & { document_type?: string }).document_type;
+  return normalizeDocType(rawDocumentType || document.category);
+}
 
 interface OfficialPagesProps {
+  key?: string;
+  notifications?: any[];
   currentRole: UserRole; // 'SK Kagawad' | 'SK Secretary' | 'SK Treasurer'
   programs: Program[];
   youthProfiles: YouthProfile[];
@@ -119,15 +147,27 @@ interface OfficialPagesProps {
   tenants?: BarangayTenant[];
   currentUser?: any;
   onAddProgram: (p: Program) => Promise<boolean>;
+  onUpdateProgram: (program: Program) => Promise<boolean>;
+  onDeleteProgram: (programId: string) => Promise<boolean>;
   onAddResolution: (resolution: ResolutionRecord) => void;
   onAddExpense: (e: ExpenseRecord) => Promise<void> | void;
+  onRefreshExpenses: () => Promise<void>;
   onAddDocument: (d: DocumentRecord) => void;
   onRegisterAttendance: (record: AttendanceRecord, qrPayload: string) => Promise<AttendanceRecord>;
   onLogout: () => void;
 }
 
+const hasProgramEnded = (endDate?: string | Date | null): boolean => {
+  if (!endDate) return false;
+  const end = new Date(endDate);
+  if (Number.isNaN(end.getTime())) return false;
+  end.setHours(23, 59, 59, 999);
+  return end < new Date();
+};
+
 export default function OfficialPages({
   currentRole,
+  notifications = [],
   programs,
   youthProfiles,
   registrations,
@@ -142,12 +182,28 @@ export default function OfficialPages({
   tenants = [],
   currentUser,
   onAddProgram,
+  onUpdateProgram,
+  onDeleteProgram,
   onAddResolution,
   onAddExpense,
+  onRefreshExpenses,
   onAddDocument,
   onRegisterAttendance,
   onLogout
 }: OfficialPagesProps) {
+  const [programStatusFilter, setProgramStatusFilter] = useState<string>('Active');
+  const [pubmatFile, setPubmatFile] = useState<File | null>(null);
+  const [pubmatPreview, setPubmatPreview] = useState<string | null>(null);
+  useEffect(() => {
+    if (!pubmatFile) {
+      setPubmatPreview(null);
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(pubmatFile);
+    setPubmatPreview(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [pubmatFile]);
   // Navigation active tab (resets to 'dashboard' on role change)
   const [activeMenu, setActiveMenu] = useState<string>('dashboard');
 
@@ -164,11 +220,20 @@ export default function OfficialPages({
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('All');
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
+  const [lightboxImg, setLightboxImg] = useState<string | null>(null);
+  const [popupMsg, setPopupMsg] = useState<{ title: string; text: string; type: 'success' | 'error' } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; type: 'budget' | 'expense' | 'program' } | null>(null);
   const barangayLogo = currentTenant?.logo || DEFAULT_BARANGAY_LOGOS[currentTenant?.name || ''] || '';
 
   // --- Local UI state mirrors backend-backed shared records ---
   const [localAttendance, setLocalAttendance] = useState<AttendanceRecord[]>([]);
   const [localResolutions, setLocalResolutions] = useState<any[]>(resolutions);
+  const archivedResolutions = localResolutions.filter(
+    resolution => resolution.end_date && new Date(resolution.end_date).getTime() < Date.now()
+  );
+  const activeResolutions = localResolutions.filter(
+    resolution => !resolution.end_date || new Date(resolution.end_date).getTime() >= Date.now()
+  );
     const [inventory, setInventory] = useState<any[]>([]);
   const [complianceRecords, setComplianceRecords] = useState<any[]>([]);
   const [complianceStats, setComplianceStats] = useState<any>({ total: 0, completed_count: 0, overdue_count: 0, on_time_percent: null });
@@ -299,9 +364,7 @@ export default function OfficialPages({
   const [reportAttendance, setReportAttendance] = useState<any[]>([]);
   const [reportAttendanceLoading, setReportAttendanceLoading] = useState(false);
   const [reportAttendanceError, setReportAttendanceError] = useState<string | null>(null);
-  const reportProgramId = programs.some(program => program.id === selectedProgramForReport)
-    ? selectedProgramForReport
-    : programs[0]?.id || '';
+  const reportProgramId = selectedProgramForReport;
 
   useEffect(() => {
     if (!reportProgramId) {
@@ -391,6 +454,7 @@ export default function OfficialPages({
 
   // --- MODALS STATE ---
   const [showProgModal, setShowProgModal] = useState(false);
+  const [editingProgramId, setEditingProgramId] = useState<string | null>(null);
   const [programNotice, setProgramNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const handleDownloadPDFReport = async () => {
     const html2pdf = (await import('html2pdf.js')).default;
@@ -419,18 +483,25 @@ export default function OfficialPages({
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [showResModal, setShowResModal] = useState(false);
   const [showInvModal, setShowInvModal] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState<DocumentRecord | null>(null);
 
   // Form states
   const [progForm, setProgForm] = useState({
-    title: '', description: '', startDate: '', endDate: '', location: '', maxParticipants: 0, budgetAllocation: 0, aipReference: '', category: (currentRole === 'SK Kagawad' ? 'Environmental Protection' : 'Education & Scholarship') as any, status: 'Published' as any
+    title: '', description: '', startDate: '', endDate: '', location: '', maxParticipants: 0 as number | '', budgetAllocation: 0, aipReference: '', category: '' as any, status: 'Published' as any
   });
   const [docForm, setDocForm] = useState({
-    title: '', description: '', category: 'Resolutions' as any, fileName: '', resolutionNumber: '', designatedApprover: ''
+    title: '', description: '', category: '' as any, fileName: '', resolutionNumber: '', designatedApprover: ''
   });
   const [expenseForm, setExpenseForm] = useState({
-    programId: programs[0]?.id || '', budgetId: '', amount: 0, supplier: '', taxType: 'VAT' as any, category: 'Supplies' as any
+    programId: '', budgetId: '', amount: '', supplier: '', taxType: '' as any, category: '' as any
   });
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
   const [budgetOptions, setBudgetOptions] = useState<any[]>([]);
+  const [editingBudget, setEditingBudget] = useState<any | null>(null);
+  const [budgetAmountInput, setBudgetAmountInput] = useState('');
+  const [budgetMutationError, setBudgetMutationError] = useState('');
+  const [budgetMutationNotice, setBudgetMutationNotice] = useState('');
+  const [isSavingBudget, setIsSavingBudget] = useState(false);
   useEffect(() => {
     if (currentTenant?.active_fiscal_year) {
       setTreasurerBudgetYear(String(currentTenant.active_fiscal_year));
@@ -438,6 +509,15 @@ export default function OfficialPages({
   }, [currentTenant?.active_fiscal_year]);
   const [isLoadingBudgets, setIsLoadingBudgets] = useState(false);
   const [isSavingExpense, setIsSavingExpense] = useState(false);
+
+  const refreshBudgetOptions = async () => {
+    if (!currentTenant?.id) {
+      setBudgetOptions([]);
+      return;
+    }
+    const budgets = await kabisigApi.getBudgets(currentTenant.id, Number(treasurerBudgetYear));
+    setBudgetOptions(budgets);
+  };
 
   const [showAllocateProgram, setShowAllocateProgram] = useState(false);
   const [allocateForm, setAllocateForm] = useState({ category: '', allocatedAmount: '', description: '', fiscalYear: String(new Date().getFullYear()) });
@@ -449,7 +529,7 @@ export default function OfficialPages({
   });
   const [isSavingResolution, setIsSavingResolution] = useState(false);
   const [invForm, setInvForm] = useState({
-    item: '', category: 'Sports Equipment', quantity: 0, condition: 'Good', cost: 0, location: '', photo_url: ''
+    item: '', category: '', quantity: 0, condition: '', cost: 0, location: '', photo_url: ''
   });
 
   // Rejection Reason state for Secretary validations
@@ -459,6 +539,10 @@ export default function OfficialPages({
   // Attendance scanner state
   const [selectedProgId, setSelectedProgId] = useState('');
   const selectedProgIdRef = useRef(selectedProgId);
+  const selectedProg = programs.find(p => p.id === selectedProgId);
+  const isProgramEnded = String(selectedProg?.status || '').toLowerCase() === 'completed'
+    || String(selectedProg?.status || '').toLowerCase() === 'cancelled'
+    || hasProgramEnded((selectedProg as any)?.endDate || (selectedProg as any)?.end_date);
 
   // Auto-select the first program when the program list becomes available
   useEffect(() => {
@@ -530,13 +614,13 @@ export default function OfficialPages({
     }
     let isMounted = true;
 
-    // Cache hit → instant
+    // Cache hit â†’ instant
     if (regCacheRef.current[selectedProgId]) {
       setSelectedProgramRegistrations(regCacheRef.current[selectedProgId]);
       return;
     }
 
-    // Cache miss → use in-flight promise if exists, else start new fetch
+    // Cache miss â†’ use in-flight promise if exists, else start new fetch
     const _promise = regFetchingRef.current[selectedProgId] || (async () => {
       try {
         const rows = await kabisigApi.getProgramRegistrations(selectedProgId);
@@ -608,19 +692,19 @@ export default function OfficialPages({
   }, [currentTenant?.id, treasurerBudgetYear]);
 
   useEffect(() => {
-    const amt = expenseForm.amount;
+    const amt = Number(String(expenseForm.amount).replace(/,/g, '')) || 0;
     let vat = 0, wh = 0, net = amt;
     if (expenseForm.taxType === 'VAT') {
       const base = amt / 1.12;
       vat = amt - base;
-      wh = base * 0.02; // 2% standard withholding for supplies
-      net = amt - wh;
+      wh = Number((base * 0.02).toFixed(2));
+      net = Number((amt - vat - wh).toFixed(2));
     } else if (expenseForm.taxType === 'Non-VAT') {
-      wh = amt * 0.03; // 3% standard
-      net = amt - wh;
+      wh = Number((amt * 0.03).toFixed(2));
+      net = Number((amt - wh).toFixed(2));
     } else if (expenseForm.taxType === 'Withholding') {
-      wh = amt * 0.02;
-      net = amt - wh;
+      wh = Number((amt * 0.02).toFixed(2));
+      net = Number((amt - wh).toFixed(2));
     }
     setCalcVat(parseFloat(vat.toFixed(2)));
     setCalcWithholding(parseFloat(wh.toFixed(2)));
@@ -643,42 +727,72 @@ export default function OfficialPages({
         }
       ];
 
-  const treasurerProgramsBudget = programs.filter((p: any) => {
-    const _year = p.fiscal_year != null ? Number(p.fiscal_year)
-      : (p.startDate ? new Date(p.startDate).getFullYear()
-      : (p.start_date ? new Date(p.start_date).getFullYear()
-      : (p.created_at ? new Date(p.created_at).getFullYear() : null)));
-    return _year === null || _year === Number(treasurerBudgetYear);
-  }).map((p: any) => {
-    const _yearExp = expenses.filter((e: any) => {
-      if (e.programId !== p.id) return false;
-      const _d = e.expense_date || e.created_at || e.date;
-      return !_d || new Date(_d).getFullYear() === Number(treasurerBudgetYear);
+  const treasurerProgramsBudget = (budgetOptions || [])
+    .filter((budget: any) => {
+      const year = budget.fiscal_year ?? budget.fiscalYear ?? budget.year;
+      return (year == null || Number(year) === Number(treasurerBudgetYear))
+        && Number(budget.allocated_amount) > 0
+        && String(budget.category || '').trim().toLowerCase() !== 'general youth development fund'
+        && (budget.program_id != null || budget.programId != null);
+    })
+    .map((budget: any) => {
+      const programId = budget.program_id || budget.programId;
+      const program = programs.find((item: any) => String(item.id) === String(programId))
+        || programs.find((item: any) => item.title.trim().toLowerCase() === String(budget.category || '').trim().toLowerCase());
+      const budgetExpenses = (expenses || []).filter((expense: any) => {
+        const expenseDate = expense.expense_date || expense.created_at || expense.date;
+        if (expenseDate && new Date(expenseDate).getFullYear() !== Number(treasurerBudgetYear)) return false;
+        return String(expense.budgetId || expense.budget_id || '') === String(budget.id)
+          || (programId != null && String(expense.programId || expense.program_id || '') === String(programId));
+      });
+      return {
+        id: budget.id,
+        program: program?.title || budget.category || 'Unallocated',
+        allocated: Number(budget.allocated_amount),
+        actual: budgetExpenses.reduce((sum: number, expense: any) =>
+          sum + Number(expense.gross_amount || expense.amount || 0), 0),
+        hasExpense: budgetExpenses.length > 0,
+      };
     });
-    const actual = _yearExp.reduce((acc: number, e: any) => acc + Number(e.gross_amount || e.amount || 0), 0);
-    const _yearAlloc = (budgetOptions || []).find((b: any) => b.category === p.title)?.allocated_amount || 0;
-    return {
-      program: p.title,
-      allocated: Number(_yearAlloc),
-      actual: actual
-    };
-  });
 
   const getSectorStats = (categoryName: string) => {
-    const categoryProgs = programs.filter((p: any) => {
-      if (p.category !== categoryName) return false;
-      const _y = p.fiscal_year != null ? Number(p.fiscal_year) : (p.startDate ? new Date(p.startDate).getFullYear() : (p.start_date ? new Date(p.start_date).getFullYear() : (p.created_at ? new Date(p.created_at).getFullYear() : null)));
-      return _y === null || _y === Number(treasurerBudgetYear);
-    });
-    const alloc = categoryProgs.reduce((acc: number, p: any) => acc + Number((budgetOptions || []).find((b: any) => b.category === p.title)?.allocated_amount || 0), 0);
-    const disb = expenses
-      .filter((e: any) => {
-        const _d = e.expense_date || e.created_at || e.date;
-        if (_d && new Date(_d).getFullYear() !== Number(treasurerBudgetYear)) return false;
-        const prog = programs.find((pp: any) => pp.id === e.programId);
-        return prog?.category === categoryName;
+    const sectorPatterns: Record<string, string[]> = {
+      'Sports Development': ['sports'],
+      'Education & Scholarship': ['education', 'scholarship'],
+      'Health & Nutrition': ['health', 'nutrition', 'wellness'],
+      'Livelihood & Skills': ['livelihood', 'skills'],
+      'Peace & Security': ['peace', 'security'],
+      'Environmental Protection': ['environment', 'protection'],
+    };
+    const patterns = sectorPatterns[categoryName] || [categoryName];
+    const matchesSector = (budget: any) => {
+      if (String(budget.category || '').trim().toLowerCase() === 'general youth development fund') return false;
+      const program = programs.find((item: any) =>
+        String(item.id) === String(budget.program_id || budget.programId))
+        || programs.find((item: any) =>
+          item.title.trim().toLowerCase() === String(budget.category || '').trim().toLowerCase());
+      const categories = `${String(budget.category || '')} ${String(program?.category || '')}`.toLowerCase();
+      return patterns.some(pattern => categories.includes(pattern));
+    };
+    const sectorBudgets = (budgetOptions || []).filter(matchesSector);
+    const sectorBudgetIds = new Set(sectorBudgets.map((budget: any) => String(budget.id)));
+    const sectorProgramIds = new Set(sectorBudgets
+      .map((budget: any) => budget.program_id || budget.programId)
+      .filter(Boolean)
+      .map((programId: string) => String(programId)));
+    const alloc = sectorBudgets.reduce((sum: number, budget: any) =>
+      sum + Number(budget.allocated_amount || 0), 0);
+    const disb = (expenses || [])
+      .filter((expense: any) => {
+        const expenseDate = expense.expense_date || expense.created_at || expense.date;
+        if (expenseDate && new Date(expenseDate).getFullYear() !== Number(treasurerBudgetYear)) return false;
+        const expenseBudgetId = expense.budgetId || expense.budget_id;
+        const expenseProgramId = expense.programId || expense.program_id;
+        return (expenseBudgetId && sectorBudgetIds.has(String(expenseBudgetId)))
+          || (expenseProgramId && sectorProgramIds.has(String(expenseProgramId)));
       })
-      .reduce((acc: number, e: any) => acc + Number(e.gross_amount || e.amount || 0), 0);
+      .reduce((sum: number, expense: any) =>
+        sum + Number(expense.gross_amount || expense.amount || 0), 0);
     const rate = alloc > 0 ? (disb / alloc) * 100 : 0;
     return { alloc, disb, rate };
   };
@@ -729,56 +843,166 @@ export default function OfficialPages({
     if (!dateStr) return true;
     return new Date(dateStr).getFullYear() === Number(treasurerBudgetYear);
   });
-  const totalSpentExpenses = filteredExpenses.reduce((acc: number, curr: any) => acc + Number(curr.gross_amount || curr.amount || 0), 0);
-  // Calculate total based on the specific fiscal year's budget data
-  const currentYearGeneralFund = budgetOptions.find((b: any) => b.category === 'General Youth Development Fund');
-  const totalBarangayBudget = currentYearGeneralFund ? Number(currentYearGeneralFund.allocated_amount) : 0;
+  const getWithholdingTax = (expense: any) => {
+    const taxType = String(expense.tax_type || expense.taxType || '').toUpperCase().replace(/-/g, '_');
+    const grossAmount = Number(expense.gross_amount ?? expense.amount) || 0;
+    if (taxType === 'VAT') return Math.round((grossAmount / 1.12) * 0.02 * 100) / 100;
+    if (taxType === 'NON_VAT') return Math.round(grossAmount * 0.03 * 100) / 100;
+    return 0;
+  };
+  const getNetPayable = (expense: any) => {
+    const taxType = String(expense.tax_type || expense.taxType || '').toUpperCase().replace(/-/g, '_');
+    const grossAmount = Number(expense.gross_amount ?? expense.amount) || 0;
+    const vatAmount = taxType === 'VAT' ? grossAmount - grossAmount / 1.12 : 0;
+    return Number((grossAmount - vatAmount - getWithholdingTax(expense)).toFixed(2));
+  };
+  const totalWithheld = (expenses || []).reduce((sum: number, expense: any) => sum + getWithholdingTax(expense), 0);
+  const totalNetPayable = (expenses || []).reduce((sum: number, expense: any) => sum + getNetPayable(expense), 0);
+  const accomplishmentPrograms = programs.filter(program =>
+    ['Upcoming', 'Ongoing', 'Completed'].includes(program.status)
+  );
+  const accomplishmentAllocatedBudget = accomplishmentPrograms.reduce(
+    (sum, program) => sum + (Number(program.budgetAllocation) || 0),
+    0
+  );
+  const accomplishmentDisbursedAmount = expenses
+    .filter(expense => accomplishmentPrograms.some(program => program.id === expense.programId))
+    .reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0);
+  const accomplishmentBeneficiaries = accomplishmentPrograms.reduce(
+    (sum, program) => sum + (program.registeredCount || (registrations || []).filter(registration => registration.programId === program.id).length),
+    0
+  );
+  const currentBarangayBudget = currentTenant as (BarangayTenant & { allocated_budget?: number }) | undefined;
+  const totalBarangayBudget = Number(currentBarangayBudget?.allocated_budget || currentTenant?.allocatedBudget || 100000);
+  const totalSpentExpenses = expenses.reduce((sum: number, expense: any) => sum + Number(expense.gross_amount || expense.amount || 0), 0);
   const remainingCash = totalBarangayBudget - totalSpentExpenses;
-  const budgetUtilizationRate = totalBarangayBudget > 0 ? (totalSpentExpenses / totalBarangayBudget) * 100 : 0;
+  const budgetUtilizationRate = (totalSpentExpenses / totalBarangayBudget) * 100;
+  const allocatedToPrograms = budgetOptions
+    .filter((budget: any) =>
+      budget.category !== 'General Youth Development Fund'
+      && !['heha', 'aaaa'].includes(String(budget.category || '').trim().toLowerCase())
+    )
+    .reduce((sum: number, budget: any) => sum + Number(budget.allocated_amount || 0), 0);
 
   // --- ACTIONS HANDLERS ---
   const handlePublishProgram = async () => {
     if (!progForm.title) {
-      alert('Program Title is required.');
+      setPopupMsg({ title: 'Program Required', text: 'Program Title is required.', type: 'error' });
       return;
     }
-    const newP: Program = {
-      id: `prog-${Date.now().toString().slice(-3)}`,
+    if (!progForm.category) {
+      setPopupMsg({ title: 'Category Required', text: 'Program Category is required.', type: 'error' });
+      return;
+    }
+    const maxParticipants = Number(progForm.maxParticipants);
+    if (!Number.isInteger(maxParticipants) || maxParticipants < 1) {
+      setPopupMsg({ title: 'Invalid Max Slots', text: 'Max slots must be a whole number greater than zero.', type: 'error' });
+      return;
+    }
+    let image_base64: string | null = null;
+    let image_mime_type: string | null = null;
+    if (pubmatFile) {
+      image_base64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+        reader.readAsDataURL(pubmatFile);
+      });
+      image_mime_type = pubmatFile.type;
+    }
+    const existingProgram = editingProgramId ? programs.find(program => program.id === editingProgramId) : undefined;
+    const newP: Program & { image_base64: string | null; image_mime_type: string | null } = {
+      ...(existingProgram || {}),
+      id: existingProgram?.id || `prog-${Date.now().toString().slice(-3)}`,
       title: progForm.title,
       description: progForm.description,
       startDate: progForm.startDate,
       endDate: progForm.endDate,
       location: progForm.location,
-      maxParticipants: progForm.maxParticipants,
+      maxParticipants,
       budgetAllocation: progForm.budgetAllocation,
       spentBudget: 0,
       aipReference: progForm.aipReference,
       category: progForm.category,
       status: progForm.status,
-      registeredCount: 0
+      registeredCount: existingProgram?.registeredCount || 0,
+      imageUrl: existingProgram?.imageUrl,
+      image_base64,
+      image_mime_type
     };
     try {
           // Schedule conflict advisory (manuscript 3.2.1 item 5: Rule-Based Schedule Conflict Detection)
           const _conflicts = detectScheduleConflicts(newP, (programs || []).filter(p => p.id !== newP.id));
           if (_conflicts.length > 0) {
-            alert('Scheduling conflicts detected:\n\n' +
+            setPopupMsg({ title: 'Scheduling Conflict', text: 'Scheduling conflicts detected:\n\n' +
               _conflicts.join('\n\n') +
-              '\n\nPlease edit or delete the conflicting program(s) before proceeding.');
+              '\n\nPlease edit or delete the conflicting program(s) before proceeding.', type: 'error' });
             return;
           }
 
-          const created = await onAddProgram(newP);
-          if (created !== false) {
+          const saved = editingProgramId ? await onUpdateProgram(newP) : await onAddProgram(newP);
+          if (saved !== false) {
+            if (!existingProgram) {
+              setPopupMsg({
+                title: 'Program Published',
+                text: `"${newP.title}" has been successfully created.`,
+                type: 'success',
+              });
+            }
             setShowProgModal(false);
-            setProgramNotice({ type: 'success', text: 'Program "' + progForm.title + '" created successfully.' });
+            setEditingProgramId(null);
+            setPubmatFile(null);
+            setProgramNotice({ type: 'success', text: 'Program "' + progForm.title + '" ' + (existingProgram ? 'updated' : 'created') + ' successfully.' });
             window.setTimeout(() => setProgramNotice(null), 5000);
           } else {
-            setProgramNotice({ type: 'error', text: 'Program creation failed. Please try again.' });
+            setProgramNotice({ type: 'error', text: `Program ${existingProgram ? 'update' : 'creation'} failed. Please try again.` });
           }
         } catch (err: any) {
-          setProgramNotice({ type: 'error', text: err?.message || 'Program creation failed.' });
+          setProgramNotice({ type: 'error', text: err?.message || `Program ${existingProgram ? 'update' : 'creation'} failed.` });
         }
       };
+
+  const handleEditProgram = (program: Program) => {
+    setEditingProgramId(program.id);
+    setPubmatFile(null);
+    setProgForm({
+      title: program.title,
+      description: program.description,
+      startDate: program.startDate,
+      endDate: program.endDate,
+      location: program.location,
+      maxParticipants: program.maxParticipants,
+      budgetAllocation: program.budgetAllocation,
+      aipReference: program.aipReference || '',
+      category: program.category as any,
+      status: program.status as any,
+    });
+    setShowProgModal(true);
+  };
+
+  const executeDeleteProgram = async (program: Program) => {
+    try {
+      const deleted = await onDeleteProgram(program.id);
+      if (!deleted) {
+        setPopupMsg({ title: 'Delete Failed', text: 'The program could not be deleted. Please try again.', type: 'error' });
+        return;
+      }
+      setPopupMsg({
+        title: 'Program Deleted',
+        text: 'The program has been successfully removed from the directory.',
+        type: 'success',
+      });
+    } catch (error) {
+      setPopupMsg({
+        title: 'Delete Failed',
+        text: error instanceof Error ? error.message : 'The program could not be deleted. Please try again.',
+        type: 'error',
+      });
+    }
+  };
+
+  const handleDeleteProgram = (program: Program) => {
+    setConfirmDelete({ id: program.id, type: 'program' });
+  };
 
   const getDefaultApproverForCategory = (cat: string): string => {
     switch (cat) {
@@ -800,10 +1024,11 @@ export default function OfficialPages({
 
   const handleUploadDocumentSubmit = async () => {
     if (!docForm.title.trim()) return setDocumentUploadError('Document title is required.');
+    if (!docForm.category) return setDocumentUploadError('Please select a category.');
     if (!selectedDocumentFile) return setDocumentUploadError('Select a document file to upload.');
     
     // Auto-generate resolution / tracking code if needed
-    const cat = docForm.category || 'Resolutions';
+    const cat = docForm.category;
     const catCode = cat === 'Resolutions' ? 'RES' : cat.slice(0, 3).toUpperCase();
     const count = localDocs.filter(d => d.category === cat).length + 1;
     const defaultResNum = cat === 'Resolutions'
@@ -815,9 +1040,9 @@ export default function OfficialPages({
       ? 'Resolution'
       : docForm.category === 'Minutes'
         ? 'Minutes'
-        : docForm.category === 'Reports' || docForm.category === 'Budget' || docForm.category === 'Vouchers'
-          ? 'Financial Report'
-          : 'Other';
+        : docForm.category === 'Vouchers'
+          ? 'Vouchers'
+          : 'Financial Report';
 
     setIsUploadingDocument(true);
     setDocumentUploadError('');
@@ -855,7 +1080,7 @@ export default function OfficialPages({
       onAddDocument(newDocument);
       setShowDocModal(false);
       setSelectedDocumentFile(null);
-      setDocForm({ title: '', description: '', category: 'Resolutions', fileName: '', resolutionNumber: '', designatedApprover: currentTenant?.chairperson || '' });
+      setDocForm({ title: '', description: '', category: '', fileName: '', resolutionNumber: '', designatedApprover: '' });
     } catch (error: any) {
       setDocumentUploadError(error.message || 'Document upload failed.');
     } finally {
@@ -897,6 +1122,7 @@ export default function OfficialPages({
     const barangayName = currentTenant?.name || 'Barangay';
     const userName = currentUser?.full_name || 'SK Official';
     const userRole = currentRole || 'SK Official';
+    const chairpersonName = currentTenant?.chairperson || 'SK Chairperson';
     const now = new Date();
     const dateStr = now.toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
     const timeStr = now.toLocaleTimeString('en-PH');
@@ -922,9 +1148,11 @@ export default function OfficialPages({
   .sig-line { border-top: 1.5px solid #091d64; margin-top: 60px; padding-top: 8px; font-weight: 700; font-size: 12px; color: #091d64; }
   .sig-role { font-size: 10px; color: #64748b; margin-top: 2px; }
   .footer { text-align: center; font-size: 9px; color: #94a3b8; margin-top: 50px; padding-top: 16px; border-top: 1px dashed #cbd5e1; }
-  @media print { body { padding: 0; background: white; } .page { box-shadow: none; padding: 20px; } }
+  .print-button { position: fixed; top: 16px; right: 16px; padding: 10px 16px; border: 0; border-radius: 8px; background: #091d64; color: white; font-weight: 700; cursor: pointer; }
+  @media print { body { padding: 0; background: white; } .page { box-shadow: none; padding: 20px; } .print-button { display: none; } }
 </style>
 </head><body>
+<button class="print-button" onclick="window.print()">Print</button>
 <div class="page">
   <div class="header">
     <div class="logo">KABISIG</div>
@@ -943,13 +1171,12 @@ export default function OfficialPages({
       <div class="sig-role">${userRole}</div>
     </div>
     <div class="sig-block">
-      <div class="sig-line">SK Chairperson</div>
-      <div class="sig-role">Approving Authority</div>
+      <div class="sig-line">${chairpersonName}</div>
+      <div class="sig-role">SK Chairperson</div>
     </div>
   </div>
   <div class="footer">Generated by KABISIG Youth Information System • ${dateStr} • Official Document</div>
 </div>
-<script>window.onload = () => { setTimeout(() => window.print(), 500); };</script>
 </body></html>`;
 
     const win = window.open('', '_blank');
@@ -957,14 +1184,90 @@ export default function OfficialPages({
       win.document.write(html);
       win.document.close();
     } else {
-      alert('Please allow pop-ups for this site to view the report.');
+      setPopupMsg({ title: 'Pop-up Blocked', text: 'Please allow pop-ups for this site to view the report.', type: 'error' });
     }
   };;
 
+  const handleExportTreasurerReport = () => {
+    const htmlEntities: Record<string, string> = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    };
+    const escapeHtml = (value: unknown) => String(value ?? '—').replace(/[&<>"']/g, character => htmlEntities[character] || character);
+    const money = (value: unknown) => `₱${Number(value || 0).toLocaleString('en-PH')}`;
+    let title: string;
+    let headers: string[];
+    let rows: string[][];
+
+    if (treasurerReportTab === 'statement') {
+      title = 'COA Financial Statements (SRE) & Sector Breakdown';
+      headers = ['Sector', 'Allocated', 'Disbursed', 'Utilization'];
+      rows = ['Sports Development', 'Education & Scholarship', 'Health & Nutrition', 'Livelihood & Skills', 'Peace & Security', 'Environmental Protection']
+        .map(category => {
+          const stats = getSectorStats(category);
+          return [category, money(stats.alloc), money(stats.disb), `${stats.rate.toFixed(1)}%`];
+        });
+    } else if (treasurerReportTab === 'utilization') {
+      title = 'Program Budget Limits vs Actuals';
+      headers = ['Program', 'Allocated Budget', 'Actual Expenditures'];
+      rows = treasurerProgramsBudget.map(program => [program.program, money(program.allocated), money(program.actual)]);
+    } else if (treasurerReportTab === 'tax') {
+      title = 'Tax Deductions & BIR Withholding';
+      headers = ['Program', 'Supplier', 'Tax Type', 'Gross Invoice', 'Withholding Tax', 'Net Payable'];
+      rows = filteredExpenses.map(expense => [
+        expense.programTitle,
+        expense.supplier,
+        expense.taxType,
+        money(expense.amount),
+        money(expense.withholdingTax),
+        money(expense.netAmount ?? expense.amount),
+      ]);
+    } else if (treasurerReportTab === 'naga_federation') {
+      title = 'Naga City Barangay Budget Comparison';
+      headers = ['Barangay', 'SK Chairperson', 'Allocated Fund', 'Actual Expenditures', 'Utilization'];
+      rows = nagaBarangaysBudget.map(barangay => [
+        barangay.barangay,
+        barangay.chairperson,
+        money(barangay.allocated),
+        money(barangay.actual),
+        `${barangay.allocated > 0 ? (barangay.actual / barangay.allocated * 100).toFixed(1) : '0.0'}%`,
+      ]);
+    } else {
+      title = 'Asset & Inventory Valuation';
+      headers = ['Property Item', 'Category', 'Quantity', 'Condition', 'Unit Cost', 'Total Valuation', 'Location'];
+      rows = inventory.map(item => [
+        item.item,
+        item.category,
+        String(item.quantity),
+        item.condition,
+        money(item.cost),
+        money(item.cost * item.quantity),
+        item.location,
+      ]);
+    }
+
+    const table = `<table><thead><tr>${headers.map(header => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead><tbody>${
+      rows.length
+        ? rows.map(row => `<tr>${row.map(cell => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('')
+        : `<tr><td colspan="${headers.length}">No records found.</td></tr>`
+    }</tbody></table>`;
+    const summary = treasurerReportTab === 'statement'
+      ? `<p><strong>Total Annual Budget:</strong> ${escapeHtml(money(totalBarangayBudget))}</p><p><strong>Total Disbursed:</strong> ${escapeHtml(money(totalSpentExpenses))}</p><p><strong>Remaining Cash:</strong> ${escapeHtml(money(remainingCash))}</p>`
+      : '';
+    void printOfficialReport(title, `${summary}${table}`);
+  };
+
   const handleLogExpenseSubmit = async () => {
+    if (!expenseForm.category) return setExpenseSaveError('Expense category is required.');
+    if (!expenseForm.budgetId) return setExpenseSaveError('Program budget allocation is required.');
     if (!expenseForm.supplier.trim()) return setExpenseSaveError('Supplier name is required.');
-    if (!expenseForm.budgetId) return setExpenseSaveError('Select a current-year barangay budget before logging this expense.');
+    if (!expenseForm.taxType) return setExpenseSaveError('Tax classification is required.');
+    if (!Number(String(expenseForm.amount).replace(/,/g, ''))) return setExpenseSaveError('Gross invoice amount must be greater than zero.');
     const selectedP = programs.find(p => p.id === expenseForm.programId);
+    const expenseDate = new Date().toISOString().split('T')[0];
     setIsSavingExpense(true);
     setExpenseSaveError('');
     const newExp: ExpenseRecord = {
@@ -972,7 +1275,7 @@ export default function OfficialPages({
       programId: expenseForm.programId,
       budgetId: expenseForm.budgetId,
       programTitle: selectedP?.title || 'General Fund',
-      amount: expenseForm.amount,
+      amount: Number(String(expenseForm.amount).replace(/,/g, '')) || 0,
       supplier: expenseForm.supplier,
       taxType: expenseForm.taxType,
       vatAmount: calcVat,
@@ -980,11 +1283,32 @@ export default function OfficialPages({
       netAmount: calcNet,
       category: expenseForm.category,
       status: 'Approved',
-      dateLogged: new Date().toISOString().split('T')[0]
+      date: expenseDate,
+      dateLogged: expenseDate
     };
     try {
-      await onAddExpense(newExp);
+      const payload = {
+        budget_id: expenseForm.budgetId,
+        program_id: expenseForm.programId || undefined,
+        title: expenseForm.supplier.trim(),
+        description: editingExpenseId
+          ? (expenses.find(expense => expense.id === editingExpenseId)?.description || undefined)
+          : undefined,
+        gross_amount: newExp.amount,
+        tax_type: expenseForm.taxType === 'Non-VAT' ? 'NON_VAT' as const : expenseForm.taxType === 'Exempt' ? 'EXEMPT' as const : 'VAT' as const,
+      };
+      if (editingExpenseId) {
+        const result = await kabisigApi.updateExpense(editingExpenseId, payload);
+        if (!result.success) throw new Error(result.message || 'Expense could not be updated.');
+        await onRefreshExpenses();
+        await refreshBudgetOptions();
+        setBudgetMutationNotice('Expense updated successfully.');
+      } else {
+        await onAddExpense(newExp);
+        setBudgetMutationNotice('Expense recorded successfully.');
+      }
       setShowExpenseModal(false);
+      setEditingExpenseId(null);
     } catch (error: any) {
       setExpenseSaveError(error.message || 'Expense could not be saved. Please try again.');
     } finally {
@@ -992,9 +1316,111 @@ export default function OfficialPages({
     }
   };
 
+  const handleUpdateBudget = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editingBudget) return;
+    const allocatedAmount = Number(budgetAmountInput.replace(/,/g, ''));
+    if (!Number.isFinite(allocatedAmount) || allocatedAmount <= 0) {
+      setBudgetMutationError('Allocated amount must be greater than zero.');
+      return;
+    }
+
+    setIsSavingBudget(true);
+    setBudgetMutationError('');
+    try {
+      const result = await kabisigApi.updateBudget(editingBudget.id, { allocated_amount: allocatedAmount });
+      if (!result.success) throw new Error(result.message || 'Budget allocation could not be updated.');
+      await refreshBudgetOptions();
+      setEditingBudget(null);
+      setBudgetMutationNotice('Budget allocation updated successfully.');
+    } catch (error: any) {
+      setBudgetMutationError(error.message || 'Budget allocation could not be updated.');
+    } finally {
+      setIsSavingBudget(false);
+    }
+  };
+
+  const handleDeleteBudget = async (budgetId: string) => {
+    setBudgetMutationError('');
+    setBudgetMutationNotice('');
+    try {
+      const result = await kabisigApi.deleteBudget(budgetId);
+      if (!result.success) throw new Error(result.message || 'Budget allocation could not be deleted.');
+      await refreshBudgetOptions();
+      setBudgetMutationNotice('Budget allocation deleted successfully.');
+    } catch (error: any) {
+      setBudgetMutationError(error.message || 'Budget allocation could not be deleted.');
+    }
+  };
+
+  const openExpenseEditor = (expense: ExpenseRecord) => {
+    const validCategories = ['Supplies', 'Honorarium', 'Food & Catering', 'Others'];
+    const rawTaxType = String(expense.taxType || '').toUpperCase().replace(/-/g, '_');
+    setEditingExpenseId(expense.id);
+    setExpenseForm({
+      programId: expense.programId || '',
+      budgetId: expense.budgetId || '',
+      amount: Number(expense.amount || 0).toLocaleString('en-US'),
+      supplier: expense.supplier || expense.payee || expense.title || '',
+      taxType: rawTaxType === 'NON_VAT' ? 'Non-VAT' : rawTaxType === 'EXEMPT' ? 'Exempt' : 'VAT',
+      category: validCategories.includes(expense.category) ? expense.category : 'Others',
+    });
+    setExpenseSaveError('');
+    setShowExpenseModal(true);
+  };
+
+  const handleDeleteExpense = async (expenseId: string) => {
+    setBudgetMutationError('');
+    setBudgetMutationNotice('');
+    try {
+      const result = await kabisigApi.deleteExpense(expenseId);
+      if (!result.success) throw new Error(result.message || 'Expense could not be deleted.');
+      await onRefreshExpenses();
+      await refreshBudgetOptions();
+      setBudgetMutationNotice('Expense deleted successfully.');
+    } catch (error: any) {
+      setBudgetMutationError(error.message || 'Expense could not be deleted.');
+    }
+  };
+
+  const executeConfirmedDelete = async () => {
+    if (!confirmDelete) return;
+    const pendingDelete = confirmDelete;
+    setConfirmDelete(null);
+    if (pendingDelete.type === 'budget') {
+      await handleDeleteBudget(pendingDelete.id);
+    } else if (pendingDelete.type === 'expense') {
+      await handleDeleteExpense(pendingDelete.id);
+    } else {
+      const program = programs.find(item => item.id === pendingDelete.id);
+      if (!program) {
+        setPopupMsg({ title: 'Delete Failed', text: 'The program could not be found. Please refresh and try again.', type: 'error' });
+        return;
+      }
+      await executeDeleteProgram(program);
+    }
+  };
+
+  const confirmDeleteNotice: PopupMessage | null = confirmDelete
+    ? {
+        title: confirmDelete.type === 'budget'
+          ? 'Delete Budget Allocation?'
+          : confirmDelete.type === 'expense' ? 'Delete Expense?' : 'Delete Program?',
+        message: confirmDelete.type === 'budget'
+          ? `Delete the ${budgetOptions.find(budget => budget.id === confirmDelete.id)?.category || 'selected'} allocation? Allocations with expenses cannot be deleted.`
+          : confirmDelete.type === 'expense'
+            ? `Delete the expense for ${expenses.find(expense => expense.id === confirmDelete.id)?.supplier || expenses.find(expense => expense.id === confirmDelete.id)?.programTitle || 'selected record'}?`
+            : `Delete "${programs.find(program => program.id === confirmDelete.id)?.title || 'selected program'}"? This action cannot be undone.`,
+        type: 'info',
+        confirmLabel: 'OK',
+        cancelLabel: 'Cancel',
+        onConfirm: () => { void executeConfirmedDelete(); },
+      }
+    : null;
+
   const handleDraftResolutionSubmit = async () => {
     if (!resForm.title.trim() || !resForm.number.trim() || !resForm.endDate) {
-      return alert('Please provide a resolution title, number, and voting close date.');
+      return setPopupMsg({ title: 'Poll Details Required', text: 'Please provide a resolution title, number, and voting close date.', type: 'error' });
     }
 
     setIsSavingResolution(true);
@@ -1013,16 +1439,19 @@ export default function OfficialPages({
       setLocalResolutions(prev => [result.data!, ...prev]);
       onAddResolution(result.data);
       setResForm({ title: '', number: '', endDate: '' });
+      setPopupMsg({ title: 'Poll Created', text: 'The resolution has been published to the public feed.', type: 'success' });
       setShowResModal(false);
     } catch (error: any) {
-      alert(error.message || 'Resolution poll could not be saved.');
+      setPopupMsg({ title: 'Poll Creation Failed', text: error.message || 'Resolution poll could not be saved.', type: 'error' });
     } finally {
       setIsSavingResolution(false);
     }
   };
 
   const handleRegisterInventorySubmit = async () => {
-    if (!invForm.item) return alert('Item name is required.');
+    if (!invForm.item) return setPopupMsg({ title: 'Item Required', text: 'Item name is required.', type: 'error' });
+    if (!invForm.category) return setPopupMsg({ title: 'Category Required', text: 'Asset category is required.', type: 'error' });
+    if (!invForm.condition) return setPopupMsg({ title: 'Condition Required', text: 'Asset condition is required.', type: 'error' });
     try {
       const res = await kabisigApi.addInventoryItem({
         item_name: invForm.item,
@@ -1039,7 +1468,7 @@ export default function OfficialPages({
       setInventory(prev => [{ id: row.id, item: row.item_name, category: row.category, condition: row.condition, quantity: Number(row.quantity) || 0, cost: Number(row.unit_cost) || 0, location: row.location || "" }, ...prev]);
       setShowInvModal(false);
     } catch (error: any) {
-      alert(error.message || 'Could not save asset.');
+      setPopupMsg({ title: 'Save Failed', text: error.message || 'Could not save asset.', type: 'error' });
     }
   };
 
@@ -1053,7 +1482,7 @@ export default function OfficialPages({
   const handleSaveFeedbackResponse = async () => {
     if (!selectedFeedback) return;
     if (!feedbackResponseText.trim()) {
-      alert('Please provide an official response for the youth constituent.');
+      setPopupMsg({ title: 'Response Required', text: 'Please provide an official response for the youth constituent.', type: 'error' });
       return;
     }
     const apiStatus = feedbackStatusChoice === 'Reviewed' ? 'under_review' : feedbackStatusChoice === 'Dismissed' ? 'dismissed' : 'resolved';
@@ -1063,7 +1492,7 @@ export default function OfficialPages({
       apiStatus
     );
     if (!result.success) {
-      alert(result.message || 'Official response could not be saved.');
+      setPopupMsg({ title: 'Save Failed', text: result.message || 'Official response could not be saved.', type: 'error' });
       return;
     }
     setLocalFeedback(prev => prev.map(f => {
@@ -1078,14 +1507,17 @@ export default function OfficialPages({
     }));
     setShowFeedbackModal(false);
     setSelectedFeedback(null);
-    alert('Official response saved and posted to Boses ng Kabataan constituent desk!');
+    setPopupMsg({ title: 'Response Posted', text: 'Official response saved and posted to Boses ng Kabataan constituent desk!', type: 'success' });
   };
 
   const handleActualScan = async (scannedText: string) => {
     const activeProgId = selectedProgIdRef.current;
     if (isRecordingAttendance) return;
     const _activeProg = programs.find(p => p.id === activeProgId);
-    if (_activeProg?.endDate && new Date(_activeProg.endDate) < new Date()) {
+    const activeProgramEnded = String(_activeProg?.status || '').toLowerCase() === 'completed'
+      || String(_activeProg?.status || '').toLowerCase() === 'cancelled'
+      || hasProgramEnded((_activeProg as any)?.endDate || (_activeProg as any)?.end_date);
+    if (activeProgramEnded) {
       setLastScanDetail({
         rawCode: scannedText,
         status: 'WRONG_PROGRAM',
@@ -1352,6 +1784,10 @@ export default function OfficialPages({
   };
 
   const handleManualCheckIn = async (r: Registration) => {
+    if (isProgramEnded) {
+      setQrMessage('Cannot check in: this program has already ended.');
+      return;
+    }
     const resident = youthProfiles.find(profile => profile.id === r.participantId);
     if (!resident?.userId) {
       setQrMessage(`Cannot check in ${r.participantName}: authenticated youth ID is unavailable.`);
@@ -1367,24 +1803,24 @@ export default function OfficialPages({
   };
 
   const confirmRejectionSubmit = () => {
-    if (!rejectionTargetId || !rejectReason) return alert('Rejection reason is required.');
+    if (!rejectionTargetId || !rejectReason) return setPopupMsg({ title: 'Reason Required', text: 'Rejection reason is required.', type: 'error' });
     onRejectYouth(rejectionTargetId, rejectReason);
     setRejectionTargetId(null);
   };
 
   const onApproveYouth = (id: string) => {
     const candidate = localYouthProfiles.find(y => y.id === id);
-    alert(`KK Constituent candidate ${candidate?.name || id} reviewed and verified by SK Secretary. Profile record updated and queued for final registration approval by the Barangay Administrator (SK Chairperson) per DILG IRR RA 10742, Sec 14.`);
+    setPopupMsg({ title: 'Candidate Reviewed', text: `KK Constituent candidate ${candidate?.name || id} reviewed and verified by SK Secretary. Profile record updated and queued for final registration approval by the Barangay Administrator (SK Chairperson) per DILG IRR RA 10742, Sec 14.`, type: 'success' });
   };
 
   const onRejectYouth = (id: string, reason: string) => {
     const candidate = localYouthProfiles.find(y => y.id === id);
-    alert(`Verification observation logged for candidate ${candidate?.name || id}: "${reason}". Recommendation forwarded to Barangay Administrator (SK Chairperson) for final determination.`);
+    setPopupMsg({ title: 'Observation Logged', text: `Verification observation logged for candidate ${candidate?.name || id}: "${reason}". Recommendation forwarded to Barangay Administrator (SK Chairperson) for final determination.`, type: 'success' });
   };
 
   const handleInviteYouth = async (userId: string, youthName: string) => {
     if (!userId) {
-      alert('This youth has no linked user account and cannot be notified in-app.');
+      setPopupMsg({ title: 'Invitation Unavailable', text: 'This youth has no linked user account and cannot be notified in-app.', type: 'error' });
       return;
     }
     try {
@@ -1396,37 +1832,45 @@ export default function OfficialPages({
         link: '/programs',
       });
       if (!res.success) {
-        alert(res.message || 'Could not send invitation.');
+        setPopupMsg({ title: 'Invitation Failed', text: res.message || 'Could not send invitation.', type: 'error' });
         return;
       }
-      alert('Invitation sent to ' + youthName + '. They will see it in their notifications.');
+      setPopupMsg({ title: 'Invitation Sent', text: 'Invitation sent to ' + youthName + '. They will see it in their notifications.', type: 'success' });
     } catch (err) {
-      alert((err && err.message) ? err.message : 'Network error sending invitation.');
+      setPopupMsg({ title: 'Invitation Failed', text: (err && err.message) ? err.message : 'Network error sending invitation.', type: 'error' });
     }
   };
   const formatProgramTitle = (title: string) => {
     if (!currentTenant) return title;
-    return title.replace(/Balatas|Tabuco|Concepcion Grande|Dayangdang|Concepcion PequeÃƒÂ±a/g, currentTenant.name);
+    return title.replace(/Balatas|Tabuco|Concepcion Grande|Dayangdang|Concepcion Pequeña/g, currentTenant.name);
   };
 
   // Filtered lists
-  const filteredPrograms = programs.filter(p => {
-    // ---- Fiscal Year Isolation (bulletproof, fail-closed) ----
-    const _p: any = p as any;
-    const _dateStr = _p.startDate || _p.start_date || _p.created_at;
-    if (!_dateStr) {
-      console.warn('[FY-FILTER] Program has no date info, excluding:', _p.title);
-      return false;
-    }
-    const _progYear = new Date(_dateStr).getFullYear();
-    const _matches = _progYear === Number(treasurerBudgetYear);
-    console.log('[FY-FILTER]', _p.title, '| startDate:', _p.startDate, '| start_date:', _p.start_date, '| created_at:', _p.created_at, '| resolvedYear:', _progYear, '| targetYear:', treasurerBudgetYear, '| matches:', _matches);
-    if (!_matches) return false;
-    // ---- End Fiscal Year Isolation ----
-    const matchSearch = p.title.toLowerCase().includes(searchTerm.toLowerCase()) || p.location.toLowerCase().includes(searchTerm.toLowerCase());
+    const filteredPrograms = programs.filter(p => {
+    const matchSearch = (p.title || '').toLowerCase().includes(searchTerm.toLowerCase()) || (p.location || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchCat = filterCategory === 'All' ? true : p.category === filterCategory;
-    return matchSearch && matchCat;
+    const matchStatus = programStatusFilter === 'Active' ? (p.status?.toLowerCase() === 'upcoming' || p.status?.toLowerCase() === 'ongoing') : p.status?.toLowerCase() === 'completed';
+    return matchSearch && matchCat && matchStatus;
   });
+    const budgetTablePrograms = budgetOptions
+      .filter((budget: any) => !['heha', 'aaaa'].includes(String(budget.category || '').trim().toLowerCase()))
+      .map((budget: any) => {
+        const program = programs.find(item => item.id === (budget.program_id || budget.programId))
+          || programs.find(item => item.title.trim().toLowerCase() === String(budget.category || '').trim().toLowerCase());
+        return {
+          budget,
+          program,
+          id: program?.id || budget.program_id || budget.programId || budget.id,
+          title: program?.title || budget.category || 'Unassigned Program',
+          aipReference: program?.aipReference || '',
+          category: program?.category || budget.category || 'Unclassified',
+        };
+      })
+      .filter(({ budget, title }) =>
+        budget.category !== 'General Youth Development Fund'
+        && title !== 'General Youth Development Fund'
+        && !['heha', 'aaaa'].includes(title.trim().toLowerCase())
+      );
   // Year-scope registrations (for Kagawad engagement & participant counts)
   const filteredRegistrations = (registrations || []).filter((r: any) => {
     const _dateStr = r.created_at || r.createdAt || r.registeredAt || r.registered_at;
@@ -1445,7 +1889,11 @@ export default function OfficialPages({
     if (_youthYear != null && _youthYear !== Number(treasurerBudgetYear)) return false;
     // ---- End Fiscal Year Isolation ----
     const matchSearch = y.name.toLowerCase().includes(searchTerm.toLowerCase()) || y.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchCat = filterCategory === 'All' ? true : y.zone === filterCategory || y.scholarStatus === filterCategory;
+    const matchCat = filterCategory === 'All'
+      ? true
+      : filterCategory === 'Student' || filterCategory === 'In School Youth' || filterCategory === 'In-School Youth'
+        ? /college|high school/i.test(y.educationalLevel || '')
+        : y.zone === filterCategory || y.scholarStatus === filterCategory;
     return matchSearch && matchCat;
   });
   const complianceIssues = getComplianceIssues(currentRole || 'SK Secretary', filteredYouth, filteredPrograms, localDocs, filteredExpenses);
@@ -1463,17 +1911,17 @@ export default function OfficialPages({
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <NotificationMenu userRole={currentUser?.official_role}
+            items={notifications}
             buttonClassName="text-white hover:bg-white/10"
               onNavigate={link => {
-                const roleStr = String(currentUser?.official_role || currentUser?.role || '').toLowerCase();
-                if (roleStr.includes('treasurer')) { setActiveMenu('budget'); return; }
-                if (roleStr.includes('secretary')) { setActiveMenu('documents'); return; }
-                if (roleStr.includes('kagawad')) { setActiveMenu('programs'); return; }
-                
-                if (link.includes('calendar') || link.includes('program')) setActiveMenu('programs');
-                else if (link.includes('doc') || link.includes('resolution')) setActiveMenu('documents');
-                else if (link.includes('budget')) setActiveMenu('budget');
-                else if (link.includes('regist')) setActiveMenu('youth');
+                const target = link.toLowerCase();
+                if (target.includes('feedback') || target.includes('resolution')) {
+                  setActiveMenu('feedback');
+                  if (target.includes('resolution')) setFeedbackSubTab('resolutions');
+                } else if (target.includes('document')) setActiveMenu('documents');
+                else if (target.includes('budget') || target.includes('expense')) setActiveMenu('budget');
+                else if (target.includes('program') || target.includes('calendar') || target.includes('attendance')) setActiveMenu('programs');
+                else if (target.includes('youth') || target.includes('registration') || target.includes('approval')) setActiveMenu('youth');
                 else setActiveMenu('dashboard');
               }}
           />
@@ -1620,7 +2068,17 @@ export default function OfficialPages({
           </div>
 
           <div className="flex items-center gap-5">
-            <NotificationMenu userRole={currentUser?.official_role} onNavigate={() => setActiveMenu('programs')} />
+            <NotificationMenu userRole={currentUser?.official_role} items={notifications} onNavigate={link => {
+              const target = link.toLowerCase();
+              if (target.includes('feedback') || target.includes('resolution')) {
+                setActiveMenu('feedback');
+                if (target.includes('resolution')) setFeedbackSubTab('resolutions');
+              } else if (target.includes('document')) setActiveMenu('documents');
+              else if (target.includes('budget') || target.includes('expense')) setActiveMenu('budget');
+              else if (target.includes('program') || target.includes('calendar') || target.includes('attendance')) setActiveMenu('programs');
+              else if (target.includes('youth') || target.includes('registration') || target.includes('approval')) setActiveMenu('youth');
+              else setActiveMenu('dashboard');
+            }} />
             <UserMenu avatarUrl={currentUser?.avatar_url} 
               userName={profileConfig[currentRole]?.name || 'User'}
               role={profileConfig[currentRole]?.title || 'Official'}
@@ -1637,6 +2095,70 @@ export default function OfficialPages({
           {activeMenu === 'profile' && (
             <ProfileSettings />
           )}
+          {activeMenu === 'announcements' && (
+            <section className="space-y-5 animate-in fade-in duration-200">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-2xl font-black text-[#091d64]">Announcements</h2>
+                  <p className="text-sm text-slate-500">Published advisories from the SK Council</p>
+                </div>
+                <button onClick={() => setActiveMenu('dashboard')} className="text-sm font-bold text-slate-600 hover:text-[#091d64]">
+                  ← Back to Dashboard
+                </button>
+              </div>
+              <div className="grid gap-4">
+                {announcements.filter(announcement => announcement.status === 'published').length === 0 ? (
+                  <div className="rounded-xl border border-slate-200 bg-white py-12 text-center text-slate-400">
+                    No published announcements yet.
+                  </div>
+                ) : announcements.filter(announcement => announcement.status === 'published').map(announcement => (
+                  <article key={announcement.id} className="rounded-xl border border-slate-200 bg-white p-5">
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <span className="rounded bg-amber-50 px-2 py-1 text-[10px] font-black uppercase text-amber-700">
+                        {announcement.category || 'NOTICE'}
+                      </span>
+                      <span className="text-xs text-slate-400">
+                        {announcement.datePosted ? new Date(announcement.datePosted).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : ''}
+                      </span>
+                    </div>
+                    <h3 className="mb-2 text-lg font-bold text-slate-800">{announcement.title}</h3>
+                    {(announcement.imageUrl || (announcement as any).image_url) && (
+                      <div className="my-4 flex justify-center">
+                        <img
+                          src={announcement.imageUrl || (announcement as any).image_url}
+                          alt={announcement.title}
+                          className="max-h-96 max-w-full cursor-pointer rounded-xl object-contain hover:opacity-90 transition-opacity"
+                          onClick={() => setLightboxImg(announcement.imageUrl || (announcement as any).image_url)}
+                        />
+                      </div>
+                    )}
+                    {(announcement.what || announcement.where || announcement.when) && (
+                      <div className="grid grid-cols-1 gap-3 text-left text-sm text-slate-700 sm:grid-cols-2">
+                        <p className="text-left"><span className="font-bold text-slate-500">What:</span> {announcement.what || '—'}</p>
+                        <p className="text-left"><span className="font-bold text-slate-500">Where:</span> {announcement.where || '—'}</p>
+                        <p className="text-left"><span className="font-bold text-slate-500">When:</span> {announcement.when || '—'}</p>
+                      </div>
+                    )}
+                    {announcement.content && (
+                      <p className="border-t border-slate-100 pt-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{announcement.content}</p>
+                    )}
+                    {announcement.hashtags && (
+                      <div className="flex flex-wrap gap-2 pt-2">
+                        {String(announcement.hashtags).split(/[\s,]+/).filter(Boolean).map((tag, index) => (
+                          <span key={`${announcement.id}-tag-${index}`} className="text-xs font-bold text-blue-600">
+                            {tag.startsWith('#') ? tag : `#${tag}`}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <p className="border-t border-slate-100 pt-4 text-xs text-slate-400">
+                      Posted by {announcement.author || 'SK Official'}{announcement.datePosted ? ` on ${new Date(announcement.datePosted).toLocaleString()}` : ''}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
           {activeMenu === 'dashboard' && (
             <div className="space-y-8 animate-in fade-in duration-200">
               {programNotice && (
@@ -1650,9 +2172,11 @@ export default function OfficialPages({
                     <Megaphone className="w-4 h-4 text-[#091d64]" />
                     <h4 className="text-sm font-bold text-slate-800 uppercase tracking-tight">Latest SK Announcements</h4>
                   </div>
-                  <span className="text-[10px] text-slate-400 font-semibold">{announcements.filter(a => a.status === 'published').length} total</span>
+                  <button onClick={() => setActiveMenu('announcements')} className="text-xs font-bold text-[#091d64] hover:underline">
+                    View All →
+                  </button>
                 </div>
-                <div className="space-y-3">
+                <div className="space-y-3 max-h-48 overflow-y-auto">
                   {announcements.filter(a => a.status === 'published').slice(0, 2).map(a => (
                     <div key={a.id} className="rounded-lg border border-slate-100 p-2.5 hover:bg-slate-50 transition-colors">
                       <div className="flex items-center justify-between gap-2 mb-1.5">
@@ -1670,12 +2194,13 @@ export default function OfficialPages({
               </section>
               
               <div className="flex items-center gap-3 mb-4">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Fiscal Year</label>
-                <select value={treasurerBudgetYear} onChange={e => setTreasurerBudgetYear(e.target.value)} className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700">
-                    {availableYears.map((yr) => (
-                      <option key={yr} value={yr}>{yr}</option>
-                    ))}
-                  </select>
+                <div className="flex items-center gap-2">
+  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Fiscal Year</span>
+  <span className="px-3 py-1.5 bg-[#091d64] text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-1.5">
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+    FY {currentTenant?.active_fiscal_year || '2026'}
+  </span>
+</div>
               </div>
               {/* 4 Metric Cards */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
@@ -1792,7 +2317,11 @@ export default function OfficialPages({
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">DILG Compliance</span>
                           <span className="hidden sm:inline text-[9px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded">See Reports</span>
                         </div>
-                        <h3 className="text-lg sm:text-2xl font-black text-emerald-600 mt-0.5">—</h3>
+                        <h3 className="text-lg sm:text-2xl font-black text-emerald-600 mt-0.5">
+                          {complianceStats.total > 0
+                            ? `${Math.round((Number(complianceStats.completed_count || 0) / Number(complianceStats.total)) * 100)}%`
+                            : Number(complianceStats.overdue_count || 0) === 0 ? '100%' : '0%'}
+                        </h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">RA 10742 & CBYDP Standard</p>
                       </div>
                     </div>
@@ -1924,7 +2453,7 @@ export default function OfficialPages({
                   <div className="bg-gradient-to-r from-[#091d64] via-[#102a83] to-[#1e3a8a] rounded-2xl p-6 text-white shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                     <div className="space-y-1.5 max-w-lg">
                       <div className="flex items-center gap-2">
-                        <span className="px-2.5 py-0.5 bg-amber-400 text-slate-900 font-extrabold text-[10px] rounded uppercase tracking-wider">
+                        <span className="px-2.5 py-0.5 bg-amber-400 text-slate-900 font-extrabold text-[10px] rounded uppercase tracking-wider whitespace-nowrap">
                           Council Secretariat Console
                         </span>
                         <span className="text-xs text-blue-200">Barangay {currentTenant?.name || 'Barangay'} • 2023–2026 Term</span>
@@ -1941,16 +2470,16 @@ export default function OfficialPages({
                           setDocForm({
                             title: '',
                             description: '',
-                            category: 'Resolutions',
+                            category: '',
                             fileName: '',
                             resolutionNumber: `Res. No. ${new Date().getFullYear()}-${String(localResolutions.length + 1).padStart(3, '0')}`,
-                            designatedApprover: currentTenant?.chairperson || ''
+                            designatedApprover: ''
                           });
                           setShowDocModal(true);
                         }}
                         className="px-3.5 py-2 bg-white text-[#091d64] hover:bg-blue-50 font-bold text-xs rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
                       >
-                        <Plus className="w-4 h-4 text-[#091d64]" /> Draft Resolution
+                        <Plus className="w-4 h-4 text-[#091d64]" /> Upload a Document
                       </button>
                       <button 
                         onClick={() => setActiveMenu('records')}
@@ -1992,13 +2521,13 @@ export default function OfficialPages({
                         {/* Interactive Donut with Center Data Callout */}
                         <div className="relative h-60 w-full flex items-center justify-center">
                           <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
+                            <PieChart margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
                               <Pie 
                                 data={[
-                                  { name: 'Council Resolutions', value: localDocs.filter(d=>d.category==='Resolutions').length, color: '#091d64' },
-                                  { name: 'Session Minutes', value: localDocs.filter(d=>d.category==='Minutes').length, color: '#2563eb' },
-                                  { name: 'Accomplishment Reports', value: localDocs.filter(d=>d.category==='Accomplishment' || d.category==='Reports').length, color: '#10b981' },
-                                  { name: 'Disbursement Vouchers', value: localDocs.filter(d=>d.category==='Vouchers' || d.category==='Liquidation').length, color: '#f59e0b' }
+                                  { name: 'Resolutions & Ordinances', value: localDocs.filter(d => getNormalizedDocumentType(d) === 'Resolutions').length, color: '#091d64' },
+                                  { name: 'Meeting Minutes', value: localDocs.filter(d => getNormalizedDocumentType(d) === 'Minutes').length, color: '#2563eb' },
+                                  { name: 'Financial & Accomplishment Reports', value: localDocs.filter(d => getNormalizedDocumentType(d) === 'Reports').length, color: '#10b981' },
+                                  { name: 'Vouchers & Transmittals', value: localDocs.filter(d => getNormalizedDocumentType(d) === 'Vouchers').length, color: '#f59e0b' }
                                 ]}
                                 dataKey="value"
                                 cx="50%"
@@ -2021,25 +2550,25 @@ export default function OfficialPages({
                             </PieChart>
                           </ResponsiveContainer>
                           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                            <span className="text-2xl font-black text-slate-800">{localDocs.length}</span>
-                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Archived</span>
+                            <span className="text-2xl font-black">{localDocs.length}</span>
+                            <span className="text-xs text-slate-500">ARCHIVED</span>
                           </div>
                         </div>
 
                         {/* Detailed Category Data Cards */}
                         <div className="space-y-2.5">
                           {(() => {
-                            const resCount = localDocs.filter(d=>d.category==='Resolutions').length;
-                            const minCount = localDocs.filter(d=>d.category==='Minutes').length;
-                            const repCount = localDocs.filter(d=>d.category==='Accomplishment' || d.category==='Reports').length;
-                            const vouCount = localDocs.filter(d=>d.category==='Vouchers' || d.category==='Liquidation').length;
+                            const resCount = localDocs.filter(d => getNormalizedDocumentType(d) === 'Resolutions').length;
+                            const minCount = localDocs.filter(d => getNormalizedDocumentType(d) === 'Minutes').length;
+                            const repCount = localDocs.filter(d => getNormalizedDocumentType(d) === 'Reports').length;
+                            const vouCount = localDocs.filter(d => getNormalizedDocumentType(d) === 'Vouchers').length;
                             const total = localDocs.length || 1;
 
                             return [
-                              { label: 'Council Resolutions & Ordinances', count: resCount, color: 'bg-[#091d64]', textColor: 'text-[#091d64]', pct: ((resCount/total)*100).toFixed(0) },
-                              { label: 'Regular & Special Session Minutes', count: minCount, color: 'bg-blue-600', textColor: 'text-blue-600', pct: ((minCount/total)*100).toFixed(0) },
-                              { label: 'Quarterly Accomplishment Dossiers', count: repCount, color: 'bg-emerald-500', textColor: 'text-emerald-700', pct: ((repCount/total)*100).toFixed(0) },
-                              { label: 'Vouchers & Procurement Transmittals', count: vouCount, color: 'bg-amber-500', textColor: 'text-amber-700', pct: ((vouCount/total)*100).toFixed(0) }
+                              { label: 'Resolutions & Ordinances', count: resCount, color: 'bg-[#091d64]', textColor: 'text-[#091d64]', pct: ((resCount/total)*100).toFixed(0) },
+                              { label: 'Meeting Minutes', count: minCount, color: 'bg-blue-600', textColor: 'text-blue-600', pct: ((minCount/total)*100).toFixed(0) },
+                              { label: 'Financial Reports', count: repCount, color: 'bg-emerald-500', textColor: 'text-emerald-700', pct: ((repCount/total)*100).toFixed(0) },
+                              { label: 'Vouchers & Transmittals', count: vouCount, color: 'bg-amber-500', textColor: 'text-amber-700', pct: ((vouCount/total)*100).toFixed(0) }
                             ].map((item, idx) => (
                               <div key={idx} className="p-2.5 rounded-lg border border-slate-100 bg-slate-50/60 flex items-center justify-between">
                                 <div className="flex items-center gap-2 min-w-0">
@@ -2069,23 +2598,24 @@ export default function OfficialPages({
                             View Repository <Eye className="w-3 h-3" />
                           </button>
                         </div>
-                        <div className="overflow-x-auto border border-slate-100 rounded-lg">
-                          <table className="w-full text-left text-xs">
+                        <div className="border border-slate-100 rounded-lg">
+                          <div className="w-full overflow-x-auto block">
+                          <table className="w-full text-left text-xs min-w-[600px]">
                             <thead className="bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
                               <tr>
-                                <th className="px-3 py-2">Res #</th>
-                                <th className="px-3 py-2">Document Title</th>
-                                <th className="px-3 py-2">Category</th>
-                                <th className="px-3 py-2 text-center">Status</th>
+                                <th className="px-3 py-2 whitespace-nowrap">Res #</th>
+                                <th className="px-3 py-2 whitespace-nowrap">Document Title</th>
+                                <th className="px-3 py-2 whitespace-nowrap">Category</th>
+                                <th className="px-3 py-2 text-center whitespace-nowrap">Status</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-50">
                               {localDocs.slice(0, 3).map((d) => (
                                 <tr key={d.id} className="hover:bg-slate-50/80">
-                                  <td className="px-3 py-2 font-mono font-bold text-[#091d64]">{d.resolutionNumber || '—'}</td>
-                                  <td className="px-3 py-2 text-slate-700 font-semibold truncate max-w-xs">{d.title}</td>
-                                  <td className="px-3 py-2 text-slate-500">{d.category}</td>
-                                  <td className="px-3 py-2 text-center">
+                                  <td className="px-3 py-2 font-mono font-bold text-[#091d64] whitespace-nowrap">{d.resolutionNumber || '—'}</td>
+                                  <td className="px-3 py-2 text-slate-700 font-semibold truncate max-w-xs whitespace-nowrap">{d.title}</td>
+                                  <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{d.category}</td>
+                                  <td className="px-3 py-2 text-center whitespace-nowrap">
                                     <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${d.status === 'Approved' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
                                       {d.status}
                                     </span>
@@ -2094,6 +2624,7 @@ export default function OfficialPages({
                               ))}
                             </tbody>
                           </table>
+                        </div>
                         </div>
                       </div>
                     </div>
@@ -2141,15 +2672,15 @@ export default function OfficialPages({
 
                           <div>
                             <div className="flex justify-between text-xs font-semibold mb-1">
-                              <span className="text-slate-600">Drafting / Committee Review</span>
-                              <span className={`font-mono font-bold ${localDocs.filter(d=>d.status==='Draft').length > 0 ? 'text-emerald-700' : 'text-slate-400'}`}>
-                                {localDocs.filter(d=>d.status==='Draft').length} Drafts
+                              <span className="text-slate-600">Rejected</span>
+                              <span className={`font-mono font-bold ${localDocs.filter(d=>d.status==='Rejected').length > 0 ? 'text-rose-700' : 'text-slate-400'}`}>
+                                {localDocs.filter(d=>d.status==='Rejected').length} Rejected
                               </span>
                             </div>
                             <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
                               <div 
-                                className={`h-full rounded-full transition-all duration-300 ${localDocs.filter(d=>d.status==='Draft').length > 0 ? 'bg-emerald-500' : 'bg-slate-300'}`} 
-                                style={{ width: `${localDocs.length > 0 ? (localDocs.filter(d=>d.status==='Draft').length / localDocs.length) * 100 : 0}%` }}
+                                className={`h-full rounded-full transition-all duration-300 ${localDocs.filter(d=>d.status==='Rejected').length > 0 ? 'bg-rose-500' : 'bg-slate-300'}`}
+                                style={{ width: `${localDocs.length > 0 ? (localDocs.filter(d=>d.status==='Rejected').length / localDocs.length) * 100 : 0}%` }}
                               />
                             </div>
                           </div>
@@ -2177,7 +2708,7 @@ export default function OfficialPages({
                           </span>
                         </div>
 
-                        <div className="space-y-2 text-xs">
+                        <div className="max-h-64 overflow-y-auto pr-2 space-y-3 text-xs">
                           {complianceIssues.length === 0 ? (
                             <div className="p-2 rounded-lg bg-emerald-50/50 border border-emerald-100 flex items-start gap-2">
                               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 mt-0.5 flex-shrink-0" />
@@ -2278,11 +2809,11 @@ export default function OfficialPages({
                   {/* Quick Action Program Officer Command Hub */}
                   <div className="bg-gradient-to-r from-[#091d64] via-[#102a83] to-[#1e3a8a] rounded-2xl p-6 text-white shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                     <div className="space-y-1.5 max-w-lg">
-                      <div className="flex items-center gap-2">
-                        <span className="px-2.5 py-0.5 bg-amber-400 text-slate-900 font-extrabold text-[10px] rounded uppercase tracking-wider">
-                          Program Operations & Youth Engagement Console
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <span className="px-2.5 py-0.5 bg-amber-400 text-slate-900 font-extrabold text-[10px] rounded uppercase tracking-wider whitespace-nowrap">
+                          <span className="whitespace-nowrap inline-block">Program Operations & Youth Engagement Console</span>
                         </span>
-                        <span className="text-xs text-blue-200">Barangay {currentTenant?.name || 'Barangay'} • AYDP Aligned</span>
+                        <span className="whitespace-nowrap inline-block text-right text-xs text-blue-200">Barangay {currentTenant?.name || 'Barangay'} • AYDP Aligned</span>
                       </div>
                       <h3 className="text-xl font-bold font-sans tracking-tight">CBYDP Youth Initiatives, Attendance & Feedback Hub</h3>
                       <p className="text-xs text-blue-100 leading-relaxed">
@@ -2293,7 +2824,9 @@ export default function OfficialPages({
                     <div className="flex flex-wrap gap-2.5 lg:flex-nowrap shrink-0">
                       <button 
                         onClick={() => {
-                          setProgForm({ title: '', description: '', startDate: '', endDate: '', location: '', maxParticipants: 0, budgetAllocation: 0, aipReference: '', category: 'Sports Development', status: 'Published' });
+                          setEditingProgramId(null);
+                          setPubmatFile(null);
+                          setProgForm({ title: '', description: '', startDate: '', endDate: '', location: '', maxParticipants: 0, budgetAllocation: 0, aipReference: '', category: '' as any, status: 'Published' });
                           setShowProgModal(true);
                         }}
                         className="px-3.5 py-2 bg-white text-[#091d64] hover:bg-blue-50 font-bold text-xs rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
@@ -2334,20 +2867,20 @@ export default function OfficialPages({
 
                       <div className="h-64 w-full min-w-0">
                         <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={programs.slice(0, 5).map(p => ({
+                          <BarChart data={programs.slice(0, 10).map(p => ({
                             name: p.title.length > 18 ? p.title.slice(0, 18) + '...' : p.title,
                             registered: p.registeredCount || filteredRegistrations.filter(r => r.programId === p.id).length,
                             capacity: p.maxParticipants || 0
-                          }))} margin={{ top: 10, right: 15, left: 10, bottom: 40 }}>
-                            <XAxis dataKey="name" stroke="#64748b" fontSize={9} tickLine={false} interval={0} angle={-15} textAnchor="end" />
-                            <YAxis stroke="#64748b" fontSize={9} tickLine={false} />
+                          }))} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                              <XAxis dataKey="name" stroke="#64748b" interval={0} angle={0} textAnchor="middle" height={60} tickFormatter={(value) => { const s = String(value || ''); return s.length > 12 ? `${s.substring(0, 12)}...` : s; }} tick={{ fontSize: 10, fill: '#475569' }} tickLine={false} />
+                            <YAxis stroke="#64748b" tick={{ fontSize: 12, fill: '#64748b' }} tickLine={false} />
                             <Tooltip 
                               contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '12px' }}
                               itemStyle={{ color: '#ffffff' }}
                               labelStyle={{ color: '#cbd5e1' }}
                             />
                             <Legend verticalAlign="top" height={30} />
-                            <Bar dataKey="capacity" name="Target Capacity" fill="#cbd5e1" radius={[3, 3, 0, 0]} />
+                            <Bar dataKey="capacity" name="Target Capacity" fill="#93c5fd" radius={[3, 3, 0, 0]} />
                             <Bar dataKey="registered" name="Registered Youth" fill="#091d64" radius={[3, 3, 0, 0]} />
                           </BarChart>
                         </ResponsiveContainer>
@@ -2435,8 +2968,8 @@ export default function OfficialPages({
                             );
                           }
                           return (
-                            <div className="space-y-2 text-xs">
-                              {low.slice(0, 5).map((item, idx) => (
+                            <div className="max-h-64 overflow-y-auto space-y-3 pr-2 text-xs">
+                                {low.map((item, idx) => (
                                 <div key={idx} className="p-2.5 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-between">
                                   <div className="min-w-0">
                                     <p className="font-bold text-slate-800 truncate">{item.profile.name}</p>
@@ -2470,11 +3003,11 @@ export default function OfficialPages({
                   {/* Quick Action Treasurer Command Hub */}
                   <div className="bg-gradient-to-r from-emerald-900 via-[#091d64] to-[#0f172a] rounded-2xl p-6 text-white shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                     <div className="space-y-1.5 max-w-lg">
-                      <div className="flex items-center gap-2">
-                        <span className="px-2.5 py-0.5 bg-emerald-400 text-slate-900 font-extrabold text-[10px] rounded uppercase tracking-wider">
-                          Financial Management & COA Audit Console
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <span className="px-2.5 py-0.5 bg-emerald-400 text-slate-900 font-extrabold text-[10px] rounded uppercase tracking-wider whitespace-nowrap">
+                          <span className="whitespace-nowrap inline-block">Financial Management & COA Audit Console</span>
                         </span>
-                        <span className="text-xs text-emerald-200">Barangay {currentTenant?.name || 'Barangay'} • FY {new Date().getFullYear()} Budget</span>
+                        <span className="whitespace-nowrap inline-block text-right text-xs text-emerald-200">Barangay {currentTenant?.name || 'Barangay'} • FY {new Date().getFullYear()} Budget</span>
                       </div>
                       <h3 className="text-xl font-bold font-sans tracking-tight">Program Allocations, Tax Withholding & Public Ledger</h3>
                       <p className="text-xs text-emerald-100 leading-relaxed">
@@ -2485,7 +3018,8 @@ export default function OfficialPages({
                     <div className="flex flex-wrap gap-2.5 lg:flex-nowrap shrink-0">
                       <button 
                         onClick={() => {
-                          setExpenseForm({ programId: programs[0]?.id || '', budgetId: budgetOptions[0]?.id || '', amount: 0, supplier: '', taxType: 'VAT', category: 'Supplies' });
+                          setEditingExpenseId(null);
+                          setExpenseForm({ programId: programs[0]?.id || '', budgetId: budgetOptions[0]?.id || '', amount: '', supplier: '', taxType: '', category: 'Supplies' });
                           setShowExpenseModal(true);
                         }}
                         className="px-3.5 py-2 bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-extrabold text-xs rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
@@ -2541,9 +3075,9 @@ export default function OfficialPages({
                       ) : (
                         <div className="h-64 w-full min-w-0">
                           <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={treasurerProgramsBudget} margin={{ top: 10, right: 15, left: 10, bottom: 40 }}>
-                              <XAxis dataKey="program" stroke="#64748b" fontSize={9} tickLine={false} interval={0} angle={-15} textAnchor="end" />
-                              <YAxis stroke="#64748b" fontSize={9} tickLine={false} tickFormatter={(val) => `₱${(val/1000).toFixed(0)}k`} />
+                            <BarChart data={treasurerProgramsBudget} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                            <XAxis dataKey="program" stroke="#64748b" tick={{ fontSize: 10, fill: '#475569' }} tickLine={false} interval={0} angle={0} textAnchor="middle" height={60} tickFormatter={(value) => { const s = String(value || ''); return s.length > 12 ? `${s.substring(0, 12)}...` : s; }} />
+                              <YAxis stroke="#64748b" tick={{ fontSize: 12, fill: '#64748b' }} tickLine={false} tickFormatter={(val) => `₱${(val/1000).toFixed(0)}k`} />
                               <Tooltip 
                                 content={({ active, payload }) => {
                                   if (active && payload && payload.length) {
@@ -2580,15 +3114,16 @@ export default function OfficialPages({
                             Open Financial Ledger <ArrowRight className="w-3 h-3" />
                           </button>
                         </div>
-                        <div className="overflow-x-auto border border-slate-100 rounded-lg">
-                          <table className="w-full text-left text-xs">
+                        <div className="border border-slate-100 rounded-lg">
+                          <div className="w-full overflow-x-auto block">
+                          <table className="w-full text-left text-xs min-w-[600px]">
                             <thead className="bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
                               <tr>
-                                <th className="px-3 py-2">Voucher #</th>
-                                <th className="px-3 py-2">Payee / Purpose</th>
-                                <th className="px-3 py-2">Gross Amount</th>
-                                <th className="px-3 py-2">5% VAT / 1% EWT</th>
-                                <th className="px-3 py-2 text-center">Audit Status</th>
+                                <th className="px-3 py-2 whitespace-nowrap">Voucher #</th>
+                                <th className="px-3 py-2 whitespace-nowrap">Payee / Purpose</th>
+                                <th className="px-3 py-2 whitespace-nowrap">Gross Amount</th>
+                                <th className="px-3 py-2 whitespace-nowrap">5% VAT / 1% EWT</th>
+                                <th className="px-3 py-2 text-center whitespace-nowrap">Audit Status</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-50">
@@ -2597,13 +3132,13 @@ export default function OfficialPages({
                                 const vat = exp.isVat ? Math.round(gross * 0.12) : 0;
                                 return (
                                   <tr key={exp.id} className="hover:bg-slate-50/80">
-                                    <td className="px-3 py-2 font-mono font-bold text-[#091d64]">{exp.voucherNumber || 'DV-2026-001'}</td>
-                                    <td className="px-3 py-2 text-slate-700 font-semibold truncate max-w-xs">{exp.title || exp.description || 'N/A'}</td>
-                                    <td className="px-3 py-2 font-mono font-bold text-slate-800">₱{gross.toLocaleString()}</td>
-                                    <td className="px-3 py-2 font-mono text-xs text-amber-700">
+                                    <td className="px-3 py-2 font-mono font-bold text-[#091d64] whitespace-nowrap">{exp.voucherNumber || 'DV-2026-001'}</td>
+                                    <td className="px-3 py-2 text-slate-700 font-semibold truncate max-w-xs whitespace-nowrap">{(exp as any).payee || exp.supplier || exp.title || exp.description || 'N/A'}</td>
+                                    <td className="px-3 py-2 font-mono font-bold text-slate-800 whitespace-nowrap">₱{gross.toLocaleString()}</td>
+                                    <td className="px-3 py-2 font-mono text-xs text-amber-700 whitespace-nowrap">
                                       {exp.isVat ? `₱${vat.toLocaleString()} (5% VAT)` : 'Non-VAT Exempt'}
                                     </td>
-                                    <td className="px-3 py-2 text-center">
+                                    <td className="px-3 py-2 text-center whitespace-nowrap">
                                       <span className="px-2 py-0.5 rounded text-[9px] font-extrabold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
                                         COA Audited
                                       </span>
@@ -2613,6 +3148,7 @@ export default function OfficialPages({
                               })}
                             </tbody>
                           </table>
+                        </div>
                         </div>
                       </div>
                     </div>
@@ -2629,7 +3165,7 @@ export default function OfficialPages({
                           <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${complianceStats.on_time_percent !== null && complianceStats.on_time_percent >= 80 ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{complianceStats.on_time_percent !== null ? `${complianceStats.on_time_percent}% On-Time` : "No Data"}</span>
                         </div>
 
-                        <div className="space-y-2 text-xs">
+                        <div className="max-h-64 overflow-y-auto pr-2 space-y-2 text-xs">
                           <div className="p-2.5 rounded-lg bg-emerald-50/50 border border-emerald-100 flex items-start gap-2">
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 mt-0.5 flex-shrink-0" />
                             <div>
@@ -2698,9 +3234,9 @@ export default function OfficialPages({
 
                     <div className="h-64 w-full min-w-0">
                       <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={programs.slice(0, 5).map(p=>({ name: p.title.slice(0, 15)+'...', registered: p.registeredCount }))}>
-                          <XAxis dataKey="name" stroke="#94a3b8" fontSize={9} tickLine={false} />
-                          <YAxis stroke="#94a3b8" fontSize={9} tickLine={false} />
+                        <BarChart data={programs.slice(0, 10).map(p=>({ name: p.title.slice(0, 15)+'...', registered: p.registeredCount }))} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                          <XAxis dataKey="name" stroke="#64748b" tick={{ fontSize: 10, fill: '#475569' }} tickLine={false} interval={0} angle={0} textAnchor="middle" height={60} tickFormatter={(value) => { const s = String(value || ''); return s.length > 12 ? `${s.substring(0, 12)}...` : s; }} />
+                          <YAxis stroke="#64748b" tick={{ fontSize: 12, fill: '#64748b' }} tickLine={false} />
                           <Tooltip />
                           <Bar dataKey="registered" fill="#091d64" radius={[3, 3, 0, 0]} />
                         </BarChart>
@@ -2738,7 +3274,9 @@ export default function OfficialPages({
                 </div>
                 <button 
                   onClick={() => {
-                    setProgForm({ title: '', description: '', startDate: '', endDate: '', location: '', maxParticipants: 0, budgetAllocation: 0, aipReference: '', category: currentRole === 'SK Kagawad' ? 'Environmental Protection' : 'Education & Scholarship', status: 'Published' });
+                    setEditingProgramId(null);
+                    setPubmatFile(null);
+                    setProgForm({ title: '', description: '', startDate: '', endDate: '', location: '', maxParticipants: 0, budgetAllocation: 0, aipReference: '', category: '' as any, status: 'Published' });
                     setShowProgModal(true);
                   }}
                   className="px-4 py-2 bg-[#091d64] hover:bg-opacity-95 text-white font-bold rounded-lg transition-all text-xs flex items-center gap-1.5 cursor-pointer"
@@ -2771,7 +3309,26 @@ export default function OfficialPages({
                   <option value="Sports Development">Sports Development</option>
                   <option value="Health & Nutrition">Health & Nutrition</option>
                   <option value="Environmental Protection">Environmental Protection</option>
+                  <option value="Livelihood & Skills">Livelihood & Skills</option>
+                  <option value="Peace & Security">Peace & Security</option>
                 </select>
+
+                <div className="border border-slate-200 rounded-md flex overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setProgramStatusFilter('Active')}
+                    className={`px-3 py-2 text-xs font-semibold ${programStatusFilter === 'Active' ? 'bg-[#eff6ff] text-[#091d64]' : 'bg-white text-slate-600'}`}
+                  >
+                    Active
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProgramStatusFilter('Completed')}
+                    className={`px-3 py-2 text-xs font-semibold border-l border-slate-200 ${programStatusFilter === 'Completed' ? 'bg-[#eff6ff] text-[#091d64]' : 'bg-white text-slate-600'}`}
+                  >
+                    Completed
+                  </button>
+                </div>
 
                 <div className="border border-slate-200 rounded-md flex overflow-hidden">
                   <button onClick={() => setViewMode('grid')} className={`p-2 ${viewMode === 'grid' ? 'bg-[#eff6ff] text-[#091d64]' : 'bg-white text-slate-600'}`}><Grid className="w-4 h-4" /></button>
@@ -2786,10 +3343,20 @@ export default function OfficialPages({
                     <div key={p.id} className="bg-white border border-slate-100 rounded-xl overflow-hidden hover:shadow-xs transition-shadow flex flex-col justify-between h-full">
                       <div className="p-5 space-y-3">
                         <div className="flex justify-between items-center">
-                          <span className="text-[9px] bg-blue-50 text-[#091d64] font-bold px-2 py-0.5 rounded-full uppercase">{p.category}</span>
+                          <span className="text-[9px] bg-blue-50 text-[#091d64] font-bold px-2 py-0.5 rounded-full uppercase">{getStandardCategory(p.category).toUpperCase()}</span>
                           <span className="px-2 py-0.5 bg-green-50 text-green-700 rounded text-[9px] font-extrabold uppercase">{p.status}</span>
                         </div>
                         <h4 className="font-bold text-slate-800 text-sm">{formatProgramTitle(p.title)}</h4>
+                        {((p as any).image_url || p.imageUrl) && (
+                          <div className="w-full h-40 bg-slate-100 rounded-lg overflow-hidden">
+                            <img
+                              src={(p as any).image_url || p.imageUrl}
+                              alt={p.title}
+                              className="w-full h-full object-contain cursor-pointer transition-transform hover:scale-105"
+                              onClick={() => setLightboxImg((p as any).image_url || p.imageUrl || null)}
+                            />
+                          </div>
+                        )}
                         <p className="text-slate-500 text-xs line-clamp-3 leading-relaxed">{p.description}</p>
                       </div>
                       <div className="bg-slate-50 border-t border-slate-50 p-4 text-[11px] space-y-1 text-slate-500 font-medium">
@@ -2797,36 +3364,65 @@ export default function OfficialPages({
                         <div className="flex justify-between"><span>Date:</span><span className="text-slate-800 font-bold">{p.startDate} - {p.endDate}</span></div>
                         <div className="flex justify-between"><span>Allocated Budget:</span><span className="text-slate-800 font-bold">₱{p.budgetAllocation.toLocaleString()}</span></div>
                         <div className="flex justify-between"><span>Registered Youth:</span><span className="text-slate-800 font-bold">{p.registeredCount} / {p.maxParticipants} slots</span></div>
+                        {currentRole === 'SK Kagawad' && (
+                          <div className="flex justify-end gap-2 pt-2">
+                            <button
+                              type="button"
+                              onClick={() => handleEditProgram(p)}
+                              className="rounded border border-blue-200 bg-white px-3 py-1.5 font-bold text-[#091d64] hover:bg-blue-50"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteProgram(p)}
+                              className="rounded border border-rose-200 bg-white px-3 py-1.5 font-bold text-rose-700 hover:bg-rose-50"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="overflow-x-auto border border-slate-100 rounded-lg">
+                <div className="border border-slate-100 rounded-lg">
+                  <div className="w-full overflow-x-auto block">
                   <table className="w-full text-left text-sm text-slate-600">
                     <thead className="bg-slate-50 text-[10px] text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100">
                       <tr>
-                        <th className="px-6 py-3">AIP Ref</th>
-                        <th className="px-6 py-3">Program Title</th>
-                        <th className="px-6 py-3">Location</th>
-                        <th className="px-6 py-3">Date</th>
-                        <th className="px-6 py-3 text-right">Budget Limit</th>
-                        <th className="px-6 py-3 text-center">Participants</th>
+                        <th className="px-6 py-3 whitespace-nowrap">AIP Ref</th>
+                        <th className="px-6 py-3 whitespace-nowrap">Program Title</th>
+                        <th className="px-6 py-3 whitespace-nowrap">Location</th>
+                        <th className="px-6 py-3 whitespace-nowrap">Date</th>
+                        <th className="px-6 py-3 text-right whitespace-nowrap">Budget Limit</th>
+                        <th className="px-6 py-3 text-center whitespace-nowrap">Participants</th>
+                        {currentRole === 'SK Kagawad' && <th className="px-6 py-3 text-center whitespace-nowrap">Actions</th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50 text-xs font-medium">
                       {filteredPrograms.map(p => (
                         <tr key={p.id} className="hover:bg-slate-50/50">
-                          <td className="px-6 py-4 font-mono text-[11px] text-slate-400">{p.aipReference || 'N/A'}</td>
-                          <td className="px-6 py-4 font-bold text-slate-800">{formatProgramTitle(p.title)}</td>
-                          <td className="px-6 py-4 text-slate-500">{p.location}</td>
-                          <td className="px-6 py-4 font-mono text-slate-500">{p.startDate} - {p.endDate}</td>
-                          <td className="px-6 py-4 text-right font-mono text-slate-800">₱{p.budgetAllocation.toLocaleString()}</td>
-                          <td className="px-6 py-4 text-center font-mono text-slate-800">{p.registeredCount} / {p.maxParticipants}</td>
+                          <td className="px-6 py-4 font-mono text-[11px] text-slate-400 whitespace-nowrap">{p.aipReference || 'N/A'}</td>
+                          <td className="px-6 py-4 font-bold text-slate-800 whitespace-nowrap">{formatProgramTitle(p.title)}</td>
+                          <td className="px-6 py-4 text-slate-500 whitespace-nowrap">{p.location}</td>
+                          <td className="px-6 py-4 font-mono text-slate-500 whitespace-nowrap">{p.startDate} - {p.endDate}</td>
+                          <td className="px-6 py-4 text-right font-mono text-slate-800 whitespace-nowrap">₱{p.budgetAllocation.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-center font-mono text-slate-800 whitespace-nowrap">{p.registeredCount} / {p.maxParticipants}</td>
+                          {currentRole === 'SK Kagawad' && (
+                            <td className="px-6 py-4 text-center whitespace-nowrap">
+                              <div className="flex justify-center gap-2">
+                                <button type="button" onClick={() => handleEditProgram(p)} className="rounded border border-blue-200 px-2.5 py-1 font-bold text-[#091d64] hover:bg-blue-50">Edit</button>
+                                <button type="button" onClick={() => void handleDeleteProgram(p)} className="rounded border border-rose-200 px-2.5 py-1 font-bold text-rose-700 hover:bg-rose-50">Delete</button>
+                              </div>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
                   </table>
+                </div>
                 </div>
               )}
             </div>
@@ -2841,6 +3437,7 @@ export default function OfficialPages({
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="font-sans font-extrabold text-slate-900 text-lg">SK Youth Attendance & QR Validation Desk</h3>
+                    {isProgramEnded && <span className="text-xs font-bold text-rose-600 bg-rose-50 px-2 py-1 rounded">This program has ended. Attendance is locked.</span>}
                     <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-extrabold text-[10px] rounded-full uppercase tracking-wider"></span>
                   </div>
                   <p className="text-xs text-slate-500 mt-1">Live camera QR verification and real-time attendance tracking for SK Kagawads.</p>
@@ -2874,11 +3471,11 @@ export default function OfficialPages({
                     onChange={(e) => setSelectedProgId(e.target.value)}
                     className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                   >
-                    <option value="">-- Select a Program --</option>
+                    <option value="">Select a Program</option>
                     {filteredPrograms.filter((p: any) => {
                       const _st = String(p.status || '').toLowerCase();
                       const _isCompleted = _st === 'completed' || _st === 'cancelled';
-                      const _isPast = p.endDate && new Date(p.endDate) < new Date();
+                      const _isPast = hasProgramEnded(p.endDate || (p as any).end_date);
                       return !_isCompleted && !_isPast;
                     }).map((p: any) => (
                       <option key={p.id} value={p.id}>{p.title} ({p.category})</option>
@@ -2908,7 +3505,7 @@ export default function OfficialPages({
                   </span>
                 </div>
                 <div className="p-3.5 border border-slate-100 rounded-xl bg-[#091d64] shadow-md text-white">
-                  <span className="text-[9px] font-extrabold text-white/70 uppercase tracking-widest block">Yield Rate</span>
+                  <span title="Share of registered youth who checked in" className="text-[9px] font-extrabold text-white/70 uppercase tracking-widest block">Attendance Rate</span>
                   <span className="text-xl font-black text-amber-400 block mt-1">
                     {(() => {
                       const reg = selectedProgramRegistrations.length;
@@ -2926,6 +3523,7 @@ export default function OfficialPages({
                   <div className="lg:col-span-7 space-y-4">
                     <LiveCameraScanner 
                       selectedProgId={selectedProgId}
+                      disabled={isProgramEnded}
                       onScan={(decodedText) => handleActualScan(decodedText)}
                     />
 
@@ -3051,13 +3649,7 @@ export default function OfficialPages({
                                 </div>
                               </div>
 
-                              <button
-                                onClick={() => handleActualScan(`KABISIG-QR-${selectedProgId}-${r.participantId}`)}
-                                disabled={isPresent}
-                                className={`px-3 py-1.5 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${isPresent ? 'bg-emerald-100 text-emerald-800 cursor-default' : 'bg-[#091d64] text-white hover:bg-opacity-90 shadow-sm'}`}
-                              >
-                                {isPresent ? 'Verified' : 'Scan QR'}
-                              </button>
+                              {isPresent && <span className="text-xs font-bold text-emerald-600">Verified</span>}
                             </div>
                           );
                         })}
@@ -3067,15 +3659,16 @@ export default function OfficialPages({
                 </div>
               ) : (
                 /* Roster & Manual Table View */
-                <div className="overflow-x-auto border border-slate-100 rounded-xl">
-                  <table className="w-full text-left text-sm text-slate-600">
+                <div className="border border-slate-100 rounded-xl">
+                  <div className="w-full overflow-x-auto block">
+                  <table className="w-full text-left text-sm text-slate-600 min-w-[600px]">
                     <thead className="bg-slate-50 text-[10px] text-slate-500 font-extrabold uppercase tracking-wider border-b border-slate-100">
                       <tr>
-                        <th className="px-6 py-3">Participant Name</th>
-                        <th className="px-6 py-3 font-mono text-center">Participant ID</th>
-                        <th className="px-6 py-3 text-center">Attendance Status</th>
-                        <th className="px-6 py-3 text-center">Check-In Time</th>
-                        <th className="px-6 py-3 text-center">Action Check-In</th>
+                        <th className="px-6 py-3 whitespace-nowrap">Participant Name</th>
+                        <th className="px-6 py-3 font-mono text-center whitespace-nowrap">Participant ID</th>
+                        <th className="px-6 py-3 text-center whitespace-nowrap">Attendance Status</th>
+                        <th className="px-6 py-3 text-center whitespace-nowrap">Check-In Time</th>
+                        <th className="px-6 py-3 text-center whitespace-nowrap">Action Check-In</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50 text-xs font-medium">
@@ -3084,21 +3677,21 @@ export default function OfficialPages({
                         const isPresent = !!attendanceRecord;
                         return (
                           <tr key={r.id} className="hover:bg-slate-50/60 transition-colors">
-                            <td className="px-6 py-3.5 font-bold text-slate-800">{r.participantName}</td>
-                            <td className="px-6 py-3.5 text-center font-mono text-slate-500">{r.participantId}</td>
-                            <td className="px-6 py-3.5 text-center">
+                            <td className="px-6 py-3.5 font-bold text-slate-800 whitespace-nowrap">{r.participantName}</td>
+                            <td className="px-6 py-3.5 text-center font-mono text-slate-500 whitespace-nowrap">{r.participantId}</td>
+                            <td className="px-6 py-3.5 text-center whitespace-nowrap">
                               <span className={`px-2.5 py-1 rounded-full text-[9px] font-extrabold uppercase tracking-wide ${isPresent ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>
                                 {isPresent ? 'Present' : 'Absent'}
                               </span>
                             </td>
-                            <td className="px-6 py-3.5 text-center font-mono text-slate-500">
+                            <td className="px-6 py-3.5 text-center font-mono text-slate-500 whitespace-nowrap">
                               {attendanceRecord?.checkInTime ? new Date(attendanceRecord.checkInTime).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '—'}
                             </td>
-                            <td className="px-6 py-3.5 text-center">
+                            <td className="px-6 py-3.5 text-center whitespace-nowrap">
                               <button
                                 onClick={() => handleManualCheckIn(r)}
-                                disabled={isPresent}
-                                className={`px-3.5 py-1.5 rounded-xl text-[10px] font-bold cursor-pointer ${isPresent ? 'bg-slate-100 text-slate-400 cursor-default' : 'bg-[#091d64] text-white hover:bg-opacity-90'}`}
+                                disabled={isPresent || isProgramEnded}
+                                className={`px-3.5 py-1.5 rounded-xl text-[10px] font-bold cursor-pointer ${isPresent || isProgramEnded ? 'bg-slate-100 text-slate-400 cursor-default' : 'bg-[#091d64] text-white hover:bg-opacity-90'}`}
                               >
                                 {isPresent ? 'Marked Present' : 'Mark Present'}
                               </button>
@@ -3108,6 +3701,7 @@ export default function OfficialPages({
                       })}
                     </tbody>
                   </table>
+                </div>
                 </div>
               )}
             </div>
@@ -3299,7 +3893,7 @@ export default function OfficialPages({
                         className="relative z-50 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 focus:outline-none focus:ring-1 focus:ring-[#091d64]"
                       >
                         <option value="All">All Statuses</option>
-                        <option value='flagged'>🚩 Flagged (Needs Review)</option>
+                        <option value='flagged'>Flagged (Needs Review)</option>
                         <option value="Pending">Pending</option>
                         <option value="Reviewed">Reviewed</option>
                         <option value="Resolved">Resolved</option>
@@ -3332,7 +3926,7 @@ export default function OfficialPages({
                                 {fb.type}
                               </span>
                               {fb.status === 'flagged' && (
-                                <span className="ml-1.5 bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-bold px-2 py-0.5 rounded-full inline-block align-middle">🚩 Flagged</span>
+                                <span className="ml-1.5 bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-bold px-2 py-0.5 rounded-full inline-block align-middle">Flagged</span>
                               )}
 
                               {/* Rule-Based Sentiment Classification Badge */}
@@ -3442,48 +4036,88 @@ export default function OfficialPages({
                       className="px-4 py-2 bg-[#091d64] hover:bg-opacity-95 text-white font-bold rounded-lg transition-all text-xs flex items-center gap-1.5 cursor-pointer"
                     >
                       <Plus className="w-4 h-4" />
-                      Draft Resolution
+                      Create Poll
                     </button>
                   </div>
 
-                  <div className="overflow-x-auto border border-slate-100 rounded-lg">
+                  <div className="border border-slate-100 rounded-lg">
+                    <div className="w-full overflow-x-auto block">
                     {pollsError && <p role="alert" className="m-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">Polls could not be loaded: {pollsError}</p>}
-                    <table className="w-full text-left text-sm text-slate-600">
+                    <table className="w-full text-left text-sm text-slate-600 min-w-[600px]">
                       <thead className="bg-slate-50 text-[10px] text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100">
                         <tr>
-                          <th className="px-6 py-3">Res. Number</th>
-                          <th className="px-6 py-3">Resolution Title</th>
+                          <th className="px-6 py-3 whitespace-nowrap">Res. Number</th>
+                          <th className="px-6 py-3 whitespace-nowrap">Resolution Title</th>
                           
-                          <th className="px-6 py-3 text-center">Legislation Status</th>
-                          <th className="px-6 py-3 text-center">Votes Support</th>
-                          <th className="px-6 py-3 text-center">Votes Oppose</th>
+                          <th className="px-6 py-3 text-center whitespace-nowrap">Votes Support</th>
+                          <th className="px-6 py-3 text-center whitespace-nowrap">Votes Oppose</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50 text-xs font-medium">
-                        {localResolutions.map(r => (
+                        {activeResolutions.map(r => (
                           <tr key={r.id}>
-                            <td className="px-6 py-4 font-mono font-bold text-[#091d64]">{r.resolutionNumber || r.number || ''}</td>
-                            <td className="px-6 py-4 text-slate-800 leading-normal font-semibold max-w-sm">{r.title}</td>
-                            
-                            <td className="px-6 py-4 text-center">
-                              <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${r.status === 'Approved' ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700 animate-pulse'}`}>
-                                {r.status}
-                              </span>
+                            <td className="px-6 py-4 font-mono font-bold text-[#091d64] whitespace-nowrap">{r.resolutionNumber || r.number || ''}</td>
+                            <td className="px-6 py-4 text-slate-800 leading-normal font-semibold max-w-sm whitespace-nowrap">
+                              <div>{r.title}</div>
+                              {r.end_date && <span className="text-[10px] text-slate-400 font-medium">Closes: {new Date(r.end_date).toLocaleDateString()}</span>}
                             </td>
-                            <td className="px-6 py-4 text-center font-mono font-bold text-emerald-600">
+                            <td className="px-6 py-4 text-center font-mono font-bold text-emerald-600 whitespace-nowrap">
                               {r.votesSupport} Supporting
                             </td>
-                            <td className="px-6 py-4 text-center font-mono font-bold text-rose-600">
+                            <td className="px-6 py-4 text-center font-mono font-bold text-rose-600 whitespace-nowrap">
                               {r.votesOppose} Opposing
                             </td>
                           </tr>
                         ))}
-                        {localResolutions.length === 0 && !pollsError && (
-                          <tr><td colSpan={5} className="px-6 py-8 text-center text-xs text-slate-400">No active polls are available for this barangay yet.</td></tr>
+                        {activeResolutions.length === 0 && !pollsError && (
+                          <tr><td colSpan={4} className="px-6 py-8 text-center text-xs text-slate-400 whitespace-nowrap">No active polls are available for this barangay yet.</td></tr>
                         )}
                       </tbody>
                     </table>
                   </div>
+                  </div>
+
+                  <section className="space-y-3">
+                    <div>
+                      <h4 className="font-sans font-bold text-slate-800 text-sm">Archived / Ended Polls</h4>
+                      <p className="text-xs text-slate-400 mt-1">Resolutions whose voting period has ended.</p>
+                    </div>
+                    <div className="border border-slate-100 rounded-lg">
+                      <div className="w-full overflow-x-auto block">
+                        <table className="w-full min-w-[600px] text-left text-sm text-slate-600">
+                          <thead className="bg-slate-50 text-[10px] text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100">
+                            <tr>
+                              <th className="px-6 py-3 whitespace-nowrap">Res. Number</th>
+                              <th className="px-6 py-3 whitespace-nowrap">Resolution Title</th>
+                              <th className="px-6 py-3 text-center whitespace-nowrap">Status</th>
+                              <th className="px-6 py-3 text-center whitespace-nowrap">Ended</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-50 text-xs font-medium">
+                            {archivedResolutions.map(resolution => (
+                              <tr key={resolution.id}>
+                                <td className="px-6 py-4 font-mono font-bold text-[#091d64] whitespace-nowrap">
+                                  {resolution.resolutionNumber || resolution.number || ''}
+                                </td>
+                                <td className="px-6 py-4 text-slate-800 font-semibold whitespace-nowrap">{resolution.title}</td>
+                                <td className="px-6 py-4 text-center whitespace-nowrap">
+                                  <span className="px-2 py-0.5 rounded text-[9px] font-extrabold uppercase bg-slate-100 text-slate-700">Closed</span>
+                                </td>
+                                <td className="px-6 py-4 text-center font-mono whitespace-nowrap">
+                                  {new Date(resolution.end_date).toLocaleDateString()}
+                                </td>
+                              </tr>
+                            ))}
+                            {archivedResolutions.length === 0 && (
+                              <tr>
+                                <td colSpan={4} className="px-6 py-8 text-center text-xs text-slate-400 whitespace-nowrap">No ended polls to display.</td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </section>
                 </div>
               )}
 
@@ -3501,7 +4135,7 @@ export default function OfficialPages({
                   <div className="flex flex-col sm:flex-row justify-between sm:items-start gap-4 border-b border-slate-100 pb-4">
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="px-2.5 py-0.5 bg-blue-50 text-[#091d64] font-black text-[10px] rounded uppercase tracking-wider">FINANCIAL GOVERNANCE • FISCAL YEAR 2026</span>
+                        <span className="px-2.5 py-0.5 bg-blue-50 text-[#091d64] font-black text-[10px] rounded uppercase tracking-wider">FINANCIAL GOVERNANCE • FISCAL YEAR {currentTenant?.active_fiscal_year || '2026'}</span>
                         <span className="text-xs text-slate-400">Barangay {currentTenant?.name || 'Barangay'} • Naga City</span>
                       </div>
                       <h3 className="font-sans font-bold text-slate-900 text-lg mt-1">Financial Statements & Reports</h3>
@@ -3509,18 +4143,10 @@ export default function OfficialPages({
                     </div>
                     <button
                       type="button"
-                      onClick={() => {
-                        const body = '<h3>Financial Summary</h3>' +
-                          '<p><strong>Barangay:</strong> ' + (currentTenant?.name || 'Barangay') + '</p>' +
-                          '<p><strong>Total Annual Budget:</strong> P' + totalBarangayBudget.toLocaleString() + '</p>' +
-                          '<p><strong>Total Disbursed:</strong> P' + totalSpentExpenses.toLocaleString() + '</p>' +
-                          '<p><strong>Remaining Cash:</strong> P' + remainingCash.toLocaleString() + '</p>' +
-                          '<p><strong>Utilization Rate:</strong> ' + budgetUtilizationRate.toFixed(1) + '%</p>';
-                        printOfficialReport('SK Financial Report - ' + (currentTenant?.name || 'Barangay'), body);
-                      }}
+                      onClick={handleExportTreasurerReport}
                       className="px-4 py-2.5 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-xl text-xs flex items-center gap-2 shrink-0"
                     >
-                      <Printer className="w-4 h-4" /> Export Financial Report (PDF)
+                      <Printer className="w-4 h-4" /> Export Current Report (PDF)
                     </button>
                   </div>
 
@@ -3558,7 +4184,7 @@ export default function OfficialPages({
                         <span className="text-[10px] font-bold uppercase tracking-wider">BIR Tax Withholdings</span>
                         <Tag className="w-4 h-4 text-amber-600" />
                       </div>
-                      <h4 className="text-xl font-black text-amber-700">₱{expenses.reduce((a,c)=>a + (Number(c.withholdingTax) || 0), 0).toLocaleString()}</h4>
+                      <h4 className="text-xl font-black text-amber-700">₱{totalWithheld.toLocaleString('en-US', { minimumFractionDigits: 2 })}</h4>
                       <p className="text-[10px] text-slate-500">Audited deductions for BIR remittance</p>
                     </div>
                   </div>
@@ -3609,6 +4235,7 @@ export default function OfficialPages({
                       </div>
 
                       {/* Sector Summary Breakdown */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {([
                 { key: 'Sports Development', label: 'Sports Sector Limit' },
                 { key: 'Education & Scholarship', label: 'Scholarship & Education' },
@@ -3642,8 +4269,8 @@ export default function OfficialPages({
                   </div>
                 );
               })}
+                      </div>
 
-                      <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 text-xs text-slate-400">Certification details will appear after live budget records are available.</div>
                     </div>
                   )}
 
@@ -3669,19 +4296,21 @@ export default function OfficialPages({
                         <div className="w-full bg-white p-5 rounded-xl border border-slate-100 shadow-2xs">
                           <div className="h-80 w-full min-w-0">
                             <ResponsiveContainer width="100%" height="100%">
-                              <BarChart data={treasurerProgramsBudget} margin={{ top: 15, right: 20, left: 10, bottom: 50 }}>
+                              <BarChart data={treasurerProgramsBudget} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
                                 <XAxis 
                                   dataKey="program" 
                                   stroke="#64748b" 
-                                  fontSize={10} 
+                                  tick={{ fontSize: 10, fill: '#475569' }}
                                   tickLine={false} 
                                   interval={0}
-                                  angle={-25}
-                                  textAnchor="end"
+                                  angle={0}
+                                  textAnchor="middle"
+                                  height={60}
+                                  tickFormatter={(value) => { const s = String(value || ''); return s.length > 12 ? `${s.substring(0, 12)}...` : s; }}
                                 />
                                 <YAxis 
                                   stroke="#64748b" 
-                                  fontSize={10} 
+                                  tick={{ fontSize: 12, fill: '#64748b' }}
                                   tickLine={false} 
                                   tickFormatter={(val) => `₱${(val/1000).toFixed(0)}k`}
                                 />
@@ -3722,22 +4351,23 @@ export default function OfficialPages({
                       )}
 
                       {/* Programs Table */}
-                      <div className="overflow-x-auto border border-slate-100 rounded-xl">
-                        <table className="w-full text-left text-xs text-slate-600">
+                      <div className="border border-slate-100 rounded-xl">
+                        <div className="w-full overflow-x-auto block">
+                        <table className="w-full text-left text-xs text-slate-600 min-w-[800px]">
                           <thead className="bg-slate-50 text-[10px] text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100">
                             <tr>
-                              <th className="px-5 py-3">Program / Initiative Title</th>
-                              <th className="px-5 py-3 text-right">Budget Limit</th>
-                              <th className="px-5 py-3 text-right">Actual Disbursed</th>
-                              <th className="px-5 py-3 text-right">Unused Balance</th>
-                              <th className="px-5 py-3 text-right">Utilization Rate</th>
-                              <th className="px-5 py-3 text-center">Status</th>
+                              <th className="px-5 py-3 whitespace-nowrap">Program / Initiative Title</th>
+                              <th className="px-5 py-3 text-right whitespace-nowrap">Budget Limit</th>
+                              <th className="px-5 py-3 text-right whitespace-nowrap">Actual Disbursed</th>
+                              <th className="px-5 py-3 text-right whitespace-nowrap">Unused Balance</th>
+                              <th className="px-5 py-3 text-right whitespace-nowrap">Utilization Rate</th>
+                              <th className="px-5 py-3 text-center whitespace-nowrap">Status</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-50 font-medium">
                             {treasurerProgramsBudget.length === 0 ? (
                               <tr>
-                                <td colSpan={6} className="px-5 py-8 text-center text-slate-400">
+                                <td colSpan={6} className="px-5 py-8 text-center text-slate-400 whitespace-nowrap">
                                   No program budget records available. Select a program created by an authorized official to track disbursements.
                                 </td>
                               </tr>
@@ -3747,12 +4377,12 @@ export default function OfficialPages({
                                 const rem = Math.max(0, p.allocated - p.actual);
                                 return (
                                   <tr key={idx} className="hover:bg-slate-50">
-                                    <td className="px-5 py-3 font-bold text-slate-800">{p.program}</td>
-                                    <td className="px-5 py-3 text-right font-mono text-slate-800">₱{p.allocated.toLocaleString()}</td>
-                                    <td className="px-5 py-3 text-right font-mono font-bold text-emerald-600">₱{p.actual.toLocaleString()}</td>
-                                    <td className="px-5 py-3 text-right font-mono text-slate-500">₱{rem.toLocaleString()}</td>
-                                    <td className={`px-5 py-3 text-right font-mono font-bold ${Number(util) > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>{util}%</td>
-                                    <td className="px-5 py-3 text-center">
+                                    <td className="px-5 py-3 font-bold text-slate-800 whitespace-nowrap">{p.program}</td>
+                                    <td className="px-5 py-3 text-right font-mono text-slate-800 whitespace-nowrap">₱{p.allocated.toLocaleString()}</td>
+                                    <td className="px-5 py-3 text-right font-mono font-bold text-emerald-600 whitespace-nowrap">₱{p.actual.toLocaleString()}</td>
+                                    <td className="px-5 py-3 text-right font-mono text-slate-500 whitespace-nowrap">₱{rem.toLocaleString()}</td>
+                                    <td className={`whitespace-nowrap ${`px-5 py-3 text-right font-mono font-bold ${Number(util) > 0 ? 'text-emerald-600' : 'text-slate-400'}`}`}>{util}%</td>
+                                    <td className="px-5 py-3 text-center whitespace-nowrap">
                                       <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 font-extrabold text-[9px] rounded uppercase">Within Limit</span>
                                     </td>
                                   </tr>
@@ -3761,6 +4391,7 @@ export default function OfficialPages({
                             )}
                           </tbody>
                         </table>
+                      </div>
                       </div>
                     </div>
                   )}
@@ -3785,44 +4416,49 @@ export default function OfficialPages({
                         </div>
                         <div className="p-4 rounded-xl border border-rose-100 bg-rose-50/30 space-y-1">
                           <span className="text-[10px] font-bold text-rose-600 uppercase">Total Tax Withheld (BIR)</span>
-                          <h4 className="text-xl font-black text-rose-600">₱{expenses.reduce((a,c)=>a + (Number(c.withholdingTax) || 0), 0).toLocaleString()}</h4>
+                          <h4 className="text-xl font-black text-rose-600">₱{totalWithheld.toLocaleString('en-US', { minimumFractionDigits: 2 })}</h4>
                           <p className="text-[10px] text-slate-500">Government withholding compliance</p>
                         </div>
                         <div className="p-4 rounded-xl border border-emerald-100 bg-emerald-50/30 space-y-1">
                           <span className="text-[10px] font-bold text-emerald-700 uppercase">Net Payables Remitted</span>
-                          <h4 className="text-xl font-black text-emerald-700">₱{expenses.reduce((a,c)=>a + (Number(c.netAmount ?? c.amount) || 0), 0).toLocaleString()}</h4>
+                          <h4 className="text-xl font-black text-emerald-700">₱{totalNetPayable.toLocaleString('en-US', { minimumFractionDigits: 2 })}</h4>
                           <p className="text-[10px] text-slate-500">Net disbursed to suppliers</p>
                         </div>
                       </div>
 
                       {/* Expense Itemized Tax Table */}
-                      <div className="overflow-x-auto border border-slate-100 rounded-xl">
-                        <table className="w-full text-left text-xs text-slate-600">
+                      <div className="border border-slate-100 rounded-xl">
+                        <div className="w-full overflow-x-auto block">
+                        <table className="w-full text-left text-xs text-slate-600 min-w-[800px]">
                           <thead className="bg-[#091d64] text-white text-[10px] font-bold uppercase tracking-wider">
                             <tr>
-                              <th className="px-5 py-3">Initiative Target</th>
-                              <th className="px-5 py-3 text-right">Gross Invoice</th>
-                              <th className="px-5 py-3">Payee Supplier</th>
-                              <th className="px-5 py-3 text-center">Tax Type</th>
-                              <th className="px-5 py-3 text-right">Withholding Tax</th>
-                              <th className="px-5 py-3 text-right">Net Payable</th>
-                              <th className="px-5 py-3 text-center">Date Logged</th>
+                              <th className="px-5 py-3 whitespace-nowrap">Initiative Target</th>
+                              <th className="px-5 py-3 text-right whitespace-nowrap">Gross Invoice</th>
+                              <th className="px-5 py-3 whitespace-nowrap">Payee Supplier</th>
+                              <th className="px-5 py-3 text-center whitespace-nowrap">Tax Type</th>
+                              <th className="px-5 py-3 text-right whitespace-nowrap">Withholding Tax</th>
+                              <th className="px-5 py-3 text-right whitespace-nowrap">Net Payable</th>
+                              <th className="px-5 py-3 text-center whitespace-nowrap">Date Logged</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 font-medium">
-                            {filteredExpenses.map(exp => (
+                            {filteredExpenses.map(exp => {
+                              const withholdingTax = getWithholdingTax(exp);
+                              return (
                               <tr key={exp.id} className="hover:bg-slate-50">
-                                <td className="px-5 py-3.5 font-bold text-slate-800">{exp.programTitle}</td>
-                                <td className="px-5 py-3.5 text-right font-mono text-slate-800 font-bold">₱{exp.amount.toLocaleString()}</td>
-                                <td className="px-5 py-3.5 text-slate-600 font-semibold">{exp.supplier}</td>
-                                <td className="px-5 py-3.5 text-center"><span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[10px] font-black">{exp.taxType}</span></td>
-                                <td className="px-5 py-3.5 text-right font-mono text-rose-600 font-bold">-₱{(Number(exp.withholdingTax) || 0).toLocaleString()}</td>
-                                <td className="px-5 py-3.5 text-right font-mono text-[#091d64] font-black text-sm">₱{(Number(exp.netAmount ?? exp.amount) || 0).toLocaleString()}</td>
-                                <td className="px-5 py-3.5 font-mono text-[11px] text-slate-400 text-center">{exp.dateLogged}</td>
+                                <td className="px-5 py-3.5 font-bold text-slate-800 whitespace-nowrap">{exp.programTitle}</td>
+                                <td className="px-5 py-3.5 text-right font-mono text-slate-800 font-bold whitespace-nowrap">₱{exp.amount.toLocaleString()}</td>
+                                <td className="px-5 py-3.5 text-slate-600 font-semibold whitespace-nowrap">{exp.supplier}</td>
+                                <td className="px-5 py-3.5 text-center whitespace-nowrap"><span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[10px] font-black">{exp.taxType}</span></td>
+                                <td className="px-5 py-3.5 text-right font-mono text-rose-600 font-bold whitespace-nowrap">-₱{withholdingTax.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                                <td className="px-5 py-3.5 text-right font-mono text-[#091d64] font-black text-sm whitespace-nowrap">₱{getNetPayable(exp).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                                <td className="px-5 py-3.5 font-mono text-[11px] text-slate-400 text-center whitespace-nowrap">{exp.dateLogged}</td>
                               </tr>
-                            ))}
+                              );
+                            })}
                           </tbody>
                         </table>
+                      </div>
                       </div>
                     </div>
                   )}
@@ -3848,39 +4484,46 @@ export default function OfficialPages({
                       </div>
 
                       {/* 27 Barangays Comparison Table */}
-                      <div className="overflow-x-auto border border-slate-100 rounded-xl max-h-96">
-                        <table className="w-full text-left text-xs text-slate-600">
+                      <div className="border border-slate-100 rounded-xl max-h-96">
+                        <div className="w-full overflow-x-auto block">
+                        <table className="w-full text-left text-xs text-slate-600 min-w-[800px]">
                           <thead className="bg-[#091d64] text-white text-[10px] font-bold uppercase tracking-wider sticky top-0 z-10">
                             <tr>
-                              <th className="px-5 py-3">#</th>
-                              <th className="px-5 py-3">Barangay Name</th>
-                              <th className="px-5 py-3">SK Chairperson</th>
-                              <th className="px-5 py-3 text-right">Allocated Fund (₱)</th>
-                              <th className="px-5 py-3 text-right">Actual Expenditures (₱)</th>
-                              <th className="px-5 py-3 text-right">Utilization %</th>
-                              <th className="px-5 py-3 text-center">Status</th>
+                              <th className="px-5 py-3 whitespace-nowrap">#</th>
+                              <th className="px-5 py-3 whitespace-nowrap">Barangay Name</th>
+                              <th className="px-5 py-3 whitespace-nowrap">SK Chairperson</th>
+                              <th className="px-5 py-3 text-right whitespace-nowrap">Allocated Fund (₱)</th>
+                              <th className="px-5 py-3 text-right whitespace-nowrap">Actual Expenditures (₱)</th>
+                              <th className="px-5 py-3 text-right whitespace-nowrap">Utilization %</th>
+                              <th className="px-5 py-3 text-center whitespace-nowrap">Status</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 font-medium">
                             {nagaBarangaysBudget
                               .filter(b => b.barangay.toLowerCase().includes(nagaBarangaySearch.toLowerCase()) || b.chairperson.toLowerCase().includes(nagaBarangaySearch.toLowerCase()))
                               .map((bg, idx) => {
-                                const util = bg.allocated > 0 ? ((bg.actual / bg.allocated) * 100).toFixed(1) : '0.0';
+                                const utilizationValue = bg.allocated > 0 ? (bg.actual / bg.allocated) * 100 : 0;
+                                const util = utilizationValue.toFixed(1);
+                                const status = utilizationValue > 100
+                                  ? { label: 'OVER BUDGET', color: 'bg-rose-100 text-rose-700' }
+                                  : utilizationValue > 90
+                                    ? { label: 'NEAR LIMIT', color: 'bg-amber-100 text-amber-700' }
+                                    : { label: 'WITHIN BUDGET', color: 'bg-emerald-100 text-emerald-700' };
                                 const isCurrent = currentTenant?.name ? bg.barangay === currentTenant.name.toUpperCase() : false;
                                 return (
                                   <tr key={idx} className={`hover:bg-slate-50 ${isCurrent ? 'bg-blue-50/70 font-bold' : ''}`}>
-                                    <td className="px-5 py-3 font-mono text-slate-400">{idx + 1}</td>
-                                    <td className="px-5 py-3 font-bold text-slate-800 flex items-center gap-2">
+                                    <td className="px-5 py-3 font-mono text-slate-400 whitespace-nowrap">{idx + 1}</td>
+                                    <td className="px-5 py-3 font-bold text-slate-800 flex items-center gap-2 whitespace-nowrap">
                                       {bg.barangay}
                                       {isCurrent && <span className="px-1.5 py-0.5 bg-[#091d64] text-white rounded text-[8px] uppercase">Your Barangay</span>}
                                     </td>
-                                    <td className="px-5 py-3 text-slate-600">{bg.chairperson}</td>
-                                    <td className="px-5 py-3 text-right font-mono text-slate-800">₱{bg.allocated.toLocaleString()}</td>
-                                    <td className="px-5 py-3 text-right font-mono text-emerald-600 font-bold">₱{bg.actual.toLocaleString()}</td>
-                                    <td className="px-5 py-3 text-right font-mono font-black text-[#091d64]">{util}%</td>
-                                    <td className="px-5 py-3 text-center">
-                                      <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${parseFloat(util) >= 80 ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'}`}>
-                                        {parseFloat(util) >= 80 ? 'High' : 'Normal'}
+                                    <td className="px-5 py-3 text-slate-600 whitespace-nowrap">{bg.chairperson}</td>
+                                    <td className="px-5 py-3 text-right font-mono text-slate-800 whitespace-nowrap">₱{bg.allocated.toLocaleString()}</td>
+                                    <td className="px-5 py-3 text-right font-mono text-emerald-600 font-bold whitespace-nowrap">₱{bg.actual.toLocaleString()}</td>
+                                    <td className="px-5 py-3 text-right font-mono font-black text-[#091d64] whitespace-nowrap">{util}%</td>
+                                    <td className="px-5 py-3 text-center whitespace-nowrap">
+                                      <span className={`px-2 py-0.5 rounded font-bold text-xs ${status.color}`}>
+                                        {status.label}
                                       </span>
                                     </td>
                                   </tr>
@@ -3888,6 +4531,7 @@ export default function OfficialPages({
                               })}
                           </tbody>
                         </table>
+                      </div>
                       </div>
                     </div>
                   )}
@@ -3904,37 +4548,39 @@ export default function OfficialPages({
                       </div>
 
                       {/* Inventory Valuation Table */}
-                      <div className="overflow-x-auto border border-slate-100 rounded-xl">
-                        <table className="w-full text-left text-xs text-slate-600">
+                      <div className="border border-slate-100 rounded-xl">
+                        <div className="w-full overflow-x-auto block">
+                        <table className="w-full text-left text-xs text-slate-600 min-w-[800px]">
                           <thead className="bg-[#091d64] text-white text-[10px] font-bold uppercase tracking-wider">
                             <tr>
-                              <th className="px-5 py-3">Property Item</th>
-                              <th className="px-5 py-3">Category Group</th>
-                              <th className="px-5 py-3 text-center">Quantity</th>
-                              <th className="px-5 py-3 text-center">Condition</th>
-                              <th className="px-5 py-3 text-right">Unit Cost</th>
-                              <th className="px-5 py-3 text-right">Total Valuation</th>
-                              <th className="px-5 py-3">Storage Location</th>
+                              <th className="px-5 py-3 whitespace-nowrap">Property Item</th>
+                              <th className="px-5 py-3 whitespace-nowrap">Category Group</th>
+                              <th className="px-5 py-3 text-center whitespace-nowrap">Quantity</th>
+                              <th className="px-5 py-3 text-center whitespace-nowrap">Condition</th>
+                              <th className="px-5 py-3 text-right whitespace-nowrap">Unit Cost</th>
+                              <th className="px-5 py-3 text-right whitespace-nowrap">Total Valuation</th>
+                              <th className="px-5 py-3 whitespace-nowrap">Storage Location</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 font-medium">
                             {inventory.map(item => (
                               <tr key={item.id} className="hover:bg-slate-50">
-                                <td className="px-5 py-3.5 font-bold text-slate-800">{item.item}</td>
-                                <td className="px-5 py-3.5 text-slate-500 font-semibold">{item.category}</td>
-                                <td className="px-5 py-3.5 text-center font-bold text-slate-700">{item.quantity}</td>
-                                <td className="px-5 py-3.5 text-center">
+                                <td className="px-5 py-3.5 font-bold text-slate-800 whitespace-nowrap">{item.item}</td>
+                                <td className="px-5 py-3.5 text-slate-500 font-semibold whitespace-nowrap">{item.category}</td>
+                                <td className="px-5 py-3.5 text-center font-bold text-slate-700 whitespace-nowrap">{item.quantity}</td>
+                                <td className="px-5 py-3.5 text-center whitespace-nowrap">
                                   <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${item.condition === 'Good' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
                                     {item.condition}
                                   </span>
                                 </td>
-                                <td className="px-5 py-3.5 text-right font-mono text-slate-800">₱{item.cost.toLocaleString()}</td>
-                                <td className="px-5 py-3.5 text-right font-mono font-bold text-[#091d64]">₱{(item.cost * item.quantity).toLocaleString()}</td>
-                                <td className="px-5 py-3.5 text-slate-600 font-medium">{item.location}</td>
+                                <td className="px-5 py-3.5 text-right font-mono text-slate-800 whitespace-nowrap">₱{item.cost.toLocaleString()}</td>
+                                <td className="px-5 py-3.5 text-right font-mono font-bold text-[#091d64] whitespace-nowrap">₱{(item.cost * item.quantity).toLocaleString()}</td>
+                                <td className="px-5 py-3.5 text-slate-600 font-medium whitespace-nowrap">{item.location}</td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
+                      </div>
                       </div>
                     </div>
                   )}
@@ -3983,8 +4629,62 @@ export default function OfficialPages({
                               <table>
                                 <thead><tr><th>Program Name</th><th>Category</th><th>Target Beneficiaries</th><th>Actual Attendance</th><th>Allocated Budget</th><th>Disbursed</th></tr></thead>
                                 <tbody>
-                                  ${programs.map(p => `<tr><td><strong>${p.title}</strong></td><td>${p.category}</td><td>${p.maxParticipants}</td><td>${p.registeredCount || 0}</td><td>₱${p.budgetAllocation.toLocaleString()}</td><td>₱${filteredExpenses.filter(expense => expense.programId === p.id).reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0).toLocaleString()}</td></tr>`).join('')}
+                                  ${accomplishmentPrograms.map(p => `<tr><td><strong>${p.title}</strong></td><td>${p.category}</td><td>${p.maxParticipants}</td><td>${p.registeredCount || 0}</td><td>₱${(Number(p.budgetAllocation) || 0).toLocaleString()}</td><td>₱${expenses.filter(expense => expense.programId === p.id).reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0).toLocaleString()}</td></tr>`).join('')}
                                 </tbody>
+                              </table>
+                            `);
+                          } else if (reportModuleCategory === 'compliance') {
+                            const complianceRows = documents.map((document, index) => `
+                              <tr>
+                                <td style="text-align:center">${index + 1}</td>
+                                <td><strong>${document.title}</strong></td>
+                                <td>${document.category || 'Official Record'}</td>
+                                <td>${document.status || 'Pending'}</td>
+                              </tr>
+                            `).join('');
+                            printOfficialReport('DILG Compliance Status Report', `
+                              <h4>DILG COMPLIANCE DOCUMENT STATUS</h4>
+                              <p style="font-size:11px;">Official records and submission statuses for ${currentTenant?.name || 'the barangay'}.</p>
+                              <table>
+                                <thead><tr><th style="width:30px">#</th><th>Document</th><th>Category</th><th>Status</th></tr></thead>
+                                <tbody>${complianceRows || '<tr><td colSpan="4">No compliance documents recorded.</td></tr>'}</tbody>
+                              </table>
+                            `);
+                          } else if (reportModuleCategory === 'minutes') {
+                            const minutesRows = documents
+                              .filter(document => document.category === 'Minutes')
+                              .map((document, index) => `
+                                <tr>
+                                  <td style="text-align:center">${index + 1}</td>
+                                  <td><strong>${document.title}</strong></td>
+                                  <td>${document.uploadedDate || '-'}</td>
+                                  <td>${document.status || 'Pending'}</td>
+                                </tr>
+                              `).join('');
+                            printOfficialReport('SK Council Session Minutes Report', `
+                              <h4>SK COUNCIL SESSION MINUTES</h4>
+                              <p style="font-size:11px;">Archived session minutes and certification statuses.</p>
+                              <table>
+                                <thead><tr><th style="width:30px">#</th><th>Session Title</th><th>Recorded Date</th><th>Status</th></tr></thead>
+                                <tbody>${minutesRows || '<tr><td colSpan="4">No session minutes recorded.</td></tr>'}</tbody>
+                              </table>
+                            `);
+                          } else if (reportModuleCategory === 'document_reports') {
+                            const documentRows = documents.map((document, index) => `
+                              <tr>
+                                <td style="text-align:center">${index + 1}</td>
+                                <td><strong>${document.title}</strong></td>
+                                <td>${document.category || 'Official Record'}</td>
+                                <td>${document.status || 'Pending'}</td>
+                                <td>${document.uploadedDate || '-'}</td>
+                              </tr>
+                            `).join('');
+                            printOfficialReport('Document Vault Status Report', `
+                              <h4>DOCUMENT VAULT STATUS</h4>
+                              <p style="font-size:11px;">Current status of official documents stored in the KABISIG repository.</p>
+                              <table>
+                                <thead><tr><th style="width:30px">#</th><th>Document</th><th>Category</th><th>Status</th><th>Uploaded Date</th></tr></thead>
+                                <tbody>${documentRows || '<tr><td colSpan="5">No documents recorded.</td></tr>'}</tbody>
                               </table>
                             `);
                           } else {
@@ -4050,11 +4750,11 @@ export default function OfficialPages({
                             className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none min-w-[300px]"
                             disabled={programs.length === 0}
                           >
-                            <option value="">-- Select Program --</option>
+                            <option value="">Select a Program</option>
                             {programs.filter((program) => {
                               const _st = String(program.status || '').toLowerCase();
                               const _isCompleted = _st === 'completed' || _st === 'cancelled';
-                              const _isPast = program.endDate && new Date(program.endDate) < new Date();
+                              const _isPast = hasProgramEnded(program.endDate || (program as any).end_date);
                               return !_isCompleted && !_isPast;
                             }).map((program) => <option key={program.id} value={program.id}>{program.title}</option>)}
                           </select>
@@ -4062,22 +4762,24 @@ export default function OfficialPages({
 
                       </div>
 
-                      <div className="overflow-x-auto border border-slate-100 rounded-xl">
-                        <table className="w-full text-left text-xs text-slate-600">
+                      {selectedProgramForReport ? (
+                      <div className="border border-slate-100 rounded-xl">
+                        <div className="w-full overflow-x-auto block">
+                        <table className="w-full text-left text-xs text-slate-600 min-w-[600px]">
                           <thead className="bg-[#091d64] text-white text-[10px] font-bold uppercase tracking-wider">
                             <tr>
-                              <th className="px-5 py-3">#</th>
-                              <th className="px-5 py-3">Participant Name</th>
-                              <th className="px-5 py-3 text-center">Participation</th>
-                              <th className="px-5 py-3">Check-In Timestamp</th>
-                              <th className="px-5 py-3 text-center">Digital Seal</th>
+                              <th className="px-5 py-3 whitespace-nowrap">#</th>
+                              <th className="px-5 py-3 whitespace-nowrap">Participant Name</th>
+                              <th className="px-5 py-3 text-center whitespace-nowrap">Participation</th>
+                              <th className="px-5 py-3 whitespace-nowrap">Check-In Timestamp</th>
+                              <th className="px-5 py-3 text-center whitespace-nowrap">Digital Seal</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 font-medium">
                             {reportAttendanceLoading ? (
-                              <tr><td colSpan={5} className="text-center py-6 text-slate-400 font-bold">Loading registered youth...</td></tr>
+                              <tr><td colSpan={5} className="text-center py-6 text-slate-400 font-bold whitespace-nowrap">Loading registered youth...</td></tr>
                             ) : reportAttendanceError ? (
-                              <tr><td colSpan={5} className="text-center py-6 text-rose-600 font-bold">{reportAttendanceError}</td></tr>
+                              <tr><td colSpan={5} className="text-center py-6 text-rose-600 font-bold whitespace-nowrap">{reportAttendanceError}</td></tr>
                             ) : reportRegistrations.map((registration, idx) => {
                               const user = Array.isArray(registration.users) ? registration.users[0] : registration.users;
                               const checkedIn = reportAttendance.find(attendance => attendance.user_id === registration.user_id);
@@ -4089,13 +4791,13 @@ export default function OfficialPages({
                                   : 'Registered';
                               return (
                               <tr key={registration.id} className="hover:bg-slate-50">
-                                <td className="px-5 py-3 font-mono font-bold text-slate-400">{idx + 1}</td>
-                                <td className="px-5 py-3 font-bold text-slate-800">{user?.full_name || 'Youth Constituent'}</td>
-                                <td className="px-5 py-3 text-center">
+                                <td className="px-5 py-3 font-mono font-bold text-slate-400 whitespace-nowrap">{idx + 1}</td>
+                                <td className="px-5 py-3 font-bold text-slate-800 whitespace-nowrap">{user?.full_name || 'Youth Constituent'}</td>
+                                <td className="px-5 py-3 text-center whitespace-nowrap">
                                   <span className={`px-2 py-0.5 font-extrabold text-[9px] rounded uppercase ${isPresent ? 'bg-emerald-50 text-emerald-700' : statusLabel === 'Waitlisted' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>{statusLabel}</span>
                                 </td>
-                                <td className="px-5 py-3 font-mono text-[11px] text-slate-500">{checkedIn?.checked_in_at ? new Date(checkedIn.checked_in_at).toLocaleString() : 'Not checked in'}</td>
-                                <td className="px-5 py-3 text-center">
+                                <td className="px-5 py-3 font-mono text-[11px] text-slate-500 whitespace-nowrap">{checkedIn?.checked_in_at ? new Date(checkedIn.checked_in_at).toLocaleString() : 'Not checked in'}</td>
+                                <td className="px-5 py-3 text-center whitespace-nowrap">
                                   <span className="text-[10px] text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded">Verified KK Member</span>
                                 </td>
                               </tr>
@@ -4103,12 +4805,16 @@ export default function OfficialPages({
                             })}
                             {!reportAttendanceLoading && !reportAttendanceError && reportRegistrations.length === 0 && (
                               <tr>
-                                <td colSpan={5} className="text-center py-6 text-slate-400 font-bold">No youth registrations are recorded for this program yet.</td>
+                                <td colSpan={5} className="text-center py-6 text-slate-400 font-bold whitespace-nowrap">No youth registrations are recorded for this program yet.</td>
                               </tr>
                             )}
                           </tbody>
                         </table>
                       </div>
+                      </div>
+                      ) : (
+                        <p className="text-sm text-slate-500">Please select a program to view attendance.</p>
+                      )}
                     </div>
                   )}
 
@@ -4130,35 +4836,37 @@ export default function OfficialPages({
 
                       </div>
 
-                      <div className="overflow-x-auto border border-slate-100 rounded-xl">
-                        <table className="w-full text-left text-xs text-slate-600">
+                      <div className="border border-slate-100 rounded-xl">
+                        <div className="w-full overflow-x-auto block">
+                        <table className="w-full text-left text-xs text-slate-600 min-w-[800px]">
                           <thead className="bg-slate-50 text-slate-500 text-[10px] font-bold uppercase tracking-wider">
                             <tr>
-                              <th className="px-5 py-3">Constituent Name</th>
+                              <th className="px-5 py-3 whitespace-nowrap">Constituent Name</th>
                               <th className="px-5 py-3 whitespace-nowrap">Zone</th>
-                              <th className="px-5 py-3">Educational Level</th>
-                              <th className="px-5 py-3">School / University</th>
-                              <th className="px-5 py-3">Scholarship</th>
-                              <th className="px-5 py-3">Registry Status</th>
+                              <th className="px-5 py-3 whitespace-nowrap">Educational Level</th>
+                              <th className="px-5 py-3 whitespace-nowrap">School / University</th>
+                              <th className="px-5 py-3 whitespace-nowrap">Scholarship</th>
+                              <th className="px-5 py-3 whitespace-nowrap">Registry Status</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 font-medium">
                             {localYouthProfiles.filter(y => selectedZoneForReport === 'All' ? true : y.zone === selectedZoneForReport).map(y => (
                               <tr key={y.id} className="hover:bg-slate-50">
-                                <td className="px-5 py-3 font-bold text-slate-800">{y.name}</td>
-                                <td className="px-5 py-3 font-bold text-slate-600 whitespace-nowrap">{y.zone || 'Not Specified'}</td>
-                                <td className="px-5 py-3 text-slate-700">{y.educationalLevel}</td>
-                                <td className="px-5 py-3 text-slate-500">{y.course ? `${y.course} · ` : ''}{y.course ? `${y.course} · ` : ''}{y.school || 'Unspecified Institute'}</td>
-                                <td className="px-5 py-3">
+                                <td className="px-5 py-3 font-bold text-slate-800 whitespace-nowrap">{y.name}</td>
+                                <td className="px-5 py-3 whitespace-nowrap"><span className="px-2.5 py-1 bg-slate-100 rounded text-slate-700 font-bold text-[10px]">{y.zone || 'N/A'}</span></td>
+                                <td className="px-5 py-3 text-slate-700 whitespace-nowrap">{y.educationalLevel}</td>
+                                <td className="px-5 py-3 text-slate-500 whitespace-nowrap">{y.course && y.course !== y.school ? `${y.course} · ` : ''}{y.school || 'N/A'}</td>
+                                <td className="px-5 py-3 whitespace-nowrap">
                                   <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${y.scholarStatus === 'Scholar' ? 'bg-indigo-50 text-[#091d64]' : 'bg-slate-100 text-slate-500'}`}>{y.scholarStatus}</span>
                                 </td>
-                                <td className="px-5 py-3">
+                                <td className="px-5 py-3 whitespace-nowrap">
                                   <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${y.status === 'Approved' ? 'bg-emerald-50 text-emerald-700' : y.status?.toLowerCase() === 'suspended' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'}`}>{y.status === 'Approved' ? 'Verified Constituent' : (y.status?.toLowerCase() === 'suspended' ? 'Suspended' : 'Pending Verification')}</span>
                                 </td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
+                      </div>
                       </div>
                     </div>
                   )}
@@ -4169,48 +4877,50 @@ export default function OfficialPages({
                       <div className="grid md:grid-cols-3 gap-4">
                         <div className="p-4 bg-blue-50/50 border border-blue-100 rounded-xl space-y-1">
                           <span className="text-[10px] font-bold text-[#091d64] uppercase">Total Implemented Projects</span>
-                          <h4 className="text-xl font-black text-[#091d64]">{programs.length} Active Programs</h4>
+                          <h4 className="text-xl font-black text-[#091d64]">{accomplishmentPrograms.length} Active Programs</h4>
                           <p className="text-[11px] text-slate-500">Execution alignment tracked against CBYDP priorities.</p>
                         </div>
                         <div className="p-4 bg-emerald-50/50 border border-emerald-100 rounded-xl space-y-1">
                           <span className="text-[10px] font-bold text-emerald-700 uppercase">Youth Beneficiaries Reached</span>
-                          <h4 className="text-xl font-black text-emerald-700">{programs.reduce((sum, program) => sum + (program.registeredCount || filteredRegistrations.filter(registration => registration.programId === program.id).length), 0).toLocaleString()} Participants</h4>
+                          <h4 className="text-xl font-black text-emerald-700">{accomplishmentBeneficiaries.toLocaleString()} Participants</h4>
                           <p className="text-[11px] text-slate-500">Based on registered participants in live programs.</p>
                         </div>
                         <div className="p-4 bg-violet-50/50 border border-violet-100 rounded-xl space-y-1">
                           <span className="text-[10px] font-bold text-violet-700 uppercase">Fund Disbursement Rate</span>
-                          <h4 className="text-xl font-black text-violet-700">{(() => { const allocated = programs.reduce((sum, program) => sum + (Number(program.budgetAllocation) || 0), 0); const spent = expenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0); return `${allocated > 0 ? (allocated > 0 ? (allocated > 0 ? (spent / allocated) * 100 : 0) : 0).toFixed(1) : '0.0'}% Disbursed`; })()}</h4>
+                          <h4 className="text-xl font-black text-violet-700">{`${accomplishmentAllocatedBudget > 0 ? (accomplishmentDisbursedAmount / accomplishmentAllocatedBudget * 100).toFixed(1) : '0.0'}% Disbursed`}</h4>
                           <p className="text-[11px] text-slate-500">Calculated from recorded program expenses.</p>
                         </div>
                       </div>
 
-                      <div className="overflow-x-auto border border-slate-100 rounded-xl">
-                        <table className="w-full text-left text-xs text-slate-600">
+                      <div className="border border-slate-100 rounded-xl">
+                        <div className="w-full overflow-x-auto block">
+                        <table className="w-full text-left text-xs text-slate-600 min-w-[800px]">
                           <thead className="bg-slate-50 text-slate-500 text-[10px] font-bold uppercase tracking-wider">
                             <tr>
-                              <th className="px-5 py-3">Program Title</th>
-                              <th className="px-5 py-3">Category</th>
-                              <th className="px-5 py-3 text-center">Participants</th>
-                              <th className="px-5 py-3 text-right">Budget Allocated</th>
-                              <th className="px-5 py-3 text-right">Disbursed Amount</th>
-                              <th className="px-5 py-3 text-center">CBYDP Sector</th>
+                              <th className="px-5 py-3 whitespace-nowrap">Program Title</th>
+                              <th className="px-5 py-3 whitespace-nowrap">Category</th>
+                              <th className="px-5 py-3 text-center whitespace-nowrap">Participants</th>
+                              <th className="px-5 py-3 text-right whitespace-nowrap">Budget Allocated</th>
+                              <th className="px-5 py-3 text-right whitespace-nowrap">Disbursed Amount</th>
+                              <th className="px-5 py-3 text-center whitespace-nowrap">CBYDP Sector</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 font-medium">
-                            {programs.filter(p => !p.budgetAllocation).map(p => (
+                            {accomplishmentPrograms.map(p => (
                               <tr key={p.id} className="hover:bg-slate-50">
-                                <td className="px-5 py-3 font-bold text-slate-800">{p.title}</td>
-                                <td className="px-5 py-3 font-bold text-slate-600">{p.category}</td>
-                                <td className="px-5 py-3 text-center font-bold text-[#091d64]">{p.registeredCount} / {p.maxParticipants}</td>
-                                <td className="px-5 py-3 text-right font-mono text-slate-700">₱{p.budgetAllocation.toLocaleString()}</td>
-                                <td className="px-5 py-3 text-right font-mono font-bold text-emerald-600">₱{filteredExpenses.filter(expense => expense.programId === p.id).reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0).toLocaleString()}</td>
-                                <td className="px-5 py-3 text-center">
-                                  <span className="px-2 py-0.5 bg-blue-50 text-[#091d64] rounded text-[9px] font-bold uppercase">{p.aipReference || 'No AIP reference'}</span>
+                                <td className="px-5 py-3 font-bold text-slate-800 whitespace-nowrap">{p.title}</td>
+                                <td className="px-5 py-3 font-bold text-slate-600 whitespace-nowrap">{p.category}</td>
+                                <td className="px-5 py-3 text-center font-bold text-[#091d64] whitespace-nowrap">{p.registeredCount || filteredRegistrations.filter(registration => registration.programId === p.id).length} / {p.maxParticipants}</td>
+                                <td className="px-5 py-3 text-right font-mono text-slate-700 whitespace-nowrap">₱{(Number(p.budgetAllocation) || 0).toLocaleString()}</td>
+                                <td className="px-5 py-3 text-right font-mono font-bold text-emerald-600 whitespace-nowrap">₱{expenses.filter(expense => expense.programId === p.id).reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0).toLocaleString()}</td>
+                                <td className="px-5 py-3 text-center whitespace-nowrap">
+                                  <span className="px-2 py-0.5 bg-blue-50 text-[#091d64] rounded text-[9px] font-bold uppercase">{p.category}</span>
                                 </td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
+                      </div>
                       </div>
                     </div>
                   )}
@@ -4253,31 +4963,33 @@ export default function OfficialPages({
                         <span className="text-xs text-slate-400">Keep and certify correctness under Sec 14</span>
                       </div>
 
-                      <div className="overflow-x-auto border border-slate-100 rounded-xl">
-                        <table className="w-full text-left text-xs text-slate-600">
+                      <div className="border border-slate-100 rounded-xl">
+                        <div className="w-full overflow-x-auto block">
+                        <table className="w-full text-left text-xs text-slate-600 min-w-[600px]">
                           <thead className="bg-slate-50 text-slate-500 text-[10px] font-bold uppercase tracking-wider">
                             <tr>
-                              <th className="px-5 py-3">Tracking ID</th>
-                              <th className="px-5 py-3">Session Title</th>
-                              <th className="px-5 py-3 text-center">Quorum Attained</th>
-                              <th className="px-5 py-3">Recorded Date</th>
-                              <th className="px-5 py-3 text-center">Certified Correct</th>
+                              <th className="px-5 py-3 whitespace-nowrap">Tracking ID</th>
+                              <th className="px-5 py-3 whitespace-nowrap">Session Title</th>
+                              <th className="px-5 py-3 text-center whitespace-nowrap">Quorum Attained</th>
+                              <th className="px-5 py-3 whitespace-nowrap">Recorded Date</th>
+                              <th className="px-5 py-3 text-center whitespace-nowrap">Certified Correct</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 font-medium">
                             {localDocs.filter(d => d.category === 'Minutes').map(min => (
                               <tr key={min.id} className="hover:bg-slate-50">
-                                <td className="px-5 py-3 font-mono font-bold text-[#091d64]">{min.resolutionNumber || min.id}</td>
-                                <td className="px-5 py-3 font-bold text-slate-800">{min.title}</td>
-                                <td className="px-5 py-3 text-center"><span className={`px-2 py-0.5 rounded font-black text-[9px] ${min.status === 'Approved' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{min.status || '—'}</span></td>
-                                <td className="px-5 py-3 font-mono text-slate-500">{min.uploadedDate}</td>
-                                <td className="px-5 py-3 text-center">
+                                <td className="px-5 py-3 font-mono font-bold text-[#091d64] whitespace-nowrap">{min.resolutionNumber || min.id}</td>
+                                <td className="px-5 py-3 font-bold text-slate-800 whitespace-nowrap">{min.title}</td>
+                                <td className="px-5 py-3 text-center whitespace-nowrap"><span className={`px-2 py-0.5 rounded font-black text-[9px] ${min.status === 'Approved' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>{min.status || '—'}</span></td>
+                                <td className="px-5 py-3 font-mono text-slate-500 whitespace-nowrap">{min.uploadedDate}</td>
+                                <td className="px-5 py-3 text-center whitespace-nowrap">
                                   <span className="px-2 py-0.5 bg-blue-50 text-[#091d64] rounded font-bold text-[9px]">{currentUser?.full_name || 'SK Secretary'}</span>
                                 </td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
+                      </div>
                       </div>
                     </div>
                   )}
@@ -4351,14 +5063,10 @@ export default function OfficialPages({
                   className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 focus:outline-none focus:ring-1 focus:ring-[#091d64]"
                 >
                   <option value="All">All Categories</option>
-                  <option value="Resolutions">Resolutions</option>
-                  <option value="Minutes">Minutes</option>
-                  <option value="Vouchers">Vouchers</option>
-                  <option value="Liquidation">Liquidation</option>
-                  <option value="Accomplishment">Accomplishment</option>
-                  <option value="Budget">Budget</option>
-                  <option value="Reports">Reports</option>
-                  <option value="Communications">Communications</option>
+                  <option value="Resolutions">Resolutions &amp; Ordinances</option>
+                  <option value="Minutes">Meeting Minutes</option>
+                  <option value="Reports">Financial Reports</option>
+                  <option value="Vouchers">Vouchers &amp; Transmittals</option>
                 </select>
 
                 <select
@@ -4375,16 +5083,17 @@ export default function OfficialPages({
               </div>
 
               {/* Document Repository Table */}
-              <div className="overflow-x-auto border border-slate-100 rounded-xl shadow-xs">
+              <div className="border border-slate-100 rounded-xl shadow-xs">
+                <div className="w-full overflow-x-auto block">
                 <table className="w-full text-left text-sm text-slate-600">
                   <thead className="bg-[#091d64] text-[10px] text-white font-bold uppercase tracking-widest">
                     <tr>
-                      <th className="px-5 py-3.5">Resolution / Tracking No.</th>
-                      <th className="px-5 py-3.5">Document Title & Summary</th>
-                      <th className="px-5 py-3.5">Category</th>
-                      <th className="px-5 py-3.5 text-center">Status</th>
-                      <th className="px-5 py-3.5">Designated Approver</th>
-                      <th className="px-5 py-3.5 text-center">Actions</th>
+                      <th className="px-5 py-3.5 whitespace-nowrap">Resolution / Tracking No.</th>
+                      <th className="px-5 py-3.5 whitespace-nowrap">Document Title & Summary</th>
+                      <th className="px-5 py-3.5 whitespace-nowrap">Category</th>
+                      <th className="px-5 py-3.5 text-center whitespace-nowrap">Status</th>
+                      <th className="px-5 py-3.5 whitespace-nowrap">Designated Approver</th>
+                      <th className="px-5 py-3.5 text-center whitespace-nowrap">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs font-medium bg-white">
@@ -4393,42 +5102,42 @@ export default function OfficialPages({
                         const matchQuery = d.title.toLowerCase().includes(docSearchQuery.toLowerCase()) || 
                           (d.resolutionNumber && d.resolutionNumber.toLowerCase().includes(docSearchQuery.toLowerCase())) ||
                           (d.description && d.description.toLowerCase().includes(docSearchQuery.toLowerCase()));
-                        const matchCat = docCategoryFilter === 'All' ? true : d.category === docCategoryFilter;
+                        const matchCat = docCategoryFilter === 'All' || getNormalizedDocumentType(d) === docCategoryFilter;
                         const matchStat = docStatusFilter === 'All' ? true : d.status === docStatusFilter;
                         return matchQuery && matchCat && matchStat;
                       })
                       .map(doc => (
                         <tr key={doc.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-5 py-4 font-mono font-bold text-[#091d64]">
+                          <td className="px-5 py-4 font-mono font-bold text-[#091d64] whitespace-nowrap">
                             {doc.resolutionNumber || doc.id}
                           </td>
-                          <td className="px-5 py-4 max-w-sm">
+                          <td className="px-5 py-4 max-w-sm whitespace-nowrap">
                             <span className="font-bold text-slate-900 block tracking-tight">{doc.title}</span>
                             <span className="text-[11px] text-slate-400 block mt-0.5 line-clamp-1">{doc.description}</span>
                           </td>
-                          <td className="px-5 py-4">
+                          <td className="px-5 py-4 whitespace-nowrap">
                             <span className="bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded text-[10px] font-extrabold uppercase">{doc.category}</span>
                           </td>
-                          <td className="px-5 py-4 text-center">
+                          <td className="px-5 py-4 text-center whitespace-nowrap">
                             <span className={`px-2.5 py-0.5 rounded text-[9px] font-black uppercase ${
                               doc.status === 'Approved' ? 'bg-emerald-50 text-emerald-700' :
-                              doc.status === 'Pending' ? 'bg-amber-50 text-amber-700 animate-pulse' :
+                              doc.status === 'Pending' ? 'bg-amber-50 text-amber-700' :
                               doc.status === 'Draft' ? 'bg-slate-100 text-slate-600' :
                               'bg-rose-50 text-rose-700'
                             }`}>
                               {doc.status}
                             </span>
                           </td>
-                          <td className="px-5 py-4 text-slate-600 font-semibold text-[11px]">
+                          <td className="px-5 py-4 text-slate-600 font-semibold text-[11px] whitespace-nowrap">
                             {doc.designatedApprover || 'SK Chairperson'}
                           </td>
-                          <td className="px-5 py-4">
+                          <td className="px-5 py-4 whitespace-nowrap">
                             <div className="flex justify-center items-center gap-1.5">
 
                               <button 
-                                onClick={() => { setSelectedDoc(doc); setShowViewDocModal(true); }} 
+                                onClick={() => setPreviewDoc(doc)}
                                 className="p-1.5 hover:bg-slate-100 rounded text-[#091d64] font-bold" 
-                                title="View Details & Version History"
+                                title="Preview Document"
                               >
                                 <Eye className="w-4 h-4" />
                               </button>
@@ -4441,28 +5150,31 @@ export default function OfficialPages({
                                 <Edit className="w-4 h-4" />
                               </button>
 
-                              <button 
-                                onClick={() => {
-                                  const url = (doc as any).fileUrl;
-                                  if (url) { window.open(url, '_blank'); return; }
-                                  alert('No file attached to this document. It may be a metadata-only record.');
-                                }}
-                                className="p-1.5 hover:bg-slate-100 rounded text-emerald-700 font-bold" 
-                                title="Download File"
-                              >
-                                <Download className="w-4 h-4" />
-                              </button>
+                              {(doc.fileUrl || (doc as any).file_url) ? (
+                                <a
+                                  href={doc.fileUrl || (doc as any).file_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-1.5 hover:bg-slate-100 rounded text-emerald-700 font-bold"
+                                  title="Download File"
+                                >
+                                  <Download className="w-4 h-4" />
+                                </a>
+                              ) : (
+                                <span className="text-[10px] font-semibold text-slate-400">No File Attached</span>
+                              )}
                             </div>
                           </td>
                         </tr>
                       ))}
                     {localDocs.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="text-center py-8 text-slate-400 font-bold">No official documents found matching the filter criteria.</td>
+                        <td colSpan={6} className="text-center py-8 text-slate-400 font-bold whitespace-nowrap">No official documents found matching the filter criteria.</td>
                       </tr>
                     )}
                   </tbody>
                 </table>
+              </div>
               </div>
             </div>
           )}
@@ -4532,16 +5244,17 @@ export default function OfficialPages({
               </div>
 
               {/* Roster Table */}
-              <div className="overflow-x-auto border border-slate-100 rounded-xl shadow-xs">
+              <div className="border border-slate-100 rounded-xl shadow-xs">
+                <div className="w-full overflow-x-auto block">
                 <table className="w-full text-left text-sm text-slate-600">
                   <thead className="bg-[#091d64] text-[10px] text-white font-bold uppercase tracking-widest">
                     <tr>
-                      <th className="px-6 py-4">Katipunan Constituent</th>
-                      <th className="px-6 py-4">Educational Profile</th>
-                      <th className="px-6 py-4 text-center">Zone</th>
-                      <th className="px-6 py-4 text-center">Scholarship</th>
-                      <th className="px-6 py-4">Contact Information</th>
-                      <th className="px-6 py-4 text-center">Actions</th>
+                      <th className="px-2 py-2">Youth Constituent</th>
+                      <th className="px-2 py-2">Education</th>
+                      <th className="px-2 py-2 text-center">Zone</th>
+                      <th className="px-2 py-2 text-center">Scholarship</th>
+                      <th className="px-2 py-2">Contact Information</th>
+                      <th className="px-2 py-2 text-center">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs font-medium bg-white">
@@ -4551,40 +5264,52 @@ export default function OfficialPages({
                         const matchSearch = y.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           y.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           (y.school && y.school.toLowerCase().includes(searchTerm.toLowerCase()));
-                        const matchCat = filterCategory === 'All' ? true : y.zone === filterCategory || y.scholarStatus === filterCategory;
+                        const matchCat = filterCategory === 'All'
+                          ? true
+                          : filterCategory === 'College'
+                            ? y.educationalLevel === 'College'
+                            : filterCategory === 'High School'
+                              ? y.educationalLevel === 'High School'
+                              : filterCategory === 'Employed'
+                                ? y.employmentStatus === 'Employed' || y.employment === 'Employed'
+                                : filterCategory === 'Unemployed'
+                                  ? y.employmentStatus === 'Unemployed' || y.employment === 'Unemployed'
+                                  : filterCategory === 'Student' || filterCategory === 'In School Youth' || filterCategory === 'In-School Youth'
+                                    ? /college|high school/i.test(y.educationalLevel || '')
+                                    : y.zone === filterCategory || y.scholarStatus === filterCategory;
                         return matchSearch && matchCat;
                       })
                       .map(y => (
                         <tr key={y.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-3">
-                              <div className="relative">
-                                <ProfileAvatar name={y.name} src={y.profilePic} alt={y.name} className="w-10 h-10 rounded-xl border-2 border-white shadow-xs" />
-                                <div className={`absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-white ${(y.status === 'Approved' || y.status?.toLowerCase() === 'suspended') ? 'bg-emerald-500' : 'bg-amber-500'}`}></div>
-                              </div>
-                              <div>
+                          <td className="px-2 py-2">
+                            <div className="flex items-center gap-2">
+                              <ProfileAvatar name={y.name} src={y.profilePic} alt={y.name} className="w-10 h-10 rounded-xl border-2 border-white shadow-xs" />
+                              <div className="min-w-0">
                                 <span className="font-bold text-slate-900 block tracking-tight text-sm">{y.name}</span>
                                 <span className="text-[10px] text-slate-400 font-mono font-bold block">{y.id}</span>
                               </div>
                             </div>
                           </td>
-                          <td className="px-6 py-4">
-                            <span className="font-bold text-slate-800 block">{y.educationalLevel}</span>
-                            <span className="text-[11px] text-slate-400 font-semibold block">{y.course ? `${y.course} · ` : ''}{y.school || 'Unassigned Institute'}</span>
+                          <td className="px-2 py-2 break-words">
+                            <span className="font-bold text-slate-800">{y.educationalLevel} - {y.school || 'N/A'}</span>
                           </td>
-                          <td className="px-6 py-4 text-center">
-                            <span className="px-2.5 py-1 bg-slate-100 rounded text-slate-700 font-bold text-[10px]">{y.zone || 'Not Specified'}</span>
+                          <td className="px-2 py-2 text-center">
+                            <span className="inline-flex items-center justify-center px-2 py-1 bg-slate-100 rounded text-slate-700 font-bold text-[10px]">{y.zone || 'N/A'}</span>
                           </td>
-                          <td className="px-6 py-4 text-center">
-                            <span className={`px-2.5 py-1 rounded text-[9px] font-black uppercase tracking-tight ${y.scholarStatus === 'Scholar' ? 'bg-indigo-50 text-[#091d64]' : 'bg-slate-50 text-slate-400'}`}>
-                              {y.scholarStatus}
-                            </span>
+                          <td className="px-2 py-2 text-center">
+                            {y.scholarStatus === 'Scholar' || y.scholarStatus === 'Yes' ? (
+                              <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700">
+                                Scholar ({y.scholarshipSource || (y as any).scholarship_source || 'N/A'}{y.scholarshipSourceDetail ? `: ${y.scholarshipSourceDetail}` : ''})
+                              </span>
+                            ) : (
+                              <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-slate-50 text-slate-600">Non-Scholar</span>
+                            )}
                           </td>
-                          <td className="px-6 py-4">
+                          <td className="px-2 py-2 break-words">
                             <div className="flex flex-col gap-1">
                               <div className="flex items-center gap-1.5 text-slate-700 font-semibold">
                                 <Mail className="w-3 h-3 text-slate-400" />
-                                <span className="text-[11px]">{y.email}</span>
+                                <span className="text-[11px] break-all">{y.email}</span>
                               </div>
                               <div className="flex items-center gap-1.5 text-slate-400 font-mono">
                                 <Phone className="w-3 h-3 text-slate-300" />
@@ -4592,7 +5317,7 @@ export default function OfficialPages({
                               </div>
                             </div>
                           </td>
-                          <td className="px-6 py-4 text-center">
+                          <td className="px-2 py-2 text-center">
                             <button 
                               onClick={() => {
                                 setSelectedYouthProfile(y);
@@ -4619,6 +5344,7 @@ export default function OfficialPages({
                       ))}
                   </tbody>
                 </table>
+              </div>
               </div>
             </div>
           )}
@@ -4652,21 +5378,22 @@ export default function OfficialPages({
                 </div>
               )}
 
-              <div className="overflow-x-auto border border-slate-100 rounded-xl shadow-xs">
-                <table className="w-full text-left text-sm text-slate-600">
+              <div className="border border-slate-100 rounded-xl shadow-xs">
+                <div className="w-full overflow-x-auto block">
+                <table className="w-full text-left text-sm text-slate-600 min-w-[600px]">
                   <thead className="bg-[#091d64] text-[10px] text-white font-bold uppercase tracking-widest">
                     <tr>
-                      <th className="px-6 py-4">Constituent Candidate</th>
-                      <th className="px-6 py-4">Educational Level</th>
-                      <th className="px-6 py-4 text-center">Zone</th>
-                      <th className="px-6 py-4 text-center">Date Registered</th>
-                      <th className="px-6 py-4 text-center">Secretariat Action</th>
+                      <th className="px-6 py-4 whitespace-nowrap">Constituent Candidate</th>
+                      <th className="px-6 py-4 whitespace-nowrap">Educational Level</th>
+                      <th className="px-6 py-4 text-center whitespace-nowrap">Zone</th>
+                      <th className="px-6 py-4 text-center whitespace-nowrap">Date Registered</th>
+                      <th className="px-6 py-4 text-center whitespace-nowrap">Secretariat Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs font-medium bg-white">
                     {localYouthProfiles.filter(p => p.status === 'Pending').map(y => (
                       <tr key={y.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center gap-3">
                             <ProfileAvatar name={y.name} src={y.profilePic} alt={y.name} className="w-10 h-10 rounded-xl border-2 border-white shadow-xs" />
                             <div>
@@ -4675,15 +5402,15 @@ export default function OfficialPages({
                             </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-4 whitespace-nowrap">
                           <span className="font-bold text-slate-700 block">{y.educationalLevel}</span>
-                          <span className="text-[10px] text-slate-400 font-semibold block">{y.course ? `${y.course} · ` : ''}{y.school || 'Unspecified school'}</span>
+                          <span className="text-[10px] text-slate-400 font-semibold block">{y.course && y.course !== y.school ? `${y.course} · ` : ''}{y.school || 'N/A'}</span>
                         </td>
-                        <td className="px-6 py-4 text-center">
-                          <span className="px-2 py-1 bg-slate-100 rounded text-slate-700 font-bold text-[10px]">{y.zone || 'Not Specified'}</span>
+                        <td className="px-6 py-4 text-center whitespace-nowrap">
+                          <span className="px-2 py-1 bg-slate-100 rounded text-slate-700 font-bold text-[10px]">{y.zone || 'N/A'}</span>
                         </td>
-                        <td className="px-6 py-4 text-center font-mono text-[11px] text-slate-500 font-bold italic">{y.dateRegistered}</td>
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-4 text-center font-mono text-[11px] text-slate-500 font-bold italic whitespace-nowrap">{y.dateRegistered}</td>
+                        <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex justify-center gap-2">
                             <button onClick={() => onApproveYouth(y.id)} className="p-2 px-3.5 bg-blue-50 text-[#091d64] hover:bg-blue-100 font-bold rounded-lg text-[10px] flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer">
                               <Check className="w-3.5 h-3.5" /> REVIEW APPLICANT
@@ -4697,11 +5424,12 @@ export default function OfficialPages({
                     ))}
                     {localYouthProfiles.filter(p => p.status === 'Pending').length === 0 && (
                       <tr>
-                        <td colSpan={5} className="text-center py-6 text-slate-400 font-bold">No pending validation requests found.</td>
+                        <td colSpan={5} className="text-center py-6 text-slate-400 font-bold whitespace-nowrap">No pending validation requests found.</td>
                       </tr>
                     )}
                   </tbody>
                 </table>
+              </div>
               </div>
             </div>
           )}
@@ -4712,6 +5440,16 @@ export default function OfficialPages({
               {allocateNotice && (
                 <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-800">
                   {allocateNotice}
+                </div>
+              )}
+              {budgetMutationNotice && (
+                <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-800">
+                  {budgetMutationNotice}
+                </div>
+              )}
+              {budgetMutationError && (
+                <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-800">
+                  {budgetMutationError}
                 </div>
               )}
               {showAllocateProgram && (
@@ -4746,7 +5484,7 @@ export default function OfficialPages({
                         setIsSavingAllocate(false);
                       }
                     }}
-                    className="w-full max-w-lg space-y-4 rounded-xl bg-white p-5 shadow-2xl"
+                    className="w-full max-w-lg space-y-4 rounded-xl bg-white p-5 shadow-2xl max-w-[95vw] md:max-w-2xl lg:max-w-lg"
                   >
                     <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-3">
                       <div>
@@ -4756,12 +5494,8 @@ export default function OfficialPages({
                       <button type="button" onClick={() => setShowAllocateProgram(false)} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close allocation form"><X className="h-4 w-4" /></button>
                     </div>
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Fiscal year
-                      <select required value={allocateForm.fiscalYear} onChange={(event) => setAllocateForm((previous) => ({ ...previous, fiscalYear: event.target.value }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800">
-                        {availableYears.map((yr) => (
-                          <option key={yr} value={yr}>{yr}</option>
-                        ))}
-                      </select>
-                    </label>
+  <input type="text" readOnly value={currentTenant?.active_fiscal_year || '2026'} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-400 bg-slate-50 cursor-not-allowed" />
+</label>
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Program
                       <select required value={allocateForm.category} onChange={(event) => setAllocateForm((previous) => ({ ...previous, category: event.target.value }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800">
                         <option value="">Select a created program...</option>
@@ -4777,7 +5511,39 @@ export default function OfficialPages({
                     {allocateError && <p role="alert" className="text-xs font-semibold text-rose-700">{allocateError}</p>}
                     <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
                       <button type="button" disabled={isSavingAllocate} onClick={() => setShowAllocateProgram(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 disabled:opacity-50">Close</button>
-                      <button type="submit" disabled={isSavingAllocate} className="rounded-lg bg-[#091d64] px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{isSavingAllocate ? 'Saving...' : 'Save allocation'}</button>
+<button type="submit" disabled={isSavingAllocate} className="rounded-lg bg-[#091d64] px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{isSavingAllocate ? 'Saving...' : 'Save allocation'}</button>
+                    </div>
+                  </form>
+                </div>
+              )}
+              {editingBudget && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4">
+                  <form onSubmit={handleUpdateBudget} className="w-full max-w-md space-y-4 rounded-xl bg-white p-5 shadow-2xl">
+                    <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-3">
+                      <div>
+                        <h3 className="text-base font-extrabold text-[#091d64]">Edit Budget Allocation</h3>
+                        <p className="mt-1 text-xs text-slate-500">{editingBudget.category}</p>
+                      </div>
+                      <button type="button" onClick={() => setEditingBudget(null)} className="rounded p-1 text-slate-400 hover:bg-slate-100" aria-label="Close allocation editor">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                      Allocated amount
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        required
+                        value={budgetAmountInput}
+                        onChange={(event) => setBudgetAmountInput(event.target.value)}
+                        className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800"
+                      />
+                    </label>
+                    {budgetMutationError && <p role="alert" className="text-xs font-semibold text-rose-700">{budgetMutationError}</p>}
+                    <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
+                      <button type="button" disabled={isSavingBudget} onClick={() => setEditingBudget(null)} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 disabled:opacity-50">Cancel</button>
+                      <button type="submit" disabled={isSavingBudget} className="rounded-lg bg-[#091d64] px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{isSavingBudget ? 'Saving...' : 'Save allocation'}</button>
                     </div>
                   </form>
                 </div>
@@ -4802,7 +5568,10 @@ export default function OfficialPages({
                 </div>
                 <div className="p-5 rounded-xl border border-blue-100 bg-blue-50/30">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 block">Allocated to Programs</span>
-                  <h4 className="text-xl font-black text-blue-700 mt-1">₱{(budgetOptions || []).filter((b: any) => b.category !== "General Youth Development Fund").reduce((s: number, b: any) => s + Number(b.allocated_amount || 0), 0).toLocaleString()}</h4>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <h4 className="text-xl font-black text-blue-700">₱{allocatedToPrograms.toLocaleString()}</h4>
+                    {allocatedToPrograms > totalBarangayBudget && <span className="text-xs text-rose-600">OVER-ALLOCATED</span>}
+                  </div>
                   <p className="text-[10px] text-slate-400 mt-0.5">Sum of program allocations</p>
                 </div>
                 <div className="p-5 rounded-xl border border-rose-100 bg-rose-50/30">
@@ -4812,131 +5581,74 @@ export default function OfficialPages({
                 </div>
                 <div className="p-5 rounded-xl border border-emerald-100 bg-emerald-50/30">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 block">Remaining Balance</span>
-                  <h4 className="text-xl font-black text-emerald-700 mt-1">₱{remainingCash.toLocaleString()}</h4>
+                  <h4 className={`text-xl font-black mt-1 ${remainingCash < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>₱{remainingCash.toLocaleString()}</h4>
                   <p className="text-[10px] text-slate-400 mt-0.5">Available to spend</p>
                 </div>
               </div>
 
-              {/* Tally boxes - Refined Premium Design */}
-              {(() => {
-                const sportsStats = getSectorStats('Sports Development');
-                const eduStats = getSectorStats('Education & Scholarship');
-                const healthStats = getSectorStats('Health & Nutrition');
-
-                return (
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                    <div className="p-6 rounded-2xl border border-slate-100 bg-white shadow-sm hover:shadow-md transition-all group">
-                      <div className="flex justify-between items-start mb-4">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Sports Sector Limit</span>
-                        <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#091d64] flex items-center justify-center font-bold text-xs group-hover:scale-110 transition-transform">₱</div>
-                      </div>
-                      <h4 className="text-2xl font-black text-[#091d64] mt-1 tracking-tight">₱{sportsStats.alloc.toLocaleString()}</h4>
-                      <div className="mt-4">
-                        <div className="flex justify-between text-[10px] font-bold mb-1.5">
-                          <span className="text-slate-400 uppercase">Utilization</span>
-                          <span className={sportsStats.rate > 0 ? 'text-emerald-600 font-black' : 'text-slate-400 font-medium'}>
-                            {sportsStats.rate.toFixed(1)}%
-                          </span>
-                        </div>
-                        <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-                          <div 
-                            className={`h-full transition-all duration-500 ${sportsStats.rate > 0 ? 'bg-emerald-500' : 'bg-slate-300'}`} 
-                            style={{ width: `${sportsStats.rate > 0 ? Math.min(100, sportsStats.rate) : 0}%` }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="p-6 rounded-2xl border border-slate-100 bg-white shadow-sm hover:shadow-md transition-all group">
-                      <div className="flex justify-between items-start mb-4">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Scholarship & Education</span>
-                        <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xs group-hover:scale-110 transition-transform">₱</div>
-                      </div>
-                      <h4 className="text-2xl font-black text-[#091d64] mt-1 tracking-tight">₱{eduStats.alloc.toLocaleString()}</h4>
-                      <div className="mt-4">
-                        <div className="flex justify-between text-[10px] font-bold mb-1.5">
-                          <span className="text-slate-400 uppercase">Utilization</span>
-                          <span className={eduStats.rate > 0 ? 'text-emerald-600 font-black' : 'text-slate-400 font-medium'}>
-                            {eduStats.rate.toFixed(1)}%
-                          </span>
-                        </div>
-                        <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-                          <div 
-                            className={`h-full transition-all duration-500 ${eduStats.rate > 0 ? 'bg-emerald-500' : 'bg-slate-300'}`} 
-                            style={{ width: `${eduStats.rate > 0 ? Math.min(100, eduStats.rate) : 0}%` }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="p-6 rounded-2xl border border-slate-100 bg-white shadow-sm hover:shadow-md transition-all group">
-                      <div className="flex justify-between items-start mb-4">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Health & Wellness Limit</span>
-                        <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-xs group-hover:scale-110 transition-transform">₱</div>
-                      </div>
-                      <h4 className="text-2xl font-black text-[#091d64] mt-1 tracking-tight">₱{healthStats.alloc.toLocaleString()}</h4>
-                      <div className="mt-4">
-                        <div className="flex justify-between text-[10px] font-bold mb-1.5">
-                          <span className="text-slate-400 uppercase">Utilization</span>
-                          <span className={healthStats.rate > 0 ? 'text-emerald-600 font-black' : 'text-slate-400 font-medium'}>
-                            {healthStats.rate.toFixed(1)}%
-                          </span>
-                        </div>
-                        <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
-                          <div 
-                            className={`h-full transition-all duration-500 ${healthStats.rate > 0 ? 'bg-emerald-500' : 'bg-slate-300'}`} 
-                            style={{ width: `${healthStats.rate > 0 ? Math.min(100, healthStats.rate) : 0}%` }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-
               {/* Program Budget Allocation Table */}
               <div className="space-y-3 pt-2">
                 <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider">Active Program Budget Allocations & Overspending Monitor</h4>
-                <div className="overflow-x-auto border border-slate-100 rounded-xl">
-                  <table className="w-full text-left text-xs text-slate-600">
+                <div className="border border-slate-100 rounded-xl">
+                  <div className="w-full overflow-x-auto block">
+                  <table className="w-full text-left text-xs text-slate-600 min-w-[800px]">
                     <thead className="bg-slate-50 text-[10px] text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100">
                       <tr>
-                        <th className="px-5 py-3">AIP Reference</th>
-                        <th className="px-5 py-3">Program Title</th>
-                        <th className="px-5 py-3">Sector Category</th>
-                        <th className="px-5 py-3 text-right">Allocated Budget</th>
-                        <th className="px-5 py-3 text-right">Disbursed Expenses</th>
-                        <th className="px-5 py-3 text-center">Reversion Status</th>
+                        <th className="px-5 py-3 whitespace-nowrap">AIP Reference</th>
+                        <th className="px-5 py-3 whitespace-nowrap">Program Title</th>
+                        <th className="px-5 py-3 whitespace-nowrap">Sector Category</th>
+                        <th className="px-5 py-3 text-right whitespace-nowrap">Allocated Budget</th>
+                        <th className="px-5 py-3 text-right whitespace-nowrap">Disbursed Expenses</th>
+                        <th className="px-5 py-3 text-center whitespace-nowrap">Reversion Status</th>
+                        <th className="px-5 py-3 text-center whitespace-nowrap">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50 font-medium">
-                      {filteredPrograms.length === 0 ? (
+                      {budgetTablePrograms.length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="px-5 py-8 text-center text-slate-400">
+                          <td colSpan={7} className="px-5 py-8 text-center text-slate-400 whitespace-nowrap">
                             No program budget allocations registered. Allocations will appear when a real program budget is approved.
                           </td>
                         </tr>
                       ) : (
-                        filteredPrograms.map(p => {
+                        budgetTablePrograms.map(({ budget, title, aipReference, category, program }) => {
+                          const targetProgramId = program?.id || budget.program_id || budget.programId;
                           const spent = (expenses || [])
                             .filter((e: any) => {
-                              if (e.programId !== p.id) return false;
+                              const expenseBudgetId = e.budgetId || e.budget_id;
+                              if (expenseBudgetId) return expenseBudgetId === budget.id;
+                              if (!targetProgramId || (e.programId || e.program_id) !== targetProgramId) return false;
                               const _d = e.expense_date || e.created_at || e.date;
                               return !_d || new Date(_d).getFullYear() === Number(treasurerBudgetYear);
                             })
-                            .reduce((sum, e) => sum + (e.amount || 0), 0);
-                          const _yearAlloc = (budgetOptions || []).find((b: any) => b.category === p.title)?.allocated_amount || 0; const isOver = spent > _yearAlloc && _yearAlloc > 0;
+                            .reduce((sum, e) => sum + Number((e as ExpenseRecord & { gross_amount?: number }).gross_amount || e.amount || 0), 0);
+                          const allocatedAmount = Number(budget.allocated_amount) || 0;
+                          const isOver = spent > allocatedAmount && allocatedAmount > 0;
                           return (
-                            <tr key={p.id} className="hover:bg-slate-50">
-                              <td className="px-5 py-4 font-mono text-[11px] text-slate-400">{p.aipReference || 'No AIP reference'}</td>
-                              <td className="px-5 py-4 font-bold text-slate-800">{p.title}</td>
-                              <td className="px-5 py-4"><span className="px-2 py-0.5 bg-blue-50 text-[#091d64] rounded text-[9px] font-bold uppercase">{p.category}</span></td>
-                              <td className="px-5 py-4 text-right font-mono font-bold text-slate-800">₱{((budgetOptions || []).find((b: any) => b.category === p.title)?.allocated_amount || 0).toLocaleString()}</td>
-                              <td className="px-5 py-4 text-right font-mono text-slate-600 font-semibold">₱{spent.toLocaleString()}</td>
-                              <td className="px-5 py-4 text-center">
+                            <tr key={budget.id} className="hover:bg-slate-50">
+                              <td className="px-5 py-4 font-mono text-[11px] text-slate-400 whitespace-nowrap">{aipReference || 'No AIP reference'}</td>
+                              <td className="px-5 py-4 font-bold text-slate-800 whitespace-nowrap">{title}</td>
+                              <td className="px-5 py-4 whitespace-nowrap"><span className="px-2 py-0.5 bg-blue-50 text-[#091d64] rounded text-[9px] font-bold uppercase">{category}</span></td>
+                              <td className="px-5 py-4 text-right font-mono font-bold text-slate-800 whitespace-nowrap">₱{allocatedAmount.toLocaleString()}</td>
+                              <td className="px-5 py-4 text-right font-mono text-slate-600 font-semibold whitespace-nowrap">₱{spent.toLocaleString()}</td>
+                              <td className="px-5 py-4 text-center whitespace-nowrap">
                                 <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${isOver ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>
                                   {isOver ? 'Over Budget' : 'Within Limit'}
                                 </span>
+                              </td>
+                              <td className="px-5 py-4 text-center whitespace-nowrap">
+                                <div className="inline-flex items-center gap-2">
+                                  <button type="button" onClick={() => {
+                                    setBudgetMutationError('');
+                                    setBudgetAmountInput(String(allocatedAmount));
+                                    setEditingBudget(budget);
+                                  }} className="rounded p-2 text-blue-700 hover:bg-blue-50" aria-label={`Edit ${title} allocation`} title="Edit allocation">
+                                    <Edit className="h-4 w-4" />
+                                  </button>
+                                  <button type="button" onClick={() => setConfirmDelete({ id: budget.id, type: 'budget' })} className="rounded p-2 text-rose-700 hover:bg-rose-50" aria-label={`Delete ${title} allocation`} title="Delete allocation">
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           );
@@ -4945,18 +5657,6 @@ export default function OfficialPages({
                     </tbody>
                   </table>
                 </div>
-              </div>
-
-              {/* COA Checklist */}
-              <div className="p-5 border border-slate-100 rounded-xl space-y-3 bg-[#eff6ff]/30 text-xs font-semibold">
-                <h4 className="text-sm font-extrabold text-[#091d64] flex items-center gap-1.5 uppercase tracking-wider">
-                  <Check className="w-4 h-4" /> COA Compliance Checklist
-                </h4>
-                <div className="grid sm:grid-cols-2 gap-3 mt-2">
-                  <div className="flex items-center gap-2 text-slate-600"><Check className="w-4 h-4 text-green-600" /> Annual SK Budget certified by Barangay Council</div>
-                  <div className="flex items-center gap-2 text-slate-600"><Check className="w-4 h-4 text-green-600" /> 10% statutory SK fund allotment verified</div>
-                  <div className="flex items-center gap-2 text-slate-600"><Check className="w-4 h-4 text-green-600" /> General Cash ledger records reconciled</div>
-                  <div className="flex items-center gap-2 text-slate-600"><Check className="w-4 h-4 text-green-600" /> Automated tax withholdings properly audited</div>
                 </div>
               </div>
 
@@ -4968,7 +5668,12 @@ export default function OfficialPages({
                     <p className="text-xs text-slate-400 mt-0.5">Log transactions, identify tax groups, and calculate automated withholding taxes.</p>
                   </div>
                   <button 
-                    onClick={() => setShowExpenseModal(true)}
+                    onClick={() => {
+                      setEditingExpenseId(null);
+                      setExpenseForm({ programId: '', budgetId: '', amount: '', supplier: '', taxType: '', category: '' });
+                      setExpenseSaveError('');
+                      setShowExpenseModal(true);
+                    }}
                     className="px-4 py-2 bg-[#091d64] hover:bg-opacity-95 text-white font-bold rounded-lg transition-all text-xs flex items-center gap-1.5 cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
@@ -4976,33 +5681,49 @@ export default function OfficialPages({
                   </button>
                 </div>
 
-                <div className="overflow-x-auto border border-slate-100 rounded-xl shadow-sm">
-                  <table className="w-full text-left text-sm text-slate-600">
+                <div className="border border-slate-100 rounded-xl shadow-sm">
+                  <div className="w-full overflow-x-auto block">
+                  <table className="w-full text-left text-sm text-slate-600 min-w-[800px]">
                     <thead className="bg-[#091d64] text-[10px] text-white font-bold uppercase tracking-widest">
                       <tr>
-                        <th className="px-5 py-3">Initiative Target</th>
-                        <th className="px-5 py-3 text-right">Gross invoice</th>
-                        <th className="px-5 py-3">Payee Supplier</th>
-                        <th className="px-5 py-3 text-center">Tax Type</th>
-                        <th className="px-5 py-3 text-right">Withholding Tax</th>
-                        <th className="px-5 py-3 text-right">Net Payable</th>
-                        <th className="px-5 py-3 font-mono text-center">Date Logged</th>
+                        <th className="px-5 py-3 whitespace-nowrap">Initiative Target</th>
+                        <th className="px-5 py-3 text-right whitespace-nowrap">Gross invoice</th>
+                        <th className="px-5 py-3 whitespace-nowrap">Payee Supplier</th>
+                        <th className="px-5 py-3 text-center whitespace-nowrap">Tax Type</th>
+                        <th className="px-5 py-3 text-right whitespace-nowrap">Withholding Tax</th>
+                        <th className="px-5 py-3 text-right whitespace-nowrap">Net Payable</th>
+                        <th className="px-5 py-3 font-mono text-center whitespace-nowrap">Date Logged</th>
+                        <th className="px-5 py-3 text-center whitespace-nowrap">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-xs font-medium bg-white">
-                      {filteredExpenses.map(exp => (
+                      {filteredExpenses.map(exp => {
+                        const withholdingTax = getWithholdingTax(exp);
+                        return (
                         <tr key={exp.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-5 py-4 font-bold text-slate-800 tracking-tight">{exp.programTitle}</td>
-                          <td className="px-5 py-4 text-right font-mono text-slate-800 font-bold">₱{exp.amount.toLocaleString()}</td>
-                          <td className="px-5 py-4 text-slate-600 font-semibold">{exp.supplier}</td>
-                          <td className="px-5 py-4 text-center"><span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-[10px] font-black">{exp.taxType}</span></td>
-                          <td className="px-5 py-4 text-right font-mono text-rose-600 font-bold">-₱{(Number(exp.withholdingTax) || 0).toLocaleString()}</td>
-                          <td className="px-5 py-4 text-right font-mono text-[#091d64] font-black text-sm">₱{(Number(exp.netAmount ?? exp.amount) || 0).toLocaleString()}</td>
-                          <td className="px-5 py-4 font-mono text-[11px] text-slate-400 text-center font-bold italic">{exp.dateLogged}</td>
+                          <td className="px-5 py-4 font-bold text-slate-800 tracking-tight whitespace-nowrap">{exp.programTitle}</td>
+                          <td className="px-5 py-4 text-right font-mono text-slate-800 font-bold whitespace-nowrap">₱{exp.amount.toLocaleString()}</td>
+                          <td className="px-5 py-4 text-slate-600 font-semibold whitespace-nowrap">{exp.supplier}</td>
+                          <td className="px-5 py-4 text-center whitespace-nowrap"><span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-[10px] font-black">{exp.taxType}</span></td>
+                          <td className="px-5 py-4 text-right font-mono text-rose-600 font-bold whitespace-nowrap">-₱{withholdingTax.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                          <td className="px-5 py-4 text-right font-mono text-[#091d64] font-black text-sm whitespace-nowrap">₱{getNetPayable(exp).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                          <td className="px-5 py-4 font-mono text-[11px] text-slate-400 text-center font-bold italic whitespace-nowrap">{exp.dateLogged}</td>
+                          <td className="px-5 py-4 text-center whitespace-nowrap">
+                            <div className="inline-flex items-center gap-2">
+                              <button type="button" onClick={() => openExpenseEditor(exp)} className="rounded p-2 text-blue-700 hover:bg-blue-50" aria-label={`Edit expense for ${exp.supplier || exp.programTitle}`} title="Edit expense">
+                                <Edit className="h-4 w-4" />
+                              </button>
+                              <button type="button" onClick={() => setConfirmDelete({ id: exp.id, type: 'expense' })} className="rounded p-2 text-rose-700 hover:bg-rose-50" aria-label={`Delete expense for ${exp.supplier || exp.programTitle}`} title="Delete expense">
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
+                </div>
                 </div>
               </div>
             </div>
@@ -5017,7 +5738,7 @@ export default function OfficialPages({
                   <p className="text-xs text-slate-400 mt-1">Track physical goods, condition statuses, and storage locations.</p>
                 </div>
                 <button 
-                  onClick={() => { setInvForm({ item: '', category: 'Sports Equipment', quantity: 10, condition: 'Good', cost: 1200, location: 'SK Office', photo_url: '' }); setShowInvModal(true); }}
+                  onClick={() => { setInvForm({ item: '', category: '', quantity: 0, condition: '', cost: 0, location: '', photo_url: '' }); setShowInvModal(true); }}
                   className="px-4 py-2 bg-[#091d64] hover:bg-opacity-95 text-white font-bold rounded-lg transition-all text-xs flex items-center gap-1.5 cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
@@ -5025,23 +5746,24 @@ export default function OfficialPages({
                 </button>
               </div>
 
-              <div className="overflow-x-auto border border-slate-100 rounded-xl shadow-sm">
-                <table className="w-full text-left text-sm text-slate-600">
+              <div className="border border-slate-100 rounded-xl shadow-sm">
+                <div className="w-full overflow-x-auto block">
+                <table className="w-full text-left text-sm text-slate-600 min-w-[800px]">
                   <thead className="bg-[#091d64] text-[10px] text-white font-bold uppercase tracking-widest">
                     <tr>
-                        <th className="px-6 py-4 w-12">Photo</th>
-                      <th className="px-6 py-4">Property item</th>
-                      <th className="px-6 py-4">Category Group</th>
-                      <th className="px-6 py-4 text-center">Qty</th>
-                      <th className="px-6 py-4 text-center">Condition</th>
-                      <th className="px-6 py-4 text-right">Unit cost</th>
-                      <th className="px-6 py-4">Storage Location</th>
+                        <th className="px-6 py-4 w-12 whitespace-nowrap">Photo</th>
+                      <th className="px-6 py-4 whitespace-nowrap">Property item</th>
+                      <th className="px-6 py-4 whitespace-nowrap">Category Group</th>
+                      <th className="px-6 py-4 text-center whitespace-nowrap">Qty</th>
+                      <th className="px-6 py-4 text-center whitespace-nowrap">Condition</th>
+                      <th className="px-6 py-4 text-right whitespace-nowrap">Unit cost</th>
+                      <th className="px-6 py-4 whitespace-nowrap">Storage Location</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs font-medium bg-white">
                     {inventory.map(item => (
                       <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-4 whitespace-nowrap">
                           {(item as any).photo_url ? (
                             <button type="button" onClick={() => setPreviewImage((item as any).photo_url)} className="inline-block cursor-pointer hover:opacity-80">
                               <img src={(item as any).photo_url} alt={item.item} className="w-10 h-10 rounded object-cover border border-slate-200" />
@@ -5050,20 +5772,21 @@ export default function OfficialPages({
                             <span className="text-slate-300 text-[10px]">No image</span>
                           )}
                         </td>
-                        <td className="px-6 py-4 font-bold text-slate-800 tracking-tight">{item.item}</td>
-                        <td className="px-6 py-4 text-slate-500 font-semibold">{item.category}</td>
-                        <td className="px-6 py-4 text-center font-black text-slate-700">{item.quantity}</td>
-                        <td className="px-6 py-4 text-center">
+                        <td className="px-6 py-4 font-bold text-slate-800 tracking-tight whitespace-nowrap">{item.item}</td>
+                        <td className="px-6 py-4 text-slate-500 font-semibold whitespace-nowrap">{item.category}</td>
+                        <td className="px-6 py-4 text-center font-black text-slate-700 whitespace-nowrap">{item.quantity}</td>
+                        <td className="px-6 py-4 text-center whitespace-nowrap">
                           <span className={`px-2 py-1 rounded text-[9px] font-black uppercase tracking-tight ${item.condition === 'Good' ? 'bg-green-50 text-green-700' : 'bg-rose-50 text-rose-700'}`}>
                             {item.condition}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-right font-mono text-slate-800 font-bold">₱{item.cost.toLocaleString()}</td>
-                        <td className="px-6 py-4 text-slate-600 font-bold">{item.location}</td>
+                        <td className="px-6 py-4 text-right font-mono text-slate-800 font-bold whitespace-nowrap">₱{item.cost.toLocaleString()}</td>
+                        <td className="px-6 py-4 text-slate-600 font-bold whitespace-nowrap">{item.location}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              </div>
               </div>
             </div>
           )}
@@ -5180,7 +5903,7 @@ export default function OfficialPages({
                   )}
 
                   <div className="border-t border-slate-100 pt-4 text-right">
-                    <button onClick={() => alert(`${currentRole} configuration successfully applied to ${currentTenant?.name || 'Barangay'} Sangguniang Kabataan registry!`)} className="px-5 py-2.5 bg-[#091d64] hover:bg-opacity-95 text-white font-bold rounded-lg text-xs">Save Configuration</button>
+                    <button onClick={() => setPopupMsg({ title: 'Configuration Saved', text: `${currentRole} configuration successfully applied to ${currentTenant?.name || 'Barangay'} Sangguniang Kabataan registry!`, type: 'success' })} className="px-5 py-2.5 bg-[#091d64] hover:bg-opacity-95 text-white font-bold rounded-lg text-xs">Save Configuration</button>
                   </div>
                 </div>
               </div>
@@ -5194,24 +5917,25 @@ export default function OfficialPages({
       {/* 1. Create Program Modal (Kagawad) */}
       {showProgModal && currentRole !== 'SK Treasurer' && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-left">
+          <div className="bg-white rounded-xl w-full max-w-[95vw] md:max-w-2xl mx-4 my-8 max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-left">
             <div className="bg-[#091d64] text-white p-6 border-b border-slate-100">
-              <h3 className="font-sans font-bold text-lg">Create New Program Initiative</h3>
+              <h3 className="font-sans font-bold text-lg">{editingProgramId ? 'Edit Program Initiative' : 'Create New Program Initiative'}</h3>
               <p className="text-xs text-slate-300 mt-1">Specify schedules, funding, and locations for COA compliance audits.</p>
             </div>
             <div className="p-6 space-y-4 text-xs font-semibold">
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Program Title *</label>
-                <input type="text" value={progForm.title} onChange={(e)=>setProgForm({...progForm, title: e.target.value})} placeholder="e.g. SK Basketball League 2026" className="w-full p-2 border rounded text-xs focus:ring-1 focus:ring-[#091d64]" required />
+                <input type="text" value={progForm.title} onChange={(e)=>setProgForm({...progForm, title: e.target.value})} placeholder="e.g. SK Basketball League 2026" className="w-full p-2 border rounded text-xs sm:text-sm focus:ring-1 focus:ring-[#091d64]" required />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">AIP Reference Code</label>
-                  <input type="text" value={progForm.aipReference} onChange={(e)=>setProgForm({...progForm, aipReference: e.target.value})} className="w-full p-2 border rounded font-mono text-xs focus:ring-1 focus:ring-[#091d64]" />
+                  <input type="text" value={progForm.aipReference} onChange={(e)=>setProgForm({...progForm, aipReference: e.target.value})} className="w-full p-2 border rounded font-mono text-xs sm:text-sm focus:ring-1 focus:ring-[#091d64]" />
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Category Group</label>
-                  <select value={progForm.category} onChange={(e)=>setProgForm({...progForm, category: e.target.value as any})} className="w-full p-2 border rounded text-xs focus:outline-none">
+                  <select required value={progForm.category} onChange={(e)=>setProgForm({...progForm, category: e.target.value as any})} className="w-full p-2 border rounded text-xs focus:outline-none">
+                    <option value="" disabled>Select a Category</option>
                     <option value="Education & Scholarship">Education & Scholarship</option>
                     <option value="Sports Development">Sports Development</option>
                     <option value="Health & Nutrition">Health & Nutrition</option>
@@ -5221,37 +5945,74 @@ export default function OfficialPages({
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {currentRole !== 'SK Kagawad' && (
                   <>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Budget Allocation (₱)</label>
-                    <input type="number" value={progForm.budgetAllocation} onChange={(e)=>setProgForm({...progForm, budgetAllocation: parseInt(e.target.value)||0})} className="w-full p-2 border rounded text-xs font-mono" />
+                    <input type="number" value={progForm.budgetAllocation} onChange={(e)=>setProgForm({...progForm, budgetAllocation: parseInt(e.target.value)||0})} className="w-full p-2 border rounded text-xs sm:text-sm font-mono" />
                   </div>
                   </>
                 )}
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Max slots</label>
-                  <input type="number" value={progForm.maxParticipants} onChange={(e)=>setProgForm({...progForm, maxParticipants: parseInt(e.target.value)||100})} className="w-full p-2 border rounded text-xs" />
+                  <input type="number" value={progForm.maxParticipants} onChange={(e) => {
+                    const val = e.target.value;
+                    setProgForm(prev => ({
+                      ...prev,
+                      maxParticipants: val === '' ? '' : Number(val)
+                    }));
+                  }} className="w-full p-2 border rounded text-xs sm:text-sm" />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Start Date *</label>
-                  <input type="date" value={progForm.startDate} onChange={(e)=>setProgForm({...progForm, startDate: e.target.value})} className="w-full p-2 border rounded text-xs" required />
+                  <input type="date" value={progForm.startDate} onChange={(e)=>setProgForm({...progForm, startDate: e.target.value})} className="w-full p-2 border rounded text-xs sm:text-sm" required />
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">End Date *</label>
-                  <input type="date" value={progForm.endDate} onChange={(e)=>setProgForm({...progForm, endDate: e.target.value})} className="w-full p-2 border rounded text-xs" required />
+                  <input type="date" value={progForm.endDate} onChange={(e)=>setProgForm({...progForm, endDate: e.target.value})} className="w-full p-2 border rounded text-xs sm:text-sm" required />
                 </div>
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Location Venue *</label>
-                <input type="text" value={progForm.location} onChange={(e)=>setProgForm({...progForm, location: e.target.value})} className="w-full p-2 border rounded text-xs" required />
+                <input type="text" value={progForm.location} onChange={(e)=>setProgForm({...progForm, location: e.target.value})} className="w-full p-2 border rounded text-xs sm:text-sm" required />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Upload Pubmat / Event Poster</label>
+                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-300 rounded-lg cursor-pointer bg-slate-50 hover:bg-slate-100">
+                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                    <Upload className="w-8 h-8 mb-2 text-slate-500" />
+                    <p className="text-sm text-slate-500 font-bold">Click to upload image</p>
+                  </div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setPubmatFile(e.target.files?.[0] || null)}
+                    className="hidden"
+                  />
+                </label>
+                {pubmatPreview && (
+                  <div className="mt-4 flex flex-col items-center justify-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <img
+                      src={pubmatPreview}
+                      alt="Program Pubmat Preview"
+                      className="max-h-48 max-w-full rounded-lg object-contain shadow-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setPubmatFile(null)}
+                      className="text-xs font-bold text-rose-600 hover:text-rose-700"
+                    >
+                      Remove Image
+                    </button>
+                  </div>
+                )}
               </div>
               <div className="flex justify-end gap-2 border-t pt-4">
-                <button onClick={()=>setShowProgModal(false)} className="px-4 py-2 border rounded text-xs">Close</button>
-                <button onClick={handlePublishProgram} className="px-5 py-2 bg-[#091d64] text-white rounded font-bold text-xs">Publish Initiative</button>
+                <button onClick={()=>{ setShowProgModal(false); setEditingProgramId(null); }} className="h-10 px-6 rounded-lg font-bold border text-xs">Cancel</button>
+                <button onClick={handlePublishProgram} className="h-10 px-6 rounded-lg font-bold bg-[#091d64] text-white text-xs">{editingProgramId ? 'Save Changes' : 'Publish Initiative'}</button>
               </div>
             </div>
           </div>
@@ -5261,7 +6022,7 @@ export default function OfficialPages({
       {/* 2. Upload Document Modal (Secretary) */}
       {showDocModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-left">
+          <div className="bg-white rounded-xl w-full max-w-[95vw] md:max-w-2xl mx-4 my-8 max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-left">
             <div className="bg-[#091d64] text-white p-6 border-b border-slate-100">
               <h3 className="font-sans font-bold text-lg">Upload Governance File</h3>
               <p className="text-xs text-slate-300 mt-1">Route compliance records and liquidations directly to repository.</p>
@@ -5286,17 +6047,16 @@ export default function OfficialPages({
                       setDocForm({
                         ...docForm, 
                         category: newCat,
-                        designatedApprover: getDefaultApproverForCategory(newCat)
+                        designatedApprover: ''
                       });
                     }} 
                     className="w-full p-2 border rounded text-xs"
                   >
-                    <option value="Resolutions">Resolutions</option>
-                    <option value="Vouchers">Vouchers</option>
-                    <option value="Reports">Reports</option>
-                    <option value="Budget">Budget</option>
+                    <option value="" disabled>Select a Category</option>
+                    <option value="Resolutions">Resolutions &amp; Ordinances</option>
                     <option value="Minutes">Meeting Minutes</option>
-                    <option value="Communications">Communications</option>
+                    <option value="Reports">Financial Reports</option>
+                    <option value="Vouchers">Vouchers &amp; Transmittals</option>
                   </select>
                 </div>
               </div>
@@ -5304,6 +6064,7 @@ export default function OfficialPages({
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Designated Approver / Sign-Off Official (RA 10742)</label>
                 <select value={docForm.designatedApprover} onChange={(e)=>setDocForm({...docForm, designatedApprover: e.target.value})} className="w-full p-2 border rounded text-xs font-semibold text-[#091d64]">
+                  <option value="" disabled>Select an Approver</option>
                   <option value={currentTenant?.chairperson || 'SK Chairperson'}>1. {currentTenant?.chairperson || 'SK Chairperson'} (SK Chairperson / Barangay Admin)</option>
                   <option value={currentUser?.full_name || 'SK Treasurer'}>2. {currentUser?.full_name || 'SK Treasurer'} (SK Treasurer)</option>
                   <option value="Council Secretariat / SK Secretary">3. Council Secretariat / SK Secretary</option>
@@ -5325,8 +6086,8 @@ export default function OfficialPages({
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) {
-                      if (file.size > 25 * 1024 * 1024) {
-                        setDocumentUploadError('File size exceeds maximum limit of 25MB.');
+                      if (file.size > 3 * 1024 * 1024) {
+                        setDocumentUploadError('Maximum file size is 3MB. Please compress your file.');
                         return;
                       }
                       setSelectedDocumentFile(file);
@@ -5340,7 +6101,7 @@ export default function OfficialPages({
                 <span className="text-xs font-bold text-slate-700 block">
                   {docForm.fileName ? `Attached: ${docForm.fileName}` : 'Select compliance report attachment'}
                 </span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">PDF, Excel, Word, JPG, PNG files supported (Max 25MB)</span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">PDF, Excel, Word, JPG, PNG files supported (Max 3MB)</span>
               </div>
               {documentUploadError && <p role="alert" className="text-[11px] font-semibold text-rose-700">{documentUploadError}</p>}
               <div className="flex justify-end gap-2 border-t pt-4">
@@ -5357,16 +6118,17 @@ export default function OfficialPages({
       {/* 3. Log Expense Modal (Treasurer) */}
       {showExpenseModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-left">
+          <div className="bg-white rounded-xl w-full max-w-[95vw] md:max-w-2xl mx-4 my-8 max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-left">
             <div className="bg-[#091d64] text-white p-6 border-b border-slate-100">
-              <h3 className="font-sans font-bold text-lg">Log Ledger Expense Item</h3>
+              <h3 className="font-sans font-bold text-lg">{editingExpenseId ? 'Edit Ledger Expense Item' : 'Log Ledger Expense Item'}</h3>
               <p className="text-xs text-slate-300 mt-1">Audit transactions, payee details, and calculate automatic withholding tax.</p>
             </div>
             <div className="p-6 space-y-4 text-xs font-semibold">
               <div className="grid grid-cols-1 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Expense Category</label>
-                  <select value={expenseForm.category} onChange={(e)=>setExpenseForm({...expenseForm, category: e.target.value as any})} className="w-full p-2 border rounded text-xs">
+                  <select required value={expenseForm.category} onChange={(e)=>setExpenseForm({...expenseForm, category: e.target.value as any})} className="w-full p-2 border rounded text-xs">
+                    <option value="" disabled>Select an Expense Category</option>
                     <option value="Supplies">Supplies & Materials</option>
                     <option value="Honorarium">Honorariums</option>
                     <option value="Food & Catering">Food & Catering</option>
@@ -5382,6 +6144,7 @@ export default function OfficialPages({
                 </div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Program Budget Allocation *</label>
                 <select
+                  required
                   value={expenseForm.budgetId}
                   onChange={(e) => {
                     const newBudgetId = e.target.value;
@@ -5391,10 +6154,16 @@ export default function OfficialPages({
                   }}
                   className="w-full p-2 border rounded text-xs"
                   disabled={isLoadingBudgets || budgetOptions.length === 0}
-                  required
                 >
-                  <option value="">{isLoadingBudgets ? 'Loading current-year budgets...' : 'Select a budget allocation'}</option>
-                  {budgetOptions.map((budget) => (
+                  <option value="" disabled>Select a Budget Allocation</option>
+                  {budgetOptions.filter((budget) => {
+                    const category = String(budget.category || '').trim().toLowerCase();
+                    if (['heha', 'aaaa'].includes(category)) return false;
+                    const programId = budget.program_id || budget.programId;
+                    const linkedProgram = programs.find(program => program.id === programId)
+                      || programs.find(program => program.title.trim().toLowerCase() === category);
+                    return linkedProgram ? linkedProgram.status?.toLowerCase() !== 'deleted' : false;
+                  }).map((budget) => (
                     <option key={budget.id} value={budget.id}>
                       {budget.category}
                     </option>
@@ -5407,7 +6176,11 @@ export default function OfficialPages({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Gross invoice *</label>
-                  <input type="number" value={expenseForm.amount} onChange={(e)=>setExpenseForm({...expenseForm, amount: parseInt(e.target.value)||0})} className="w-full p-2 border rounded text-xs font-mono font-bold" required />
+                  <input type="text" value={expenseForm.amount} onChange={(e) => {
+                    const raw = e.target.value.replace(/\D/g, '');
+                    const formatted = raw.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                    setExpenseForm({...expenseForm, amount: formatted});
+                  }} className="w-full p-2 border rounded text-xs font-mono font-bold" required />
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Payee Supplier *</label>
@@ -5417,6 +6190,7 @@ export default function OfficialPages({
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Tax Classification Group</label>
                 <select value={expenseForm.taxType} onChange={(e)=>setExpenseForm({...expenseForm, taxType: e.target.value as any})} className="w-full p-2 border rounded text-xs">
+                  <option value="">Select a Classification Group</option>
                   <option value="VAT">VAT Registered (12% tax base with 2% withhold)</option>
                   <option value="Non-VAT">Non-VAT Registered (3% tax withhold)</option>
                   <option value="Exempt">VAT / Tax Exempt</option>
@@ -5426,7 +6200,7 @@ export default function OfficialPages({
               {/* Automated withholding math */}
               <div className="bg-slate-50 border p-4 rounded-lg space-y-1.5 text-xs font-semibold">
                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Automated Treasurer Deductions</span>
-                <div className="flex justify-between"><span>Gross Invoice Amount:</span><span className="font-mono">₱{expenseForm.amount.toLocaleString()}</span></div>
+                <div className="flex justify-between"><span>Gross Invoice Amount:</span><span className="font-mono">₱{Number(String(expenseForm.amount).replace(/,/g, '') || 0).toLocaleString()}</span></div>
                 <div className="flex justify-between"><span>Input VAT Base:</span><span className="font-mono text-slate-600">₱{calcVat.toLocaleString()}</span></div>
                 <div className="flex justify-between text-rose-600"><span>Withholding Tax:</span><span className="font-mono font-bold">-₱{calcWithholding.toLocaleString()}</span></div>
                 <div className="flex justify-between border-t pt-1.5 text-[#091d64] text-sm font-bold"><span>Net Payable Amount:</span><span className="font-mono text-base">₱{calcNet.toLocaleString()}</span></div>
@@ -5434,9 +6208,9 @@ export default function OfficialPages({
 
               <div className="flex justify-end gap-2 border-t pt-4">
                 {expenseSaveError && <p role="alert" className="mr-auto self-center text-[10px] text-rose-700">{expenseSaveError}</p>}
-                <button disabled={isSavingExpense} onClick={()=>setShowExpenseModal(false)} className="px-4 py-2 border rounded text-xs disabled:opacity-50">Close</button>
+                <button disabled={isSavingExpense} onClick={()=>{setShowExpenseModal(false); setEditingExpenseId(null);}} className="px-4 py-2 border rounded text-xs disabled:opacity-50">Close</button>
                 <button disabled={isSavingExpense || isLoadingBudgets || budgetOptions.length === 0} onClick={handleLogExpenseSubmit} className="px-5 py-2 bg-[#091d64] text-white rounded font-bold text-xs disabled:opacity-50">
-                  {isSavingExpense ? 'Saving...' : 'Log Transaction'}
+                  {isSavingExpense ? 'Saving...' : editingExpenseId ? 'Save Changes' : 'Log Transaction'}
                 </button>
               </div>
             </div>
@@ -5447,7 +6221,7 @@ export default function OfficialPages({
       {/* 4. Draft Resolution Modal (Kagawad) */}
       {showResModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-left text-xs font-semibold">
+          <div className="bg-white rounded-xl w-full max-w-[95vw] md:max-w-2xl mx-4 my-8 max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-left text-xs font-semibold">
             <div className="bg-[#091d64] text-white p-6 border-b border-slate-100">
               <h3 className="font-sans font-bold text-lg">Draft Council Legislation</h3>
               <p className="text-xs text-slate-300 mt-1">Specify resolution number for official voting tracks.</p>
@@ -5486,7 +6260,7 @@ export default function OfficialPages({
       {/* 5. Add Inventory Item Modal (Treasurer) */}
       {showInvModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-left text-xs font-semibold">
+          <div className="bg-white rounded-xl w-full max-w-[95vw] md:max-w-2xl mx-4 my-8 max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-left text-xs font-semibold">
             <div className="bg-[#091d64] text-white p-6 border-b border-slate-100">
               <h3 className="font-sans font-bold text-lg">Register Council Property Asset</h3>
               <p className="text-xs text-slate-300 mt-1">Input unit cost, quantity levels, and storage details of SK assets.</p>
@@ -5499,7 +6273,8 @@ export default function OfficialPages({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Category Group</label>
-                  <select value={invForm.category} onChange={(e)=>setInvForm({...invForm, category: e.target.value})} className="w-full p-2 border rounded text-xs">
+                  <select required value={invForm.category} onChange={(e)=>setInvForm({...invForm, category: e.target.value})} className="w-full p-2 border rounded text-xs">
+                    <option value="" disabled>Select a Category</option>
                     <option value="Sports Equipment">Sports Equipment</option>
                     <option value="Office IT Equipment">Office IT Equipment</option>
                     <option value="Event Furniture">Event Furniture</option>
@@ -5508,7 +6283,8 @@ export default function OfficialPages({
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Condition Status</label>
-                  <select value={invForm.condition} onChange={(e)=>setInvForm({...invForm, condition: e.target.value})} className="w-full p-2 border rounded text-xs">
+                  <select required value={invForm.condition} onChange={(e)=>setInvForm({...invForm, condition: e.target.value})} className="w-full p-2 border rounded text-xs">
+                    <option value="" disabled>Select a Status</option>
                     <option value="Good">Good Condition</option>
                     <option value="Needs Repair">Needs Repair</option>
                     <option value="Damaged">Damaged</option>
@@ -5527,14 +6303,20 @@ export default function OfficialPages({
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Asset Photo (Optional)</label>
-                <input type="file" accept="image/*" onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    const reader = new FileReader();
-                    reader.onloadend = () => setInvForm({...invForm, photo_url: reader.result as string});
-                    reader.readAsDataURL(file);
-                  }
-                }} className="w-full text-xs" />
+                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-300 rounded-lg cursor-pointer bg-slate-50 hover:bg-slate-100">
+                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                    <Upload className="w-8 h-8 mb-2 text-slate-500" />
+                    <p className="text-sm text-slate-500 font-bold">Click to upload image</p>
+                  </div>
+                  <input type="file" accept="image/*" className="hidden" onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onloadend = () => setInvForm({...invForm, photo_url: reader.result as string});
+                      reader.readAsDataURL(file);
+                    }
+                  }} />
+                </label>
                 {invForm.photo_url && <img src={invForm.photo_url} className="mt-2 h-20 w-20 object-cover rounded border" alt="Preview" />}
               </div>
               <div>
@@ -5553,7 +6335,7 @@ export default function OfficialPages({
       {/* 6. Feedback Response Modal (Kagawad) */}
       {showFeedbackModal && selectedFeedback && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-left text-xs font-semibold">
+          <div className="bg-white rounded-xl w-full max-w-[95vw] md:max-w-2xl mx-4 my-8 max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-left text-xs font-semibold">
             <div className="bg-[#091d64] text-white p-6 border-b border-slate-100">
               <h3 className="font-sans font-bold text-lg">Respond to Boses ng Kabataan Entry</h3>
               <p className="text-xs text-slate-300 mt-1">Provide an official SK response and update resolution status.</p>
@@ -5602,9 +6384,39 @@ export default function OfficialPages({
         </div>
       )}
 
+      {previewDoc && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-5xl rounded-xl bg-white p-4 shadow-2xl">
+            <h3 className="mb-3 text-sm font-bold text-slate-800">{previewDoc.title}</h3>
+            <div className="flex min-h-[60vh] items-center justify-center overflow-auto rounded-lg bg-slate-100">
+              {(previewDoc.fileUrl || (previewDoc as any).file_url) ? (
+                (previewDoc.fileUrl || (previewDoc as any).file_url || '').toLowerCase().split('?')[0].endsWith('.pdf') ? (
+                  <iframe
+                    src={previewDoc.fileUrl || (previewDoc as any).file_url}
+                    title={`Preview: ${previewDoc.title}`}
+                    className="h-[60vh] w-full"
+                  />
+                ) : (
+                  <img
+                    src={previewDoc.fileUrl || (previewDoc as any).file_url}
+                    alt={previewDoc.title}
+                    className="mx-auto max-h-[60vh] object-contain"
+                  />
+                )
+              ) : (
+                <p className="p-6 text-sm font-semibold text-slate-500">No file is attached to this document.</p>
+              )}
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button onClick={() => setPreviewDoc(null)} className="rounded-lg bg-[#091d64] px-5 py-2 text-xs font-bold text-white">Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showViewDocModal && selectedDoc && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-left">
+          <div className="bg-white rounded-xl w-full max-w-[95vw] md:max-w-2xl mx-4 my-8 max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-left">
             <div className="bg-[#091d64] text-white p-6 flex justify-between items-start">
               <button onClick={() => setShowViewDocModal(false)} className="text-slate-300 hover:text-white p-1 rounded-lg">
                 <X className="w-5 h-5" />
@@ -5661,16 +6473,18 @@ export default function OfficialPages({
               </div>
 
               <div className="flex justify-between items-center border-t border-slate-100 pt-4">
-                <button 
-                  onClick={() => {
-                    const url = (selectedDoc as any).fileUrl;
-                    if (url) { window.open(url, '_blank'); return; }
-                    alert('No file attached to this document. It may be a metadata-only record.');
-                  }}
-                  className="px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold rounded-lg text-xs flex items-center gap-1.5"
-                >
-                  <Download className="w-4 h-4" /> Download Official File
-                </button>
+                {(selectedDoc.fileUrl || (selectedDoc as any).file_url) ? (
+                  <a
+                    href={selectedDoc.fileUrl || (selectedDoc as any).file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold rounded-lg text-xs flex items-center gap-1.5"
+                  >
+                    <Download className="w-4 h-4" /> Download Official File
+                  </a>
+                ) : (
+                  <span className="text-xs font-semibold text-slate-400">No File Attached</span>
+                )}
                 <button onClick={() => setShowViewDocModal(false)} className="px-5 py-2 bg-[#091d64] text-white font-bold rounded-lg text-xs">Close</button>
               </div>
             </div>
@@ -5681,7 +6495,7 @@ export default function OfficialPages({
       {/* 9. Edit Document Details Modal */}
       {showEditDocModal && selectedDoc && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-left">
+          <div className="bg-white rounded-xl w-full max-w-[95vw] md:max-w-2xl mx-4 my-8 max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-left">
             <div className="bg-[#091d64] text-white p-6">
               <h3 className="font-sans font-bold text-lg">Edit Document Details</h3>
               <p className="text-xs text-slate-300 mt-1">Update repository metadata and designated approvers.</p>
@@ -5711,12 +6525,10 @@ export default function OfficialPages({
                     }} 
                     className="w-full p-2 border border-slate-200 rounded text-xs"
                   >
-                    <option value="Resolutions">Resolutions</option>
-                    <option value="Vouchers">Vouchers</option>
-                    <option value="Reports">Reports</option>
-                    <option value="Budget">Budget</option>
+                    <option value="Resolutions">Resolutions &amp; Ordinances</option>
                     <option value="Minutes">Meeting Minutes</option>
-                    <option value="Communications">Communications</option>
+                    <option value="Reports">Financial Reports</option>
+                    <option value="Vouchers">Vouchers &amp; Transmittals</option>
                   </select>
                 </div>
                 <div>
@@ -5736,6 +6548,7 @@ export default function OfficialPages({
                   onChange={(e) => setSelectedDoc({ ...selectedDoc, designatedApprover: e.target.value })} 
                   className="w-full p-2 border border-slate-200 rounded text-xs font-semibold text-[#091d64]"
                 >
+                  <option value="">Select a Designated Approver</option>
                   <option value={currentTenant?.chairperson || 'SK Chairperson'}>1. {currentTenant?.chairperson || 'SK Chairperson'} (SK Chairperson / Barangay Admin)</option>
                   <option value={currentUser?.full_name || 'SK Treasurer'}>2. {currentUser?.full_name || 'SK Treasurer'} (SK Treasurer)</option>
                   <option value="Council Secretariat / SK Secretary">3. Council Secretariat / SK Secretary</option>
@@ -5762,10 +6575,10 @@ export default function OfficialPages({
         </div>
       )}
 
-      {/* 10. View Details Katipunan Constituent Profile Modal */}
+      {/* Youth Constituent Profile Details */}
       {showYouthDetailModal && selectedYouthProfile && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-left">
+          <div className="bg-white rounded-xl w-full max-w-[95vw] md:max-w-2xl mx-4 my-8 max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-left">
             <div className="bg-[#091d64] text-white p-6 flex justify-between items-center">
               <div className="flex items-center gap-3">
                   <ProfileAvatar name={selectedYouthProfile.name} src={selectedYouthProfile.profilePic} alt={selectedYouthProfile.name} className="w-12 h-12 rounded-xl border-2 border-white/20" />
@@ -5905,7 +6718,7 @@ export default function OfficialPages({
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">School / University Institute</label>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">School / University</label>
                 <input readOnly 
                   type="text" 
                   value={youthEditForm.school} 
@@ -5913,15 +6726,46 @@ export default function OfficialPages({
                   className="w-full p-2 border border-slate-200 rounded text-xs" 
                 />
               </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Scholarship Source</label>
+                <input
+                  readOnly
+                  type="text"
+                  value={`${selectedYouthProfile.scholarshipSource || (selectedYouthProfile.scholarStatus === 'Scholar' || selectedYouthProfile.scholarStatus === 'Yes' ? 'Not specified' : 'N/A')}${selectedYouthProfile.scholarshipSourceDetail ? ` (${selectedYouthProfile.scholarshipSourceDetail})` : ''}`}
+                  className="w-full p-2 border border-slate-200 rounded text-xs"
+                />
+              </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Marital Status</label>
-                  <input readOnly type="text" value={selectedYouthProfile.civilStatus || 'Single'} className="w-full p-2 border border-slate-200 rounded text-xs" />
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Civil Status</label>
+                  <input readOnly type="text" value={selectedYouthProfile.civilStatus || (selectedYouthProfile as any).civil_status || 'Not specified'} className="w-full p-2 border border-slate-200 rounded text-xs" />
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Special Category</label>
                   <input readOnly type="text" value={[selectedYouthProfile.isPwd ? 'PWD' : null, selectedYouthProfile.isSoloParent ? 'Solo Parent' : null].filter(Boolean).join(' / ') || 'None'} className="w-full p-2 border border-slate-200 rounded text-xs" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Employment Status</label>
+                  <input readOnly type="text" value={selectedYouthProfile.employmentStatus || (selectedYouthProfile as any).employment_status || (selectedYouthProfile as any).employmentLevel || 'Not specified'} className="w-full p-2 border border-slate-200 rounded text-xs" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Birthdate</label>
+                  <input readOnly type="text" value={(selectedYouthProfile as any).birthdate ? new Date((selectedYouthProfile as any).birthdate).toLocaleDateString() : 'Not specified'} className="w-full p-2 border border-slate-200 rounded text-xs" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Age</label>
+                  <input readOnly type="text" value={(selectedYouthProfile as any).birthdate ? String(Math.floor((Date.now() - new Date((selectedYouthProfile as any).birthdate).getTime()) / 31557600000)) : (selectedYouthProfile as any).age || 'Not specified'} className="w-full p-2 border border-slate-200 rounded text-xs" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Complete Address</label>
+                  <input readOnly type="text" value={(selectedYouthProfile as any).address || (selectedYouthProfile as any).complete_address || 'Not specified'} className="w-full p-2 border border-slate-200 rounded text-xs" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Registration Date</label>
+                  <input readOnly type="text" value={selectedYouthProfile.dateRegistered || (selectedYouthProfile as any).date_registered || 'Not specified'} className="w-full p-2 border border-slate-200 rounded text-xs" />
                 </div>
               </div>
               {/* Panel rec #12: ID verification preview (view-only for SK Officials) */}
@@ -6007,7 +6851,7 @@ export default function OfficialPages({
       {/* 11. Katipunan ng Kabataan Beneficiaries Summary Modal */}
       {showBeneficiariesModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-left">
+          <div className="bg-white rounded-xl w-full max-w-[95vw] md:max-w-2xl mx-4 my-8 max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-left">
             <div className="bg-[#091d64] text-white p-6 flex justify-between items-center">
               <div>
                 <span className="px-2.5 py-0.5 bg-blue-500/20 text-blue-200 text-[10px] font-black uppercase rounded tracking-wider">
@@ -6049,14 +6893,15 @@ export default function OfficialPages({
               {/* Zone Breakdown Table */}
               <div>
                 <h4 className="font-bold text-slate-800 text-xs uppercase mb-2">Zone Demographic Distribution</h4>
-                <div className="overflow-x-auto border border-slate-100 rounded-lg">
-                  <table className="w-full text-left text-xs">
+                <div className="border border-slate-100 rounded-lg">
+                  <div className="w-full overflow-x-auto block">
+                  <table className="w-full text-left text-xs min-w-[600px]">
                     <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-[10px]">
                       <tr>
-                        <th className="px-4 py-2.5">Barangay Zone</th>
-                        <th className="px-4 py-2.5 text-center">Verified Youth</th>
-                        <th className="px-4 py-2.5 text-center">Scholars</th>
-                        <th className="px-4 py-2.5 text-center">Percentage</th>
+                        <th className="px-4 py-2.5 whitespace-nowrap">Barangay Zone</th>
+                        <th className="px-4 py-2.5 text-center whitespace-nowrap">Verified Youth</th>
+                        <th className="px-4 py-2.5 text-center whitespace-nowrap">Scholars</th>
+                        <th className="px-4 py-2.5 text-center whitespace-nowrap">Percentage</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium">
@@ -6067,15 +6912,16 @@ export default function OfficialPages({
                         const pct = ((zoneCount / total) * 100).toFixed(1);
                         return (
                           <tr key={z} className="hover:bg-slate-50">
-                            <td className="px-4 py-2.5 font-bold text-slate-800">{z}</td>
-                            <td className="px-4 py-2.5 text-center font-bold text-[#091d64]">{zoneCount}</td>
-                            <td className="px-4 py-2.5 text-center font-bold text-indigo-700">{zoneScholars}</td>
-                            <td className="px-4 py-2.5 text-center font-mono font-bold text-slate-600">{pct}%</td>
+                            <td className="px-4 py-2.5 font-bold text-slate-800 whitespace-nowrap">{z}</td>
+                            <td className="px-4 py-2.5 text-center font-bold text-[#091d64] whitespace-nowrap">{zoneCount}</td>
+                            <td className="px-4 py-2.5 text-center font-bold text-indigo-700 whitespace-nowrap">{zoneScholars}</td>
+                            <td className="px-4 py-2.5 text-center font-mono font-bold text-slate-600 whitespace-nowrap">{pct}%</td>
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
+                </div>
                 </div>
               </div>
 
@@ -6144,7 +6990,7 @@ export default function OfficialPages({
       {/* INVENTORY LIGHTBOX MODAL */}
       {previewImage && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="relative max-w-4xl w-full max-h-[90vh] flex flex-col items-center">
+          <div className="relative max-w-4xl w-full max-h-[90vh] flex flex-col items-center max-w-[95vw] md:max-w-2xl lg:max-w-4xl">
             <button onClick={() => setPreviewImage(null)} className="absolute -top-12 right-0 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors cursor-pointer">
               <X className="w-6 h-6" />
             </button>
@@ -6152,7 +6998,38 @@ export default function OfficialPages({
           </div>
         </div>
       )}
+      {popupMsg && (
+        <div className="fixed inset-0 z-[9999] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 text-center shadow-2xl max-w-[95vw] md:max-w-2xl lg:max-w-sm">
+            <div className={`w-12 h-12 rounded-full mx-auto flex items-center justify-center mb-4 ${popupMsg.type === 'success' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
+              {popupMsg.type === 'success' ? '✓' : '!'}
+            </div>
+            <h3 className="text-lg font-bold text-slate-800">{popupMsg.title}</h3>
+            <p className="text-sm text-slate-600 mb-6">{popupMsg.text}</p>
+            <button onClick={() => setPopupMsg(null)} className="w-full py-2 bg-[#091d64] text-white rounded-lg font-bold">Okay, I understand</button>
+          </div>
+        </div>
+      )}
+      <PopupDialog notice={confirmDeleteNotice} onClose={() => setConfirmDelete(null)} />
+      {lightboxImg && (
+        <div
+          className="fixed inset-0 z-[99999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 cursor-zoom-out"
+          onClick={() => setLightboxImg(null)}
+        >
+          <img
+            src={lightboxImg}
+            alt="Preview"
+            className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl cursor-default"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            className="absolute top-6 right-6 text-white text-3xl font-bold bg-black/50 w-10 h-10 rounded-full flex items-center justify-center hover:bg-black/80"
+            onClick={() => setLightboxImg(null)}
+          >
+            &times;
+          </button>
+        </div>
+      )}
     </div>
   );
 }
-

@@ -82,22 +82,11 @@ export default function App() {
   // --- AUTHENTICATED USER SESSION ---
   const [currentUser, setCurrentUser] = useState<any>(null);
     const [currentRole, setCurrentRole] = useState<UserRole | null>(null);
-  // --- GLOBAL ALERT MODAL STATE ---
-  const [globalAlert, setGlobalAlert] = useState<{ title: string, message: string, type: 'error' | 'success' | 'info' } | null>(null);
-
-  useEffect(() => {
-    const originalAlert = window.alert;
-    window.alert = (message: any) => {
-      const msgStr = String(message);
-      const isError = /error|fail|denied|invalid|reject/i.test(msgStr);
-      setGlobalAlert({
-        title: isError ? 'Notice' : 'KABISIG Alert',
-        message: msgStr,
-        type: isError ? 'error' : 'info'
-      });
+    // --- GLOBAL ALERT MODAL STATE ---
+    const [globalAlert, setGlobalAlert] = useState<{ title: string, message: string, type: 'error' | 'success' | 'info' } | null>(null);
+    const showGlobalAlert = (message: string, type: 'error' | 'success' | 'info' = 'info') => {
+      setGlobalAlert({ title: type === 'success' ? 'Success' : type === 'error' ? 'Notice' : 'KABISIG Alert', message, type });
     };
-    return () => { window.alert = originalAlert; };
-  }, []);
   const [currentTenant, setCurrentTenant] = useState<BarangayTenant | null>(null);
   const [currentYouth, setCurrentYouth] = useState<YouthProfile | null>(null);
   const [currentEmail, setCurrentEmail] = useState<string>('');
@@ -247,7 +236,7 @@ export default function App() {
         where: a.where_text || '',
         when: a.event_when || '',
         hashtags: a.hashtags || '',
-        imageUrl: '',
+        imageUrl: a.image_url || '',
         author: a.author?.full_name || 'SK Official',
         barangay: a.barangay?.name || 'Barangay',
         datePosted: (a.published_at || a.created_at || '').split('T')[0],
@@ -368,10 +357,11 @@ export default function App() {
         if (user) {
           if (user.status === 'pending' || user.status === 'rejected') {
             kabisigApi.logout();
-            alert(
+            showGlobalAlert(
               user.status === 'pending'
                 ? 'Access Denied!\n\nYour account is still pending approval by your Sangguniang Kabataan Chairperson.'
-                : 'Access Denied!\n\nYour account application was rejected.'
+                : 'Access Denied!\n\nYour account application was rejected.',
+              'error'
             );
             return;
           }
@@ -383,7 +373,7 @@ export default function App() {
             setCurrentYouth(null);
             setCurrentRole(null);
             setPublicView('landing');
-            alert('Your account role or SK Official position is not configured. Please contact your SK Federation President.');
+            showGlobalAlert('Your account role or SK Official position is not configured. Please contact your SK Federation President.', 'error');
             return;
           }
           if (user && user.role_id === 4 && user.full_name) { user.full_name = user.full_name.replace(/^Hon\.\s+/i, ''); }
@@ -441,7 +431,7 @@ export default function App() {
               sex: resident.sex || meta.sex || 'Female',
               birthdate: resident.birthdate || meta.birthdate || '2005-01-01',
               age: meta.age || 20,
-              civilStatus: meta.civilStatus || 'Single',
+              civilStatus: resident.civil_status || resident.marital_status || meta.civilStatus || 'Single',
               address: resident.address || meta.address || '',
               zone: resident.zone || meta.zone || 'Not specified',
               mobile: user.phone || meta.mobile || '',
@@ -454,6 +444,8 @@ export default function App() {
               year: resident.year_level || meta.year || '',
               employmentStatus: resident.employment_status || meta.employmentStatus || '',
               scholarStatus: resident.scholar_status || meta.scholarStatus || '',
+              scholarshipSource: resident.scholarship_source || meta.scholarshipSource || '',
+              scholarshipSourceDetail: meta.scholarshipSourceDetail || '',
               scholarshipType: meta.scholarshipType || '',
               guardianName: resident.guardian_name || meta.guardianName || '',
               guardianContact: resident.guardian_contact || meta.guardianContact || '',
@@ -485,22 +477,53 @@ export default function App() {
     }
 
     if (currentRole === 'Viewer') {
-    kabisigApi.getPublicDocuments().then((docs: any) => setDocuments(docs || [])).catch(() => {});
+      let isMounted = true;
+      kabisigApi.getPublicDocuments().then((docs: any[]) => {
+        if (!isMounted) return;
+        const publicDocuments = docs || [];
+        setDocuments(publicDocuments);
+      }).catch(error => {
+        if (isMounted) console.warn('Unable to load public resolutions:', error);
+      });
+      kabisigApi.request<any[]>('/public/polls', { method: 'GET' }).then(response => {
+        if (!isMounted) return;
+        if (!response.success) {
+          console.warn('Unable to load public polls:', response.message);
+          return;
+        }
+        const mappedResolutions: ResolutionRecord[] = (response.data || []).map((poll: any) => ({
+          id: poll.id,
+          tenant_id: poll.tenant_id,
+          end_date: poll.end_date,
+          resolutionNumber: poll.id,
+          author: 'SK Council',
+          title: poll.question || 'Untitled Resolution',
+          content: poll.question || '',
+          status: poll.is_active ? 'Voting Open' : 'Closed',
+          validityPeriod: '',
+          votesSupport: 0,
+          votesOppose: 0,
+          votesAbstain: 0,
+          votedUsers: [],
+          dateCreated: poll.created_at || '',
+        }));
+        setResolutions(mappedResolutions);
+      }).catch(error => {
+        if (isMounted) console.warn('Unable to load public polls:', error);
+      });
       setPrograms([]);
-      setDocuments([]);
-      setResolutions([]);
       setFeedback([]);
       setYouthProfiles([]);
       setExpenses([]);
       setAnnouncements([]);
 
-      let isMounted = true;
       const refreshPublicPrograms = () => {
         kabisigApi.getPublicPrograms().then(rows => {
           if (!isMounted) return;
           setPrograms(rows.map((p: any): Program => ({
             id: p.id,
             title: p.title,
+            imageUrl: p.image_url || p.imageUrl || '',
             description: p.description || '',
             startDate: p.start_date ? p.start_date.split('T')[0] : '',
             endDate: p.end_date ? p.end_date.split('T')[0] : '',
@@ -517,7 +540,7 @@ export default function App() {
         }).catch(error => console.warn('Unable to load public programs:', error));
       };
       refreshPublicPrograms();
-      const intervalId = window.setInterval(refreshPublicPrograms, 60000);
+      const intervalId = window.setInterval(refreshPublicPrograms, 120000);
       return () => {
         isMounted = false;
         window.clearInterval(intervalId);
@@ -548,6 +571,7 @@ export default function App() {
         setPrograms(progs.map((p: any): Program => ({
           id: p.id,
           title: p.title,
+          imageUrl: p.image_url || p.imageUrl || '',
           description: p.description || '',
           startDate: p.start_date ? p.start_date.split('T')[0] : '',
           endDate: p.end_date ? p.end_date.split('T')[0] : '',
@@ -567,8 +591,7 @@ export default function App() {
       if (document.visibilityState === 'visible') refreshPrograms();
     };
     refreshPrograms();
-    const programRefreshInterval = window.setInterval(refreshPrograms, 60000);
-    window.addEventListener('focus', refreshPrograms);
+    const programRefreshInterval = window.setInterval(refreshPrograms, 120000);
     document.addEventListener('visibilitychange', refreshProgramsWhenVisible);
 
     kabisigApi.getDocuments().then(docs => {
@@ -599,7 +622,7 @@ export default function App() {
           programTitle: e.program?.title || e.title,
           category: e.budget?.category || 'Supplies',
           amount: Number(e.gross_amount) || Number(e.amount) || 0,
-          supplier: e.payee || e.supplier || e.title || '',
+          supplier: e.payee || e.supplier || e.title || 'N/A',
           taxType: e.tax_type === 'EXEMPT' ? 'Exempt' : e.tax_type || e.taxType || 'Non-VAT',
           vatAmount: Number(e.vat_amount ?? e.vatAmount) || 0,
           withholdingTax: Number(e.withholding_tax ?? e.withholdingTax) || 0,
@@ -695,7 +718,7 @@ export default function App() {
       if (document.visibilityState === 'visible') refreshYouthProfiles();
     };
     refreshYouthProfiles();
-    const intervalId = window.setInterval(refreshYouthProfiles, 60000);
+    const intervalId = window.setInterval(refreshYouthProfiles, 120000);
     window.addEventListener('focus', refreshYouthProfiles);
     document.addEventListener('visibilitychange', refreshWhenVisible);
 
@@ -709,7 +732,6 @@ export default function App() {
 
   useEffect(() => {
     if (!currentRole || currentRole === 'Viewer' || !currentUser?.id || !kabisigApi.getToken()) {
-      setResolutions([]);
       setPollsError(null);
       return;
     }
@@ -834,10 +856,10 @@ export default function App() {
       const matchedProfile = youthProfiles.find(p => p.email.toLowerCase() === emailOrName.trim().toLowerCase());
       if (matchedProfile && matchedProfile.registeredRole === role) {
         if (matchedProfile.status === 'Pending') {
-          alert(`Access Denied!\n\nYour registration as ${role} is currently PENDING approval by your Sangguniang Kabataan Chairperson.\n\nPlease wait for validation.`);
+          showGlobalAlert(`Access Denied!\n\nYour registration as ${role} is currently PENDING approval by your Sangguniang Kabataan Chairperson.\n\nPlease wait for validation.`, 'error');
           return;
         } else if (matchedProfile.status === 'Rejected') {
-          alert(`Access Denied!\n\nYour registration as ${role} was REJECTED by your Sangguniang Kabataan Chairperson.\n\nReason: ${matchedProfile.rejectionReason || 'No reason specified.'}`);
+          showGlobalAlert(`Access Denied!\n\nYour registration as ${role} was REJECTED by your Sangguniang Kabataan Chairperson.\n\nReason: ${matchedProfile.rejectionReason || 'No reason specified.'}`, 'error');
           return;
         }
       }
@@ -885,7 +907,7 @@ export default function App() {
           sex: resident.sex || meta.sex || matchedProfile?.sex || 'Female',
           birthdate: resident.birthdate || meta.birthdate || matchedProfile?.birthdate || '2005-01-01',
           age: meta.age || matchedProfile?.age || 20,
-          civilStatus: meta.civilStatus || matchedProfile?.civilStatus || 'Single',
+          civilStatus: resident.civil_status || resident.marital_status || meta.civilStatus || matchedProfile?.civilStatus || 'Single',
           address: resident.address || meta.address || matchedProfile?.address || '',
           zone: resident.zone || meta.zone || matchedProfile?.zone || 'Not specified',
           mobile: userObj.phone || meta.mobile || matchedProfile?.mobile || '',
@@ -897,6 +919,8 @@ export default function App() {
           year: resident.year_level || meta.year || matchedProfile?.year || '1st Year',
           employmentStatus: resident.employment_status || meta.employmentStatus || matchedProfile?.employmentStatus || '',
           scholarStatus: resident.scholar_status || meta.scholarStatus || matchedProfile?.scholarStatus || '',
+          scholarshipSource: resident.scholarship_source || meta.scholarshipSource || matchedProfile?.scholarshipSource || '',
+          scholarshipSourceDetail: meta.scholarshipSourceDetail || matchedProfile?.scholarshipSourceDetail || '',
           scholarshipType: meta.scholarshipType || matchedProfile?.scholarshipType || '',
           guardianName: resident.guardian_name || meta.guardianName || matchedProfile?.guardianName || '',
           guardianContact: resident.guardian_contact || meta.guardianContact || matchedProfile?.guardianContact || '',
@@ -982,13 +1006,13 @@ export default function App() {
   const handleApproveYouth = async (id: string) => {
     const matchedYouth = youthProfiles.find(p => p.id === id || p.userId === id);
     if (!matchedYouth?.userId) {
-      alert('This profile has no database user ID and cannot be approved yet. Refresh the youth registry and try again.');
+      showGlobalAlert('This profile has no database user ID and cannot be approved yet. Refresh the youth registry and try again.', 'error');
       return;
     }
 
     const approval = await kabisigApi.approveUser(matchedYouth.userId);
     if (!approval.success) {
-      alert(approval.message || 'The youth profile could not be approved.');
+      showGlobalAlert(approval.message || 'The youth profile could not be approved.', 'error');
       return;
     }
 
@@ -1026,19 +1050,19 @@ export default function App() {
       setAuditLogs(prev => [newLog, ...prev]);
 
       // Show in-app notification
-      alert(`Approval Successful!\n\nUser: ${matchedYouth.name}\nRole: ${logRole}\nApproved By: ${approvedByName}\nApproved At: ${approvedAtTime}\n\nNotification sent to registered email: ${matchedYouth.email}`);
+      showGlobalAlert(`Approval Successful!\n\nUser: ${matchedYouth.name}\nRole: ${logRole}\nApproved By: ${approvedByName}\nApproved At: ${approvedAtTime}\n\nNotification sent to registered email: ${matchedYouth.email}`, 'success');
     }
   };
 
   const handleRejectYouth = async (id: string, reason: string) => {
     const matchedYouth = youthProfiles.find(p => p.id === id || p.userId === id);
     if (!matchedYouth?.userId) {
-      alert('This profile has no database user ID and cannot be rejected yet.');
+      showGlobalAlert('This profile has no database user ID and cannot be rejected yet.', 'error');
       return;
     }
     const rejection = await kabisigApi.rejectUser(matchedYouth.userId, reason);
     if (!rejection.success) {
-      alert(rejection.message || 'The user application could not be rejected.');
+      showGlobalAlert(rejection.message || 'The user application could not be rejected.', 'error');
       return;
     }
     const approvedByName = currentTenant ? currentTenant.chairperson : 'SK Chairperson';
@@ -1077,7 +1101,7 @@ export default function App() {
       setFeedback(prev => [feedbackItem, ...prev]);
 
       // Show in-app rejection notice
-      alert(`Rejection Processed!\n\nUser: ${matchedYouth.name}\nRole: ${logRole}\nReason: ${reason}\n\nRejection notice sent to registered email: ${matchedYouth.email}`);
+      showGlobalAlert(`Rejection Processed!\n\nUser: ${matchedYouth.name}\nRole: ${logRole}\nReason: ${reason}\n\nRejection notice sent to registered email: ${matchedYouth.email}`, 'success');
     }
   };
 
@@ -1093,7 +1117,7 @@ export default function App() {
       programs
     );
     if (conflicts.length > 0) {
-      alert(`Program scheduling conflict detected:\n\n${conflicts.join('\n\n')}`);
+      showGlobalAlert(`Program scheduling conflict detected:\n\n${conflicts.join('\n\n')}`, 'error');
       return false;
     }
 
@@ -1108,11 +1132,13 @@ export default function App() {
       budget_allocation: newP.budgetAllocation || 0,
       aip_reference: newP.aipReference || undefined,
       status: 'upcoming',
-      tenant_id: currentTenant?.id
+      tenant_id: currentTenant?.id,
+      image_base64: (newP as any).image_base64 || null,
+      image_mime_type: (newP as any).image_mime_type || null
     });
 
     if (!result.success || !result.data) {
-      alert(result.message || 'Program could not be saved to the server.');
+      showGlobalAlert(result.message || 'Program could not be saved to the server.', 'error');
       return false;
     }
 
@@ -1120,6 +1146,7 @@ export default function App() {
     const persistedProgram: Program = {
       ...newP,
       id: savedProgram.id,
+      status: 'Upcoming',
       registeredCount: 0,
     };
 
@@ -1135,6 +1162,7 @@ export default function App() {
       barangay: currentTenant?.name || 'City-Wide',
       datePosted: new Date().toISOString().split('T')[0],
       category: 'Opportunity',
+      imageUrl: (savedProgram as any).image_url || '',
       attachments: ['AIP-Initiative-Flyer.pdf']
     };
     setAnnouncements(prev => [newAnn, ...prev]);
@@ -1155,7 +1183,7 @@ export default function App() {
       status: program.status.toLowerCase() === 'published' ? 'upcoming' : program.status.toLowerCase(),
     });
     if (!result.success) {
-      alert(result.message || 'Program could not be updated.');
+      showGlobalAlert(result.message || 'Program could not be updated.', 'error');
       return false;
     }
     setPrograms(previous => previous.map(item => item.id === program.id ? program : item));
@@ -1165,7 +1193,7 @@ export default function App() {
   const handleDeleteProgram = async (programId: string): Promise<boolean> => {
     const result = await kabisigApi.deleteProgram(programId);
     if (!result.success) {
-      alert(result.message || 'Program could not be deleted.');
+      showGlobalAlert(result.message || 'Program could not be deleted.', 'error');
       return false;
     }
     setPrograms(previous => previous.filter(item => item.id !== programId));
@@ -1186,7 +1214,6 @@ export default function App() {
       gross_amount: newE.amount,
       tax_type: taxType,
       tax_rate: taxRate,
-      expense_date: newE.date,
     });
 
     if (!result.success || !result.data?.expense) {
@@ -1284,9 +1311,8 @@ export default function App() {
     return newReg;
   };
 
-  const handleVoteResolution = async (rId: string, voteType: 'Support' | 'Oppose' | 'Abstain'): Promise<ResolutionRecord> => {
+  const handleVoteResolution = async (rId: string, voteType: string): Promise<ResolutionRecord> => {
     if (!currentYouth?.userId) throw new Error('Your authenticated youth account could not be verified.');
-    if (voteType === 'Abstain') throw new Error('Abstain is not an available option for this poll.');
 
     const result = await kabisigApi.voteOnPoll(rId, voteType);
     if (!result.success || !result.data) throw new Error(result.message || 'Your vote could not be recorded.');
@@ -1421,6 +1447,7 @@ export default function App() {
           <BarangayAdminPages 
             currentBarangay={currentTenant}
             currentUser={currentUser}
+            notifications={notifications}
             programs={programs}
             youthProfiles={youthProfiles}
             youthProfilesLoading={youthProfilesLoading}
@@ -1476,6 +1503,7 @@ export default function App() {
         <OfficialPages 
           key={`${currentUser?.id || currentEmail}:${currentRole}`}
           currentRole={currentRole}
+          notifications={notifications}
           programs={programs}
           youthProfiles={youthProfiles}
           registrations={registrations}
@@ -1490,8 +1518,33 @@ export default function App() {
           tenants={tenants}
           currentUser={currentUser}
           onAddProgram={handleCreateProgram}
+          onUpdateProgram={handleUpdateProgram}
+          onDeleteProgram={handleDeleteProgram}
           onAddResolution={(resolution) => setResolutions(prev => [resolution, ...prev.filter(item => item.id !== resolution.id)])}
           onAddExpense={handleLogExpense}
+          onRefreshExpenses={async () => {
+            const rows = await kabisigApi.getExpenses();
+            setExpenses(rows.map((e: any): ExpenseRecord => ({
+              id: e.id,
+              programId: e.program_id || '',
+              budgetId: e.budget_id,
+              programTitle: e.program?.title || e.title,
+              category: e.budget?.category || 'Supplies',
+              amount: Number(e.gross_amount) || Number(e.amount) || 0,
+              supplier: e.payee || e.supplier || e.title || 'N/A',
+              taxType: e.tax_type === 'EXEMPT' ? 'Exempt' : e.tax_type || e.taxType || 'Non-VAT',
+              vatAmount: Number(e.vat_amount ?? e.vatAmount) || 0,
+              withholdingTax: Number(e.withholding_tax ?? e.withholdingTax) || 0,
+              netAmount: Number(e.net_amount ?? e.netAmount ?? e.gross_amount ?? e.amount) || 0,
+              description: e.description || '',
+              date: e.expense_date || e.created_at?.split('T')[0] || '',
+              dateLogged: e.expense_date || e.dateLogged || e.created_at?.split('T')[0] || '',
+              voucherNumber: `DV-${e.id.slice(0, 6).toUpperCase()}`,
+              status: e.status === 'approved' ? 'Approved' : 'Pending',
+              payee: e.payee || e.title,
+              barangayId: e.tenant_id,
+            })));
+          }}
           onAddDocument={(d) => setDocuments(prev => [d, ...prev])}
           onRegisterAttendance={handleRegisterAttendance}
           onLogout={handleLogout}

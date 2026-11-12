@@ -23,6 +23,7 @@ function SetupForm() {
   const [email, setEmail] = useState('');
   const [tenantId, setTenantId] = useState('');
   const [barangayName, setBarangayName] = useState('');
+  const [barangayLogo, setBarangayLogo] = useState('');
   const [firstName, setFirstName] = useState('');
   const [middleName, setMiddleName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -39,17 +40,24 @@ function SetupForm() {
 
   useEffect(() => {
     const inviteEmail = searchParams.get('invite_email');
-    const tenant = searchParams.get('tenant_id');
+    const tenant = searchParams.get('tenant_id') || searchParams.get('tenant') || searchParams.get('barangay');
     const roleParam = searchParams.get('official_role');
     if (inviteEmail) setEmail(inviteEmail);
-    if (tenant) setTenantId(tenant);
+    if (tenant) {
+      setTenantId(tenant);
+      setBarangayLogo('');
+    }
     if (roleParam) setOfficialRole(roleParam);
     if (tenant) {
       kabisigApi.getBarangays().then((rows) => {
         if (!rows) return;
-        const bgy = rows.find((b: any) => b.id === tenant);
-        if (bgy && bgy.name) setBarangayName(bgy.name);
-      }).catch(() => {});
+        const bgy = rows.find((b: any) => b.id === tenant || b.name?.toLowerCase() === tenant.toLowerCase());
+        if (bgy) {
+          if (bgy.name) setBarangayName(bgy.name);
+          setBarangayLogo(bgy.logo || '');
+          if (bgy.id) setTenantId(bgy.id);
+        }
+      }).catch((loadError) => console.error('Unable to load Official setup Barangay details:', loadError));
     }
   }, [searchParams]);
 
@@ -106,7 +114,11 @@ function SetupForm() {
       <div className="hidden lg:flex flex-col justify-between bg-[#091d64] text-white p-10">
         <div>
           <div className="flex items-center gap-3 mb-10">
-            <KabisigLogo className="w-10 h-10" />
+            {barangayLogo ? (
+              <img src={barangayLogo} alt={`${barangayName || 'Barangay'} logo`} className="w-10 h-10 rounded-full object-cover" onError={() => setBarangayLogo('')} />
+            ) : (
+              <KabisigLogo className="w-10 h-10" />
+            )}
             <div>
               <p className="text-base font-black tracking-wide">KABISIG</p>
               <p className="text-[10px] text-slate-300 uppercase tracking-widest">Naga City SK Information System</p>

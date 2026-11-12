@@ -6,12 +6,14 @@ interface LiveCameraScannerProps {
   onScan: (decodedText: string) => void;
   onClose?: () => void;
   selectedProgId?: string;
+  disabled?: boolean;
 }
 
 export const LiveCameraScanner: React.FC<LiveCameraScannerProps> = ({
   onScan,
   onClose,
-  selectedProgId
+  selectedProgId,
+  disabled = false
 }) => {
   const [isStarted, setIsStarted] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
@@ -86,8 +88,15 @@ export const LiveCameraScanner: React.FC<LiveCameraScannerProps> = ({
     }
   };
 
+  useEffect(() => {
+    if (disabled && isStarted) {
+      void stopCamera();
+    }
+  }, [disabled, isStarted]);
+
   // Start camera function with camera ID / facingMode fallback
   const startCamera = async (camId?: string, mode: 'environment' | 'user' = facingMode, forceFacingMode = false) => {
+    if (disabled) return;
     if (isStartingRef.current) return;
     isStartingRef.current = true;
 
@@ -299,8 +308,8 @@ export const LiveCameraScanner: React.FC<LiveCameraScannerProps> = ({
           {!isStarted ? (
             <button
               onClick={() => startCamera()}
-              disabled={isInitializing}
-              className="px-4 py-2 bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 font-extrabold rounded-xl text-xs transition-all flex items-center gap-2 cursor-pointer shadow-md shadow-blue-950/40"
+              disabled={disabled || isInitializing}
+              className={`px-4 py-2 font-extrabold rounded-xl text-xs transition-all flex items-center gap-2 shadow-md shadow-blue-950/40 ${disabled ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 cursor-pointer'}`}
             >
               <Camera className="w-4 h-4 text-slate-950" />
               <span>{isInitializing ? 'Connecting Camera...' : 'Start Camera Scanner'}</span>
@@ -394,7 +403,8 @@ export const LiveCameraScanner: React.FC<LiveCameraScannerProps> = ({
             <div className="pt-2 flex flex-col sm:flex-row gap-2">
               <button
                 onClick={() => startCamera()}
-                className="flex-1 py-2 bg-rose-700 hover:bg-rose-600 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+                disabled={disabled}
+                className={`flex-1 py-2 text-white rounded-xl text-xs font-bold transition-all ${disabled ? 'bg-slate-400 cursor-not-allowed' : 'bg-rose-700 hover:bg-rose-600 cursor-pointer'}`}
               >
                 Retry Camera Access
               </button>

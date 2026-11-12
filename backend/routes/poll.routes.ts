@@ -17,7 +17,7 @@ const CreatePollSchema = z.object({
 });
 
 const VoteSchema = z.object({
-  vote_choice: z.enum(['Support', 'Oppose']),
+  vote_choice: z.string().refine(value => value.trim().length > 0, 'Vote choice is required.'),
 });
 
 function withVoteCounts(poll: any, currentUserId?: string) {

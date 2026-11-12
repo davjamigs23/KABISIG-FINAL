@@ -72,7 +72,7 @@ export default function LandingPage({ onSignIn, onCreateAccount, onTransparencyP
             View Public Transparency Portal
           </button>
           <div className="mt-12 text-slate-400 animate-bounce">
-            <ChevronDown className="w-6 h-6 mx-auto" />
+            <div onClick={() => window.scrollTo({ top: window.innerHeight, behavior: 'smooth' })} className="cursor-pointer mt-8"><ChevronDown className="w-6 h-6 mx-auto" /></div>
           </div>
         </div>
       </section>

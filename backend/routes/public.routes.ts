@@ -18,7 +18,14 @@ router.get('/announcements', async (_req: Request, res: Response): Promise<void>
     sendError(res, `Failed to load public announcements: ${error.message}`, 500);
     return;
   }
-  sendSuccess(res, data || [], 'Public announcements retrieved.');
+  const signedAnnouncements = await Promise.all((data || []).map(async (ann: any) => {
+    if (!ann.image_path) return { ...ann, image_url: null };
+    try {
+      const { data: urlData } = supabaseAdmin.storage.from('announcement-pubmats').getPublicUrl(ann.image_path);
+      return { ...ann, image_url: urlData?.publicUrl || null };
+    } catch { return { ...ann, image_url: null }; }
+  }));
+  sendSuccess(res, signedAnnouncements, 'Public announcements retrieved.');
 });
 
 // GET /api/public/expenses — approved only, no payee/receipt fields
@@ -64,7 +71,7 @@ router.get('/demographics', async (_req: Request, res: Response): Promise<void> 
 
   let pwdCount = 0;
   let soloParentCount = 0;
-  let scholarCount = 0;
+  let profileScholarCount = 0;
   const sexCounts: Record<string, number> = {};
   const eduCounts: Record<string, number> = {};
   const empCounts: Record<string, number> = {};
@@ -73,7 +80,7 @@ router.get('/demographics', async (_req: Request, res: Response): Promise<void> 
   for (const p of list as any[]) {
     if ((p as any).is_pwd || (p as any).youth_sector === 'PWD') pwdCount++;
     if ((p as any).is_solo_parent || (p as any).youth_sector === 'Solo Parent') soloParentCount++;
-    if ((p as any).scholar_status === 'Scholar') scholarCount++;
+    if ((p as any).scholar_status === 'Scholar') profileScholarCount++;
     const s = p.sex || 'Unspecified';
     sexCounts[s] = (sexCounts[s] || 0) + 1;
 
@@ -89,6 +96,10 @@ router.get('/demographics', async (_req: Request, res: Response): Promise<void> 
     else if (age >= 25 && age <= 30) ageBuckets['25-30']++;
   }
 
+  const { count: attendeeCount } = await supabaseAdmin.from('program_attendance').select('*', { count: 'exact', head: true });
+  const { count: scholarCount } = await supabaseAdmin.from('resident_profile').select('*', { count: 'exact', head: true }).or('scholar_status.eq.Scholar,scholar_status.eq.Yes,is_scholar.eq.true');
+  const { count: resolutionCount } = await supabaseAdmin.from('documents').select('*', { count: 'exact', head: true }).eq('document_type', 'Resolution').eq('status', 'approved');
+
   sendSuccess(
     res,
     {
@@ -96,7 +107,9 @@ router.get('/demographics', async (_req: Request, res: Response): Promise<void> 
       sex_distribution: sexCounts,
       pwd_count: pwdCount,
       solo_parent_count: soloParentCount,
-      scholar_count: scholarCount,
+      scholar_count: scholarCount || 0,
+      youth_event_attendees: attendeeCount || 0,
+      passed_resolutions: resolutionCount || 0,
       education_distribution: eduCounts,
       employment_distribution: empCounts,
       age_brackets: ageBuckets,
@@ -109,7 +122,7 @@ router.get('/demographics', async (_req: Request, res: Response): Promise<void> 
 router.get('/programs', async (_req: Request, res: Response): Promise<void> => {
   const { data, error } = await supabaseAdmin
     .from('program')
-    .select('id, tenant_id, title, description, category, location, start_date, end_date, budget_allocation, status, barangay(name)')
+    .select('id, tenant_id, title, description, category, location, start_date, end_date, total_slots, budget_allocation, aip_reference, image_url, status, barangay(name)')
     .order('start_date', { ascending: false })
     .limit(100);
 
@@ -187,7 +200,7 @@ router.get('/programs/:id/budget', async (req: Request, res: Response): Promise<
 router.get('/documents', async (_req: Request, res: Response): Promise<void> => {
   const { data, error } = await supabaseAdmin
     .from('documents')
-    .select('*')
+    .select('id, title, document_type, tenant_id, created_at, status')
     .eq('status', 'approved')
     .order('created_at', { ascending: false });
 
@@ -196,16 +209,52 @@ router.get('/documents', async (_req: Request, res: Response): Promise<void> => 
     return;
   }
 
+  const { data: chairpersons, error: chairpersonError } = await supabaseAdmin
+    .from('users')
+    .select('tenant_id, email')
+    .eq('role_id', 2);
+
+  if (chairpersonError) {
+    sendError(res, `Failed to load public document contacts: ${chairpersonError.message}`, 500);
+    return;
+  }
+
+  const emailMap: Record<string, string> = {};
+  (chairpersons || []).forEach(chairperson => {
+    if (chairperson.tenant_id && chairperson.email) {
+      emailMap[chairperson.tenant_id] = chairperson.email;
+    }
+  });
+
   const publicDocuments = (data || []).map(document => ({
     id: document.id,
     title: document.title,
+    document_type: document.document_type,
     category: document.document_type,
     barangayId: document.tenant_id,
+    chairpersonEmail: emailMap[document.tenant_id] || null,
     uploadedDate: document.created_at?.split('T')[0],
     created_at: document.created_at,
     status: document.status,
   }));
 
   sendSuccess(res, publicDocuments, 'Public FPD documents retrieved.');
+});
+
+// GET /api/public/polls — public resolution and civic poll summaries
+router.get('/polls', async (_req: Request, res: Response): Promise<void> => {
+  const { data, error } = await supabaseAdmin
+    .from('polls')
+    .select('id, question, description, is_active, end_date, created_at, tenant_id')
+    .eq('is_active', true)
+    .gt('end_date', new Date().toISOString())
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    sendError(res, `Failed to load public polls: ${error.message}`, 500);
+    return;
+  }
+
+  sendSuccess(res, data || [], 'Public polls retrieved.');
 });
 export default router;

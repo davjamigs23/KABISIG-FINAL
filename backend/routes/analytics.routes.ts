@@ -148,7 +148,7 @@ function calculateAge(birthdateStr: string): number {
   return age;
 }
 
-router.get('/barangay', authenticateUser, async (req: Request, res: Response): Promise<void> => {
+router.get('/barangay', authenticateUser, requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'), async (req: Request, res: Response): Promise<void> => {
   const user = (req as AuthRequest).user!;
   let tenantId = user.tenant_id;
 

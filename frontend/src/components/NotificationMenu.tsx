@@ -102,8 +102,18 @@ export default function NotificationMenu({
     if (!item.is_read && !locallyReadIds.has(item.id)) {
       setLocallyReadIds(previous => new Set(previous).add(item.id));
     }
-    if (item.link && onNavigate) { onNavigate(item.link); }
-      if (isSystemNotification && !item.is_read) {
+    const type = String((item as any).notification_type || (item as any).type || "").toUpperCase();
+    const notificationText = `${item.title} ${item.message}`.toUpperCase();
+    let targetRoute = item.link || "";
+    if (type.includes("FEEDBACK") || notificationText.includes("FEEDBACK")) targetRoute = "/feedback";
+    else if (type.includes("RESOLUTION") || notificationText.includes("RESOLUTION")) targetRoute = "/feedback";
+    else if (type.includes("DOCUMENT") || notificationText.includes("DOCUMENT")) targetRoute = "/documents";
+    else if (type.includes("BUDGET") || type.includes("EXPENSE") || notificationText.includes("BUDGET") || notificationText.includes("EXPENSE")) targetRoute = "/budget";
+    else if (type.includes("PROGRAM") || notificationText.includes("PROGRAM") || notificationText.includes("ANNOUNCEMENT")) targetRoute = "/programs";
+    else if (type.includes("REGISTRATION") || type.includes("APPROVAL") || notificationText.includes("REGISTRATION") || notificationText.includes("PENDING")) targetRoute = "/youth";
+
+    if (targetRoute && onNavigate) onNavigate(targetRoute);
+    if (isSystemNotification && !item.is_read) {
       setNotifications(previous => previous.map(notification => notification.id === item.id ? { ...notification, is_read: true } : notification));
       void kabisigApi.markNotificationRead(item.id);
     }

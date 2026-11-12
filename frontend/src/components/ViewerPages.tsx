@@ -46,6 +46,7 @@ import {
 } from '../types';
 import { KabisigLogo } from './PublicPages';
 import { kabisigApi } from '../lib/api';
+import PopupDialog, { PopupMessage } from './PopupDialog';
 
 interface ViewerPagesProps {
   tenants: BarangayTenant[];
@@ -71,7 +72,10 @@ export default function ViewerPages({
   onNavigateSignUp
 }: ViewerPagesProps) {
   // Navigation: 'home' | 'transparency' | 'announcements'
+  const [filterBarangay, setFilterBarangay] = useState<string>('All');
+  const [filterCategory, setFilterCategory] = useState<string>('All');
   const [activeMenu, setActiveMenu] = useState<'home' | 'transparency' | 'announcements'>('home');
+  const [lightboxImg, setLightboxImg] = useState<string | null>(null);
 
   // Sub-tab inside Transparency: 'financial' | 'demographics' | 'fpd' | 'auditing'
   const [transparencySubTab, setTransparencySubTab] = useState<'financial' | 'demographics' | 'fpd' | 'auditing'>('financial');
@@ -114,7 +118,7 @@ export default function ViewerPages({
   const downloadPublicCOAPDF = () => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
-      alert('Please allow popups for this website to export the PDF report.');
+      setPopupMsg({ title: 'Pop-up Blocked', message: 'Please allow popups for this website to export the PDF report.', type: 'error' });
       return;
     }
     const targetBgy = selectedBarangayId === 'All' ? 'City-Wide Naga Federation' : tenants.find(t => t.id === selectedBarangayId)?.name || 'Barangay';
@@ -138,10 +142,12 @@ export default function ViewerPages({
           .text-center { text-align: center; }
           .badge { display: inline-block; padding: 3px 8px; font-size: 10px; font-weight: 700; border-radius: 4px; background: #ecfdf5; color: #065f46; }
           .footer { margin-top: 50px; text-align: right; font-size: 12px; color: #475569; }
-          @media print { body { padding: 20px; } }
+          .print-button { position: fixed; top: 16px; right: 16px; padding: 10px 16px; border: 0; border-radius: 8px; background: #091d64; color: white; font-weight: 700; cursor: pointer; }
+          @media print { body { padding: 20px; } .print-button { display: none; } }
         </style>
       </head>
       <body>
+        <button class="print-button" onclick="window.print()">Print</button>
         <div class="header">
           <h1>Republic of the Philippines &bull; City of Naga</h1>
           <h2>Sangguniang Kabataan Federation Public Disclosure</h2>
@@ -166,7 +172,7 @@ export default function ViewerPages({
               <tr>
                 <td><strong>${e.voucherNumber || 'DV-2026-001'}</strong></td>
                 <td>Barangay ${tenants.find(t=>t.id===e.barangayId)?.name || 'Barangay'}</td>
-                <td>${e.payee || e.title}</td>
+                <td>${e.supplier || e.title || e.description || e.payee || 'N/A'}</td>
                 <td>${e.aipCode || 'AIP-2026-SPT-01'}</td>
                 <td class="text-right">₱${e.amount.toLocaleString()}</td>
                 <td class="text-right">₱${e.isVat ? Math.round(e.amount * 0.05).toLocaleString() : '0'}</td>
@@ -180,12 +186,6 @@ export default function ViewerPages({
           <p>Published for Public Transparency per RA 10742 (SK Reform Act of 2015):</p>
           <p style="font-weight: bold; color: #091d64;">NAGA CITY SANGGUNIANG KABATAAN FEDERATION</p>
         </div>
-
-        <script>
-          window.onload = function() {
-            window.print();
-          }
-        </script>
       </body>
       </html>
     `;
@@ -196,6 +196,7 @@ export default function ViewerPages({
   // Selected announcement for "Read More" Modal
   const [readAnnounce, setReadAnnounce] = useState<AnnouncementRecord | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [popupMsg, setPopupMsg] = useState<PopupMessage | null>(null);
 
   // Derived arrays
   const filteredAnnouncements = announcements.filter(a => {
@@ -204,10 +205,25 @@ export default function ViewerPages({
     const matchesBarangay = selectedBarangayId === 'All' ? true : a.barangay === selectedBarangayId;
     return matchesSearch && matchesBarangay;
   });
+  const filteredResolutions = resolutions.filter((res: ResolutionRecord) => {
+    if (selectedBarangayId === 'All') return true;
+    const targetTenant = (tenants || []).find((tenant: any) => tenant.name === selectedBarangayId);
+    return Boolean(targetTenant && res.tenant_id === targetTenant.id);
+  });
 
-  const filteredExpenses = expenses.filter(e => {
-    const matchesBarangay = selectedBarangayId === 'All' ? true : e.programTitle.includes(selectedBarangayId);
-    const matchesCategory = selectedCategory === 'All' ? true : e.category === selectedCategory;
+  // FIXED: Options match actual tax_type values in DB (VAT, EXEMPT)
+  const publicExpenseCategoryOptions: string[] = ['VAT', 'EXEMPT', 'NON_VAT'];
+  const filteredExpenses = expenses.filter(expense => {
+    const selectedTenantId = selectedBarangayId === 'All'
+      ? null
+      : (tenants || []).find(tenant => tenant.name.toLowerCase().trim() === selectedBarangayId.toLowerCase().trim())?.id;
+    const expenseTenantId = (expense as any).tenant_id || expense.barangayId;
+    const expenseCategory = String(
+      (expense as any).budget?.category || expense.category || ''
+    ).trim();
+    const matchesBarangay = !selectedTenantId || expenseTenantId === selectedTenantId;
+    const taxType = String((expense as any).tax_type || (expense as any).taxType || '').toUpperCase().trim();
+    const matchesCategory = selectedCategory === 'All' || taxType === selectedCategory.toUpperCase() || expenseCategory === selectedCategory;
     return matchesBarangay && matchesCategory;
   });
 
@@ -259,25 +275,26 @@ export default function ViewerPages({
   }));
 
   // Recharts Pie Chart F2: Category expense allocations
-  const suppliesSpent = expenses.filter(e => (e.category || '').toLowerCase().includes('supplies')).reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
-  const honorariumSpent = expenses.filter(e => (e.category || '').toLowerCase().includes('honorarium')).reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
-  const foodSpent = expenses.filter(e => e.category === 'Food & Catering').reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
-  const transportSpent = expenses.filter(e => (e.category || '').toLowerCase().includes('transport') || (e.category || '').toLowerCase().includes('travel')).reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0);
-
-  const expenseCategoriesData = [
-    { name: 'Supplies', value: suppliesSpent, color: '#1a237e' },
-    { name: 'Honorarium', value: honorariumSpent, color: '#d32f2f' },
-    { name: 'Food/Catering', value: foodSpent, color: '#fdd835' },
-    { name: 'Travel/Transport', value: transportSpent, color: '#78909c' }
-  ];
+  const expenseCategoryTotals = expenses.reduce<Record<string, number>>((totals, exp) => {
+    const category = String(exp.category || (exp as any).tax_type || 'Uncategorized');
+    totals[category] = (totals[category] || 0) + (Number(exp.amount) || 0);
+    return totals;
+  }, {});
+  const expenseChartColors = ['#1a237e', '#d32f2f', '#fdd835', '#78909c', '#00897b', '#6a1b9a'];
+  const expenseCategoriesData = Object.entries(expenseCategoryTotals).map(([name, value], index) => ({
+    name,
+    value,
+    color: expenseChartColors[index % expenseChartColors.length],
+  }));
 
   // FPD Compliance Documents list from live documents
-  const fpdDocuments = documents.length > 0 ? documents.map(d => ({
+  const fpdDocuments = documents.length > 0 ? documents.filter(d => d.status?.toLowerCase() === "approved").map(d => ({
     title: d.title,
     category: (d as any).document_type || (d as any).category || 'Compliance',
     barangay: tenants.find(t => t.id === d.barangayId)?.name || 'Naga City',
     date: d.uploadedDate || d.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
-    status: d.status || 'Compliant'
+    status: d.status || 'Compliant',
+    chairpersonEmail: (d as any).chairpersonEmail
   })) : [];
 
   return (
@@ -569,7 +586,7 @@ export default function ViewerPages({
                 <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Active Initiatives</span>
-                    <h4 className="text-2xl font-black text-slate-800 mt-1">{programs.length} Programs</h4>
+                    <h4 className="text-2xl font-black text-slate-800 mt-1">{programs.filter(p => { const s = String(p.status || "").toLowerCase(); return s === "upcoming" || s === "ongoing"; }).length} Programs</h4>
                     <span className="text-[10px] text-indigo-600 font-bold block mt-0.5">AIP Approved Projects</span>
                   </div>
                   <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
@@ -605,7 +622,6 @@ export default function ViewerPages({
                           <span className="text-slate-400 font-mono">{ann.datePosted}</span>
                         </div>
                         <h4 className="font-bold text-xs text-slate-800">{ann.title}</h4>
-                        {ann.imageUrl && <img src={ann.imageUrl} alt={`Pubmat for ${ann.title}`} className="mt-2 max-h-32 w-full rounded-md bg-white object-contain" />}
                         {(ann.what || ann.where || ann.when) && (
                           <div className="mt-1 space-y-0.5 text-[10px] text-slate-600">
                             {ann.what && <p><strong>What:</strong> {ann.what}</p>}
@@ -629,10 +645,10 @@ export default function ViewerPages({
             <div className="space-y-6">
               
               {/* SUB-MODULE SELECTOR HEADERS */}
-              <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
+              <div className="flex flex-col md:flex-row gap-2 w-full mb-6">
                 <button
                   onClick={() => setTransparencySubTab('financial')}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  className={`flex-1 py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 border-2 transition-all ${
                     transparencySubTab === 'financial'
                       ? 'bg-[#091d64] text-white shadow-xs'
                       : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
@@ -643,7 +659,7 @@ export default function ViewerPages({
 
                 <button
                   onClick={() => setTransparencySubTab('demographics')}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  className={`flex-1 py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 border-2 transition-all ${
                     transparencySubTab === 'demographics'
                       ? 'bg-[#091d64] text-white shadow-xs'
                       : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
@@ -654,7 +670,7 @@ export default function ViewerPages({
 
                 <button
                   onClick={() => setTransparencySubTab('fpd')}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  className={`flex-1 py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 border-2 transition-all ${
                     transparencySubTab === 'fpd'
                       ? 'bg-[#091d64] text-white shadow-xs'
                       : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
@@ -665,7 +681,7 @@ export default function ViewerPages({
 
                 <button
                   onClick={() => setTransparencySubTab('auditing')}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  className={`flex-1 py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 border-2 transition-all ${
                     transparencySubTab === 'auditing'
                       ? 'bg-[#091d64] text-white shadow-xs'
                       : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
@@ -724,7 +740,7 @@ export default function ViewerPages({
                       <div className="h-56 w-full min-w-0 overflow-hidden">
                         <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
                           <BarChart data={cityWideBarData}>
-                            <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} />
+                            <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} interval={0} angle={0} textAnchor="middle" height={50} tickFormatter={(value) => { const name = String(value || ''); return name.length > 10 ? `${name.substring(0, 10)}...` : name; }} tick={{ fill: '#475569', fontSize: 10 }} />
                             <YAxis stroke="#64748b" fontSize={10} tickLine={false} />
                             <Tooltip />
                             <Bar dataKey="budget" name="Annual Budget Allocation" fill="#091d64" radius={[2, 2, 0, 0]} />
@@ -800,7 +816,7 @@ export default function ViewerPages({
                         <div className="h-48 w-full min-w-0 overflow-hidden">
                           <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
                             <BarChart data={educationDemographicData}>
-                              <XAxis dataKey="name" fontSize={10} />
+                              <XAxis dataKey="name" fontSize={10} interval={0} angle={0} textAnchor="middle" height={50} tickFormatter={(value) => { const name = String(value || ''); return name.length > 10 ? `${name.substring(0, 10)}...` : name; }} tick={{ fill: '#475569', fontSize: 10 }} />
                               <YAxis fontSize={10} />
                               <Tooltip />
                               <Bar dataKey="value" fill="#10b981" radius={[4, 4, 0, 0]} />
@@ -815,7 +831,7 @@ export default function ViewerPages({
                       <h4 className="text-xs font-bold text-slate-800 mb-3 uppercase tracking-wider">City-Wide Program Accomplishments Summary</h4>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div className="p-4 bg-emerald-50/60 rounded-xl border border-emerald-100 text-center">
-                          <span className="text-2xl font-black text-emerald-800 block">{(programs.reduce((s, p) => s + (Number(p.registeredCount) || 0), 0)).toLocaleString()}</span>
+                          <span className="text-2xl font-black text-emerald-800 block">{publicDemographics?.youth_event_attendees ?? 0}</span>
                           <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block mt-1">Youth Event Attendees</span>
                         </div>
                         <div className="p-4 bg-blue-50/60 rounded-xl border border-blue-100 text-center">
@@ -823,7 +839,7 @@ export default function ViewerPages({
                           <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider block mt-1">LGU Educational Scholars</span>
                         </div>
                         <div className="p-4 bg-amber-50/60 rounded-xl border border-amber-100 text-center">
-                          <span className="text-2xl font-black text-amber-800 block">{(resolutions.filter(r => r.status === 'Closed' || r.status === 'Archived' || r.status === 'Approved').length).toLocaleString()} Passed</span>
+                          <span className="text-2xl font-black text-amber-800 block">{publicDemographics?.passed_resolutions ?? 0} Passed</span>
                           <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider block mt-1">Youth Development Resolutions</span>
                         </div>
                       </div>
@@ -844,12 +860,6 @@ export default function ViewerPages({
                         </h3>
                         <p className="text-xs text-slate-500 mt-0.5">Pursuant to DILG Joint Memorandum Circular & Republic Act 10742 (SK Reform Act)</p>
                       </div>
-                      <button
-                        onClick={() => { if (fpdDocuments.length === 0) { alert("No documents to download."); return; } const rows = fpdDocuments.map(function(d) { return [d.title, d.category, d.barangay, d.date, d.status].map(function(v) { return String(v || "").replace(/,/g, ";"); }).join(","); }); const csv = "Title,Type,Barangay,Date,Status\n" + rows.join("\n"); const blob = new Blob([csv], { type: "text/csv" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = "SK_FPD_Compliance_Report.csv"; a.click(); URL.revokeObjectURL(url); }}
-                        className="px-4 py-2 bg-[#091d64] text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs hover:bg-[#122878] transition-colors cursor-pointer"
-                      >
-                        <Download className="w-3.5 h-3.5 text-amber-400" /> Download All FPD Files
-                      </button>
                     </div>
 
                     <div className="overflow-x-auto border border-slate-200 rounded-xl">
@@ -859,7 +869,7 @@ export default function ViewerPages({
                             <th className="px-5 py-3">Document Title & Type</th>
                             <th className="px-5 py-3">Barangay / Council</th>
                             <th className="px-5 py-3">Date Published</th>
-                            <th className="px-5 py-3 text-center">DILG Status</th>
+                            <th className="px-5 py-3 text-center">Approval Status</th>
                             <th className="px-5 py-3 text-right">Action</th>
                           </tr>
                         </thead>
@@ -878,12 +888,12 @@ export default function ViewerPages({
                                 </span>
                               </td>
                               <td className="px-5 py-3.5 text-right">
-                                <button
-                                  onClick={() => alert(`Downloading official compliant record: ${doc.title}`)}
+                                <a
+                                  href={`mailto:${(doc as any).chairpersonEmail || 'skchairperson@nagacity.gov.ph'}?subject=Document Request - ${encodeURIComponent(doc.title)}`}
                                   className="text-[#091d64] hover:text-[#122878] font-bold flex items-center gap-1 ml-auto cursor-pointer"
                                 >
-                                  <Download className="w-3.5 h-3.5 text-amber-500" /> Download
-                                </button>
+                                  <Download className="w-3.5 h-3.5 text-amber-500" /> Request Copy
+                                </a>
                               </td>
                             </tr>
                           ))}
@@ -936,10 +946,9 @@ export default function ViewerPages({
                         className="w-full px-3 py-2 border border-slate-200 bg-white rounded-lg text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#091d64]"
                       >
                         <option value="All">All Categories</option>
-                        <option value="Supplies">Supplies</option>
-                        <option value="Honorarium">Honorarium</option>
-                        <option value="Food & Catering">Food & Catering</option>
-                        <option value="Travel & Transport">Travel & Transport</option>
+                        {publicExpenseCategoryOptions.map(category => (
+                          <option key={category} value={category}>{category}</option>
+                        ))}
                       </select>
                     </div>
                   </div>
@@ -1001,7 +1010,7 @@ export default function ViewerPages({
                   <div className="relative max-w-xs w-full">
                     <input 
                       type="text" 
-                      placeholder="Search announcements..."
+                      placeholder="Search programs & announcements..."
                       value={announcementSearch}
                       onChange={(e) => setAnnouncementSearch(e.target.value)}
                       className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-xs bg-white focus:outline-none focus:ring-1 focus:ring-[#091d64]"
@@ -1044,8 +1053,8 @@ export default function ViewerPages({
                   </div>
 
                   <div className="space-y-3">
-                    {programs.filter((prog: any) => selectedBarangayId === 'All' || sortedTenants.find((t: any) => t.id === prog.barangayId)?.name === selectedBarangayId).slice(0, 6).map((prog: any) => (
-                      <div key={prog.id} className="p-3.5 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
+                    {programs.filter((prog: any) => { const st = String(prog.status || '').toLowerCase(); const isActive = st === 'upcoming' || st === 'ongoing'; const matchesBarangay = selectedBarangayId === 'All' || (tenants || []).find((t: any) => t.id === prog.barangayId)?.name === selectedBarangayId; return isActive && matchesBarangay; }).slice(0, 6).map((prog: any) => (
+                      <div key={prog.id} className="p-3.5 bg-slate-50 rounded-xl border border-slate-100 space-y-2 overflow-hidden">
                         <div className="flex justify-between items-center text-xs">
                           <span className="font-bold text-slate-800">{prog.title}</span>
                           <span className="text-[10px] bg-emerald-100 text-emerald-800 font-extrabold px-2 py-0.5 rounded">
@@ -1053,7 +1062,18 @@ export default function ViewerPages({
                           </span>
                         </div>
                         <p className="text-[10px] text-slate-500 font-bold">Brgy. {sortedTenants.find((t: any) => t.id === prog.barangayId)?.name || "Naga City"}</p>
-                        <p className="text-[11px] text-slate-500 line-clamp-2">{prog.description}</p>
+                          {((prog as any).imageUrl || (prog as any).image_url) && (
+                            <div key={`img-${prog.id}`} className="relative w-full h-48 mb-3 overflow-hidden rounded-lg bg-slate-100">
+                              <img
+                                src={(prog as any).imageUrl || (prog as any).image_url}
+                                alt={prog.title || 'Program image'}
+                                loading="lazy"
+                                className="w-full h-full object-contain cursor-pointer transition-transform hover:scale-105"
+                                onClick={() => setLightboxImg((prog as any).imageUrl || (prog as any).image_url || null)}
+                              />
+                            </div>
+                          )}
+
                         <div className="flex justify-between items-center text-[10px] text-slate-400 font-medium pt-1 border-t border-slate-100">
                           <span>{prog.location}</span>
                           <span className="font-mono font-bold text-[#091d64]">₱{prog.budgetAllocation.toLocaleString()}</span>
@@ -1100,6 +1120,7 @@ export default function ViewerPages({
                             </div>
                           </div>
                         )}
+                        <PopupDialog notice={popupMsg} onClose={() => setPopupMsg(null)} />
                       </div>
                     ))}
                   </div>
@@ -1107,7 +1128,7 @@ export default function ViewerPages({
 
                 {/* Announcement Cards Feed */}
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-                  {filteredAnnouncements.map(ann => (
+                  {filteredAnnouncements.slice(0, 3).map(ann => (
                     <div key={ann.id} className="bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col justify-between hover:shadow-md transition-all">
                       <div className="p-5 space-y-3">
                         <div className="flex justify-between items-center">
@@ -1122,7 +1143,14 @@ export default function ViewerPages({
                         </div>
 
                         <h4 className="text-sm font-black text-slate-900 leading-snug">{ann.title}</h4>
-                        {ann.imageUrl && <img src={ann.imageUrl} alt={`Pubmat for ${ann.title}`} className="max-h-56 w-full rounded-lg bg-slate-50 object-contain" />}
+                        {ann.imageUrl && (
+                          <img 
+                            src={ann.imageUrl} 
+                            alt={ann.title} 
+                            className="w-full h-48 object-cover rounded-xl cursor-pointer hover:opacity-90 transition-opacity" 
+                            onClick={() => setLightboxImg(ann.imageUrl || null)} 
+                          />
+                        )}
                         <div className="space-y-1 text-xs text-slate-600">
                           {ann.what && <p><strong>What:</strong> {ann.what}</p>}
                           {ann.where && <p><strong>Where:</strong> {ann.where}</p>}
@@ -1156,15 +1184,20 @@ export default function ViewerPages({
                   </h4>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {resolutions.slice(0, 4).map(res => (
+                    {filteredResolutions.filter(r => ['Approved', 'Voting Open', 'Closed', 'Archived', 'Draft'].includes(r.status)).slice(0, 4).map(res => (
                       <div key={res.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-2">
                         <div className="flex justify-between items-center text-xs">
                           <span className="font-bold text-[#091d64] font-mono">{res.title}</span>
-                          <span className="bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full">
-                            {res.status}
+                          <span className={String(res.status) === 'Active' || res.status === 'Voting Open' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-800'}>
+                            {String(res.status) === 'Active' || res.status === 'Voting Open' ? 'Voting Open' : 'Closed'}
                           </span>
                         </div>
-                        <p className="text-xs text-slate-700 font-semibold">{res.content}</p>
+                        {res.content && res.content !== res.title && (
+                          <p className="text-sm text-slate-600 mt-1">{res.content}</p>
+                        )}
+                        {res.end_date && (
+                          <span className="text-[10px] text-slate-400">Closes: {new Date(res.end_date).toLocaleDateString()}</span>
+                        )}
                         <div className="flex items-center gap-4 text-[10px] font-bold text-slate-500 pt-2 border-t border-slate-200/60">
                           <span className="text-emerald-700">👍 Support: {res.votesSupport}</span>
                           <span className="text-rose-600">👎 Oppose: {res.votesOppose}</span>
@@ -1189,7 +1222,7 @@ export default function ViewerPages({
             <div className="bg-[#091d64] text-white p-5 border-b-4 border-amber-400 flex items-center justify-between">
               <div>
                 <span className="text-[10px] bg-white/20 text-white font-mono font-bold px-2.5 py-0.5 rounded-full uppercase">
-                  {readAnnounce.category} Notice
+                  {readAnnounce.category}
                 </span>
                 <h3 className="font-bold text-base mt-1">{readAnnounce.title}</h3>
               </div>
@@ -1202,13 +1235,20 @@ export default function ViewerPages({
             </div>
 
             <div className="p-6 space-y-4 text-xs font-semibold">
-              <div className="flex justify-between text-slate-400 text-[10px] border-b border-slate-100 pb-2">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-400 text-[10px] border-b border-slate-100 pb-2">
                 <span>POSTED BY: Hon. {readAnnounce.author}</span>
                 <span>BARANGAY: {readAnnounce.barangay}</span>
                 <span>DATE: {readAnnounce.datePosted}</span>
               </div>
 
-              {readAnnounce.imageUrl && <img src={readAnnounce.imageUrl} alt={`Pubmat for ${readAnnounce.title}`} className="max-h-96 w-full rounded-lg border border-slate-200 object-contain" />}
+              {((readAnnounce as any).image_url || readAnnounce.imageUrl) && (
+                <img
+                  src={(readAnnounce as any).image_url || readAnnounce.imageUrl}
+                  alt={readAnnounce.title}
+                  className="w-full max-h-[40vh] object-contain rounded-lg border border-slate-200 my-4 mx-auto cursor-pointer hover:opacity-90"
+                  onClick={() => setLightboxImg((readAnnounce as any).image_url || readAnnounce.imageUrl || null)}
+                />
+              )}
               <div className="space-y-1.5 text-slate-600">
                 {readAnnounce.what && <p><strong>What:</strong> {readAnnounce.what}</p>}
                 {readAnnounce.where && <p><strong>Where:</strong> {readAnnounce.where}</p>}
@@ -1226,7 +1266,7 @@ export default function ViewerPages({
                   {readAnnounce.attachments.map((attach, i) => (
                     <button
                       key={i}
-                      onClick={() => alert(`Initiating public download of ${attach}...`)}
+                      onClick={() => setPopupMsg({ title: 'Public Download', message: `Initiating public download of ${attach}...`, type: 'info' })}
                       className="w-full text-left p-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl flex items-center justify-between transition-colors text-xs font-bold cursor-pointer"
                     >
                       <span className="text-slate-700 flex items-center gap-1.5">
@@ -1284,7 +1324,25 @@ export default function ViewerPages({
           </button>
         )}
       </div>
-
+      {lightboxImg && (
+        <div
+          className="fixed inset-0 z-[99999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 cursor-zoom-out"
+          onClick={() => setLightboxImg(null)}
+        >
+          <img
+            src={lightboxImg}
+            alt="Preview"
+            className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl cursor-default"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            className="absolute top-6 right-6 text-white text-3xl font-bold bg-black/50 w-10 h-10 rounded-full flex items-center justify-center hover:bg-black/80"
+            onClick={() => setLightboxImg(null)}
+          >
+            &times;
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldAlert, RefreshCw } from 'lucide-react';
 import kabisigApi from '../lib/api';
+import PopupDialog, { PopupMessage } from './PopupDialog';
 
 export default function RestrictedUsersPanel() {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [reactivatingId, setReactivatingId] = useState<string | null>(null);
+  const [popupMsg, setPopupMsg] = useState<PopupMessage | null>(null);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -24,18 +26,28 @@ export default function RestrictedUsersPanel() {
     fetchUsers();
   }, []);
 
-  const handleReactivate = async (userId: string) => {
-    if (!confirm('Reactivate this account?')) return;
+  const performReactivate = async (userId: string) => {
     setReactivatingId(userId);
     try {
       // @ts-ignore
       await kabisigApi.updateUserStatus(userId, 'active');
       setUsers(prev => prev.filter(u => u.id !== userId));
+      setPopupMsg({ title: 'Account Reactivated', message: 'The account has been reactivated.', type: 'success' });
     } catch (e) {
       console.error(e);
+      setPopupMsg({ title: 'Reactivation Failed', message: e instanceof Error ? e.message : 'The account could not be reactivated.', type: 'error' });
     } finally {
       setReactivatingId(null);
     }
+  };
+  const handleReactivate = (userId: string) => {
+    setPopupMsg({
+      title: 'Reactivate Account?',
+      message: 'Reactivate this account?',
+      type: 'info',
+      confirmLabel: 'Reactivate',
+      onConfirm: () => { void performReactivate(userId); }
+    });
   };
 
   return (
@@ -100,6 +112,7 @@ export default function RestrictedUsersPanel() {
           </tbody>
         </table>
       </div>
+      <PopupDialog notice={popupMsg} onClose={() => setPopupMsg(null)} />
     </div>
   );
 }

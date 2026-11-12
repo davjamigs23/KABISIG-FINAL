@@ -22,6 +22,7 @@ import { KabisigLogo } from './PublicPages';
 import { UserMenu } from './UserMenu';
 import ProgramTrendD3 from './charts/ProgramTrendD3';
 import { kabisigApi } from '../lib/api';
+import PopupDialog, { PopupMessage } from './PopupDialog';
 
 interface SuperAdminPagesProps {
   barangays: BarangayTenant[];
@@ -49,6 +50,11 @@ export default function SuperAdminPages({
     return Number.isFinite(parsed) ? parsed : 0;
   };
   const [activeMenu, setActiveMenu] = useState<string>('dashboard');
+  const [popupMsg, setPopupMsg] = useState<PopupMessage | null>(null);
+  const [confirmMsg, setConfirmMsg] = useState<PopupMessage | null>(null);
+  const showPopup = (message: string, type: PopupMessage['type'] = 'error') => {
+    setPopupMsg({ title: type === 'success' ? 'Success' : type === 'error' ? 'Notice' : 'Information', message, type });
+  };
   
   const [currentUser, setCurrentUser] = useState<any>(null);
   
@@ -128,10 +134,10 @@ useEffect(() => {
           // Silently populate the rest — birthdate stays empty
         }
       } else {
-        alert(res.message || 'User not found.');
+        showPopup(res.message || 'User not found.');
       }
     } catch (err: any) {
-      alert(err.message || 'Lookup failed.');
+      showPopup(err.message || 'Lookup failed.');
     } finally {
       setIsFixingTypo(false);
     }
@@ -309,8 +315,8 @@ useEffect(() => {
       fullName: b.name,
       registeredYouth,
       activePrograms: toNumber(liveRow?.active_programs ?? b.activePrograms),
-      budget: Math.round(totalBudget / 1000), // in thousands
-      spent: Math.round(spentBudget / 1000),
+      budget: totalBudget,
+      spent: spentBudget,
       utilization: totalBudget > 0 ? Math.round((spentBudget / totalBudget) * 100) : 0
     };
   });
@@ -399,8 +405,7 @@ useEffect(() => {
     }
   };
 
-  const handleClearRestriction = async (r: any) => {
-    if (!confirm('Clear this restriction and reactivate the account?')) return;
+  const performClearRestriction = async (r: any) => {
     setClearingId(r.id);
     setRestrictionsNotice(null);
     try {
@@ -416,6 +421,15 @@ useEffect(() => {
     } finally {
       setClearingId(null);
     }
+  };
+  const handleClearRestriction = (r: any) => {
+    setConfirmMsg({
+      title: 'Clear Restriction?',
+      message: 'Clear this restriction and reactivate the account?',
+      type: 'info',
+      confirmLabel: 'Clear Restriction',
+      onConfirm: () => { void performClearRestriction(r); }
+    });
   };
 
   
@@ -595,8 +609,8 @@ useEffect(() => {
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        setModalNotice({ type: 'error', text: 'File size exceeds 2MB. Please choose a smaller image.' });
+      if (file.size > 3 * 1024 * 1024) {
+        setModalNotice({ type: 'error', text: 'Maximum file size is 3MB. Please compress your file.' });
         return;
       }
       const reader = new FileReader();
@@ -655,7 +669,7 @@ useEffect(() => {
   const handleDownloadLydpReport = () => {
     const reportWindow = window.open('', '_blank', 'width=1000,height=760');
     if (!reportWindow) {
-      window.alert('Allow pop-ups to print or save the LYDP report as a PDF.');
+      showPopup('Allow pop-ups to print or save the LYDP report as a PDF.');
       return;
     }
 
@@ -911,10 +925,10 @@ useEffect(() => {
                     </div>
                   </div>
                   <span className="text-3xl font-black text-emerald-600 block">
-                    {totalCityBudget > 0 ? `₱${(totalCityBudget / 1000000).toFixed(1)}M` : '₱0'}
+                    {totalCityBudget > 0 ? `₱${Number(totalCityBudget).toLocaleString('en-US')}` : '₱0'}
                   </span>
                   <p className="text-[11px] text-slate-400 font-medium">
-                    {totalCitySpent > 0 ? `₱${(totalCitySpent / 1000000).toFixed(1)}M Spent (${avgBudgetUtilization}%)` : '₱0 Spent (0%)'}
+                    {totalCitySpent > 0 ? `₱${Number(totalCitySpent).toLocaleString('en-US')} Spent (${avgBudgetUtilization}%)` : '₱0 Spent (0%)'}
                   </p>
                 </div>
 
@@ -1028,7 +1042,7 @@ useEffect(() => {
                               <Cell key={`cell-${index}`} fill={entry.color} />
                             ))}
                           </Pie>
-                          <Tooltip formatter={(value: number) => `₱${(value / 1000000).toFixed(2)}M`} />
+                          <Tooltip formatter={(value: number) => `₱${Number(value).toLocaleString('en-US')}`} />
                         </PieChart>
                       </ResponsiveContainer>
                     </div>
@@ -1041,7 +1055,7 @@ useEffect(() => {
                           <span className="text-slate-600 max-w-md whitespace-normal break-words truncate max-w-[140px]">{item.name}</span>
                         </div>
                         <span className="font-bold text-slate-900">
-                          {item.value > 0 ? `₱${(item.value / 1000000).toFixed(1)}M` : '₱0'}
+                          {item.value > 0 ? `₱${Number(item.value).toLocaleString('en-US')}` : '₱0'}
                         </span>
                       </div>
                     ))}
@@ -1065,16 +1079,17 @@ useEffect(() => {
                   </button>
                 </div>
 
-                <div className="overflow-x-auto border border-slate-100 rounded-xl">
-                  <table className="w-full text-left text-xs text-slate-700">
+                <div className="border border-slate-100 rounded-xl">
+                  <div className="w-full overflow-x-auto block">
+                  <table className="w-full text-left text-xs text-slate-700 min-w-[800px]">
                     <thead className="bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
                       <tr>
-                        <th className="p-3">Barangay</th>
-                        <th className="p-3">SK Chairperson</th>
-                        <th className="p-3">Registered Youth</th>
-                        <th className="p-3">Total AIP Budget</th>
-                        <th className="p-3">Budget Spent</th>
-                        <th className="p-3">Utilization Rate</th>
+                        <th className="p-3 whitespace-nowrap">Barangay</th>
+                        <th className="p-3 whitespace-nowrap">SK Chairperson</th>
+                        <th className="p-3 whitespace-nowrap">Registered Youth</th>
+                        <th className="p-3 whitespace-nowrap">Total AIP Budget</th>
+                        <th className="p-3 whitespace-nowrap">Budget Spent</th>
+                        <th className="p-3 whitespace-nowrap">Utilization Rate</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50 font-medium">
@@ -1086,7 +1101,7 @@ useEffect(() => {
                         const rate = totalBudget > 0 ? Math.round((spent / totalBudget) * 100) : 0;
                         return (
                           <tr key={b.id} className="hover:bg-slate-50/50">
-                            <td className="p-3 font-bold text-[#091d64]">
+                            <td className="p-3 font-bold text-[#091d64] whitespace-nowrap">
                               <div className="flex items-center gap-2">
                                 {b.logo ? (
                                   <img src={b.logo} alt="" className="w-6 h-6 rounded-lg object-contain border border-slate-200 bg-white p-0.5 flex-shrink-0" />
@@ -1098,7 +1113,7 @@ useEffect(() => {
                                 <span>Brgy. {displayBarangayName(b.name)}</span>
                               </div>
                             </td>
-                            <td className="p-3 font-semibold">
+                            <td className="p-3 font-semibold whitespace-nowrap">
                               {b.chairperson && b.chairperson !== 'Unassigned' ? (
                                 <div className="flex items-center gap-1.5">
                                   <span>{b.chairperson}</span>
@@ -1112,10 +1127,10 @@ useEffect(() => {
                                 </span>
                               )}
                             </td>
-                            <td className="p-3 font-mono">{registeredYouth.toLocaleString()}</td>
-                            <td className="p-3 font-mono font-bold text-slate-800">₱{totalBudget.toLocaleString()}</td>
-                            <td className="p-3 font-mono text-emerald-700">₱{spent.toLocaleString()}</td>
-                            <td className="p-3">
+                            <td className="p-3 font-mono whitespace-nowrap">{registeredYouth.toLocaleString()}</td>
+                            <td className="p-3 font-mono font-bold text-slate-800 whitespace-nowrap">₱{totalBudget.toLocaleString()}</td>
+                            <td className="p-3 font-mono text-emerald-700 whitespace-nowrap">₱{spent.toLocaleString()}</td>
+                            <td className="p-3 whitespace-nowrap">
                               <div className="flex items-center gap-2">
                                 <div className="w-16 h-2 bg-slate-200 rounded-full overflow-hidden">
                                   <div 
@@ -1131,6 +1146,7 @@ useEffect(() => {
                       })}
                     </tbody>
                   </table>
+                </div>
                 </div>
               </div>
 
@@ -1188,15 +1204,15 @@ useEffect(() => {
 
               {/* DATA TABLE: BARANGAY NAME | SK DISTRICT | ASSIGNED CHAIRPERSON | STATUS | ACTION */}
               <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs text-slate-700">
+                <div className="w-full overflow-x-auto block">
+                  <table className="w-full text-left text-xs text-slate-700 min-w-[600px]">
                     <thead className="bg-slate-50/80 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80">
                       <tr>
-                        <th className="py-3.5 px-4 font-bold">Barangay Name</th>
-                        <th className="py-3.5 px-4 font-bold">SK District</th>
-                        <th className="py-3.5 px-4 font-bold">Assigned Chairperson</th>
-                        <th className="py-3.5 px-4 font-bold">Status</th>
-                        <th className="py-3.5 px-4 text-right font-bold">Action</th>
+                        <th className="py-3.5 px-4 font-bold whitespace-nowrap">Barangay Name</th>
+                        <th className="py-3.5 px-4 font-bold whitespace-nowrap">SK District</th>
+                        <th className="py-3.5 px-4 font-bold whitespace-nowrap">Assigned Chairperson</th>
+                        <th className="py-3.5 px-4 font-bold whitespace-nowrap">Status</th>
+                        <th className="py-3.5 px-4 text-right font-bold whitespace-nowrap">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium">
@@ -1207,7 +1223,7 @@ useEffect(() => {
                         return (
                           <tr key={b.id} className="hover:bg-slate-50/70 transition-colors">
                             {/* Barangay Name */}
-                            <td className="py-3.5 px-4">
+                            <td className="py-3.5 px-4 whitespace-nowrap">
                               <div className="flex items-center gap-3">
                                 {b.logo ? (
                                   <img 
@@ -1228,7 +1244,7 @@ useEffect(() => {
                             </td>
 
                             {/* District */}
-                            <td className="py-3.5 px-4">
+                            <td className="py-3.5 px-4 whitespace-nowrap">
                               <span className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                                 bDistrict === 'North'
                                   ? 'bg-blue-50 text-blue-700 border border-blue-200/80'
@@ -1239,7 +1255,7 @@ useEffect(() => {
                             </td>
 
                             {/* Assigned Chairperson (Name & Email) */}
-                            <td className="py-3.5 px-4">
+                            <td className="py-3.5 px-4 whitespace-nowrap">
                               {isAssigned ? (
                                 <div className="space-y-0.5">
                                   <div className="flex items-center gap-2">
@@ -1273,7 +1289,7 @@ useEffect(() => {
                             </td>
 
                             {/* Status */}
-                            <td className="py-3.5 px-4">
+                            <td className="py-3.5 px-4 whitespace-nowrap">
                               <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
                                 b.chairperson !== 'Unassigned' && b.chairperson !== 'Pending Invitation'
                                   ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
@@ -1285,7 +1301,7 @@ useEffect(() => {
                             </td>
 
                             {/* Action */}
-                              <td className="py-3.5 px-4 text-right">
+                              <td className="py-3.5 px-4 text-right whitespace-nowrap">
                                 <div className="flex items-center justify-end gap-1">
                                   <button onClick={() => handleOpenHistory(b)} className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors" title="View Transfer History">
                                     <Clock className="w-3.5 h-3.5" />
@@ -1393,15 +1409,15 @@ useEffect(() => {
                 {/* CHART 2: BUDGET VS SPENT COMPARISON */}
                 <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-2xs space-y-4 min-w-0">
                   <div className="border-b border-slate-100 pb-3">
-                    <h4 className="font-sans font-bold text-slate-800 text-sm">AIP Budget Allocation vs. Actual Expenditure (in ₱1k)</h4>
+                    <h4 className="font-sans font-bold text-slate-800 text-sm">AIP Budget Allocation vs. Actual Expenditure</h4>
                     <p className="text-xs text-slate-400">Financial execution tracking across component barangays</p>
                   </div>
                   <div className="h-64 w-full min-w-0 overflow-hidden">
                     <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
                       <BarChart data={analyticsChartData}>
                         <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} />
-                        <YAxis stroke="#94a3b8" fontSize={10} />
-                        <Tooltip formatter={(val: number) => `₱${val}k`} />
+                        <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(value: number) => `₱${Number(value).toLocaleString('en-US')}`} />
+                        <Tooltip formatter={(value: number) => `₱${Number(value).toLocaleString('en-US')}`} />
                         <Legend />
                         <Bar dataKey="budget" fill="#059669" name="Total AIP Budget" radius={[4, 4, 0, 0]} />
                         <Bar dataKey="spent" fill="#10b981" name="Actual Spent" radius={[4, 4, 0, 0]} />
@@ -1423,17 +1439,18 @@ useEffect(() => {
                   </div>
                 </div>
 
-                <div className="overflow-x-auto border border-slate-100 rounded-xl">
-                  <table className="w-full text-left text-xs text-slate-700">
+                <div className="border border-slate-100 rounded-xl">
+                  <div className="w-full overflow-x-auto block">
+                  <table className="w-full text-left text-xs text-slate-700 min-w-[800px]">
                     <thead className="bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
                       <tr>
-                        <th className="p-3">Barangay Name</th>
-                        <th className="p-3">SK Chairperson</th>
-                        <th className="p-3">Registered Youth</th>
-                        <th className="p-3">AIP Budget</th>
-                        <th className="p-3">Budget Spent</th>
-                        <th className="p-3">Utilization Rate</th>
-                        <th className="p-3">Active Programs</th>
+                        <th className="p-3 whitespace-nowrap">Barangay Name</th>
+                        <th className="p-3 whitespace-nowrap">SK Chairperson</th>
+                        <th className="p-3 whitespace-nowrap">Registered Youth</th>
+                        <th className="p-3 whitespace-nowrap">AIP Budget</th>
+                        <th className="p-3 whitespace-nowrap">Budget Spent</th>
+                        <th className="p-3 whitespace-nowrap">Utilization Rate</th>
+                        <th className="p-3 whitespace-nowrap">Active Programs</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50 font-medium">
@@ -1446,18 +1463,19 @@ useEffect(() => {
                         const rate = totalBudget > 0 ? Math.round((spentBudget / totalBudget) * 100) : 0;
                         return (
                           <tr key={b.id} className="hover:bg-slate-50/50">
-                            <td className="p-3 font-bold text-[#091d64]">Brgy. {displayBarangayName(b.name)}</td>
-                            <td className="p-3 font-semibold">{b.chairperson}</td>
-                            <td className="p-3 font-mono">{registeredYouth.toLocaleString()}</td>
-                            <td className="p-3 font-mono font-bold text-slate-800">₱{totalBudget.toLocaleString()}</td>
-                            <td className="p-3 font-mono text-emerald-700">₱{spentBudget.toLocaleString()}</td>
-                            <td className="p-3 font-bold text-emerald-800">{rate}%</td>
-                            <td className="p-3 font-mono">{activePrograms} Programs</td>
+                            <td className="p-3 font-bold text-[#091d64] whitespace-nowrap">Brgy. {displayBarangayName(b.name)}</td>
+                            <td className="p-3 font-semibold whitespace-nowrap">{b.chairperson}</td>
+                            <td className="p-3 font-mono whitespace-nowrap">{registeredYouth.toLocaleString()}</td>
+                            <td className="p-3 font-mono font-bold text-slate-800 whitespace-nowrap">₱{totalBudget.toLocaleString()}</td>
+                            <td className="p-3 font-mono text-emerald-700 whitespace-nowrap">₱{spentBudget.toLocaleString()}</td>
+                            <td className="p-3 font-bold text-emerald-800 whitespace-nowrap">{rate}%</td>
+                            <td className="p-3 font-mono whitespace-nowrap">{activePrograms} Programs</td>
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
+                </div>
                 </div>
               </div>
 
@@ -1495,41 +1513,43 @@ useEffect(() => {
                   </div>
                 </div>
 
-                <div className="overflow-x-auto border border-slate-100 rounded-xl">
-                  <table className="w-full text-left text-xs text-slate-600 table-fixed">
+                <div className="border border-slate-100 rounded-xl">
+                  <div className="w-full overflow-x-auto pb-4 block">
+                  <table className="w-full min-w-[800px] text-left text-xs">
                     <thead className="bg-slate-50 text-[10px] text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100">
                       <tr>
-                        <th className="p-3 w-[12%]">Timestamp</th>
-                        <th className="p-3 w-[22%]">SK Chairperson & Barangay</th>
-                        <th className="p-3 w-[18%]">Action</th>
-                        <th className="p-3 w-[48%]">Activity & Executive Details</th>
+                        <th className="p-3 w-[12%] whitespace-nowrap">Timestamp</th>
+                        <th className="p-3 w-[22%] whitespace-nowrap">SK Chairperson & Barangay</th>
+                        <th className="p-3 w-[18%] whitespace-nowrap">Action</th>
+                        <th className="p-3 w-[48%] whitespace-nowrap">Activity & Executive Details</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50 font-medium">
                       {filteredAuditLogs.map(log => (
                         <tr key={log.id} className="hover:bg-slate-50/50">
-                          <td className="p-3 font-mono text-slate-400">{new Date(log.timestamp).toLocaleString()}</td>
-                          <td className="p-3 font-bold text-slate-800">
+                          <td className="p-3 font-mono text-slate-400 whitespace-nowrap">{new Date(log.timestamp).toLocaleString()}</td>
+                          <td className="p-3 font-bold text-slate-800 whitespace-nowrap">
                             <span className="text-[#091d64]">{log.user}</span>
                             <span className="block text-[10px] text-slate-400 font-semibold">{log.role === 'Barangay Admin' ? 'SK Chairperson' : log.role}</span>
                           </td>
-                          <td className="p-3">
+                          <td className="p-3 whitespace-nowrap">
                             <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-800 font-mono font-bold text-[11px] break-words inline-block max-w-full">
                               {formatAuditAction(log.action)}
                             </span>
                           </td>
-                          <td className="p-3 text-slate-600 whitespace-normal break-words align-top">{formatAuditDetails(log.action, log.details)}</td>
+                          <td className="p-3 text-slate-600 whitespace-nowrap align-top">{formatAuditDetails(log.action, log.details)}</td>
                         </tr>
                       ))}
                       {filteredAuditLogs.length === 0 && (
                         <tr>
-                          <td colSpan={4} className="p-6 text-center text-slate-400 font-bold">
+                          <td colSpan={4} className="p-6 text-center text-slate-400 font-bold whitespace-nowrap">
                             No audit records found matching the search.
                           </td>
                         </tr>
                       )}
                     </tbody>
                   </table>
+                </div>
                 </div>
               </div>
 
@@ -1570,46 +1590,47 @@ useEffect(() => {
                   </div>
                 )}
 
-                <div className="overflow-x-auto border border-slate-100 rounded-xl">
-                  <table className="w-full text-left text-xs text-slate-600 table-fixed">
+                <div className="border border-slate-100 rounded-xl">
+                  <div className="w-full overflow-x-auto block">
+                  <table className="w-full text-left text-xs text-slate-600 table-fixed min-w-[800px]">
                     <thead className="bg-slate-50 text-[10px] text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100">
                       <tr>
-                        <th className="p-3">Detected</th>
-                        <th className="p-3">User</th>
-                        <th className="p-3">Type</th>
-                        <th className="p-3">Reason</th>
-                        <th className="p-3">Status</th>
-                        <th className="p-3 text-right">Action</th>
+                        <th className="p-3 whitespace-nowrap">Detected</th>
+                        <th className="p-3 whitespace-nowrap">User</th>
+                        <th className="p-3 whitespace-nowrap">Type</th>
+                        <th className="p-3 whitespace-nowrap">Reason</th>
+                        <th className="p-3 whitespace-nowrap">Status</th>
+                        <th className="p-3 text-right whitespace-nowrap">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50 font-medium">
                       {restrictionsLoading && (
-                        <tr><td colSpan={6} className="p-6 text-center text-slate-400"><Loader2 className="w-4 h-4 animate-spin inline" /> Loading...</td></tr>
+                        <tr><td colSpan={6} className="p-6 text-center text-slate-400 whitespace-nowrap"><Loader2 className="w-4 h-4 animate-spin inline" /> Loading...</td></tr>
                       )}
                       {!restrictionsLoading && restrictions.length === 0 && (
-                        <tr><td colSpan={6} className="p-6 text-center text-slate-400 font-bold">No restrictions found.</td></tr>
+                        <tr><td colSpan={6} className="p-6 text-center text-slate-400 font-bold whitespace-nowrap">No restrictions found.</td></tr>
                       )}
                       {!restrictionsLoading && restrictions.map((r: any) => (
                         <tr key={r.id} className="hover:bg-slate-50/50">
-                          <td className="p-3 font-mono text-slate-400">{new Date(r.created_at).toLocaleString()}</td>
-                          <td className="p-3">
+                          <td className="p-3 font-mono text-slate-400 whitespace-nowrap">{new Date(r.created_at).toLocaleString()}</td>
+                          <td className="p-3 whitespace-nowrap">
                             <span className="font-bold text-slate-800 block">{r.users?.full_name || 'Unknown'}</span>
                             <span className="text-[10px] text-slate-400">{r.users?.email}</span>
                           </td>
-                          <td className="p-3">
+                          <td className="p-3 whitespace-nowrap">
                             <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                               r.restriction_type === 'permanent_ban' ? 'bg-rose-100 text-rose-800' :
                               r.restriction_type === 'temp_suspend' ? 'bg-amber-100 text-amber-800' :
                               'bg-slate-100 text-slate-700'
                             }`}>{r.restriction_type}</span>
                           </td>
-                          <td className="p-3 text-slate-600 max-w-md whitespace-normal break-words text-[11px] max-w-xs">{r.reason}</td>
-                          <td className="p-3">
+                          <td className="p-3 text-slate-600 max-w-md whitespace-normal break-words text-[11px] max-w-xs whitespace-nowrap">{r.reason}</td>
+                          <td className="p-3 whitespace-nowrap">
                             <span className={`text-[10px] font-bold ${r.is_active ? 'text-rose-600' : 'text-emerald-600'}`}>
                               {r.is_active ? 'ACTIVE' : 'CLEARED'}
                             </span>
                           </td>
-                          <td className="p-3 text-right">
+                          <td className="p-3 text-right whitespace-nowrap">
                             {r.is_active ? (
                               <button
                                 onClick={() => handleClearRestriction(r)}
@@ -1627,6 +1648,7 @@ useEffect(() => {
                     </tbody>
                   </table>
                 </div>
+                </div>
               </div>
             </div>
           )}
@@ -1637,7 +1659,7 @@ useEffect(() => {
       {/* LYDP REPORT GENERATOR PREVIEW MODAL */}
       {showLydpModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 max-w-[95vw] md:max-w-2xl">
             <div className="bg-[#091d64] p-6 text-white flex justify-between items-center">
               <div>
                 <span className="text-[10px] font-mono font-bold text-amber-400 uppercase tracking-widest block">LYDP REPORT PREVIEW</span>
@@ -1699,7 +1721,7 @@ useEffect(() => {
       {/* CANCEL PENDING CHAIRPERSON INVITATION MODAL */}
       {showCancelInviteModal && cancellingBarangay && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200">
+          <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200 max-w-[95vw] md:max-w-2xl lg:max-w-md">
             <div className="bg-rose-600 p-5 text-white flex justify-between items-center text-left">
               <div>
                 <h3 className="font-sans font-black text-base flex items-center gap-2">
@@ -1768,7 +1790,7 @@ useEffect(() => {
       {/* PANEL REC #9: TRANSFER LEADERSHIP MODAL */}
       {showTransferModal && transferringBarangay && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200">
+          <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200 max-w-[95vw] md:max-w-2xl lg:max-w-md">
             <div className="bg-amber-500 p-5 text-white flex justify-between items-center text-left">
               <div>
                 <h3 className="font-sans font-black text-base flex items-center gap-2">
@@ -1779,7 +1801,7 @@ useEffect(() => {
               </div>
                         <div className="flex items-center gap-2">                 <button                   type="button"                   onClick={() => { setShowTransferModal(false); setTransferringBarangay(null); if (transferReturnToConfigure) { setShowModal(true); setTransferReturnToConfigure(false); } }}                   className="flex items-center gap-1 text-white/90 hover:text-white cursor-pointer text-xs font-bold px-2 py-1 rounded hover:bg-white/10 transition-colors"                 >                   <ArrowLeft className="w-4 h-4" /> Back                 </button>
               <button
-                onClick={() => { setShowTransferModal(false); setTransferringBarangay(null); if (transferReturnToConfigure) { setShowModal(true); setTransferReturnToConfigure(false); } }}
+                onClick={() => { setShowTransferModal(false); setTransferringBarangay(null); setShowModal(false); setTransferReturnToConfigure(false); }}
                 className="text-white/80 hover:text-white cursor-pointer"
               >
                 <X className="w-5 h-5" />
@@ -1866,7 +1888,7 @@ useEffect(() => {
       {/* P9/P10: INVITE SK OFFICIAL MODAL */}
       {showInviteOfficialModal && inviteOfficialBarangay && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200">
+          <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200 max-w-[95vw] md:max-w-2xl lg:max-w-md">
             <div className="bg-[#091d64] p-5 text-white flex justify-between items-center text-left">
               <div>
                 <h3 className="font-sans font-black text-base flex items-center gap-2">
@@ -1883,7 +1905,7 @@ useEffect(() => {
                 >
                   <ArrowLeft className="w-4 h-4" /> Back
                 </button>
-              <button onClick={() => { setShowInviteOfficialModal(false); setInviteOfficialBarangay(null); if (inviteReturnToConfigure) { setShowModal(true); setInviteReturnToConfigure(false); } }} className="text-white/80 hover:text-white cursor-pointer">
+              <button onClick={() => { setShowInviteOfficialModal(false); setInviteOfficialBarangay(null); setShowModal(false); setInviteReturnToConfigure(false); }} className="text-white/80 hover:text-white cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
               </div>
@@ -1972,7 +1994,7 @@ useEffect(() => {
 
       {showAssignModal && assigningBarangay && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 max-w-[95vw] md:max-w-2xl lg:max-w-md">
             <div className="bg-[#091d64] p-5 text-white flex justify-between items-center text-left">
               <div>
                 <h3 className="font-sans font-black text-base flex items-center gap-2">
@@ -2108,8 +2130,8 @@ useEffect(() => {
 
       {/* TENANT CONFIGURATION & SK CHAIRPERSON ASSIGNMENT MODAL */}
       {showModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="w-full max-w-lg mx-auto bg-white rounded-xl shadow-xl overflow-hidden my-auto">
             <div className="bg-[#091d64] p-5 text-white flex justify-between items-center text-left">
               <div>
                 <h3 className="font-sans font-black text-base flex items-center gap-2">
@@ -2206,7 +2228,7 @@ useEffect(() => {
                   </div>
                 </div>
 
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-3">
+                <div className="flex flex-col sm:flex-row gap-3 w-full mt-3">
                   <div>
                     <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">SK Chairperson</span>
                     <span className="block mt-1 text-xs font-bold text-slate-800">{editingBarangay?.chairperson || 'Unassigned'}</span>
@@ -2226,7 +2248,7 @@ useEffect(() => {
                             setShowModal(false);
                             if (barangay) handleOpenTransferModal(barangay, true);
                           }}
-                          className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-bold whitespace-nowrap"
+                          className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-bold whitespace-nowrap w-full sm:w-auto"
                         >
                           Transfer Leadership
                         </button>
@@ -2241,7 +2263,7 @@ useEffect(() => {
                             setShowModal(false);
                             if (barangay) handleOpenCancelInviteModal(barangay, true);
                           }}
-                          className="px-3 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-[10px] font-bold whitespace-nowrap"
+                          className="px-3 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-[10px] font-bold whitespace-nowrap w-full sm:w-auto"
                         >
                           Cancel Invitation
                         </button>
@@ -2255,7 +2277,7 @@ useEffect(() => {
                           setShowModal(false);
                           if (barangay) handleOpenAssignModal(barangay, true);
                         }}
-                        className="px-3 py-2 bg-[#091d64] text-white rounded-lg text-[10px] font-bold whitespace-nowrap"
+                        className="px-3 py-2 bg-[#091d64] text-white rounded-lg text-[10px] font-bold whitespace-nowrap w-full sm:w-auto"
                       >
                         Assign Chairperson
                       </button>
@@ -2268,7 +2290,7 @@ useEffect(() => {
                       setShowModal(false);
                       if (barangay) handleOpenInviteOfficialModal(barangay, true);
                     }}
-                    className="px-3 py-2 bg-amber-400 text-amber-950 rounded-lg text-[10px] font-bold whitespace-nowrap ml-2"
+                    className="px-3 py-2 bg-amber-400 text-amber-950 rounded-lg text-[10px] font-bold whitespace-nowrap ml-2 w-full sm:w-auto"
                   >
                     Invite Official
                   </button>
@@ -2276,18 +2298,18 @@ useEffect(() => {
 
               </div>
 
-              <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
+              <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 p-4 border-t bg-slate-50">
                 <button 
                   disabled={isSaving}
                   onClick={() => setShowModal(false)} 
-                  className="px-4 py-2 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-100 disabled:opacity-50"
+                  className="px-4 py-2 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-100 disabled:opacity-50 w-full sm:w-auto"
                 >
                   Cancel
                 </button>
                 <button 
                   disabled={isSaving}
                   onClick={handleSaveBarangay} 
-                  className="px-5 py-2 bg-[#091d64] text-white text-xs font-bold rounded-xl hover:bg-opacity-95 cursor-pointer shadow-xs disabled:opacity-50 flex items-center gap-2"
+                  className="px-5 py-2 bg-[#091d64] text-white text-xs font-bold rounded-xl hover:bg-opacity-95 cursor-pointer shadow-xs disabled:opacity-50 flex items-center gap-2 w-full sm:w-auto"
                 >
                   {isSaving ? (
                     <>
@@ -2360,7 +2382,7 @@ useEffect(() => {
 
       {historyBarangay && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-200">
+          <div className="bg-white rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-200 max-w-[95vw] md:max-w-2xl">
             <div className="bg-[#091d64] p-5 text-white flex justify-between items-center">
               <div>
                 <h3 className="font-sans font-black text-base flex items-center gap-2">
@@ -2401,7 +2423,7 @@ useEffect(() => {
       )}
       {showEmailModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-5xl w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
+          <div className="bg-white rounded-2xl max-w-5xl w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 flex flex-col max-h-[90vh] max-w-[95vw] md:max-w-2xl lg:max-w-5xl">
             <div className="bg-[#091d64] p-4 flex justify-between items-center text-white shrink-0">
               <div>
                 <div className="flex items-center gap-2 mb-1">
@@ -2428,11 +2450,11 @@ useEffect(() => {
                   const res = await kabisigApi.updateUserEmail(emailForm);
                   setIsUpdatingEmail(false);
                   if (res.success) {
-                    alert('Email updated successfully!');
+                    showPopup('Email updated successfully!', 'success');
                     setShowEmailModal(false);
                     setEmailForm({ current_email: '', new_email: '', reason: '' });
                   } else {
-                    alert(res.message || 'Failed to update email.');
+                    showPopup(res.message || 'Failed to update email.');
                   }
                 }} className="space-y-4">
                   <div>
@@ -2461,14 +2483,15 @@ useEffect(() => {
                   ) : emailHistoryList.length === 0 ? (
                     <p className="text-center text-xs text-slate-500">No email changes recorded yet.</p>
                   ) : (
-                    <div className="overflow-x-auto border border-slate-200 rounded-lg">
-                    <table className="w-full text-left border-collapse">
+                    <div className="border border-slate-200 rounded-lg">
+                      <div className="w-full overflow-x-auto block">
+                    <table className="w-full text-left border-collapse min-w-[600px]">
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-200">
                           <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider whitespace-nowrap">Date</th>
-                          <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">User Modified</th>
-                          <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">Barangay</th>
-                          <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider">Changed Details</th>
+                          <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider whitespace-nowrap">User Modified</th>
+                          <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider whitespace-nowrap">Barangay</th>
+                          <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider whitespace-nowrap">Changed Details</th>
                           <th className="px-4 py-3 text-[10px] font-black text-slate-500 uppercase tracking-wider whitespace-nowrap">Reason</th>
                         </tr>
                       </thead>
@@ -2478,7 +2501,7 @@ useEffect(() => {
                             <td className="px-4 py-4 text-[11px] text-slate-500 align-top whitespace-nowrap">
                               {new Date(log.created_at).toLocaleString()}
                             </td>
-                            <td className="px-4 py-4 text-xs align-top">
+                            <td className="px-4 py-4 text-xs align-top whitespace-nowrap">
                               {log.details?.old_full_name || log.details?.target_name ? (
                                 <span className="font-bold text-[#091d64]">{log.details.target_name}</span>
                               ) : (log.details?.old_email || log.details?.new_email) ? (
@@ -2492,10 +2515,10 @@ useEffect(() => {
                                 <span className="font-bold text-slate-700">System User</span>
                               )}
                             </td>
-                            <td className="px-4 py-4 text-xs text-slate-600 align-top">
+                            <td className="px-4 py-4 text-xs text-slate-600 align-top whitespace-nowrap">
                               {log.details?.target_barangay || log.users?.barangay?.name || 'N/A'}
                             </td>
-                            <td className="px-4 py-4 text-xs text-slate-600 align-top">
+                            <td className="px-4 py-4 text-xs text-slate-600 align-top whitespace-nowrap">
                               <div className="flex flex-col gap-3">
                                 {log.details?.changes ? (
                                   Object.entries(log.details.changes).map(([key, val]: any) =>
@@ -2530,13 +2553,14 @@ useEffect(() => {
                                 )}
                               </div>
                             </td>
-                            <td className="px-4 py-4 text-[11px] text-slate-500 italic align-top">
+                            <td className="px-4 py-4 text-[11px] text-slate-500 italic align-top whitespace-nowrap">
                               "{log.details?.reason || 'N/A'}"
                             </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
+                    </div>
                     </div>
                   )}
                 </div>
@@ -2549,18 +2573,18 @@ useEffect(() => {
       {/* FIX USER TYPO MODAL */}
       {showFixTypoModal && (
         <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 max-w-[95vw] md:max-w-2xl lg:max-w-md">
             <h3 className="font-bold text-slate-800 text-lg mb-1">Manage User Credentials</h3>
             <p className="text-xs text-slate-500 mb-4">Correct a user&apos;s profile, contact info, or birthdate directly in the database. Leave fields blank to keep them unchanged.</p>
             
             <form onSubmit={async (e) => {
               e.preventDefault();
-              if (!typoUserId || !typoFullName) return alert('Both fields are required.');
-              if (typoPhone && !/^09\d{9}$/.test(typoPhone)) { return alert('Phone number must be exactly 11 digits and start with 09 (e.g., 09171234567).'); }
+              if (!typoUserId || !typoFullName) { showPopup('Both fields are required.'); return; }
+              if (typoPhone && !/^09\d{9}$/.test(typoPhone)) { showPopup('Phone number must be exactly 11 digits and start with 09 (e.g., 09171234567).'); return; }
               setIsFixingTypo(true);
               try {
                 const combinedName = [typoFirstName.trim(), typoMiddleName.trim(), typoLastName.trim(), typoSuffix.trim()].filter(Boolean).join(' ');
-                if (!combinedName) { alert('Please enter at least a First or Last name.'); setIsFixingTypo(false); return; }
+                if (!combinedName) { showPopup('Please enter at least a First or Last name.'); setIsFixingTypo(false); return; }
                 
                 const res = await kabisigApi.updateUserName(typoUserId, { 
                   full_name: combinedName,
@@ -2574,7 +2598,7 @@ useEffect(() => {
                   reason: typoReason.trim() || undefined
                 });
                 if (res.success) {
-                  alert('User name corrected successfully!');
+                  showPopup('User credentials updated successfully!', 'success');
                   setShowFixTypoModal(false);
                   setTypoUserId('');
                   setTypoFullName('');
@@ -2589,10 +2613,10 @@ useEffect(() => {
                   setTypoBirthdate('');
                   setTypoReason('');
                 } else {
-                  alert(res.message || 'Failed to update.');
+                  showPopup(res.message || 'Failed to update.');
                 }
               } catch (err: any) {
-                alert(err.message || 'Error updating name.');
+                showPopup(err.message || 'Error updating name.');
               } finally {
                 setIsFixingTypo(false);
               }
@@ -2601,8 +2625,8 @@ useEffect(() => {
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Email</label>
                 <div className="flex gap-2">
-                  <input required type="text" value={typoUserId} onChange={e => setTypoUserId(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleLookupUser(); } }} className="flex-1 border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="user@example.com" />
-                  <button type="button" onClick={handleLookupUser} disabled={isFixingTypo} className="px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-lg border border-slate-200 transition-colors disabled:opacity-50">
+                  <input required type="text" value={typoUserId} onChange={e => setTypoUserId(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); handleLookupUser(); } }} className="flex-1 border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="user@example.com" />
+                  <button type="button" onClick={(e) => { e.preventDefault(); handleLookupUser(); }} disabled={isFixingTypo} className="px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-lg border border-slate-200 transition-colors disabled:opacity-50">
                     {isFixingTypo ? '...' : 'Search'}
                   </button>
                 </div>
@@ -2662,6 +2686,8 @@ useEffect(() => {
           </div>
         </div>
       )}
-</div>
+      <PopupDialog notice={popupMsg} onClose={() => setPopupMsg(null)} />
+      <PopupDialog notice={confirmMsg} onClose={() => setConfirmMsg(null)} />
+    </div>
   );
 }

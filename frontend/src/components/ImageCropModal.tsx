@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import Cropper, { Area } from 'react-easy-crop';
 import { X, RotateCw, Check, ZoomIn, ZoomOut } from 'lucide-react';
+import PopupDialog, { PopupMessage } from './PopupDialog';
 
 interface ImageCropModalProps {
   imageSrc: string;
@@ -24,6 +25,7 @@ export default function ImageCropModal({
   const [rotation, setRotation] = useState(0);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [popupMsg, setPopupMsg] = useState<PopupMessage | null>(null);
 
   const handleCropComplete = useCallback((_area: Area, areaPixels: Area) => {
     setCroppedAreaPixels(areaPixels);
@@ -37,7 +39,7 @@ export default function ImageCropModal({
       onComplete(cropped, 'image/jpeg');
     } catch (err) {
       console.error('Crop failed:', err);
-      alert('Could not process the image. Please try again.');
+      setPopupMsg({ title: 'Image Processing Failed', message: 'Could not process the image. Please try again.', type: 'error' });
     } finally {
       setProcessing(false);
     }
@@ -117,6 +119,7 @@ export default function ImageCropModal({
           </div>
         </div>
       </div>
+      <PopupDialog notice={popupMsg} onClose={() => setPopupMsg(null)} />
     </div>
   );
 }

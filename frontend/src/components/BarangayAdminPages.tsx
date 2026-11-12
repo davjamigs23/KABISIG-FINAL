@@ -96,6 +96,7 @@ import NotificationMenu, { NotificationMenuItem } from './NotificationMenu';
 import { DEFAULT_BARANGAY_LOGOS } from '../data';
 import kabisigApi from '../lib/api';
 import { openPrintableReport } from '../lib/reportGenerator';
+import PopupDialog, { PopupMessage } from './PopupDialog';
 
 // Distinct calendar colors per program — deterministic hash so colors are consistent across reloads
 const CALENDAR_COLORS: string[] = [
@@ -117,6 +118,18 @@ function getProgramCalendarColor(key: string): string {
   }
   const idx = Math.abs(hash) % CALENDAR_COLORS.length;
   return CALENDAR_COLORS[idx] || 'bg-blue-600 hover:bg-blue-700';
+}
+
+function getStandardCategory(cat: string): string {
+  if (!cat) return 'Uncategorized';
+  const category = cat.toLowerCase();
+  if (category.includes('health')) return 'Health & Nutrition';
+  if (category.includes('education')) return 'Education & Scholarship';
+  if (category.includes('sports')) return 'Sports Development';
+  if (category.includes('livelihood')) return 'Livelihood & Skills';
+  if (category.includes('peace')) return 'Peace & Security';
+  if (category.includes('environment')) return 'Environmental Protection';
+  return cat;
 }
 
 
@@ -142,6 +155,7 @@ function createAnnouncementStorageClient(accessToken: string) {
 export interface BarangayAdminPagesProps {
   currentBarangay: BarangayTenant;
   currentUser?: any;
+  notifications?: any[];
   programs: Program[];
   youthProfiles: YouthProfile[];
   youthProfilesLoading: boolean;
@@ -169,6 +183,7 @@ export interface BarangayAdminPagesProps {
 export default function BarangayAdminPages({
   currentBarangay,
   currentUser,
+  notifications = [],
   programs = [],
   youthProfiles = [],
   youthProfilesLoading = false,
@@ -192,16 +207,33 @@ export default function BarangayAdminPages({
   onAnnouncementsChanged,
   onLogout
 }: BarangayAdminPagesProps) {
+  const [popupMsg, setPopupMsg] = useState<{ title: string; text: string; type: 'success' | 'error' } | null>(null);
+  const [confirmMsg, setConfirmMsg] = useState<PopupMessage | null>(null);
+  const [pubmatFile, setPubmatFile] = useState<File | null>(null);
   const [activeMenu, setActiveMenu] = useState<
     'dashboard' | 'youth' | 'programs' | 'budget' | 'documents' | 'reports' | 'announcements' | 'audit' | 'calendar' | 'facebook_sync' | 'settings' | 'profile'
    | 'profile' | 'inventory' | 'restrictions'>('dashboard');
+  const getAlertDestination = (code: string): 'budget' | 'documents' | 'youth' | 'dashboard' => {
+    const c = (code || '').toUpperCase();
+    if (c.includes('BUDGET') || c.includes('DEFICIT') || c.includes('OVER') || c.includes('ALLOCAT')) return 'budget';
+    if (c.includes('DOC') || c.includes('LIQUIDATION') || c.includes('COMPLIANCE') || c.includes('REPORT')) return 'documents';
+    if (c.includes('YOUTH') || c.includes('APPROVAL') || c.includes('REGISTRATION') || c.includes('ENGAGEMENT')) return 'youth';
+    return 'dashboard';
+  };
   const [inventory, setInventory] = useState<any[]>([]);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [lightboxImg, setLightboxImg] = useState<string | null>(null);
   useEffect(() => { if (activeMenu === 'budget' && inventory.length === 0) { kabisigApi.getInventory().then((rows: any[]) => setInventory(Array.isArray(rows) ? rows : [])).catch(() => {}); } }, [activeMenu, inventory.length]);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [reportSubTab, setReportSubTab] = useState<'executive'|'attendance'|'accomplishments'|'beneficiaries'|'demographics'|'financial'>('attendance');
+  const [showClosedPolls, setShowClosedPolls] = useState(false);
   const barangayLogo = currentBarangay?.logo || DEFAULT_BARANGAY_LOGOS[currentBarangay?.name || ''] || '';
+  const closedPolls = (resolutions || []).filter((resolution: any) =>
+    String(resolution.status || '').toLowerCase() === 'closed'
+    || Boolean(resolution.end_date && new Date(resolution.end_date).getTime() < Date.now())
+  );
+  const openPolls = (resolutions || []).filter((resolution: any) => !closedPolls.includes(resolution));
 
   const generatePDFReport = (title: string = 'COA Financial Performance Report') => {
     try {
@@ -215,11 +247,17 @@ export default function BarangayAdminPages({
           `₱${(Number(b.spent_amount) || 0).toLocaleString()}`,
           `₱${(Number(b.remaining_amount) || 0).toLocaleString()}`
         ]),
-        { barangay: currentBarangay?.name, preparedBy: currentUser?.full_name || 'SK Chairperson', preparedByTitle: 'SK Chairperson', approvedBy: 'SK Federation President', approvedByTitle: 'SK Federation President' }
+        {
+          barangay: currentBarangay?.name,
+          preparedByName: currentUser?.full_name || 'SK Chairperson',
+          preparedByTitle: 'SK Chairperson',
+          approvedByName: federationPresidentName || 'SK Federation President',
+          approvedByTitle: 'SK Federation President'
+        }
       );
     } catch (e) {
       console.error(e);
-      alert('Failed to export PDF');
+      setPopupMsg({ title: 'Export Failed', text: 'Failed to export PDF', type: 'error' });
     }
 };
 
@@ -263,19 +301,41 @@ export default function BarangayAdminPages({
   // Reports states
   const [reportCategoryFilter, setReportCategoryFilter] = useState<'All' | 'Demographic' | 'Accomplishment' | 'Attendance' | 'Beneficiary' | 'Financial' | 'Feedback'>('All');
   const [reportSearchQuery, setReportSearchQuery] = useState('');
+  const [federationPresidentName, setFederationPresidentName] = useState('');
 
+  useEffect(() => {
+    let isMounted = true;
+    kabisigApi.getFederationPresident()
+      .then(result => {
+        if (!result.success) throw new Error(result.message || 'Unable to load the SK Federation President name.');
+        if (isMounted && result.data?.full_name) setFederationPresidentName(result.data.full_name);
+      })
+      .catch(error => {
+        console.error('Failed to retrieve SK Federation President name:', error);
+      });
+    return () => { isMounted = false; };
+  }, []);
+
+
+  const escapeHtml = (value: unknown) => String(value ?? '').replace(/[&<>"']/g, character => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[character] || character);
 
   const openDynamicPrintPDF = (title: string, subtitle: string, refCode: string, headers: string[], rowsHTML: string, summaryStatsHTML: string) => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
-      alert('Please allow popups for this website to export the PDF report.');
+      setPopupMsg({ title: 'Pop-up Blocked', text: 'Please allow popups for this website to export the PDF report.', type: 'error' });
       return;
     }
     const htmlContent = `
       <!DOCTYPE html>
       <html>
       <head>
-        <title>${title} - Barangay ${currentBarangay?.name || 'Barangay'}</title>
+        <title>${escapeHtml(title)} - Barangay ${escapeHtml(currentBarangay?.name || 'Barangay')}</title>
         <style>
           @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap');
           body { font-family: 'Poppins', ui-sans-serif, system-ui, sans-serif; color: #0f172a; margin: 0; padding: 40px; background: #ffffff; }
@@ -298,20 +358,23 @@ export default function BarangayAdminPages({
           .badge { display: inline-block; padding: 2px 7px; font-size: 9px; font-weight: 800; border-radius: 4px; background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; text-transform: uppercase; }
           .badge-blue { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
           .badge-amber { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
-          .footer { margin-top: 45px; display: flex; justify-content: space-between; align-items: flex-end; font-size: 11px; color: #475569; page-break-inside: avoid; }
-          .sign-box { text-align: center; width: 220px; }
+          .footer { margin-top: 45px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: flex-end; font-size: 11px; color: #475569; page-break-inside: avoid; }
+          .sign-box { text-align: center; min-width: 0; }
           .sign-line { border-bottom: 1.5px solid #091d64; margin-bottom: 6px; padding-top: 35px; }
           .sign-title { font-weight: 800; color: #091d64; font-size: 11px; }
           .sign-role { font-size: 10px; color: #64748b; font-weight: 600; }
-          @media print { body { padding: 15px; } }
+          .print-button { position: fixed; top: 16px; right: 16px; padding: 10px 16px; border: 0; border-radius: 8px; background: #091d64; color: white; font-weight: 700; cursor: pointer; }
+          @media print { body { padding: 15px; } .print-button { display: none; } }
         </style>
       </head>
       <body>
+        <button class="print-button" onclick="window.print()">Print</button>
         <div class="header">
           <p class="republic">Republic of the Philippines &bull; Province of Camarines Sur &bull; City of Naga</p>
-          <p class="city">SANGGUNIANG KABATAAN EXECUTIVE COUNCIL &bull; BARANGAY ${currentBarangay?.name?.toUpperCase() || 'BARANGAY'}</p>
-          <h2>${title}</h2>
-          <p class="meta">Statutory Document Ref: <strong>${refCode}</strong> &bull; Generated: ${new Date().toLocaleDateString()} &bull; DILG RA 10742 Compliant System Record</p>
+          <p class="city">SANGGUNIANG KABATAAN EXECUTIVE COUNCIL &bull; BARANGAY ${escapeHtml(currentBarangay?.name?.toUpperCase() || 'BARANGAY')}</p>
+          <h2>${escapeHtml(title)}</h2>
+          <p class="meta">${escapeHtml(subtitle)}</p>
+          <p class="meta">Statutory Document Ref: <strong>${escapeHtml(refCode)}</strong> &bull; Generated: ${new Date().toLocaleDateString()} &bull; DILG RA 10742 Compliant System Record</p>
         </div>
 
         ${summaryStatsHTML}
@@ -320,7 +383,7 @@ export default function BarangayAdminPages({
         <table>
           <thead>
             <tr>
-              ${headers.map(h => `<th>${h}</th>`).join('')}
+              ${headers.map(header => `<th>${escapeHtml(header)}</th>`).join('')}
             </tr>
           </thead>
           <tbody>
@@ -330,30 +393,123 @@ export default function BarangayAdminPages({
 
         <div class="footer">
           <div class="sign-box">
-            <div class="sign-line"><strong>SK SECRETARY</strong></div>
-            <div class="sign-title">Document Custodian</div>
-            <div class="sign-role">Sangguniang Kabataan Council</div>
+            <div class="sign-line"><strong>${escapeHtml(currentUser?.full_name || currentBarangay?.chairperson || 'SK Chairperson')}</strong></div>
+            <div class="sign-title">Prepared by · SK Chairperson</div>
           </div>
           <div class="sign-box">
-            <div class="sign-line"><strong>SK TREASURER</strong></div>
-            <div class="sign-title">Financial Custodian</div>
-            <div class="sign-role">Sangguniang Kabataan Council</div>
-          </div>
-          <div class="sign-box">
-            <div class="sign-line"><strong>HON. SK CHAIRPERSON</strong></div>
-            <div class="sign-title">Barangay Administrator</div>
-            <div class="sign-role">Head of Executive Council</div>
+            <div class="sign-line"><strong>${escapeHtml(federationPresidentName || 'SK Federation President')}</strong></div>
+            <div class="sign-title">Approved by · SK Federation President</div>
           </div>
         </div>
 
-        <script>
-          window.onload = function() { window.print(); }
-        </script>
       </body>
       </html>
     `;
     printWindow.document.write(htmlContent);
     printWindow.document.close();
+  };
+
+  const handleExportMasterPDF = () => {
+    let title: string;
+    let headers: string[];
+    let records: unknown[][];
+    let totalAmount = 0;
+
+    switch (reportSubTab) {
+      case 'attendance':
+        title = 'Program Registration & Capacity Report';
+        headers = ['Program', 'Registered', 'Slots', 'Fill Rate'];
+        records = programs.map(program => {
+          const registered = Number(program.registeredCount) || 0;
+          const slots = Number(program.maxParticipants) || 0;
+          return [program.title, registered, slots, `${slots ? Math.round((registered / slots) * 100) : 0}%`];
+        });
+        break;
+      case 'accomplishments':
+        title = 'Program Accomplishment Report';
+        headers = ['Program', 'Category', 'Status', 'Registrations', 'Actual Expenses'];
+        records = programs.map(program => {
+          const programExpenses = expenses.filter(expense => {
+            const linkedExpense = expense as ExpenseRecord & { program_id?: string; gross_amount?: number };
+            return expense.programId === program.id || linkedExpense.program_id === program.id;
+          });
+          const spent = programExpenses.reduce((sum, expense) => {
+            const linkedExpense = expense as ExpenseRecord & { gross_amount?: number };
+            return sum + (Number(expense.amount ?? linkedExpense.gross_amount) || 0);
+          }, 0);
+          totalAmount += spent;
+          return [program.title, program.category, program.status, program.registeredCount, `₱${spent.toLocaleString()}`];
+        });
+        break;
+      case 'beneficiaries':
+        title = 'Youth Beneficiary Registry';
+        headers = ['Name', 'Zone', 'Status'];
+        records = youthProfiles.map(youth => [youth.name, youth.zone || 'Not Specified', youth.status]);
+        break;
+      case 'demographics': {
+        title = 'Youth Demographic Summary';
+        headers = ['Demographic Group', 'Category', 'Count'];
+        const counts = new Map<string, number>();
+        const addCount = (group: string, category: string) => {
+          const key = `${group}|${category || 'Not Specified'}`;
+          counts.set(key, (counts.get(key) || 0) + 1);
+        };
+        youthProfiles.forEach(youth => {
+          const ageGroup = youth.age < 18 ? '15-17' : youth.age < 22 ? '18-21' : youth.age < 26 ? '22-25' : '26-30';
+          addCount('Sex', youth.sex);
+          addCount('Age', ageGroup);
+          addCount('Education', youth.educationalLevel);
+          addCount('Employment', youth.employmentStatus || youth.employment || '');
+        });
+        records = Array.from(counts.entries()).map(([key, count]) => [...key.split('|'), count]);
+        break;
+      }
+      case 'financial':
+        title = 'Program Financial Utilization Report';
+        headers = ['Program', 'Allocated', 'Actual Expenses', 'Balance'];
+        records = programs.map(program => {
+          const programExpenses = expenses.filter(expense => {
+            const linkedExpense = expense as ExpenseRecord & { program_id?: string; gross_amount?: number };
+            return expense.programId === program.id || linkedExpense.program_id === program.id;
+          });
+          const spent = programExpenses.reduce((sum, expense) => {
+            const linkedExpense = expense as ExpenseRecord & { gross_amount?: number };
+            return sum + (Number(expense.amount ?? linkedExpense.gross_amount) || 0);
+          }, 0);
+          const allocated = Number(program.budgetAllocation) || 0;
+          totalAmount += spent;
+          return [program.title, `₱${allocated.toLocaleString()}`, `₱${spent.toLocaleString()}`, `₱${(allocated - spent).toLocaleString()}`];
+        });
+        break;
+      case 'executive':
+      default:
+        title = 'Executive Governance Summary';
+        headers = ['Program', 'Category', 'Status', 'Registrations', 'Allocated'];
+        records = programs.map(program => {
+          const allocated = Number(program.budgetAllocation) || 0;
+          totalAmount += allocated;
+          return [program.title, program.category, program.status, program.registeredCount, `₱${allocated.toLocaleString()}`];
+        });
+    }
+
+    const rowsHTML = records.length
+      ? records.map(record => `<tr>${record.map(value => `<td>${escapeHtml(value)}</td>`).join('')}</tr>`).join('')
+      : `<tr><td colspan="${headers.length}" class="text-center">No records found.</td></tr>`;
+    const summaryStatsHTML = `
+      <div class="stat-grid">
+        <div class="stat-box"><div class="stat-label">Report Records</div><div class="stat-value">${records.length.toLocaleString()}</div></div>
+        <div class="stat-box"><div class="stat-label">Barangay</div><div class="stat-value">${escapeHtml(currentBarangay?.name || 'Not specified')}</div></div>
+        ${totalAmount > 0 ? `<div class="stat-box"><div class="stat-label">Total Amount</div><div class="stat-value">₱${totalAmount.toLocaleString()}</div></div>` : ''}
+      </div>
+    `;
+    openDynamicPrintPDF(
+      title,
+      `${title} for Barangay ${currentBarangay?.name || 'Barangay'} — ${new Date().toLocaleDateString()}`,
+      `SK-${reportSubTab.toUpperCase()}-${new Date().getFullYear()}`,
+      headers,
+      rowsHTML,
+      summaryStatsHTML,
+    );
   };
 
   const [inspectProfile, setInspectProfile] = useState<YouthProfile | null>(null);
@@ -413,7 +569,7 @@ export default function BarangayAdminPages({
   const [newProgForm, setNewProgForm] = useState({
     title: '',
     description: '',
-    category: 'Sports Development' as Program['category'],
+    category: '' as Program['category'],
     startDate: '',
     endDate: '',
     location: '',
@@ -632,6 +788,14 @@ export default function BarangayAdminPages({
     .map(alert => `${alert.code}:${alert.level}:${alert.message}`)
     .join('|');
   const complianceIssues = getComplianceIssues('SK Chairperson', _filterYouth, _filterPrograms, _filterDocs, _filterExpenses);
+  const dashboardAlerts = [
+    ...budgetAlerts,
+    ...complianceIssues.map(issue => ({
+      code: issue.code,
+      message: issue.message,
+      level: issue.level === 'Urgent' ? 'Critical' as const : issue.level,
+    })),
+  ];
   const lowEngagementItems = detectLowEngagement(_filterYouth, _filterRegs);
   const complianceIssueSignature = complianceIssues
     .map(issue => `${issue.code}:${issue.level}:${issue.message}`)
@@ -856,8 +1020,8 @@ export default function BarangayAdminPages({
     if (!file) return;
     const validMime = file.type === 'image/jpeg' || file.type === 'image/png';
     const validExtension = /\.(jpe?g|png)$/i.test(file.name);
-    if (!validMime || !validExtension || file.size > 10 * 1024 * 1024) {
-      setAnnouncementError('Select a JPG or PNG image no larger than 10 MB.');
+    if (!validMime || !validExtension || file.size > 3 * 1024 * 1024) {
+      setAnnouncementError('Maximum file size is 3MB. Please compress your file.');
       return;
     }
     const accessToken = kabisigApi.getToken();
@@ -993,8 +1157,7 @@ export default function BarangayAdminPages({
     setAnnouncementError('');
   };
 
-  const handleDeleteAnnouncement = async (announcement: AnnouncementRecord) => {
-    if (!window.confirm(`Delete "${announcement.title}"? This cannot be undone.`)) return;
+  const performDeleteAnnouncement = async (announcement: AnnouncementRecord) => {
     setMutatingAnnouncementId(announcement.id);
     setAnnouncementError('');
     setAnnouncementSuccess('');
@@ -1013,6 +1176,15 @@ export default function BarangayAdminPages({
       setMutatingAnnouncementId(null);
     }
   };
+  const handleDeleteAnnouncement = (announcement: AnnouncementRecord) => {
+    setConfirmMsg({
+      title: 'Delete Announcement?',
+      message: `Delete "${announcement.title}"? This cannot be undone.`,
+      type: 'error',
+      confirmLabel: 'Delete',
+      onConfirm: () => { void performDeleteAnnouncement(announcement); }
+    });
+  };
 
   const maleCount = localProfiles.filter(p => p.sex === 'Male').length;
   const femaleCount = localProfiles.filter(p => p.sex === 'Female').length;
@@ -1030,8 +1202,8 @@ export default function BarangayAdminPages({
     { name: 'No Active Programs', count: 0 }
   ];
 
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const budgetPrograms = programs.filter(program => {
+    if (['heha', 'aaaa'].includes(program.title.trim().toLowerCase())) return false;
     const yr = Number(budgetYear);
     const start = new Date(program.startDate).getFullYear();
     const end = program.endDate ? new Date(program.endDate).getFullYear() : start;
@@ -1039,63 +1211,27 @@ export default function BarangayAdminPages({
     const matchesFilter = budgetProgramFilter === 'All Programs' || program.id === budgetProgramFilter;
     return inYear && matchesFilter;
   });
-  const selectedProgramsBudget = budgetPrograms.reduce((sum, program) => sum + (Number(program.budgetAllocation) || 0), 0);
-  const barangayAllocatedBudget = Math.max(Number(currentBarangay?.allocatedBudget) || 0, Number(currentBarangay?.totalBudget) || 0);
-  const budgetScopeAllocated = budgetProgramFilter === 'All Programs'
-    ? Math.max(selectedProgramsBudget, Number(budgetYear) === new Date().getFullYear() ? barangayAllocatedBudget : 0)
-    : selectedProgramsBudget;
-  const unallocatedBudget = Math.max(0, budgetScopeAllocated - selectedProgramsBudget);
-  const budgetVsActualMonthlyData = months.map((month, idx) => {
-    const monthExpenses = expenses.filter(e => {
-      const d = e.date || e.created_at || e.expense_date ? new Date(e.date || e.created_at || e.expense_date) : null;
-      return d && d.getFullYear() === Number(budgetYear) && d.getMonth() === idx
-        && (budgetProgramFilter === 'All Programs' || e.programId === budgetProgramFilter);
-    }).reduce((sum, e) => sum + (Number(e.amount) || Number(e.gross_amount) || 0), 0);
-    return {
-      month,
-      budget: budgetPrograms.reduce((sum, program) => {
-        const start = new Date(program.startDate);
-        const end = new Date(program.endDate || program.startDate);
-        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start.getFullYear() !== Number(budgetYear)) return sum;
-        const monthCount = Math.max(1, (end.getFullYear() - start.getFullYear()) * 12 + end.getMonth() - start.getMonth() + 1);
-        return idx >= start.getMonth() && idx <= end.getMonth()
-          ? sum + (Number(program.budgetAllocation) || 0) / monthCount
-          : sum;
-      }, 0) + unallocatedBudget / 12,
-      spent: monthExpenses
-    };
-  });
-
-  const progColors = ['#091d64', '#2563eb', '#60a5fa', '#93c5fd', '#94a3b8', '#cbd5e1'];
-  const totalAllocBudget = budgetScopeAllocated;
-  const programAllocationData = budgetPrograms.map((p, idx) => {
-    const alloc = p.budgetAllocation || 0;
-    const pct = totalAllocBudget > 0 ? ((totalAllocBudget > 0 ? (totalAllocBudget > 0 ? (alloc / totalAllocBudget) * 100 : 0) : 0)).toFixed(1) : '0';
-    return {
-      name: p.title,
-      value: alloc,
-      color: progColors[idx % progColors.length],
-      percentage: `${pct}%`
-    };
-  });
-  const budgetAllocationByProgramData = [
-    ...programAllocationData,
-    ...(unallocatedBudget > 0 ? [{
-      name: 'Unallocated reserve',
-      value: unallocatedBudget,
-      color: '#cbd5e1',
-      percentage: `${((totalAllocBudget > 0 ? (totalAllocBudget > 0 ? (unallocatedBudget / totalAllocBudget) * 100 : 0) : 0)).toFixed(1)}%`,
-    }] : []),
-  ];
+  const barangayBudget = currentBarangay as BarangayTenant & { allocated_budget?: number };
+  const totalBudget = Number(currentBarangay?.allocatedBudget || barangayBudget.allocated_budget || 0);
+  const totalSpent = expenses.reduce((sum, expense) => sum + Number(expense.grossAmount || expense.amount || expense.gross_amount || 0), 0);
+  const allocatedToPrograms = budgetAllocations
+    .filter((budget: any) =>
+      budget.category !== 'General Youth Development Fund'
+      && !['heha', 'aaaa'].includes(String(budget.category || '').trim().toLowerCase())
+    )
+    .reduce((sum: number, budget: any) => sum + Number(budget.allocated_amount || 0), 0);
+  const remainingBalance = totalBudget - totalSpent;
+  const utilizationRate = (totalSpent / totalBudget) * 100;
 
   const budgetUtilizationTable = [
     ...budgetPrograms.map(p => {
-      const spent = expenses.filter(e => e.programId === p.id).reduce((sum, e) => sum + (Number(e.amount) || Number(e.gross_amount) || 0), 0) || p.spentBudget || 0;
-      const remaining = Math.max(0, (p.budgetAllocation || 0) - spent);
-      const rate = p.budgetAllocation > 0 ? Number(((spent / p.budgetAllocation) * 100).toFixed(1)) : 0;
+      const allocated = Number(budgetAllocations.find((budget: any) => budget.category === p.title)?.allocated_amount || p.budgetAllocation || 0);
+      const spent = expenses.filter(e => e.programId === p.id).reduce((sum, e) => sum + Number(e.gross_amount || e.amount || 0), 0) || p.spentBudget || 0;
+      const remaining = allocated - spent;
+      const rate = allocated > 0 ? Number(((spent / allocated) * 100).toFixed(1)) : 0;
       return {
         program: p.title,
-        allocated: p.budgetAllocation || 0,
+        allocated,
         spent,
         remaining,
         rate
@@ -1108,24 +1244,31 @@ export default function BarangayAdminPages({
       remaining: 0,
       rate: 0,
     }] : []),
-    ...(unallocatedBudget > 0 ? [{
-      program: 'Unallocated reserve',
-      allocated: unallocatedBudget,
-      spent: 0,
-      remaining: unallocatedBudget,
-      rate: 0,
-    }] : []),
   ];
   const overspentBudgetPrograms = budgetUtilizationTable.filter(row => row.spent > row.allocated && row.allocated > 0);
 
-  const handleCreateProgramSubmit = (e: React.FormEvent) => {
+  const handleCreateProgramSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    let image_base64: string | null = null;
+    let image_mime_type: string | null = null;
+    if (pubmatFile) {
+      image_base64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+        reader.readAsDataURL(pubmatFile);
+      });
+      image_mime_type = pubmatFile.type;
+    }
     if (!newProgForm.title) {
-      alert('Please enter a Program Title.');
+      setPopupMsg({ title: 'Program Title Required', text: 'Please enter a Program Title.', type: 'error' });
+      return;
+    }
+    if (!newProgForm.category) {
+      setPopupMsg({ title: 'Program Category Required', text: 'Please select a Program Category.', type: 'error' });
       return;
     }
 
-    const createdProg: Program = {
+    const createdProg: any = {
       id: editingProgram?.id || `prog-${Date.now().toString().slice(-3)}`,
       title: newProgForm.title,
       description: newProgForm.description,
@@ -1138,6 +1281,8 @@ export default function BarangayAdminPages({
       aipReference: newProgForm.aipReference.trim(),
       category: newProgForm.category,
       status: newProgForm.status,
+      image_base64: image_base64,
+      image_mime_type: image_mime_type,
       registeredCount: 0
     };
 
@@ -1153,8 +1298,13 @@ export default function BarangayAdminPages({
         }
       });
     } else {
-      void onCreateProgram(createdProg).then(success => {
+      void onCreateProgram(createdProg as any).then(success => {
         if (success) {
+          setPopupMsg({
+            title: 'Program Published',
+            text: `"${createdProg.title}" has been successfully created.`,
+            type: 'success'
+          });
           setProgramNotice({ type: 'success', text: `"${createdProg.title}" created successfully.` });
           setShowCreateProgDrawer(false);
           setTimeout(() => setProgramNotice(null), 5000);
@@ -1167,7 +1317,7 @@ export default function BarangayAdminPages({
     setNewProgForm({
       title: '',
       description: '',
-      category: 'Sports Development',
+      category: '' as Program['category'],
       startDate: '',
       endDate: '',
       location: '',
@@ -1224,18 +1374,26 @@ return (
 
       {viewingProgram && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm" onClick={() => setViewingProgram(null)}>
-          <div className="bg-white rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-100" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl w-full max-w-[95vw] md:max-w-2xl mx-4 my-8 max-h-[90vh] flex flex-col overflow-y-auto shadow-2xl border border-slate-100" onClick={(e) => e.stopPropagation()}>
             <div className="bg-[#091d64] text-white p-6 flex justify-between items-start">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-widest text-amber-300 mb-1">Program Details</p>
                 <h3 className="text-lg font-black leading-tight">{viewingProgram.title}</h3>
-                <p className="text-xs text-blue-100 mt-1">{viewingProgram.category}</p>
+                <p className="text-xs text-blue-100 mt-1">{getStandardCategory(viewingProgram.category)}</p>
               </div>
               <button onClick={() => setViewingProgram(null)} className="p-1.5 rounded-lg hover:bg-white/10 text-white/80">
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-6 space-y-4 text-xs">
+            <div className="p-6 space-y-4 text-xs overflow-y-auto flex-1">
+              {((viewingProgram as any).image_url || viewingProgram.imageUrl) && (
+                <img
+                  src={(viewingProgram as any).image_url || viewingProgram.imageUrl}
+                  alt={viewingProgram.title}
+                  className="max-h-64 w-full object-contain rounded-lg mb-4 cursor-pointer hover:opacity-90"
+                  onClick={() => setLightboxImg((viewingProgram as any).image_url || viewingProgram.imageUrl || null)}
+                />
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
                   <span className="text-[10px] font-bold text-slate-400 uppercase block">Start Date</span>
@@ -1282,17 +1440,17 @@ return (
                   if (progRegs.length === 0) return <p className="text-[11px] text-slate-400 italic">No participants have registered for this program yet.</p>;
                   return (
                     <div className="max-h-60 overflow-y-auto border border-slate-200 rounded-lg">
-                      <table className="w-full text-left text-xs">
+                      <div className="w-full overflow-x-auto block">
+                        <table className="w-full text-left text-xs min-w-[600px]">
                         <thead className="bg-slate-50 text-[10px] text-slate-500 uppercase sticky top-0">
                           <tr>
-                            <th className="px-3 py-2">Name</th>
-                            <th className="px-3 py-2">Zone</th>
-                            <th className="px-3 py-2">Contact</th>
-                            <th className="px-3 py-2 text-right">Status</th>
+                            <th className="px-3 py-2 whitespace-nowrap">Name</th>
+                            <th className="px-3 py-2 whitespace-nowrap">Zone</th>
+                            <th className="px-3 py-2 whitespace-nowrap">Contact</th>
+                            <th className="px-3 py-2 text-right whitespace-nowrap">Status</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {progRegs.map((r: any) => {
+                        <tbody className="divide-y divide-slate-100">{progRegs.map((r: any) => {
                             const u = Array.isArray(r.users) ? r.users[0] : r.users;
                             const rp = Array.isArray(u?.resident_profile) ? u.resident_profile[0] : u?.resident_profile;
                             const displayName = u?.full_name || r.participantName || 'Unknown';
@@ -1300,10 +1458,10 @@ return (
                             const contact = u?.phone || '—';
                             return (
                               <tr key={r.id}>
-                                <td className="px-3 py-2 font-bold text-slate-800">{displayName}</td>
-                                <td className="px-3 py-2 text-slate-600">{zone}</td>
-                                <td className="px-3 py-2 text-slate-600 font-mono text-[10px]">{contact}</td>
-                                <td className="px-3 py-2 text-right">
+                                <td className="px-3 py-2 font-bold text-slate-800 whitespace-nowrap">{displayName}</td>
+                                <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{zone}</td>
+                                <td className="px-3 py-2 text-slate-600 font-mono text-[10px] whitespace-nowrap">{contact}</td>
+                                <td className="px-3 py-2 text-right whitespace-nowrap">
                                   <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${r.status === 'attended' || r.status === 'Approved' || r.status === 'registered' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
                                     {r.status}
                                   </span>
@@ -1313,13 +1471,34 @@ return (
                           })}
                         </tbody>
                       </table>
+                      </div>
                     </div>
                   );
                 })()}
               </div>
             </div>
-            <div className="px-6 py-4 border-t border-slate-100 flex justify-between gap-2">
-              <button onClick={() => { if (window.confirm(`Delete "${viewingProgram.title}"?`)) { void onDeleteProgram(viewingProgram.id); setViewingProgram(null); } }} className="px-4 py-2 text-xs font-bold border border-rose-200 rounded-lg text-rose-600 hover:bg-rose-50">Delete</button>
+            <div className="px-6 py-4 border-t border-slate-100 flex justify-between gap-2 sticky bottom-0 bg-white">
+              <button onClick={() => setConfirmMsg({
+                title: 'Delete Program?',
+                message: `Delete "${viewingProgram.title}"?`,
+                type: 'error',
+                confirmLabel: 'Delete',
+                onConfirm: () => {
+                  void (async () => {
+                    try {
+                      const deleted = await onDeleteProgram(viewingProgram.id);
+                      if (deleted) {
+                        setPopupMsg({ title: 'Program Deleted', text: 'The program has been successfully removed.', type: 'success' });
+                        setViewingProgram(null);
+                      } else {
+                        setPopupMsg({ title: 'Delete Failed', text: 'The program could not be deleted.', type: 'error' });
+                      }
+                    } catch (error: any) {
+                      setPopupMsg({ title: 'Delete Failed', text: error.message || 'The program could not be deleted.', type: 'error' });
+                    }
+                  })();
+                }
+              })} className="px-4 py-2 text-xs font-bold border border-rose-200 rounded-lg text-rose-600 hover:bg-rose-50">Delete</button>
               <div className="flex gap-2">
                 <button onClick={() => setViewingProgram(null)} className="px-4 py-2 text-xs font-bold border border-slate-200 rounded-lg text-slate-600 max-w-md whitespace-normal break-words hover:bg-slate-50">Close</button>
               <button onClick={() => { const p = viewingProgram; setViewingProgram(null); if (p) openProgramEditor(p); }} className="px-4 py-2 text-xs font-bold bg-[#091d64] hover:bg-[#061344] text-white rounded-lg">Edit Program</button>
@@ -1338,7 +1517,20 @@ return (
           <span className="text-[10px] font-bold bg-[#1e3a8a] px-2 py-0.5 rounded text-sky-200">Brgy. {currentBarangay?.name}</span>
         </div>
         <div className="flex items-center gap-2">
-            <NotificationMenu userRole="Barangay Admin" buttonClassName="text-white hover:bg-white/10" />
+            <NotificationMenu
+              userRole="Barangay Admin"
+              items={notifications}
+              buttonClassName="text-white hover:bg-white/10"
+              onNavigate={link => {
+                const target = link.toLowerCase();
+                if (target.includes('budget') || target.includes('expense')) setActiveMenu('budget');
+                else if (target.includes('document') || target.includes('resolution')) setActiveMenu('documents');
+                else if (target.includes('program') || target.includes('calendar') || target.includes('attendance')) setActiveMenu('programs');
+                else if (target.includes('registration') || target.includes('approval') || target.includes('youth')) setActiveMenu('youth');
+                else if (target.includes('report')) setActiveMenu('reports');
+                else setActiveMenu('dashboard');
+              }}
+            />
             <button
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           className="p-2 rounded-xl bg-white/10 text-white hover:bg-white/20 transition-all cursor-pointer"
@@ -1627,6 +1819,7 @@ return (
 
           <div className="flex items-center gap-5">
             <NotificationMenu userRole="Barangay Admin"
+              items={notifications}
               supplementalItems={[
                 ...pendingRegistrations.map(profile => ({
                   id: `registration-${profile.id}`,
@@ -1662,9 +1855,11 @@ return (
               ].map(item => ({ ...item, created_at: (item as any).created_at || new Date().toISOString() })) satisfies NotificationMenuItem[]}
               onNavigate={link => {
                 const l = link.toLowerCase();
-                if (l.includes('report') || l.includes('budget') || l.includes('expense')) setActiveMenu('reports');
+                if (l.includes('budget') || l.includes('expense')) setActiveMenu('budget');
+                else if (l.includes('report')) setActiveMenu('reports');
                 else if (l.includes('document') || l.includes('resolution')) setActiveMenu('documents');
                 else if (l.includes('program') || l.includes('calendar') || l.includes('attendance')) setActiveMenu('programs');
+                else if (l.includes('registration') || l.includes('approval') || l.includes('youth')) setActiveMenu('youth');
                 else setActiveMenu('dashboard');
                 }}
             />
@@ -1718,7 +1913,7 @@ return (
                 <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-xs flex justify-between items-center">
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Budget</span>
-                    <span className="text-2xl font-black text-slate-800 mt-1 block">₱{(currentBarangay?.totalBudget || 0).toLocaleString()}</span>
+                    <span className="text-2xl font-black text-slate-800 mt-1 block">₱{totalBudget.toLocaleString()}</span>
                     <span className="text-[10px] text-slate-500 font-medium block mt-1">FY 2026 Budget</span>
                   </div>
                   <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center">
@@ -1763,13 +1958,13 @@ return (
                   </div>
                   <div className="h-72 w-full min-w-0">
                     <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                      <BarChart data={_filterPrograms.slice(0, 5).map(p => ({ name: p.title.substring(0, 15) + '...', registered: p.registeredCount || 0, capacity: p.maxParticipants || 10 }))} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <BarChart data={_filterPrograms.slice(0, 10).map(p => ({ name: p.title.substring(0, 15) + '...', registered: p.registeredCount || 0, capacity: p.maxParticipants || 10 }))} margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                        <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                        <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                        <XAxis dataKey="name" interval={0} angle={0} textAnchor="middle" height={60} tickFormatter={(value) => { const name = String(value || ''); return name.length > 12 ? `${name.substring(0, 12)}...` : name; }} tick={{ fontSize: 10, fill: '#475569' }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
                         <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ fontSize: '12px', borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                         <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                        <Bar dataKey="capacity" name="Target Capacity" fill="#94a3b8" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="capacity" name="Target Capacity" fill="#93c5fd" radius={[4, 4, 0, 0]} />
                         <Bar dataKey="registered" name="Registered Youth" fill="#091d64" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
@@ -1785,15 +1980,20 @@ return (
                       <ShieldCheck className="w-4 h-4 text-[#091d64]" />
                       <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">Compliance Alerts</h3>
                     </div>
-                    <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1 custom-scrollbar">
-                      {budgetAlerts.length === 0 ? (
+                    <div className="max-h-64 overflow-y-auto pr-2 space-y-3 custom-scrollbar">
+                      {dashboardAlerts.length === 0 ? (
                         <div className="flex items-center gap-3 p-3 bg-emerald-50 border border-emerald-100 rounded-lg">
                           <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                          <p className="text-[11px] font-bold text-emerald-800">All budgets within limits.</p>
+                          <p className="text-[11px] font-bold text-emerald-800">No active budget or compliance issues.</p>
                         </div>
                       ) : (
-                        budgetAlerts.map((alert, i) => (
-                          <div key={i} onClick={() => setActiveMenu((alert.code || '').includes('BUDGET') ? 'budget' : (alert.code || '').includes('DOC') ? 'documents' : 'youth')} className="flex items-start gap-2.5 p-3 rounded-lg bg-slate-50 border border-slate-100 cursor-pointer hover:bg-slate-100 transition-colors group">
+                        dashboardAlerts.map((alert, i) => (
+                          <div key={i} role="button" tabIndex={0} onClick={() => setActiveMenu(getAlertDestination(alert.code || ''))} onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              setActiveMenu(getAlertDestination(alert.code || ''));
+                            }
+                          }} className="flex items-start gap-2.5 p-3 rounded-lg bg-white border border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors group">
                             <span className="text-sm mt-0.5">{alert.level === 'Critical' ? '🚨' : '⚠️'}</span>
                             <div>
                               <p className="text-[11px] font-bold text-slate-800 leading-snug">{alert.message}</p>
@@ -1895,39 +2095,45 @@ return (
                 </div>
               </div>
 
-                <div className="w-full overflow-x-auto border border-slate-100 rounded-lg">
-                  <table className="w-full text-left text-xs text-slate-600">
+                <div className="border border-slate-100 rounded-lg">
+                  <div className="w-full overflow-x-auto block">
+                  <table className="w-full text-left text-xs text-slate-600 min-w-[800px]">
                     <thead className="bg-slate-50 text-[10px] text-slate-500 font-extrabold uppercase border-b border-slate-100">
                       <tr>
-                        <th className="px-6 py-3">Applicant Profile</th>
-                        <th className="px-6 py-3">Age / Sex</th>
-                        <th className="px-6 py-3">Residency Address</th>
-                        <th className="px-6 py-3">Scholastic State</th>
-                        <th className="px-6 py-3 text-center">Status</th>
-                        <th className="px-6 py-3 text-center">Desk Validation</th>
+                        <th className="px-6 py-3 whitespace-nowrap">Applicant Profile</th>
+                        <th className="px-6 py-3 whitespace-nowrap">Age / Sex</th>
+                        <th className="px-6 py-3 whitespace-nowrap">Residency Address</th>
+                        <th className="px-6 py-3 whitespace-nowrap">Education & Scholarship</th>
+                        <th className="px-6 py-3 text-center whitespace-nowrap">Status</th>
+                        <th className="px-6 py-3 text-center whitespace-nowrap">Desk Validation</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                      {!youthProfilesLoading && !youthProfilesError && filteredProfiles.map(p => (
+                    <tbody className="divide-y divide-slate-100 font-medium text-slate-700">{!youthProfilesLoading && !youthProfilesError && filteredProfiles.map(p => (
                         <tr key={p.id} className="hover:bg-slate-50/50">
-                          <td className="px-6 py-4 font-extrabold text-slate-800 flex items-center gap-3">
+                          <td className="px-6 py-4 font-extrabold text-slate-800 flex items-center gap-3 whitespace-nowrap">
                             <ProfileAvatar name={p.name} src={p.profilePic} alt={p.name} className="w-8 h-8 rounded-full border border-slate-100" />
                             <div>
                               <span className="block font-bold">{p.name}</span>
                               <span className="text-[9px] text-slate-400 font-mono font-bold block mt-0.5">{p.id}</span>
                             </div>
                           </td>
-                          <td className="px-6 py-4 font-bold">
+                          <td className="px-6 py-4 font-bold whitespace-nowrap">
                             {p.age} yrs / <span className="text-slate-500 font-semibold">{p.sex}</span>
                           </td>
-                          <td className="px-6 py-4 font-semibold text-slate-500">
+                          <td className="px-6 py-4 font-semibold text-slate-500 whitespace-nowrap">
                             {p.address} ({p.zone || 'Not Specified'})
                           </td>
-                          <td className="px-6 py-4">
+                          <td className="px-6 py-4 whitespace-nowrap">
                             <span className="block font-bold text-slate-700">{p.educationalLevel}</span>
-                            <span className="text-[9px] text-amber-600 font-bold block mt-0.5">{p.scholarStatus}</span>
+                            {p.scholarStatus === 'Scholar' || p.scholarStatus === 'Yes' ? (
+                              <span className="mt-1 inline-block rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                                Scholar ({p.scholarshipSource || (p as any).scholarship_source || 'N/A'}{p.scholarshipSourceDetail ? `: ${p.scholarshipSourceDetail}` : ''})
+                              </span>
+                            ) : (
+                              <span className="mt-1 inline-block rounded bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-600">Non-Scholar</span>
+                            )}
                           </td>
-                          <td className="px-6 py-4 text-center truncate">
+                          <td className="px-6 py-4 text-center truncate whitespace-nowrap">
                             <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
                               p.status === 'Approved' ? 'bg-green-100 text-green-800' :
                               p.status === 'Pending' ? 'bg-amber-100 text-amber-800' :
@@ -1936,7 +2142,7 @@ return (
                               {p.status}
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-center truncate">
+                          <td className="px-6 py-4 text-center truncate whitespace-nowrap">
                             <button 
                               onClick={() => { setInspectProfile(null); setTimeout(() => setInspectProfile({...p}), 10); }}
                               className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-extrabold rounded-lg flex items-center gap-1 mx-auto transition-colors cursor-pointer"
@@ -1949,7 +2155,7 @@ return (
                       ))}
                       {youthProfilesLoading && (
                         <tr>
-                          <td colSpan={6} className="px-6 py-12 text-center text-slate-500 font-bold text-xs">
+                          <td colSpan={6} className="px-6 py-12 text-center text-slate-500 font-bold text-xs whitespace-nowrap">
                             <span className="inline-flex items-center gap-2">
                               <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-[#091d64]" />
                               Loading youth records...
@@ -1959,7 +2165,7 @@ return (
                       )}
                       {!youthProfilesLoading && youthProfilesError && (
                         <tr>
-                          <td colSpan={6} className="px-6 py-8 text-center text-rose-600 font-semibold text-xs">
+                          <td colSpan={6} className="px-6 py-8 text-center text-rose-600 font-semibold text-xs whitespace-nowrap">
                             <div className="flex flex-col items-center gap-3">
                               <span>Unable to load records. {youthProfilesError}</span>
                               <button
@@ -1975,20 +2181,21 @@ return (
                       )}
                       {!youthProfilesLoading && !youthProfilesError && localProfiles.length === 0 && (
                         <tr>
-                          <td colSpan={6} className="px-6 py-12 text-center text-slate-400 font-bold text-xs">
+                          <td colSpan={6} className="px-6 py-12 text-center text-slate-400 font-bold text-xs whitespace-nowrap">
                             No records found.
                           </td>
                         </tr>
                       )}
                       {!youthProfilesLoading && !youthProfilesError && localProfiles.length > 0 && filteredProfiles.length === 0 && (
                         <tr>
-                          <td colSpan={6} className="px-6 py-12 text-center text-slate-400 font-bold text-xs">
+                          <td colSpan={6} className="px-6 py-12 text-center text-slate-400 font-bold text-xs whitespace-nowrap">
                             No matching applicant profiles found in registry.
                           </td>
                         </tr>
                       )}
                     </tbody>
                   </table>
+                </div>
                 </div>
               </div>
             </div>
@@ -2065,7 +2272,7 @@ return (
                                   key={program.id}
                                   onClick={() => openProgramEditor(program, 'view')}
                                   className={"w-full text-left rounded px-1.5 py-1 text-[9px] font-bold text-white truncate " + getProgramCalendarColor(program.id || program.title || '')}
-                                  title={`${program.title} · ${program.category}`}
+                                  title={`${program.title} · ${getStandardCategory(program.category)}`}
                                 >
                                   {program.title}
                                 </button>
@@ -2075,26 +2282,90 @@ return (
                         ))}
                       </div>
                     </div>
-                  ) : programs.map(p => (
-                    <button
-                      type="button"
-                      key={p.id}
-                      onClick={() => openProgramEditor(p, 'view')}
-                      className="flex w-full items-center justify-between gap-4 rounded-xl border border-slate-100 bg-white px-5 py-4 text-left shadow-2xs transition hover:border-blue-200 hover:shadow-sm"
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-bold text-[#091d64]">{p.title}</span>
-                        <span className="mt-1 flex items-center gap-1.5 text-[11px] font-medium text-slate-400">
-                          <Calendar className="h-3.5 w-3.5" />
-                          {p.startDate || 'Date not set'}{p.endDate && p.endDate !== p.startDate ? ` – ${p.endDate}` : ''}
-                        </span>
-                      </span>
-                      <span className="flex shrink-0 items-center gap-3">
-                        <span className="hidden rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-bold text-blue-700 sm:inline-block">{p.status}</span>
-                        <span className="text-xs font-semibold text-slate-500">{p.category}</span>
-                      </span>
-                    </button>
-                  ))}
+                  ) : (
+                    <div className="overflow-x-auto rounded-xl border border-slate-100 bg-white shadow-2xs">
+                      <table className="w-full min-w-[900px] text-left text-xs text-slate-600">
+                        <thead className="border-b border-slate-100 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                          <tr>
+                            <th className="px-5 py-3">Title</th>
+                            <th className="px-5 py-3">Category</th>
+                            <th className="px-5 py-3">Date</th>
+                            <th className="px-5 py-3">Status</th>
+                            <th className="px-5 py-3 text-right">Budget</th>
+                            <th className="px-5 py-3 text-center">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {programs.map(program => (
+                            <tr
+                              key={program.id}
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => openProgramEditor(program, 'view')}
+                              onKeyDown={event => {
+                                if (event.target !== event.currentTarget) return;
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault();
+                                  openProgramEditor(program, 'view');
+                                }
+                              }}
+                              className="cursor-pointer hover:bg-slate-50 focus:bg-slate-50 focus:outline-none"
+                            >
+                              <td className="px-5 py-4 font-bold text-[#091d64]">{program.title}</td>
+                              <td className="px-5 py-4">{getStandardCategory(program.category)}</td>
+                              <td className="px-5 py-4 whitespace-nowrap">
+                                {program.startDate || 'Date not set'}{program.endDate && program.endDate !== program.startDate ? ` – ${program.endDate}` : ''}
+                              </td>
+                              <td className="px-5 py-4">
+                                <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-bold text-blue-700">{program.status}</span>
+                              </td>
+                              <td className="px-5 py-4 text-right font-mono font-semibold whitespace-nowrap">
+                                ₱{(Number(program.budgetAllocation) || 0).toLocaleString()}
+                              </td>
+                              <td className="px-5 py-4">
+                                <div className="flex justify-center gap-2">
+                                  <button type="button" onClick={event => { event.stopPropagation(); openProgramEditor(program); }} className="rounded p-2 text-[#091d64] hover:bg-blue-50" aria-label={`Edit ${program.title}`} title="Edit program">
+                                    <Pencil className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={event => {
+                                      event.stopPropagation();
+                                      setConfirmMsg({
+                                        title: 'Delete Program?',
+                                        message: `Delete "${program.title}"?`,
+                                        type: 'error',
+                                        confirmLabel: 'Delete',
+                                        onConfirm: () => {
+                                          void (async () => {
+                                            try {
+                                              const deleted = await onDeleteProgram(program.id);
+                                              setPopupMsg({
+                                                title: deleted ? 'Program Deleted' : 'Delete Failed',
+                                                text: deleted ? 'The program has been successfully removed.' : 'The program could not be deleted.',
+                                                type: deleted ? 'success' : 'error',
+                                              });
+                                            } catch (error: any) {
+                                              setPopupMsg({ title: 'Delete Failed', text: error.message || 'The program could not be deleted.', type: 'error' });
+                                            }
+                                          })();
+                                        },
+                                      });
+                                    }}
+                                    className="rounded p-2 text-rose-700 hover:bg-rose-50"
+                                    aria-label={`Delete ${program.title}`}
+                                    title="Delete program"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                   {programs.length === 0 && (
                     <div className="bg-white p-12 text-center rounded-xl border border-slate-100 text-slate-400 font-bold text-xs">
                       No programs created yet. Click "Create New Program" to publish one.
@@ -2104,7 +2375,7 @@ return (
 
                 {showCreateProgDrawer && (
                   <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm" onClick={() => setShowCreateProgDrawer(false)}>
-                    <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-100 bg-white p-6 shadow-2xl" onClick={event => event.stopPropagation()}>
+                    <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-100 bg-white p-6 shadow-2xl max-w-[95vw] md:max-w-2xl" onClick={event => event.stopPropagation()}>
                     <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
                       <h4 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider">{editingProgram ? 'Edit Program' : 'Create New Program'}</h4>
                       <button 
@@ -2128,16 +2399,23 @@ return (
                           <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Description</label>
                           <textarea value={newProgForm.description} onChange={(e) => setNewProgForm({...newProgForm, description: e.target.value})} placeholder="What is this program about? Who can join?" className="w-full border border-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 resize-none" rows={3} />
                         </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Category <span className="text-rose-500">*</span></label>
-                          <select value={newProgForm.category} onChange={(e) => setNewProgForm({ ...newProgForm, category: e.target.value as Program['category'] })} className="w-full border border-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/30 font-semibold" required>
-                            <option>Health & Nutrition</option>
-                            <option>Education & Scholarship</option>
-                            <option>Sports Development</option>
-                            <option>Livelihood & Skills</option>
-                            <option>Peace & Security</option>
-                            <option>Environmental Protection</option>
-                          </select>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Category <span className="text-rose-500">*</span></label>
+                            <select value={newProgForm.category} onChange={(e) => setNewProgForm({ ...newProgForm, category: e.target.value as Program['category'] })} className="w-full border border-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/30 font-semibold" required>
+                              <option value="" disabled>Select a Category</option>
+                              <option>Health & Nutrition</option>
+                              <option>Education & Scholarship</option>
+                              <option>Sports Development</option>
+                              <option>Livelihood & Skills</option>
+                              <option>Peace & Security</option>
+                              <option>Environmental Protection</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">AIP Reference Code</label>
+                            <input type="text" value={newProgForm.aipReference} onChange={(e) => setNewProgForm({ ...newProgForm, aipReference: e.target.value })} placeholder="e.g. AIP-2026-001" className="w-full border border-slate-200 rounded-lg p-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+                          </div>
                         </div>
                       </div>
 
@@ -2178,10 +2456,20 @@ return (
                         </div>
                       </div>
 
+                      <div className="mb-4">
+  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Upload Pubmat / Event Poster</label>
+  <input type="file" accept="image/*" onChange={(e) => setPubmatFile(e.target.files?.[0] || null)} className="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-[#091d64] file:text-white hover:file:bg-blue-900 cursor-pointer" />
+  {pubmatFile && (
+    <div className="mt-2">
+      <p className="text-[10px] font-bold uppercase text-emerald-600 mb-1">✅ Preview: {pubmatFile.name}</p>
+      <img src={URL.createObjectURL(pubmatFile)} alt="Pubmat preview" className="max-h-48 rounded-lg border border-slate-200 object-contain cursor-pointer" onClick={() => setLightboxImg(URL.createObjectURL(pubmatFile!))} />
+    </div>
+  )}
+</div>
                       {/* Sticky Footer */}
-                      <div className="flex gap-2 pt-3 border-t border-slate-200 sticky bottom-0 bg-white">
-                        <button type="button" onClick={() => { setShowCreateProgDrawer(false); }} className="flex-1 py-2 text-xs border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 max-w-md whitespace-normal break-words font-bold cursor-pointer transition-colors">Cancel</button>
-                        <button type="submit" className="flex-1 py-2 text-xs bg-[#091d64] hover:bg-[#061344] text-white rounded-lg font-bold cursor-pointer transition-colors shadow-sm">{editingProgram ? 'Save Changes' : 'Create Program'}</button>
+                      <div className="flex justify-end gap-2 pt-3 border-t border-slate-200 sticky bottom-0 bg-white">
+                        <button type="button" onClick={() => { setShowCreateProgDrawer(false); }} className="h-10 px-6 text-xs border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 font-bold cursor-pointer transition-colors">Cancel</button>
+                        <button type="submit" className="h-10 px-6 text-xs bg-[#091d64] hover:bg-[#061344] text-white rounded-lg font-bold cursor-pointer transition-colors shadow-sm">{editingProgram ? 'Save Changes' : 'Create Program'}</button>
                       </div>
                     </form>
                     </div>
@@ -2236,7 +2524,7 @@ return (
                         setIsSavingTotal(false);
                       }
                     }}
-                    className="w-full max-w-lg space-y-4 rounded-xl bg-white p-5 shadow-2xl"
+                    className="w-full max-w-lg space-y-4 rounded-xl bg-white p-5 shadow-2xl max-w-[95vw] md:max-w-2xl lg:max-w-lg"
                   >
                     <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-3">
                       <div>
@@ -2286,7 +2574,7 @@ return (
                         setIsSavingBudget(false);
                       }
                     }}
-                    className="w-full max-w-lg space-y-4 rounded-xl bg-white p-5 shadow-2xl"
+                    className="w-full max-w-lg space-y-4 rounded-xl bg-white p-5 shadow-2xl max-w-[95vw] md:max-w-2xl lg:max-w-lg"
                   >
                     <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-3">
                       <div>
@@ -2296,7 +2584,7 @@ return (
                       <button type="button" onClick={() => setShowSetBudget(false)} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close budget form"><X className="h-4 w-4" /></button>
                     </div>
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Fiscal year
-                      <input required type="number" min="2020" max="2050" value={budgetForm.fiscalYear} onChange={(event) => setBudgetForm((previous) => ({ ...previous, fiscalYear: event.target.value }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800" />
+                      <input required type="number" min="2020" max="2050" readOnly value={budgetForm.fiscalYear} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-400 bg-slate-50 cursor-not-allowed" />
                     </label>
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Program
                       <select required value={budgetForm.category} onChange={(event) => setBudgetForm((previous) => ({ ...previous, category: event.target.value }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800">
@@ -2344,7 +2632,7 @@ return (
 
               {false && showRecordExpense && (
                 <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4">
-                  <form onSubmit={handleRecordExpense} className="w-full max-w-lg space-y-4 rounded-xl bg-white p-5 shadow-2xl">
+                  <form onSubmit={handleRecordExpense} className="w-full max-w-lg space-y-4 rounded-xl bg-white p-5 shadow-2xl max-w-[95vw] md:max-w-2xl lg:max-w-lg">
                     <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-3">
                       <div>
                         <h3 className="text-base font-extrabold text-[#091d64]">Record expense</h3>
@@ -2389,65 +2677,46 @@ return (
                 </div>
               )}
 
-              {(() => {
-                const filteredAllocated = budgetPrograms.reduce((sum, program) => sum + (Number(program.budgetAllocation) || 0), 0);
-                const filteredSpent = budgetPrograms.reduce((sum, program) => sum + (expenses.filter(expense => expense.programId === program.id).reduce((total, expense) => total + (Number(expense.amount) || Number(expense.gross_amount) || 0), 0) || 0), 0);
-                const isAllPrograms = budgetProgramFilter === 'All Programs';
-                const currentYearGeneralBudget = (budgetAllocations || []).find((b: any) => b.category === 'General Youth Development Fund' && b.fiscal_year === Number(budgetYear));
-                const barangayTotalBudget = currentYearGeneralBudget ? Number(currentYearGeneralBudget.allocated_amount) : 0;
-                const useBudgetTable = isAllPrograms;
-                const displaySpent = useBudgetTable ? (Number(currentBarangay?.spentBudget) || 0) : filteredSpent;
-                const displayBase = useBudgetTable ? barangayTotalBudget : filteredAllocated;
-                const filteredRemaining = Math.max(0, displayBase - displaySpent);
-                const filteredRate = displayBase > 0 ? (displayBase > 0 ? (displayBase > 0 ? (displaySpent / displayBase) * 100 : 0) : 0) : 0;
-                const overspent = budgetUtilizationTable.filter(row => row.spent > row.allocated && row.allocated > 0);
-                                                return (
-                  <>
-                    {isAllPrograms && barangayTotalBudget === 0 && (
-                      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs font-semibold text-amber-800">
-                        No FY {budgetYear} budget has been configured for this barangay yet. Per DILG JMC No. 1 s. 2025, the SK Chairperson prepares the barangay SK budget.
-                      </div>
-                    )}
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-                      {[
-                        [isAllPrograms ? 'Total budget' : 'Program budget', displayBase, Coins, 'text-[#091d64] bg-blue-50'],
-                        ['Allocated to programs', filteredAllocated, Briefcase, 'text-blue-600 bg-blue-50'],
-                        ['Total spent', displaySpent, Coins, 'text-amber-600 bg-amber-50'],
-                        ['Remaining balance', filteredRemaining, DollarSign, 'text-emerald-600 bg-emerald-50'],
-                      ].map(([label, value, Icon, iconClass]) => (
-                        <div key={String(label)} className="rounded-xl border border-slate-100 bg-white p-5 shadow-2xs">
-                          <div className="flex items-start justify-between"><span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{String(label)}</span><span className={`rounded-lg p-2 ${iconClass}`}><Icon className="h-4 w-4" /></span></div>
-                          <p className="mt-3 text-2xl font-extrabold text-slate-800">₱{Number(value).toLocaleString()}</p>
-                        </div>
-                      ))}
+              <>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
                       <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-2xs">
-                        <div className="flex items-start justify-between"><span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Utilization rate</span><span className="rounded-lg bg-violet-50 p-2 text-violet-600"><TrendingUp className="h-4 w-4" /></span></div>
-                        <p className="mt-3 text-2xl font-extrabold text-[#091d64]">{filteredRate.toFixed(1)}%</p>
-                        <p className="mt-1 text-[10px] font-semibold text-slate-400">{filteredAllocated ? 'Based on recorded expenses' : 'No allocation recorded'}</p>
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Total budget</span>
+                        <p className="mt-3 text-2xl font-extrabold text-slate-800">₱{totalBudget.toLocaleString()}</p>
                       </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
-                      <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-2xs xl:col-span-3">
-                                            <h4 className="text-sm font-extrabold text-slate-800">Monthly budget vs actual</h4>
-                        <p className="mb-4 text-[10px] text-slate-400">Actual expenses are grouped by expense date.</p>
-                        {budgetPrograms.length || expenses.length ? <ResponsiveContainer width="100%" height={260}><BarChart data={budgetVsActualMonthlyData}><XAxis dataKey="month" fontSize={10} /><YAxis fontSize={10} tickFormatter={value => `₱${Number(value) / 1000}k`} /><Tooltip formatter={(value: any) => `₱${Number(value).toLocaleString()}`} /><Legend /><Bar dataKey="budget" name="Budget" fill="#bfdbfe" radius={[4, 4, 0, 0]} /><Bar dataKey="spent" name="Actual" fill="#091d64" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer> : <div className="flex h-64 items-center justify-center text-xs font-semibold text-slate-400">No budget or expense records for this view.</div>}
+                      <div className="rounded-xl border border-blue-100 bg-blue-50/30 p-5 shadow-2xs">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-blue-600">Allocated to programs</span>
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <p className="text-2xl font-extrabold text-blue-700">₱{allocatedToPrograms.toLocaleString()}</p>
+                          {allocatedToPrograms > totalBudget && <span className="text-xs text-rose-600">OVER-ALLOCATED</span>}
+                        </div>
                       </div>
-                      <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-2xs xl:col-span-2">
-                        <h4 className="text-sm font-extrabold text-slate-800">Program allocation</h4>
-                        <p className="mb-2 text-[10px] text-slate-400">Share of the selected allocation.</p>
-                        {budgetAllocationByProgramData.some(item => item.value > 0) ? <><ResponsiveContainer width="100%" height={190}><PieChart><Pie data={budgetAllocationByProgramData} dataKey="value" nameKey="name" innerRadius={55} outerRadius={78} paddingAngle={3}>{budgetAllocationByProgramData.map(item => <Cell key={item.name} fill={item.color} />)}</Pie><Tooltip formatter={(value: any) => `₱${Number(value).toLocaleString()}`} /></PieChart></ResponsiveContainer><div className="space-y-2">{budgetAllocationByProgramData.slice(0, 6).map(item => <div key={item.name} className="flex items-center justify-between text-[10px] font-semibold text-slate-600 max-w-md whitespace-normal break-words"><span className="flex min-w-0 items-center gap-2"><i className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: item.color }} /> <span className="truncate">{item.name}</span></span><span>{item.percentage}</span></div>)}</div></> : <div className="flex h-64 items-center justify-center text-xs font-semibold text-slate-400">No program allocations recorded.</div>}
+                      <div className="rounded-xl border border-rose-100 bg-rose-50/30 p-5 shadow-2xs">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-rose-600">Total spent</span>
+                        <p className="mt-3 text-2xl font-extrabold text-rose-700">₱{totalSpent.toLocaleString()}</p>
+                        <span className="text-xs text-slate-500">{utilizationRate.toFixed(1)}% utilization</span>
+                      </div>
+                      <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-2xs">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{remainingBalance < 0 ? 'Over Budget (Deficit)' : 'Remaining Balance'}</span>
+                        <p className={`mt-3 text-2xl font-extrabold ${remainingBalance < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>₱{remainingBalance.toLocaleString()}</p>
                       </div>
                     </div>
 
                     <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-2xs">
                       <h4 className="mb-4 text-sm font-extrabold text-slate-800">Utilization by program</h4>
-                      {budgetUtilizationTable.length ? <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead className="border-b border-slate-100 text-[10px] uppercase tracking-wider text-slate-400"><tr><th className="px-3 py-3">Program</th><th className="px-3 py-3 text-right">Allocated</th><th className="px-3 py-3 text-right">Actual</th><th className="px-3 py-3 text-right">Remaining</th><th className="px-3 py-3 text-right">Utilization</th></tr></thead><tbody className="divide-y divide-slate-50">{budgetUtilizationTable.map(row => <tr key={row.program}><td className="px-3 py-3 font-bold text-slate-700">{row.program}</td><td className="px-3 py-3 text-right">₱{row.allocated.toLocaleString()}</td><td className="px-3 py-3 text-right">₱{row.spent.toLocaleString()}</td><td className="px-3 py-3 text-right">₱{row.remaining.toLocaleString()}</td><td className={`px-3 py-3 text-right font-bold ${row.rate > 100 ? 'text-rose-600' : 'text-slate-700'}`}>{row.rate.toFixed(1)}%</td></tr>)}</tbody></table></div> : <div className="py-10 text-center text-xs font-semibold text-slate-400">No programs available for this filter.</div>}
+                      {budgetUtilizationTable.length ? <div className="w-full overflow-x-auto block"><table className="w-full text-left text-xs min-w-[600px]"><thead className="border-b border-slate-100 text-[10px] uppercase tracking-wider text-slate-400"><tr><th className="px-3 py-3 whitespace-nowrap">Program</th><th className="px-3 py-3 text-right whitespace-nowrap">Allocated</th><th className="px-3 py-3 text-right whitespace-nowrap">Actual</th><th className="px-3 py-3 text-right whitespace-nowrap">Remaining</th><th className="px-3 py-3 text-right whitespace-nowrap">Utilization</th></tr></thead><tbody className="divide-y divide-slate-50">{budgetUtilizationTable.map(row => {
+                        const isOverAllocated = row.program === 'Over-Allocated';
+                        return (
+                          <tr key={row.program}>
+                            <td className={`px-3 py-3 font-bold whitespace-nowrap ${isOverAllocated ? 'text-rose-600' : 'text-slate-700'}`}>{row.program}</td>
+                            <td className={`px-3 py-3 text-right whitespace-nowrap ${isOverAllocated ? 'text-rose-600' : ''}`}>₱{row.allocated.toLocaleString()}</td>
+                            <td className="px-3 py-3 text-right whitespace-nowrap">₱{row.spent.toLocaleString()}</td>
+                            <td className={`px-3 py-3 text-right whitespace-nowrap ${isOverAllocated ? 'text-rose-600' : ''}`}>₱{row.remaining.toLocaleString()}</td>
+                            <td className={`px-3 py-3 text-right font-bold whitespace-nowrap ${row.rate > 100 || isOverAllocated ? 'text-rose-600' : 'text-slate-700'}`}>{isOverAllocated ? 'Over-Allocated' : `${row.rate.toFixed(1)}%`}</td>
+                          </tr>
+                        );
+                      })}</tbody></table></div> : <div className="py-10 text-center text-xs font-semibold text-slate-400">No programs available for this filter.</div>}
                     </div>
-
-                  </>
-                );
-              })()}
+              </>
             </div>
           )}
 
@@ -2458,7 +2727,7 @@ return (
                   <p className='mt-1 text-xs text-slate-400'>Assets recorded by the SK Treasurer. Read-only for Chairperson oversight.</p>
                   {previewImage && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-                      <div className="relative max-w-4xl w-full max-h-[90vh] flex flex-col items-center">
+                      <div className="relative max-w-4xl w-full max-h-[90vh] flex flex-col items-center max-w-[95vw] md:max-w-2xl lg:max-w-4xl">
                         <button onClick={() => setPreviewImage(null)} className="absolute -top-12 right-0 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full cursor-pointer">
                           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                         </button>
@@ -2507,40 +2776,40 @@ return (
                   </div>
                 </div>
 
-                <div className="w-full overflow-x-auto border border-slate-200/80 rounded-xl shadow-xs">
-                  <table className="w-full text-left text-xs font-semibold text-slate-600">
+                <div className="border border-slate-200/80 rounded-xl shadow-xs">
+                  <div className="w-full overflow-x-auto block">
+                  <table className="w-full text-left text-xs font-semibold text-slate-600 min-w-[800px]">
                     <thead className="bg-[#091d64] text-[10px] text-white font-extrabold uppercase tracking-widest">
                       <tr>
-                        <th className="px-5 py-3.5">Code / Ref No.</th>
-                        <th className="px-5 py-3.5">Document Title</th>
-                        <th className="px-5 py-3.5">Category</th>
-                        <th className="px-5 py-3.5">Author / Officer</th>
-                        <th className="px-5 py-3.5">Date</th>
-                        <th className="px-5 py-3.5 text-center">Approval Status</th>
-                        <th className="px-5 py-3.5 text-right">Review</th>
+                        <th className="px-5 py-3.5 whitespace-nowrap">Code / Ref No.</th>
+                        <th className="px-5 py-3.5 whitespace-nowrap">Document Title</th>
+                        <th className="px-5 py-3.5 whitespace-nowrap">Category</th>
+                        <th className="px-5 py-3.5 whitespace-nowrap">Author / Officer</th>
+                        <th className="px-5 py-3.5 whitespace-nowrap">Date</th>
+                        <th className="px-5 py-3.5 text-center whitespace-nowrap">Approval Status</th>
+                        <th className="px-5 py-3.5 text-right whitespace-nowrap">Review</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 font-medium text-slate-700 bg-white">
-                      {localDocs.map(doc => (
+                    <tbody className="divide-y divide-slate-100 font-medium text-slate-700 bg-white">{localDocs.map(doc => (
                         <tr key={doc.id} className="hover:bg-slate-50/70 transition-colors">
-                          <td className="px-5 py-4 font-mono font-bold text-[#091d64]">
+                          <td className="px-5 py-4 font-mono font-bold text-[#091d64] whitespace-nowrap">
                             {doc.resolutionNumber || doc.id}
                           </td>
-                          <td className="px-5 py-4 font-bold text-slate-900 truncate" title="Document Title">
+                          <td className="px-5 py-4 font-bold text-slate-900 truncate whitespace-nowrap" title="Document Title">
                             {doc.title}
                           </td>
-                          <td className="px-5 py-4">
+                          <td className="px-5 py-4 whitespace-nowrap">
                             <span className="px-2.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-extrabold uppercase">
                               {doc.category}
                             </span>
                           </td>
-                          <td className="px-5 py-4 font-bold text-slate-800 truncate">
+                          <td className="px-5 py-4 font-bold text-slate-800 truncate whitespace-nowrap">
                             {doc.uploadedBy}
                           </td>
-                          <td className="px-5 py-4 font-mono text-slate-600 max-w-md whitespace-normal break-words">
+                          <td className="px-5 py-4 font-mono text-slate-600 max-w-md whitespace-normal break-words whitespace-nowrap">
                             {doc.uploadedDate}
                           </td>
-                          <td className="px-5 py-4 text-center">
+                          <td className="px-5 py-4 text-center whitespace-nowrap">
                             <span className={`px-2.5 py-0.5 rounded text-[9px] font-black uppercase border ${
                               doc.status === 'Approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                               doc.status === 'Rejected' ? 'bg-rose-50 text-rose-700 border-rose-200' :
@@ -2549,20 +2818,19 @@ return (
                               {doc.status}
                             </span>
                           </td>
-                          <td className="px-5 py-4 text-right">
-                            {(doc as any).fileUrl && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const url = (doc as any).fileUrl;
-                                  if (url) { window.open(url, '_blank'); return; }
-                                  alert('No file attached.');
-                                }}
+                          <td className="px-5 py-4 text-right whitespace-nowrap">
+                            {(doc.fileUrl || (doc as any).file_url) ? (
+                              <a
+                                href={doc.fileUrl || (doc as any).file_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
                                 className="mr-1.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-[10px] font-bold hover:bg-slate-50"
                                 title="View Uploaded File"
                               >
                                 <Eye className="w-3.5 h-3.5" /> View
-                              </button>
+                              </a>
+                            ) : (
+                              <span className="mr-1.5 text-[10px] font-semibold text-slate-400">No File Attached</span>
                             )}
                             {doc.status === 'Pending' && (
                               <button
@@ -2584,7 +2852,7 @@ return (
                       ))}
                       {localDocs.length === 0 && (
                         <tr>
-                          <td colSpan={7} className="text-center py-8 text-slate-400 font-bold">
+                          <td colSpan={7} className="text-center py-8 text-slate-400 font-bold whitespace-nowrap">
                             No documents found in repository.
                           </td>
                         </tr>
@@ -2592,10 +2860,11 @@ return (
                     </tbody>
                   </table>
                 </div>
+                </div>
 
                 {showApproveDocModal && selectedDocForApprove && (
                   <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4">
-                    <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl overflow-hidden">
+                    <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl overflow-hidden max-w-[95vw] md:max-w-2xl lg:max-w-lg">
                       <div className="bg-[#091d64] text-white p-5">
                         <h3 className="font-bold text-base">Review Document</h3>
                         <p className="mt-1 text-xs text-blue-100">{selectedDocForApprove.title}</p>
@@ -2651,23 +2920,30 @@ return (
                 <div className="border-b border-slate-100 pb-4 flex justify-between items-start">
                   <div>
                     <span className="px-2.5 py-0.5 bg-blue-50 text-[#091d64] font-black text-[10px] rounded uppercase tracking-wider">GOVERNANCE REPORTS - AYDP ALIGNED</span>
-                    {/* Resolution Tracking — per manuscript §4.3.1 Module 4 */}
+                    {/* Resolution tracking and community voting */}
                     {resolutions && resolutions.length > 0 && (
                       <div className="rounded-xl bg-white p-5 shadow-xs border border-slate-100 mb-4">
                         <div className="flex items-center justify-between mb-3">
                           <div>
                             <h3 className="text-sm font-extrabold text-[#091d64]">Resolution Tracking & Community Votes</h3>
-                            <p className="text-[11px] text-slate-400 mt-0.5">Live support/oppose tallies per §4.3.1 Module 4.</p>
+                            <p className="text-[11px] text-slate-400 mt-0.5">Support and oppose counts for community polls.</p>
                           </div>
-                          <span className="text-[10px] font-bold text-slate-500">{resolutions.length} resolution{resolutions.length === 1 ? '' : 's'}</span>
+                          <button
+                            type="button"
+                            onClick={() => setShowClosedPolls(value => !value)}
+                            className="rounded-lg border border-slate-200 px-3 py-1.5 text-[10px] font-bold text-[#091d64] hover:bg-slate-50"
+                          >
+                            {showClosedPolls ? 'View Open Polls' : `View Closed Polls (${closedPolls.length})`}
+                          </button>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          {resolutions.map((res: any) => (
+                          {(showClosedPolls ? closedPolls : openPolls).map((res: any) => (
                             <div key={res.id} className="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
                               <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0 flex-1">
                                   <p className="text-[10px] font-mono font-bold text-slate-500">{res.resolutionNumber || 'POLL'}</p>
                                   <p className="text-xs font-bold text-slate-800 mt-0.5 leading-tight">{res.title || 'Untitled'}</p>
+                                  {res.end_date && <span className="text-[10px] text-slate-400 font-medium">Closes: {new Date(res.end_date).toLocaleDateString()}</span>}
                                 </div>
                                 <span className={res.status === 'Voting Open' ? 'px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-100 text-emerald-700' : 'px-2 py-0.5 rounded-full text-[9px] font-bold bg-slate-200 text-slate-600'}>
                                   {res.status || 'Unknown'}
@@ -2680,14 +2956,19 @@ return (
                               {res.validityPeriod && <p className="text-[9px] text-slate-400 mt-1">Valid: {res.validityPeriod}</p>}
                             </div>
                           ))}
+                          {(showClosedPolls ? closedPolls : openPolls).length === 0 && (
+                            <p className="col-span-full py-4 text-center text-xs text-slate-500">
+                              {showClosedPolls ? 'There are no closed polls.' : 'There are no open polls.'}
+                            </p>
+                          )}
                         </div>
                       </div>
                     )}
 
-                    <h3 className="font-sans font-bold text-slate-900 text-lg mt-1">Executive Reports & Decision Analytics Center</h3>
-                    <p className="text-xs text-slate-500 mt-0.5">Live governance database synced across Barangay {currentBarangay?.name || 'Barangay'}.</p>
+                    <h3 className="font-sans font-bold text-slate-900 text-lg mt-1">Reports & Analytics</h3>
+                    <p className="text-xs text-slate-500 mt-0.5">Reports for Barangay {currentBarangay?.name || 'Barangay'}.</p>
                   </div>
-                  <button onClick={() => generatePDFReport('Executive Summary & COA Financial Performance Report')} className="px-4 py-2.5 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-xl text-xs flex items-center gap-2 shrink-0"><Printer className="w-4 h-4" /> Export Master PDF</button>
+                  <button onClick={handleExportMasterPDF} className="px-4 py-2.5 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-xl text-xs flex items-center gap-2 shrink-0"><Printer className="w-4 h-4" /> Export Master PDF</button>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -2704,9 +2985,13 @@ return (
                   <button onClick={() => setReportSubTab('demographics')} className={reportSubTab === 'demographics' ? 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-[#091d64] text-white' : 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-slate-50 text-slate-600 hover:bg-slate-100'}>Demographics</button>
                   <button onClick={() => setReportSubTab('financial')} className={reportSubTab === 'financial' ? 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-[#091d64] text-white' : 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-slate-50 text-slate-600 hover:bg-slate-100'}>Financial</button>
                 </div>
-                {reportSubTab === 'attendance' && (<div className="overflow-x-auto border border-slate-100 rounded-xl"><table className="w-full text-left text-xs"><thead className="bg-[#091d64] text-white text-[10px] font-bold uppercase"><tr><th className="px-4 py-3">Program</th><th className="px-4 py-3 text-right">Registered</th><th className="px-4 py-3 text-right">Slots</th><th className="px-4 py-3 text-right">Fill Rate</th></tr></thead><tbody className="divide-y divide-slate-100">{programs.map(p => { const reg = p.registeredCount || 0; const max = p.maxParticipants || 1; return <tr key={p.id}><td className="px-4 py-3 font-bold">{p.title}</td><td className="px-4 py-3 text-right font-mono">{reg}</td><td className="px-4 py-3 text-right font-mono">{p.maxParticipants || 0}</td><td className="px-4 py-3 text-right font-mono font-bold text-[#091d64]">{((max > 0 ? (max > 0 ? (reg / max) * 100 : 0) : 0)).toFixed(0)}%</td></tr>; })}</tbody></table></div>)}
+                {reportSubTab === 'attendance' && (<div className="border border-slate-100 rounded-xl">
+                  <div className="w-full overflow-x-auto block"><table className="w-full text-left text-xs min-w-[600px]"><thead className="bg-[#091d64] text-white text-[10px] font-bold uppercase"><tr><th className="px-4 py-3 whitespace-nowrap">Program</th><th className="px-4 py-3 text-right whitespace-nowrap">Registered</th><th className="px-4 py-3 text-right whitespace-nowrap">Slots</th><th className="px-4 py-3 text-right whitespace-nowrap">Fill Rate</th></tr></thead><tbody className="divide-y divide-slate-100">{programs.map(p => { const reg = p.registeredCount || 0; const max = p.maxParticipants || 1; return <tr key={p.id}><td className="px-4 py-3 font-bold whitespace-nowrap">{p.title}</td><td className="px-4 py-3 text-right font-mono whitespace-nowrap">{reg}</td><td className="px-4 py-3 text-right font-mono whitespace-nowrap">{p.maxParticipants || 0}</td><td className="px-4 py-3 text-right font-mono font-bold text-[#091d64] whitespace-nowrap">{((max > 0 ? (max > 0 ? (reg / max) * 100 : 0) : 0)).toFixed(0)}%</td></tr>; })}</tbody></table></div>
+                </div>)}
                 {reportSubTab === 'accomplishments' && (<div className="grid grid-cols-1 sm:grid-cols-3 gap-4"><div className="p-4 bg-emerald-50/60 rounded-xl border border-emerald-100 text-center"><span className="text-2xl font-black text-emerald-800 block">{programs.reduce((s, p) => s + (p.registeredCount || 0), 0)}</span><span className="text-[10px] font-bold text-emerald-600 uppercase block mt-1">Total Registrations</span></div><div className="p-4 bg-blue-50/60 rounded-xl border border-blue-100 text-center"><span className="text-2xl font-black text-[#091d64] block">{programs.filter(p => p.status === 'Completed').length}</span><span className="text-[10px] font-bold text-blue-600 uppercase block mt-1">Completed Programs</span></div><div className="p-4 bg-amber-50/60 rounded-xl border border-amber-100 text-center"><span className="text-2xl font-black text-amber-800 block">{documents.length}</span><span className="text-[10px] font-bold text-amber-600 uppercase block mt-1">Documented Reports</span></div></div>)}
-                {reportSubTab === 'beneficiaries' && (<div className="overflow-x-auto border border-slate-100 rounded-xl"><table className="w-full text-left text-xs"><thead className="bg-[#091d64] text-white text-[10px] font-bold uppercase"><tr><th className="px-4 py-3">Name</th><th className="px-4 py-3">Zone</th><th className="px-4 py-3">Status</th></tr></thead><tbody className="divide-y divide-slate-100">{youthProfiles.slice(0, 50).map(y => <tr key={y.id}><td className="px-4 py-3 font-bold">{y.name}</td><td className="px-4 py-3 text-slate-500">{y.zone || 'Not Specified'}</td><td className="px-4 py-3">{y.status}</td></tr>)}</tbody></table></div>)}
+                {reportSubTab === 'beneficiaries' && (<div className="border border-slate-100 rounded-xl">
+                  <div className="w-full overflow-x-auto block"><table className="w-full text-left text-xs min-w-[600px]"><thead className="bg-[#091d64] text-white text-[10px] font-bold uppercase"><tr><th className="px-4 py-3 whitespace-nowrap">Name</th><th className="px-4 py-3 whitespace-nowrap">Zone</th><th className="px-4 py-3 whitespace-nowrap">Status</th></tr></thead><tbody className="divide-y divide-slate-100">{youthProfiles.slice(0, 50).map(y => <tr key={y.id}><td className="px-4 py-3 font-bold whitespace-nowrap">{y.name}</td><td className="px-4 py-3 text-slate-500 whitespace-nowrap">{y.zone || 'Not Specified'}</td><td className="px-4 py-3 whitespace-nowrap">{y.status}</td></tr>)}</tbody></table></div>
+                </div>)}
                                 {reportSubTab === 'demographics' && (
                   <div className="space-y-4">
                     <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
@@ -2768,7 +3053,9 @@ return (
                     })()}
                   </div>
                 )}
-                {reportSubTab === 'financial' && (<div className="overflow-x-auto border border-slate-100 rounded-xl"><table className="w-full text-left text-xs"><thead className="bg-[#091d64] text-white text-[10px] font-bold uppercase"><tr><th className="px-4 py-3">Program</th><th className="px-4 py-3 text-right">Allocated</th><th className="px-4 py-3 text-right">Cost per Slot</th></tr></thead><tbody className="divide-y divide-slate-100">{programs.map(p => { const alloc = Number(p.budgetAllocation) || 0; const slots = p.maxParticipants || 0; return <tr key={p.id}><td className="px-4 py-3 font-bold">{p.title}</td><td className="px-4 py-3 text-right font-mono">₱{alloc.toLocaleString()}</td><td className="px-4 py-3 text-right font-mono font-bold text-emerald-700">₱{(slots > 0 ? Math.round(alloc / slots) : 0).toLocaleString()}</td></tr>; })}</tbody></table></div>)}
+                {reportSubTab === 'financial' && (<div className="border border-slate-100 rounded-xl">
+                  <div className="w-full overflow-x-auto block"><table className="w-full text-left text-xs min-w-[600px]"><thead className="bg-[#091d64] text-white text-[10px] font-bold uppercase"><tr><th className="px-4 py-3 whitespace-nowrap">Program</th><th className="px-4 py-3 text-right whitespace-nowrap">Allocated</th></tr></thead><tbody className="divide-y divide-slate-100">{programs.map(p => { const alloc = Number(p.budgetAllocation) || 0; return <tr key={p.id}><td className="px-4 py-3 font-bold whitespace-nowrap">{p.title}</td><td className="px-4 py-3 text-right font-mono whitespace-nowrap">₱{alloc.toLocaleString()}</td></tr>; })}</tbody></table></div>
+                </div>)}
               </div>
             </div>
           )}
@@ -2908,11 +3195,18 @@ return (
                               </button>
                             </div>
                           </div>
-                          {announcement.imageUrl && <img src={announcement.imageUrl} alt={`Pubmat for ${announcement.title}`} className="mt-3 max-h-64 w-full rounded-lg border border-slate-200 bg-white object-contain" />}
-                          <div className="mt-3 space-y-2 text-[11px]">
-                            <p className="text-slate-600 max-w-md whitespace-normal break-words"><span className="font-bold text-slate-700">What:</span> {announcement.what || '—'}</p>
-                            <p className="text-slate-600 max-w-md whitespace-normal break-words"><span className="font-bold text-slate-700">Where:</span> {announcement.where || '—'}</p>
-                            <p className="text-slate-600 max-w-md whitespace-normal break-words"><span className="font-bold text-slate-700">When:</span> {announcement.when || '—'}</p>
+                          {announcement.imageUrl && (
+                            <img
+                              src={announcement.imageUrl}
+                              alt={`Pubmat for ${announcement.title}`}
+                              className="mt-3 max-h-64 w-full cursor-pointer rounded-lg border border-slate-200 bg-white object-contain hover:opacity-90 transition-opacity"
+                              onClick={() => setLightboxImg(announcement.imageUrl)}
+                            />
+                          )}
+                          <div className="mt-3 space-y-2 text-left text-[11px]">
+                            <p className="max-w-md whitespace-normal break-words text-left text-slate-600"><span className="font-bold text-slate-700">What:</span> {announcement.what || '—'}</p>
+                            <p className="max-w-md whitespace-normal break-words text-left text-slate-600"><span className="font-bold text-slate-700">Where:</span> {announcement.where || '—'}</p>
+                            <p className="max-w-md whitespace-normal break-words text-left text-slate-600"><span className="font-bold text-slate-700">When:</span> {announcement.when || '—'}</p>
                             <div className="border-t border-slate-200 pt-2">
                               <p className="font-bold text-slate-700">Body Content</p>
                               <p className="mt-1 whitespace-pre-line font-medium text-slate-600 max-w-md whitespace-normal break-words">{announcement.content}</p>
@@ -3047,38 +3341,39 @@ return (
             <div className="space-y-6">
               <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-xs space-y-4">
                 <h3 className="text-lg font-extrabold text-[#091d64]">Barangay Official Activity & Audit Log</h3>
-                <div className="overflow-x-auto border border-slate-100 rounded-xl">
-                  <table className="w-full text-left text-xs font-semibold text-slate-600">
+                <div className="border border-slate-100 rounded-xl">
+                  <div className="w-full overflow-x-auto block">
+                  <table className="w-full text-left text-xs font-semibold text-slate-600 min-w-[600px]">
                     <thead className="bg-slate-50 text-[10px] text-slate-500 font-extrabold uppercase border-b border-slate-100">
                       <tr>
-                        <th className="p-3.5">Timestamp</th>
-                        <th className="p-3.5">Official Name & Role</th>
-                        <th className="p-3.5">Action Code</th>
-                        <th className="p-3.5">Activity Details</th>
+                        <th className="p-3.5 whitespace-nowrap">Timestamp</th>
+                        <th className="p-3.5 whitespace-nowrap">Official Name & Role</th>
+                        <th className="p-3.5 whitespace-nowrap">Action Code</th>
+                        <th className="p-3.5 whitespace-nowrap">Activity Details</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                      {auditLogs.map(log => (
+                    <tbody className="divide-y divide-slate-100 font-medium text-slate-700">{auditLogs.map(log => (
                         <tr key={log.id} className="hover:bg-slate-50/50">
-                          <td className="p-3.5 font-mono text-slate-400 text-[11px]">
+                          <td className="p-3.5 font-mono text-slate-400 text-[11px] whitespace-nowrap">
                             {new Date(log.timestamp).toLocaleString()}
                           </td>
-                          <td className="p-3.5 font-bold text-slate-800">
+                          <td className="p-3.5 font-bold text-slate-800 whitespace-nowrap">
                             {log.user} ({log.role})
                           </td>
-                          <td className="p-3.5 font-mono text-[10px]">{formatAuditAction(log.action)}</td>
-                          <td className="p-3.5 text-slate-600 max-w-md whitespace-normal break-words">{formatAuditDetails(log.action, log.details)}</td>
+                          <td className="p-3.5 font-mono text-[10px] whitespace-nowrap">{formatAuditAction(log.action)}</td>
+                          <td className="p-3.5 text-slate-600 max-w-md whitespace-normal break-words whitespace-nowrap">{formatAuditDetails(log.action, log.details)}</td>
                         </tr>
                       ))}
                       {auditLogs.length === 0 && (
                         <tr>
-                          <td colSpan={4} className="p-6 text-center text-slate-400 font-bold">
+                          <td colSpan={4} className="p-6 text-center text-slate-400 font-bold whitespace-nowrap">
                             No audit logs recorded yet.
                           </td>
                         </tr>
                       )}
                     </tbody>
                   </table>
+                </div>
                 </div>
               </div>
             </div>
@@ -3095,7 +3390,7 @@ return (
       {/* INSPECT PROFILE MODAL */}
       {inspectProfile && (
         <div key={`modal-${inspectProfile.userId || inspectProfile.id}-${inspectProfile.name || ''}`} className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200">
+          <div className="bg-white rounded-xl w-full max-w-[95vw] md:max-w-2xl mx-4 my-8 max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200">
             <div className="bg-[#091d64] text-white p-5 border-b-4 border-[#fbbf24] flex items-center justify-between">
               <div>
                 <h3 className="font-extrabold text-lg">Katipunan ng Kabataan Profile Verification</h3>
@@ -3142,12 +3437,16 @@ return (
 
               <div className="grid sm:grid-cols-2 gap-4 text-xs font-bold text-slate-600 max-w-md whitespace-normal break-words">
                 <div>
-                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Birthdate & calculated age</span>
-                  <span className="text-slate-800 block">{inspectProfile.birthdate} ({inspectProfile.age} yrs old)</span>
+                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Birthdate</span>
+                  <span className="text-slate-800 block">{inspectProfile.birthdate || 'Not provided'}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Address</span>
-                  <span className="text-slate-800 block">{inspectProfile.address} ({(inspectProfile.zone && inspectProfile.zone.match(/^\d+$/)) ? 'Zone ' + inspectProfile.zone : (inspectProfile.zone || 'Not Specified')})</span>
+                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Age</span>
+                  <span className="text-slate-800 block">{inspectProfile.age ?? 'Not provided'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Complete Address</span>
+                  <span className="text-slate-800 block">{inspectProfile.address || 'Not provided'} · {(inspectProfile.zone && inspectProfile.zone.match(/^\d+$/)) ? 'Zone ' + inspectProfile.zone : (inspectProfile.zone || 'Not specified')}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Contact & email</span>
@@ -3158,8 +3457,19 @@ return (
                   <span className="text-slate-800 block">{inspectProfile.educationalLevel || 'Not provided'} {inspectProfile.course ? ` · ${inspectProfile.course}` : ''} {inspectProfile.school ? ` · ${inspectProfile.school}` : ''}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Employment & scholarship</span>
-                  <span className="text-slate-800 block">{inspectProfile.employmentStatus || inspectProfile.employment || 'Not provided'} · {inspectProfile.scholarStatus || 'Not provided'}</span>
+                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Employment Status</span>
+                  <span className="text-slate-800 block">{inspectProfile.employmentStatus || inspectProfile.employment || 'Not provided'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Scholarship Status</span>
+                  <span className="text-slate-800 block">{inspectProfile.scholarStatus || 'Not provided'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Scholarship Source</span>
+                  <span className="text-slate-800 block">
+                    {inspectProfile.scholarshipSource || (inspectProfile as any).scholarship_source || (inspectProfile.scholarStatus === 'Scholar' || inspectProfile.scholarStatus === 'Yes' ? 'Not specified' : 'N/A')}
+                    {inspectProfile.scholarshipSourceDetail ? ` (${inspectProfile.scholarshipSourceDetail})` : ''}
+                  </span>
                 </div>
                 <div>
                   <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Youth sector</span>
@@ -3170,12 +3480,16 @@ return (
                   <span className="text-slate-800 block">{inspectProfile.guardianName || 'Not provided'}{inspectProfile.guardianContact ? ` · ${inspectProfile.guardianContact}` : ''}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Registration status</span>
-                  <span className="text-slate-800 block">{inspectProfile.status} · Registered {inspectProfile.dateRegistered || 'date unavailable'}</span>
+                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Registration Status</span>
+                  <span className="text-slate-800 block">{inspectProfile.status || 'Not provided'}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Marital Status</span>
-                  <span className="text-slate-800 block">{inspectProfile.civilStatus || 'Single'}</span>
+                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Date Registered</span>
+                  <span className="text-slate-800 block">{inspectProfile.dateRegistered || 'Date unavailable'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Civil Status</span>
+                  <span className="text-slate-800 block">{inspectProfile.civilStatus || 'Not provided'}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Special Category</span>
@@ -3190,6 +3504,16 @@ return (
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                   <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Identity Verification</span>
                   {youthVerificationLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />}
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <span className="text-slate-400 block text-[10px] uppercase tracking-wider">ID Type</span>
+                    <span className="text-slate-800 font-bold block">{youthVerification?.id_type || 'Not provided'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[10px] uppercase tracking-wider">ID Number</span>
+                    <span className="text-slate-800 font-mono font-bold block">{youthVerification?.id_number || 'Not provided'}</span>
+                  </div>
                 </div>
 
                 {!youthVerificationLoading && !youthVerification && (
@@ -3208,14 +3532,6 @@ return (
                 {!youthVerificationLoading && youthVerification && youthVerification.verification_status !== "not_submitted" && (
                   <>
                     <div className="grid grid-cols-2 gap-3 text-xs">
-                      <div>
-                        <span className="text-slate-400 block text-[10px] uppercase tracking-wider">ID Type</span>
-                        <span className="text-slate-800 font-bold block">{youthVerification.id_type || "Not provided"}</span>
-                      </div>
-                      <div>
-                        <span className="text-slate-400 block text-[10px] uppercase tracking-wider">ID Number</span>
-                        <span className="text-slate-800 font-mono font-bold block">{youthVerification.id_number || "Not provided"}</span>
-                      </div>
                       <div className="col-span-2">
                         <span className="text-slate-400 block text-[10px] uppercase tracking-wider">Status</span>
                         <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black uppercase ${
@@ -3233,17 +3549,17 @@ return (
                             const targetId = inspectProfile.userId || inspectProfile.id;
                             try {
                               await kabisigApi.updateVerificationStatus(targetId, "verified");
-                              alert("ID Approved successfully!");
+                              setPopupMsg({ title: 'ID Approved', text: 'ID Approved successfully!', type: 'success' });
                               setYouthVerification({ ...youthVerification, verification_status: "verified" });
-                            } catch (e: any) { alert(e.message); }
+                            } catch (e: any) { setPopupMsg({ title: 'Approval Failed', text: e.message || 'Could not approve ID.', type: 'error' }); }
                           }} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer">Approve ID</button>
                           <button onClick={async () => {
                             const targetId = inspectProfile.userId || inspectProfile.id;
                             try {
                               await kabisigApi.updateVerificationStatus(targetId, "rejected");
-                              alert("ID Rejected.");
+                              setPopupMsg({ title: 'ID Rejected', text: 'ID Rejected.', type: 'success' });
                               setYouthVerification({ ...youthVerification, verification_status: "rejected" });
-                            } catch (e: any) { alert(e.message); }
+                            } catch (e: any) { setPopupMsg({ title: 'Rejection Failed', text: e.message || 'Could not reject ID.', type: 'error' }); }
                           }} className="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer">Reject ID</button>
                         </div>
                       )}
@@ -3293,7 +3609,7 @@ return (
                     <button 
                       onClick={() => {
                         if (!rejectionReason) {
-                          alert('Please enter a rejection reason.');
+                          setPopupMsg({ title: 'Reason Required', text: 'Please enter a rejection reason.', type: 'error' });
                           return;
                         }
                         onRejectYouth(inspectProfile.userId || inspectProfile.id, rejectionReason);
@@ -3348,7 +3664,7 @@ return (
       {/* UPLOAD DOCUMENT MODAL */}
       {showUploadDocModal && (
         <div key={`modal-${inspectProfile.userId || inspectProfile.id}-${inspectProfile.name || ''}`} className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-xl w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200 text-left">
+          <div className="bg-white rounded-2xl w-full max-w-[95vw] md:max-w-2xl mx-4 my-8 max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200 text-left">
             <div className="bg-[#091d64] text-white p-5 border-b-4 border-[#fbbf24] flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <Upload className="w-5 h-5 text-amber-400" />
@@ -3429,8 +3745,8 @@ return (
                   required
                   onChange={(event) => {
                     const file = event.target.files?.[0] || null;
-                    if (file && file.size > 25 * 1024 * 1024) {
-                      setDocumentUploadError('File size exceeds maximum limit of 25MB.');
+                    if (file && file.size > 3 * 1024 * 1024) {
+                      setDocumentUploadError('Maximum file size is 3MB. Please compress your file.');
                       setSelectedUploadFile(null);
                       return;
                     }
@@ -3516,7 +3832,7 @@ return (
 
       {showFacebookGuide && (
         <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[95vw] md:max-w-2xl mx-4 my-8 max-h-[90vh] overflow-y-auto p-6">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3 mb-4">
               <div>
                 <h3 className="text-lg font-black text-[#091d64]">Facebook Integration Guide</h3>
@@ -3564,6 +3880,38 @@ return (
               Got It
             </button>
           </div>
+        </div>
+      )}
+      {popupMsg && (
+        <div className="fixed inset-0 z-[9999] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 text-center shadow-2xl max-w-[95vw] md:max-w-2xl lg:max-w-sm">
+            <div className={`w-12 h-12 rounded-full mx-auto flex items-center justify-center mb-4 ${popupMsg.type === 'success' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
+              {popupMsg.type === 'success' ? '✓' : '!'}
+            </div>
+            <h3 className="text-lg font-bold text-slate-800">{popupMsg.title}</h3>
+            <p className="text-sm text-slate-600 mb-6">{popupMsg.text}</p>
+            <button onClick={() => setPopupMsg(null)} className="w-full py-2 bg-[#091d64] text-white rounded-lg font-bold">Okay, I understand</button>
+          </div>
+        </div>
+      )}
+      <PopupDialog notice={confirmMsg} onClose={() => setConfirmMsg(null)} />
+      {lightboxImg && (
+        <div
+          className="fixed inset-0 z-[99999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 cursor-zoom-out"
+          onClick={() => setLightboxImg(null)}
+        >
+          <img
+            src={lightboxImg}
+            alt="Preview"
+            className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl cursor-default"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            className="absolute top-6 right-6 text-white text-3xl font-bold bg-black/50 w-10 h-10 rounded-full flex items-center justify-center hover:bg-black/80"
+            onClick={() => setLightboxImg(null)}
+          >
+            &times;
+          </button>
         </div>
       )}
     </div>

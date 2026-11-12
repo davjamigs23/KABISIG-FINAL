@@ -68,6 +68,7 @@ import { UserMenu } from './UserMenu';
 import ProfileAvatar from './ProfileAvatar';
 import ImageCropModal from './ImageCropModal';
 import kabisigApi from '../lib/api';
+import PopupDialog, { PopupMessage } from './PopupDialog';
 interface YouthPagesProps {
   currentYouth: YouthProfile;
   programs: Program[];
@@ -80,11 +81,19 @@ interface YouthPagesProps {
   tenants?: BarangayTenant[];
   onRegisterProgram: (pId: string) => Promise<Registration>;
   onSubmitFeedback: (feed: FeedbackRecord) => void;
-  onVoteResolution: (rId: string, voteType: 'Support' | 'Oppose' | 'Abstain') => Promise<ResolutionRecord>;
+  onVoteResolution: (rId: string, voteType: string) => Promise<ResolutionRecord>;
   onUpdateYouthProfile?: (updated: YouthProfile) => void;
   onLogout: () => void;
   notifications?: any[];
 }
+const hasProgramEnded = (endDate?: string | Date | null): boolean => {
+  if (!endDate) return false;
+  const end = new Date(endDate);
+  if (Number.isNaN(end.getTime())) return false;
+  end.setHours(23, 59, 59, 999);
+  return end < new Date();
+};
+
 export default function YouthPages({
   currentYouth,
   programs,
@@ -110,6 +119,7 @@ export default function YouthPages({
   // Navigation inside Youth Portal corresponding exactly to Image 4 Sidebar:
   // 'dashboard' | 'profile' | 'programs' | 'registrations' | 'feedback' | 'resolutions' | 'announcements' | 'settings'
   const [zoomImage, setZoomImage] = useState<string | null>(null);
+  const [lightboxImg, setLightboxImg] = useState<string | null>(null);
   const [activeMenu, setActiveMenu] = useState<
     'dashboard' | 'programs' | 'registrations' | 'feedback' | 'profile' | 'resolutions' | 'announcements' | 'settings'
    | 'directory' | 'directory'>('dashboard');
@@ -124,10 +134,16 @@ export default function YouthPages({
     }
   }, [activeMenu, youthProfiles.length]);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [popupMsg, setPopupMsg] = useState<{ title: string; text: string; type: 'success' | 'error' } | null>(null);
+  const [confirmMsg, setConfirmMsg] = useState<PopupMessage | null>(null);
   const [programTab, setProgramTab] = useState<'browse' | 'registrations'>('browse');
   const [feedbackTab, setFeedbackTab] = useState<'suggestions' | 'resolutions'>('suggestions');
   // Local copy of profile for real-time editing & persistence
   const [youth, setYouth] = useState<YouthProfile>(currentYouth);
+  const profileFullName = String((youth as any).full_name || youth.name || '').trim();
+  const profileFirstName = String((youth as any).first_name || profileFullName.split(/\s+/)[0] || '—').trim();
+  const profileLastName = String((youth as any).last_name || profileFullName.split(/\s+/).slice(-1)[0] || '—').trim();
+  const profileMiddleName = String((youth as any).middle_name || profileFullName.split(/\s+/).slice(profileFirstName.split(/\s+/).length, profileFullName.split(/\s+/).length - profileLastName.split(/\s+/).length).join(' ') || '—').trim();
   const [isUploadingProfilePicture, setIsUploadingProfilePicture] = useState(false);
   const [profilePictureNotice, setProfilePictureNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -169,6 +185,9 @@ export default function YouthPages({
     return () => clearInterval(interval);
   }, []);
       const currentVerifStatus = (verificationStatus?.verification_status || currentYouth.verificationStatus || (currentYouth as any).verification_status || 'pending').toLowerCase();
+  const isVerified = String(currentYouth.status || '').toLowerCase() === 'approved'
+    || String(currentYouth.verificationStatus || (currentYouth as any).verification_status || '').toLowerCase() === 'verified'
+    || String(verificationStatus?.verification_status || '').toLowerCase() === 'verified';
   const isDemotedChair = verificationStatus?.is_demoted_chair === true;
     const isUnderReview = currentVerifStatus === 'submitted' || currentVerifStatus === 'pending_approval';
   const isRejected = currentVerifStatus === 'rejected';
@@ -182,7 +201,7 @@ export default function YouthPages({
 
   const handleIdUpload = async () => {
     if (!idType || !idNumber.trim() || !frontFile) {
-      alert("Please fill in ID Type, ID Number, and upload the Front Image.");
+      setPopupMsg({ title: 'Verification Details Required', text: 'Please fill in ID Type, ID Number, and upload the Front Image.', type: 'error' });
       return;
     }
     setUploadingId(true);
@@ -220,16 +239,16 @@ export default function YouthPages({
       });
       
       if (res.success) {
-        alert("ID uploaded successfully! Your Chairperson will review it shortly.");
+        setPopupMsg({ title: 'ID Uploaded', text: 'ID uploaded successfully! Your Chairperson will review it shortly.', type: 'success' });
         setShowVerifyModal(false);
         setVerificationStatus({ verification_status: 'submitted' });
         // Delay reload to allow React state to visually update the banner
         
       } else {
-        alert("Upload failed: " + (res.message || "Unknown error"));
+        setPopupMsg({ title: 'Upload Failed', text: "Upload failed: " + (res.message || "Unknown error"), type: 'error' });
       }
     } catch (err: any) {
-      alert("Error: " + err.message);
+      setPopupMsg({ title: 'Upload Failed', text: "Error: " + err.message, type: 'error' });
     } finally {
       setUploadingId(false);
     }
@@ -308,8 +327,8 @@ export default function YouthPages({
       setProfilePictureNotice({ type: 'error', text: 'Choose a JPEG, PNG, or WebP image.' });
       return;
     }
-    if (file.size > 15 * 1024 * 1024) {
-      setProfilePictureNotice({ type: 'error', text: 'Image must be under 15 MB.' });
+    if (file.size > 3 * 1024 * 1024) {
+      setProfilePictureNotice({ type: 'error', text: 'Maximum file size is 3MB. Please compress your file.' });
       return;
     }
     const reader = new FileReader();
@@ -420,11 +439,13 @@ export default function YouthPages({
   });
   // Rule #1: ensure editForm has split fields populated for editing
   const ensureSplitName = (profile: YouthProfile): YouthProfile => {
+    const scholarshipSource = profile.scholarshipSource || (profile as YouthProfile & { scholarship_source?: string }).scholarship_source || '';
+    const scholarshipSourceDetail = profile.scholarshipSourceDetail || (profile as YouthProfile & { scholarship_source_detail?: string }).scholarship_source_detail || '';
     if ((profile.first_name && profile.first_name.trim()) || (profile.last_name && profile.last_name.trim())) {
-      return profile;
+      return { ...profile, scholarshipSource, scholarshipSourceDetail };
     }
     const parts = splitFullName(profile.name || '');
-    return { ...profile, ...parts };
+    return { ...profile, ...parts, scholarshipSource, scholarshipSourceDetail };
   };
   const loadVerification = async () => {
     setVerificationLoading(true);
@@ -445,8 +466,8 @@ export default function YouthPages({
       setVerificationNotice({ type: 'error', text: 'Only JPEG, PNG, or WEBP images are allowed.' });
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      setVerificationNotice({ type: 'error', text: 'File must be 5 MB or smaller.' });
+    if (file.size > 3 * 1024 * 1024) {
+      setVerificationNotice({ type: 'error', text: 'Maximum file size is 3MB. Please compress your file.' });
       return;
     }
     setVerificationNotice(null);
@@ -522,6 +543,17 @@ export default function YouthPages({
     loadVerification();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditModalOpen]);
+  const calculateAge = (birthdate: string) => {
+    const today = new Date();
+    const birthDate = new Date(birthdate);
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age;
+  };
+
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSavingProfile(true);
@@ -540,7 +572,7 @@ export default function YouthPages({
       _checkField('Guardian Contact', editForm.guardianContact);
       if (_missing.length > 0) {
         setIsSavingProfile(false);
-        alert('Please fill in all required fields before saving.\n\nMissing: ' + _missing.join(', '));
+        setPopupMsg({ title: 'Required Fields Missing', text: 'Please fill in all required fields before saving.\n\nMissing: ' + _missing.join(', '), type: 'error' });
         return;
       }
     }
@@ -548,10 +580,11 @@ export default function YouthPages({
     // Calculate age from birthdate if provided
     let calculatedAge = editForm.age;
     if (editForm.birthdate) {
-      const birthYear = new Date(editForm.birthdate).getFullYear();
+      const birthDate = new Date(editForm.birthdate);
+      const birthYear = birthDate.getFullYear();
       const currentYear = new Date().getFullYear();
-      if (!isNaN(birthYear) && birthYear > 1900 && birthYear <= currentYear) {
-        calculatedAge = currentYear - birthYear;
+      if (!Number.isNaN(birthDate.getTime()) && birthYear > 1900 && birthYear <= currentYear) {
+        calculatedAge = calculateAge(editForm.birthdate);
       }
     }
     const composedName = composeFullName({
@@ -562,12 +595,18 @@ export default function YouthPages({
     }) || editForm.name;
     const updatedProfile: YouthProfile = {
       ...editForm,
+      scholarshipSource: editForm.scholarshipSource || '',
+      scholarshipSourceDetail: editForm.scholarshipSourceDetail || '',
       name: composedName,
       age: calculatedAge
     };
     try {
       // Persist profile to Supabase PostgreSQL database via backend API
-      const res = await kabisigApi.updateProfile(updatedProfile);
+      const res = await kabisigApi.updateProfile({
+        ...updatedProfile,
+        scholarship_source: updatedProfile.scholarshipSource || null,
+        scholarship_source_detail: updatedProfile.scholarshipSourceDetail || null,
+      });
       if (!res.success) {
         throw new Error(res.message || 'The profile could not be saved.');
       }
@@ -580,10 +619,10 @@ export default function YouthPages({
         if (currentYouth.is_demoted) { await kabisigApi.updateProfile({ ...editForm, has_edited_profile: true }); }
         setIsEditingProfile(false);
         onUpdateYouthProfile({ ...currentYouth, ...editForm, has_edited_profile: true } as any);
-      alert('Your Katipunan ng Kabataan Profile (DILG Annex 4) has been updated and saved to the database successfully!');
+      setPopupMsg({ title: 'Profile Saved', text: 'Your Katipunan ng Kabataan Profile (DILG Annex 4) has been updated and saved to the database successfully!', type: 'success' });
     } catch (err: any) {
       console.error('Error saving profile changes:', err);
-      alert(`Your profile was not saved: ${err.message || 'Backend database sync failed.'}`);
+      setPopupMsg({ title: 'Profile Save Failed', text: `Your profile was not saved: ${err.message || 'Backend database sync failed.'}`, type: 'error' });
     } finally {
       setIsSavingProfile(false);
     }
@@ -610,14 +649,16 @@ export default function YouthPages({
 
   const handleRegisterProgramClick = async (progId: string) => {
     const _prog = programs.find(p => p.id === progId);
-    if (_prog?.endDate && new Date(_prog.endDate) < new Date()) {
-      alert('This program has already ended. Registration is closed.');
+    const programStatus = String(_prog?.status || '').toLowerCase();
+    const programEndDate = (_prog as any)?.endDate || (_prog as any)?.end_date || (_prog as any)?.date || (_prog as any)?.startDate;
+    if (_prog && (programStatus === 'completed' || programStatus === 'cancelled' || hasProgramEnded(programEndDate))) {
+      setPopupMsg({ title: 'Registration Closed', text: 'This program has already ended. Registration is closed.', type: 'error' });
       return;
     }
     // Check if already registered
     const alreadyReg = localRegs.some(r => r.programId === progId && r.participantId === currentYouth.id);
     if (alreadyReg) {
-      alert('You are already registered for this program.');
+      setPopupMsg({ title: 'Already Registered', text: 'You are already registered for this program.', type: 'error' });
       return;
     }
     const prog = programs.find(p => p.id === progId);
@@ -703,7 +744,7 @@ export default function YouthPages({
       setIsSubmittingFeedback(false);
     }
   };
-  const handleResolutionVote = async (resId: string, voteType: 'Support' | 'Oppose' | 'Abstain') => {
+  const handleResolutionVote = async (resId: string, voteType: string) => {
     if (!currentYouth.userId) {
       setResolutionVoteNotice({ type: 'error', text: 'Your authenticated youth account could not be verified.' });
       return;
@@ -769,22 +810,28 @@ export default function YouthPages({
       {/* @ts-ignore */}
       {currentYouth?.status === 'suspended' && (
         <div className='fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4'>
-          <div className='bg-white rounded-2xl max-w-md w-full p-6 text-center shadow-2xl'>
+          <div className='bg-white rounded-2xl w-full max-w-[95vw] md:max-w-2xl mx-4 my-8 max-h-[90vh] overflow-y-auto p-6 text-center shadow-2xl'>
             <div className='w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4'>
               <ShieldAlert className='w-8 h-8' />
             </div>
             <h2 className='text-xl font-extrabold text-slate-900 mb-2'>Account Suspended</h2>
             {/* @ts-ignore */}
             <p className='text-sm text-slate-600 mb-6'>{currentYouth?.suspension_reason || 'Violation of community guidelines.'}</p>
-            <button type="button" onClick={() => {
-              if (confirm('Submit appeal to the SK Chairperson? You will be signed out after.')) {
+            <button type="button" onClick={() => setConfirmMsg({
+              title: 'Submit Appeal?',
+              message: 'Submit appeal to the SK Chairperson? You will be signed out after.',
+              type: 'info',
+              confirmLabel: 'Submit Appeal',
+              onConfirm: () => {
                 try { kabisigApi.logout(); } catch (e) {
-        setIsLoadingStatus(false); console.error(e); }
+                  setIsLoadingStatus(false); console.error(e);
+                }
                 try { localStorage.clear(); sessionStorage.clear(); } catch (e) {
-        setIsLoadingStatus(false); console.error(e); }
+                  setIsLoadingStatus(false); console.error(e);
+                }
                 setTimeout(() => window.location.href = '/', 300);
               }
-            }} className="w-full py-2.5 bg-[#091d64] hover:bg-[#0a2578] text-white font-bold rounded-xl text-sm transition-colors">
+            })} className="w-full py-2.5 bg-[#091d64] hover:bg-[#0a2578] text-white font-bold rounded-xl text-sm transition-colors">
               Appeal to SK Chairperson
             </button>
           </div>
@@ -794,8 +841,8 @@ export default function YouthPages({
       {/* @ts-ignore */}
       {currentYouth?.status === 'Approved' && currentYouth?.suspension_reason && (
         <div className='fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4'>
-          <div className='bg-white rounded-2xl max-w-md w-full p-6 text-center shadow-2xl'>
-            <div className='w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4'>
+          <div className='bg-white rounded-2xl w-full max-w-[95vw] md:max-w-2xl mx-4 my-8 max-h-[90vh] overflow-y-auto p-6 text-center shadow-2xl'>
+            <div className='w-16 h-16 bg-amber-100 text-slate-900 rounded-full flex items-center justify-center mx-auto mb-4'>
               <ShieldAlert className='w-8 h-8' />
             </div>
             <h2 className='text-xl font-extrabold text-slate-900 mb-2'>Account Reactivated</h2>
@@ -840,9 +887,11 @@ export default function YouthPages({
             items={notifications || []}
             buttonClassName="p-2 rounded-xl bg-white/10 text-white hover:bg-white/20"
             onNavigate={(link) => {
-              if (link.includes('feedback')) setActiveMenu('feedback');
-              else if (link.includes('program')) setActiveMenu('programs');
-              else if (link.includes('profile')) setActiveMenu('profile');
+              const target = link.toLowerCase();
+              if (target.includes('feedback') || target.includes('resolution')) setActiveMenu('feedback');
+              else if (target.includes('program') || target.includes('announcement') || target.includes('calendar')) setActiveMenu('programs');
+              else if (target.includes('profile')) setActiveMenu('profile');
+              else if (target.includes('registration') || target.includes('participation')) setActiveMenu('registrations');
               else setActiveMenu('dashboard');
             }}
           />
@@ -978,9 +1027,11 @@ export default function YouthPages({
   items={notifications || []} 
   buttonClassName="p-2 rounded-xl text-slate-500 hover:text-slate-700 hover:bg-slate-100 relative"
   onNavigate={(link) => {
-    if (link.includes('feedback')) setActiveMenu('feedback');
-    else if (link.includes('program')) setActiveMenu('programs');
-    else if (link.includes('profile')) setActiveMenu('profile');
+    const target = link.toLowerCase();
+    if (target.includes('feedback') || target.includes('resolution')) setActiveMenu('feedback');
+    else if (target.includes('program') || target.includes('announcement') || target.includes('calendar')) setActiveMenu('programs');
+    else if (target.includes('profile')) setActiveMenu('profile');
+    else if (target.includes('registration') || target.includes('participation')) setActiveMenu('registrations');
     else setActiveMenu('dashboard');
   }}
 />
@@ -1002,7 +1053,7 @@ export default function YouthPages({
               {currentYouth?.is_demoted === true && countCompletedFields < 18 && (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
                   <div className="flex items-start gap-3">
-                    <div className="bg-amber-100 p-2 rounded-lg text-amber-600 shrink-0">
+                    <div className="bg-amber-100 p-2 rounded-lg text-slate-900 shrink-0">
                       <ShieldAlert className="w-5 h-5" />
                     </div>
                     <div>
@@ -1122,7 +1173,7 @@ export default function YouthPages({
                         </div>
                         <div className="flex items-center gap-1.5">
                           <span className="text-[8px] text-slate-400 font-bold uppercase tracking-widest w-12">Status:</span>
-                          <span className={`text-[9px] font-extrabold uppercase tracking-tight ${isVerificationPending ? 'text-amber-600' : 'text-green-600'}`}>
+                          <span className={`text-[9px] font-extrabold uppercase tracking-tight ${isVerificationPending ? 'text-slate-900' : 'text-green-600'}`}>
                             {(verificationStatus?.verification_status === 'submitted' || currentYouth.verificationStatus === 'submitted') ? 'Under Review' : isVerificationPending ? 'Pending Verification' : 'Verified Resident'}
                           </span>
                         </div>
@@ -1164,7 +1215,7 @@ export default function YouthPages({
                   </div>
                   {/* Card 2: Active Programs */}
                   <div className="bg-white rounded-xl border border-slate-100 p-5 shadow-xs flex items-center gap-4 hover:shadow-sm transition-shadow">
-                    <div className="w-12 h-12 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center flex-shrink-0">
+                    <div className="w-12 h-12 rounded-full bg-amber-50 text-slate-900 flex items-center justify-center flex-shrink-0">
                       <ClipboardList className="w-5 h-5" />
                     </div>
                     <div>
@@ -1292,7 +1343,7 @@ export default function YouthPages({
                                   {registeringProgramId === rec.program.id ? <Loader2 className="w-3 h-3 inline animate-spin" /> : 'Instantly Register →'}
                                 </button>
                               ) : (
-                                <span className="text-[10px] text-emerald-600 font-extrabold">Slot Confirmed</span>
+                                <span className="text-[10px] text-slate-900 font-extrabold">Slot Confirmed</span>
                               )}
                             </div>
                           </div>
@@ -1437,7 +1488,7 @@ export default function YouthPages({
                         <h4 className="text-2xl font-black text-slate-900 leading-tight">{youth.name}</h4>
                         <div className="flex flex-wrap justify-center sm:justify-start gap-2 mt-2">
                           <span className="text-[10px] bg-blue-50 text-[#091d64] border border-blue-100 px-3 py-1 rounded-full font-extrabold uppercase tracking-widest">
-                            Resident ID: <span className="font-mono text-amber-600">{youth.id}</span>
+                            Resident ID: <span className="font-mono text-slate-900">{youth.id}</span>
                           </span>
                           <span className="text-[10px] bg-emerald-50 text-emerald-800 border border-emerald-100 px-3 py-1 rounded-full font-bold uppercase tracking-widest">
                             {youth.zone || 'Not specified'}
@@ -1496,15 +1547,15 @@ export default function YouthPages({
                             <div className="space-y-1">
                               <div className="flex items-baseline gap-2">
                                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 w-16 flex-shrink-0">First Name:</span>
-                                <span className="text-slate-900 font-bold">{((youth as any).first_name && (youth as any).first_name.trim() !== "" ? (youth as any).first_name : (youth.name?.split(" ")[0] || "—"))}</span>
+                                <span className="text-slate-900 font-bold">{profileFirstName}</span>
                               </div>
                               <div className="flex items-baseline gap-2">
                                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 w-16 flex-shrink-0">Middle Name:</span>
-                                <span className="text-slate-900 font-bold">{((youth as any).middle_name && (youth as any).middle_name.trim() !== "" ? (youth as any).middle_name : (youth.name?.split(" ").length && youth.name.split(" ").length > 2 ? youth.name.split(" ")[1] : "—"))}</span>
+                                <span className="text-slate-900 font-bold">{profileMiddleName}</span>
                               </div>
                               <div className="flex items-baseline gap-2">
                                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 w-16 flex-shrink-0">Last Name:</span>
-                                <span className="text-slate-900 font-bold">{((youth as any).last_name && (youth as any).last_name.trim() !== "" ? (youth as any).last_name : (youth.name?.split(" ").length && youth.name.split(" ").length > 1 ? youth.name.split(" ").pop() : "—"))}</span>
+                                <span className="text-slate-900 font-bold">{profileLastName}</span>
                               </div>
                               <div className="flex items-baseline gap-2">
                                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 w-16 flex-shrink-0">Suffix:</span>
@@ -1526,12 +1577,12 @@ export default function YouthPages({
                         {/* 4. Age */}
                         <tr className="hover:bg-slate-50/50 bg-blue-50/20">
                           <td className="py-2.5 px-4 font-bold text-slate-900">4. Age</td>
-                          <td className="py-2.5 px-4 font-black text-blue-900">{youth.age} Years Old</td>
+                          <td className="py-2.5 px-4 font-black text-slate-900">{youth.age} Years Old</td>
                         </tr>
                         {/* 5. Civil Status */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">5. Civil Status</td>
-                          <td className="py-2.5 px-4 font-bold">{youth.civilStatus || 'Single'}</td>
+                          <td className="py-2.5 px-4 font-bold">{youth.civilStatus || 'Not Specified'}</td>
                         </tr>
                         {/* 6. Address */}
                         <tr className="hover:bg-slate-50/50">
@@ -1541,7 +1592,7 @@ export default function YouthPages({
                         {/* 7. Zone / Purok */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">7. Zone / Purok</td>
-                          <td className="py-2.5 px-4 font-extrabold text-indigo-700">{youth.zone || 'Not specified'}</td>
+                          <td className="py-2.5 px-4 font-extrabold text-slate-900">{youth.zone || 'Not specified'}</td>
                         </tr>
                         {/* 8. Contact Number */}
                         <tr className="hover:bg-slate-50/50">
@@ -1581,12 +1632,12 @@ export default function YouthPages({
                         {/* 15. Scholar Status */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">15. Scholar Status</td>
-                          <td className="py-2.5 px-4 font-bold text-emerald-700">{(youth.scholarStatus || 'Not specified')} {youth.scholarshipType ? `(${youth.scholarshipType})` : ''}</td>
+                          <td className="py-2.5 px-4 font-bold text-slate-900">{(youth.scholarStatus || 'Not specified')} {youth.scholarshipType ? `(${youth.scholarshipType})` : ''}</td>
                         </tr>
                         {/* 16. Youth Sector */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">16. Youth Sector</td>
-                          <td className="py-2.5 px-4 font-bold text-violet-700">{youth.youthSector || 'Not specified'}</td>
+                          <td className="py-2.5 px-4 font-bold text-slate-900">{youth.youthSector || 'Not specified'}</td>
                         </tr>
                         {/* 17. Parent/Guardian Information */}
                         <tr className="hover:bg-slate-50/50">
@@ -1598,12 +1649,12 @@ export default function YouthPages({
                         {/* 18. Profile Picture */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">18. Profile Picture</td>
-                          <td className="py-2.5 px-4 font-bold text-blue-600">Attached / Uploaded</td>
+                          <td className="py-2.5 px-4 font-bold text-slate-900">Attached / Uploaded</td>
                         </tr>
                         {/* 19. Resident ID */}
                         <tr className="hover:bg-slate-50/50 bg-amber-50/20">
                           <td className="py-2.5 px-4 font-bold text-slate-900">19. Resident ID</td>
-                          <td className="py-2.5 px-4 font-black font-mono text-amber-700 break-all">{youth.id}</td>
+                          <td className="py-2.5 px-4 font-black font-mono text-slate-900 break-all">{youth.id}</td>
                         </tr>
                       </tbody>
                     </table>
@@ -1692,19 +1743,29 @@ export default function YouthPages({
                   
                   <div className="space-y-6">
                     {(() => {
-                      const _now = new Date();
                       const _isCompleted = (p: any) => {
                         const st = String(p.status || "").toLowerCase();
                         if (st === "completed" || st === "cancelled") return true;
-                        const endDate = p.endDate ? new Date(p.endDate) : new Date(p.startDate);
-                        return endDate < _now;
+                        const endDate = p.endDate || p.end_date || p.date || p.startDate;
+                        return hasProgramEnded(endDate);
                       };
                       const _activePrograms = programs.filter((p: any) => !_isCompleted(p)).sort((a: any, b: any) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
                       const _completedPrograms = programs.filter((p: any) => _isCompleted(p)).sort((a: any, b: any) => new Date(b.endDate || b.startDate).getTime() - new Date(a.endDate || a.startDate).getTime());
                       const _renderCard = (p: any) => {
                         const alreadyReg = myRegistrations.some(r => r.programId === p.id);
+                        const programEnded = _isCompleted(p);
                         return (
                         <div key={p.id} className="group p-5 border border-slate-100 rounded-2xl bg-white hover:border-[#091d64]/20 hover:shadow-md transition-all flex flex-col justify-between overflow-hidden">
+                          {(p.imageUrl || p.image_url) && (
+                            <img
+                              src={p.imageUrl || p.image_url}
+                              alt={`Program image for ${p.title}`}
+                              className="w-full h-32 object-cover rounded-t-lg mb-3"
+                              onClick={() => setLightboxImg(p.imageUrl || p.image_url)}
+                              role="button"
+                              tabIndex={0}
+                            />
+                          )}
                           <div>
                             <div className="flex justify-between items-start gap-3 mb-2">
                               <h4 className="text-base font-bold text-slate-800 group-hover:text-[#091d64] transition-colors leading-snug">{p.title}</h4>
@@ -1741,15 +1802,15 @@ export default function YouthPages({
                               </div>
                             ) : (
                               <button 
-                                disabled={registeringProgramId !== null || p.status?.toLowerCase() === 'completed' || ((p as any).date && new Date((p as any).date) < new Date()) || ((p as any).endDate && new Date((p as any).endDate) < new Date())}
+                                disabled={registeringProgramId !== null || programEnded}
                                 onClick={() => handleRegisterProgramClick(p.id)}
                                 className={`px-5 py-2 text-white font-bold rounded-lg text-xs transition-all transform active:scale-95 shadow-sm ${
-                                  (p.status?.toLowerCase() === 'completed' || ((p as any).date && new Date((p as any).date) < new Date()) || ((p as any).endDate && new Date((p as any).endDate) < new Date()))
+                                  programEnded
                                     ? 'bg-slate-400 cursor-not-allowed opacity-60'
                                     : 'bg-[#091d64] hover:bg-[#122878] cursor-pointer'
                                 }`}
                               >
-                                {(p.status?.toLowerCase() === 'completed' || ((p as any).date && new Date((p as any).date) < new Date()) || ((p as any).endDate && new Date((p as any).endDate) < new Date())) 
+                                {programEnded
                                   ? 'Program Completed' 
                                   : (registeringProgramId === p.id ? 'Registering...' : 'Join Program')}
                               </button>
@@ -1778,7 +1839,7 @@ export default function YouthPages({
                                       <td className="py-1 text-slate-700 font-medium">{e.title}</td>
                                       <td className="py-1 text-right font-mono text-slate-800">₱{Number(e.gross_amount).toLocaleString()}</td>
                                       <td className="py-1 pl-2 text-right text-[9px] uppercase font-bold">
-                                        <span className={e.status === "approved" ? "text-emerald-600" : "text-amber-600"}>{e.status}</span>
+                                        <span className={e.status === "approved" ? "text-slate-900" : "text-slate-900"}>{e.status}</span>
                                       </td>
                                     </tr>
                                   ))}
@@ -1795,7 +1856,7 @@ export default function YouthPages({
                                 </div>
                                 <div className="flex justify-between font-semibold text-slate-700">
                                   <span>Remaining</span>
-                                  <span className="font-mono text-emerald-600">₱{Number(budgetCache[p.id].summary.remaining_balance).toLocaleString()}</span>
+                                  <span className="font-mono text-slate-900">₱{Number(budgetCache[p.id].summary.remaining_balance).toLocaleString()}</span>
                                 </div>
                                 <div className="flex justify-between font-bold text-[#091d64] pt-1 border-t border-slate-200">
                                   <span>Utilization</span>
@@ -1962,7 +2023,7 @@ export default function YouthPages({
                           </select>
                         </div>
                       </div>
-                      <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-left"><div className="flex items-start gap-2"><span className="text-amber-600 text-base leading-none mt-0.5">⚠️</span><div><p className="text-[11px] font-extrabold text-amber-800 uppercase tracking-wider">Community Guidelines</p><p className="text-[11px] text-amber-700 leading-relaxed mt-1">Boses ng Kabataan is a safe space for youth voices. Please avoid profanity, spam, sexual content, or personal attacks. Flagged submissions are reviewed by the SK Kagawad before publishing.</p></div></div></div>
+                      <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-left"><div className="flex items-start gap-2"><div><p className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">Community Guidelines</p><p className="text-xs text-slate-500 leading-relaxed mt-1">Boses ng Kabataan is a safe space for youth voices. Please avoid profanity, spam, sexual content, or personal attacks. Flagged submissions are reviewed by the SK Kagawad before publishing.</p></div></div></div>
                       <div>
                         <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1.5">Topic/Subject Title</label>
                         <input 
@@ -2057,21 +2118,18 @@ export default function YouthPages({
                         </div>
                         <h4 className="font-bold text-slate-800 text-sm mt-2 leading-snug">{res.title}</h4>
                         <p className="text-xs text-slate-500 leading-relaxed font-medium">{res.content}</p>
-                        <div className="flex gap-2 justify-end pt-3">
-                          <button 
-                            disabled={Boolean(currentYouth.userId && res.votedUsers.includes(currentYouth.userId)) || votingResolutionId !== null}
-                            onClick={() => handleResolutionVote(res.id, 'Support')} 
-                            className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg text-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                          >
-                            {votingResolutionId === res.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />} Support ({res.votesSupport})
-                          </button>
-                          <button 
-                            disabled={Boolean(currentYouth.userId && res.votedUsers.includes(currentYouth.userId)) || votingResolutionId !== null}
-                            onClick={() => handleResolutionVote(res.id, 'Oppose')} 
-                            className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                          >
-                            <X className="w-3.5 h-3.5" /> Oppose ({res.votesOppose})
-                          </button>
+                        <div className="flex flex-wrap gap-2 justify-end pt-3">
+                          {(Array.isArray(res.options) && res.options.length > 0 ? res.options : ['Support', 'Oppose']).map(option => (
+                            <button
+                              key={option}
+                              disabled={Boolean(currentYouth.userId && res.votedUsers.includes(currentYouth.userId)) || votingResolutionId !== null}
+                              onClick={() => handleResolutionVote(res.id, option)}
+                              className="px-4 py-2 bg-indigo-50 text-indigo-700 rounded-lg font-bold text-xs transition-colors hover:bg-indigo-100 cursor-pointer disabled:opacity-50"
+                            >
+                              {votingResolutionId === res.id ? <Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin" /> : null}
+                              {option}
+                            </button>
+                          ))}
                         </div>
                       </div>
                     ))}
@@ -2154,7 +2212,7 @@ export default function YouthPages({
                   {/* Scholastic Settings */}
                   <div className="p-4 border border-slate-100 rounded-xl bg-slate-50/50 space-y-4 text-xs font-semibold">
                     <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                      <BookOpen className="w-4 h-4 text-blue-600" />
+                      <BookOpen className="w-4 h-4 text-slate-900" />
                       Scholastic & Educational Status
                     </h4>
                     <div className="grid grid-cols-2 gap-4">
@@ -2202,7 +2260,7 @@ export default function YouthPages({
                   {/* Save button */}
                   <div className="text-right">
                     <button 
-                      onClick={() => alert('Youth profiling configuration successfully saved to KABISIG database!')}
+                      onClick={() => setPopupMsg({ title: 'Configuration Saved', text: 'Youth profiling configuration successfully saved to KABISIG database!', type: 'success' })}
                       className="px-5 py-2.5 bg-[#091d64] text-white hover:bg-opacity-95 font-bold rounded-lg text-xs cursor-pointer"
                     >
                       Save Profiling Changes
@@ -2216,11 +2274,11 @@ export default function YouthPages({
         {/* EDIT PROFILE MODAL DIALOG */}
         {isEditModalOpen && (
           <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 sm:p-8 space-y-6 max-h-[90vh] overflow-y-auto text-left relative my-auto">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[95vw] md:max-w-2xl mx-4 my-8 max-h-[90vh] overflow-y-auto p-6 sm:p-8 space-y-6 text-left relative">
               
               <div className="flex justify-between items-center border-b border-slate-100 pb-4">
                 <div>
-                  <span className="text-[10px] font-mono font-bold text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded border border-amber-200 uppercase tracking-wider">
+                  <span className="text-[10px] font-mono font-bold text-slate-900 bg-amber-50 px-2.5 py-0.5 rounded border border-amber-200 uppercase tracking-wider">
                     DILG MC No. 2022-033 Annex 4
                   </span>
                   <h3 className="text-lg font-black text-[#091d64] mt-1">Update Youth Constituent Profile</h3>
@@ -2241,7 +2299,13 @@ export default function YouthPages({
               )}
               {isEditingProfile && (
               <form onSubmit={handleSaveProfile} className="space-y-6">
-                
+                {isVerified && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                    <p className="text-xs text-blue-800">
+                      <strong>Identity fields are locked</strong> after verification. Contact the SK Chairperson to request name or address corrections.
+                    </p>
+                  </div>
+                )}
                 {/* SECTION 1: PERSONAL INFORMATION */}
                 <div className="space-y-4">
                   <h4 className="text-xs font-black uppercase text-[#091d64] tracking-wider border-b border-slate-100 pb-1">
@@ -2254,6 +2318,8 @@ export default function YouthPages({
                         type="text" 
                         value={editForm.first_name || ''} 
                         onChange={(e) => setEditForm({ ...editForm, first_name: e.target.value })}
+                        disabled={isVerified}
+                        readOnly={isVerified}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                         required
                       />
@@ -2264,6 +2330,8 @@ export default function YouthPages({
                         type="text" 
                         value={editForm.last_name || ''} 
                         onChange={(e) => setEditForm({ ...editForm, last_name: e.target.value })}
+                        disabled={isVerified}
+                        readOnly={isVerified}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                         required
                       />
@@ -2274,6 +2342,8 @@ export default function YouthPages({
                         type="text" 
                         value={editForm.middle_name || ''} 
                         onChange={(e) => setEditForm({ ...editForm, middle_name: e.target.value })}
+                        disabled={isVerified}
+                        readOnly={isVerified}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                       />
                     </div>
@@ -2282,6 +2352,7 @@ export default function YouthPages({
                       <select 
                         value={editForm.suffix || ''} 
                         onChange={(e) => setEditForm({ ...editForm, suffix: e.target.value })}
+                        disabled={isVerified}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                       >
                         <option value="">None</option>
@@ -2298,6 +2369,7 @@ export default function YouthPages({
                       <select 
                         value={editForm.sex || 'Male'} 
                         onChange={(e) => setEditForm({ ...editForm, sex: e.target.value as 'Male' | 'Female' })}
+                        disabled={isVerified}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                       >
                         <option value="Male">Male</option>
@@ -2310,6 +2382,8 @@ export default function YouthPages({
                         type="date" 
                         value={editForm.birthdate || '2004-05-12'} 
                         onChange={(e) => setEditForm({ ...editForm, birthdate: e.target.value })}
+                        disabled={isVerified}
+                        readOnly={isVerified}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                         required
                       />
@@ -2319,6 +2393,7 @@ export default function YouthPages({
                       <select 
                         value={editForm.civilStatus || 'Single'} 
                         onChange={(e) => setEditForm({ ...editForm, civilStatus: e.target.value as YouthProfile['civilStatus'] })}
+                        disabled={isVerified}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                       >
                         <option value="Single">Single</option>
@@ -2333,6 +2408,8 @@ export default function YouthPages({
                         type="text" 
                         value={editForm.address} 
                         onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+                        disabled={isVerified}
+                        readOnly={isVerified}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                         required
                       />
@@ -2342,6 +2419,7 @@ export default function YouthPages({
                       <select 
                         value={editForm.zone} 
                         onChange={(e) => setEditForm({ ...editForm, zone: e.target.value })}
+                        disabled={isVerified}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                       >
                         <option value="Zone 1">Zone 1</option>
@@ -2423,7 +2501,7 @@ export default function YouthPages({
                         </div>
                       </div>
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Upload Front of ID <span className="text-rose-500">*</span> <span className="text-slate-400 font-normal">(JPG / PNG / WEBP, ≤ 5 MB)</span></label>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Upload Front of ID <span className="text-rose-500">*</span> <span className="text-slate-400 font-normal">(JPG / PNG / WEBP, ≤ 3 MB)</span></label>
                         <input
                           type="file"
                           accept="image/jpeg,image/png,image/webp"
@@ -2438,7 +2516,7 @@ export default function YouthPages({
                         )}
                       </div>
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Upload Back of ID <span className="text-rose-500">*</span> <span className="text-slate-400 font-normal">(JPG / PNG / WEBP, ≤ 5 MB)</span></label>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Upload Back of ID <span className="text-rose-500">*</span> <span className="text-slate-400 font-normal">(JPG / PNG / WEBP, ≤ 3 MB)</span></label>
                         <input
                           type="file"
                           accept="image/jpeg,image/png,image/webp"
@@ -2600,13 +2678,49 @@ export default function YouthPages({
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Scholarship Status</label>
                       <select 
                         value={editForm.scholarStatus} 
-                        onChange={(e) => setEditForm({ ...editForm, scholarStatus: e.target.value as 'Scholar' | 'Non-Scholar' })}
+                        onChange={(e) => setEditForm({
+                          ...editForm,
+                          scholarStatus: e.target.value as 'Scholar' | 'Non-Scholar',
+                          scholarshipSource: e.target.value === 'Scholar' ? editForm.scholarshipSource : '',
+                          scholarshipSourceDetail: e.target.value === 'Scholar' && editForm.scholarshipSource === 'Other' ? editForm.scholarshipSourceDetail : '',
+                        })}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                       >
                         <option value="Non-Scholar">Non-Scholar</option>
                         <option value="Scholar">Scholar / Grantee</option>
                       </select>
                     </div>
+                    {editForm.scholarStatus === 'Scholar' && (
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Scholarship Source</label>
+                        <select
+                          value={editForm.scholarshipSource || ''}
+                          onChange={(e) => setEditForm({
+                            ...editForm,
+                            scholarshipSource: e.target.value,
+                            scholarshipSourceDetail: e.target.value === 'Other' ? editForm.scholarshipSourceDetail : '',
+                          })}
+                          className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
+                        >
+                          <option value="">Select Scholarship Source</option>
+                          <option value="Government">Government (DOST, CHED, CMO, etc.)</option>
+                          <option value="Private">Private (Corporate, Foundation)</option>
+                          <option value="Academic">Academic (University-funded)</option>
+                          <option value="NGO">NGO / Civic Organization</option>
+                          <option value="Other">Other (specify below)</option>
+                        </select>
+                        {editForm.scholarshipSource === 'Other' && (
+                          <input
+                            type="text"
+                            placeholder="e.g., Barangay-funded sports scholarship"
+                            value={editForm.scholarshipSourceDetail || ''}
+                            onChange={(e) => setEditForm({ ...editForm, scholarshipSourceDetail: e.target.value })}
+                            className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64] mt-2"
+                            required
+                          />
+                        )}
+                      </div>
+                    )}
                     {editForm.scholarStatus === 'Scholar' && (
                       <div className="sm:col-span-2">
                         <label className="block text-[11px] font-bold text-slate-700 mb-1">Scholarship Grant Type / Name</label>
@@ -2624,6 +2738,7 @@ export default function YouthPages({
                       <select 
                         value={editForm.youthSector || 'In-School Youth'} 
                         onChange={(e) => setEditForm({ ...editForm, youthSector: e.target.value as YouthProfile['youthSector'] })}
+                        disabled={isVerified}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                       >
                         <option value="In-School Youth">In-School Youth</option>
@@ -2674,7 +2789,7 @@ export default function YouthPages({
         </footer>
       </div>
       {/* MOBILE BOTTOM NAVIGATION BAR */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200/80 px-2 py-1.5 flex justify-around items-center z-40 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 h-16 bg-white/95 backdrop-blur-md border-t border-slate-200/80 px-2 py-1.5 flex justify-around items-center z-40 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
         <button
           onClick={() => setActiveMenu('dashboard')}
           className={`flex flex-col items-center justify-center py-1 px-3 rounded-xl transition-all cursor-pointer ${
@@ -2725,7 +2840,7 @@ export default function YouthPages({
           {/* VERIFICATION UPLOAD MODAL */}
       {showVerifyModal && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 z-[9999] overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-5 my-auto relative">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[95vw] md:max-w-2xl mx-4 my-8 max-h-[90vh] overflow-y-auto p-6 space-y-5 relative">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-bold text-slate-800 text-lg">Identity Verification</h3>
               <button onClick={() => setShowVerifyModal(false)} className="text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-full p-1 transition-colors">
@@ -2785,8 +2900,8 @@ export default function YouthPages({
 
       {showEditWarning && (
         <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-center w-14 h-14 rounded-full bg-amber-100 text-amber-600 mx-auto mb-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[95vw] md:max-w-2xl mx-4 my-8 max-h-[90vh] overflow-y-auto p-6 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-center w-14 h-14 rounded-full bg-amber-100 text-slate-900 mx-auto mb-4">
               <ShieldAlert className="w-7 h-7" />
             </div>
             <h3 className="text-lg font-black text-center text-slate-800 mb-2">One-Time Edit Warning</h3>
@@ -2803,6 +2918,7 @@ export default function YouthPages({
               <button
                 onClick={() => {
                   setShowEditWarning(false);
+                  setEditForm(ensureSplitName(currentYouth));
                   setIsEditingProfile(true);
                   setIsEditModalOpen(true);
                 }}
@@ -2842,7 +2958,7 @@ export default function YouthPages({
       )}
       {viewingParticipantsProgram && (
         <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[95vw] md:max-w-2xl mx-4 my-8 max-h-[90vh] overflow-y-auto p-6">
             <div className="bg-[#091d64] p-4 text-white flex justify-between items-center">
               <div>
                 <h3 className="font-bold text-sm">Program Participants</h3>
@@ -2881,6 +2997,31 @@ export default function YouthPages({
           </div>
         </div>
       )}
+      {popupMsg && (
+        <div className="fixed inset-0 z-[9999] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 text-center shadow-2xl">
+            <div className={`w-12 h-12 rounded-full mx-auto flex items-center justify-center mb-4 ${popupMsg.type === 'success' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
+              {popupMsg.type === 'success' ? '✓' : '!'}
+            </div>
+            <h3 className="text-lg font-bold text-slate-800">{popupMsg.title}</h3>
+            <p className="text-sm text-slate-600 mb-6">{popupMsg.text}</p>
+            <button onClick={() => setPopupMsg(null)} className="w-full py-2 bg-[#091d64] text-white rounded-lg font-bold">Okay, I understand</button>
+          </div>
+        </div>
+      )}
+      {lightboxImg && (
+        <div
+          className="fixed inset-0 z-[99999] bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setLightboxImg(null)}
+        >
+          <img
+            src={lightboxImg}
+            alt="Program preview"
+            className="max-w-full max-h-[90vh] object-contain rounded-lg"
+          />
+        </div>
+      )}
+      <PopupDialog notice={confirmMsg} onClose={() => setConfirmMsg(null)} />
 </div>
   );
 }

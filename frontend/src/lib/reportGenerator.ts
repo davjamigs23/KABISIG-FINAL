@@ -51,15 +51,17 @@ export function openPrintableReport(title: string, subtitle: string, columns: st
         <tbody>${trs}</tbody>
       </table>
 
-      <div class="footer">
+            <div class="footer">
         <div class="signature">
           <p>Prepared by:</p>
-          <div class="line">${meta.preparedBy || 'System Generated'}</div>
+          <div style="height: 40px;"></div>
+          <div class="line"><strong>${meta.preparedByName || 'Authorized Official'}</strong></div>
           <div class="title">${meta.preparedByTitle || 'Position / Title'}</div>
         </div>
         <div class="signature">
           <p>Approved by:</p>
-          <div class="line">${meta.approvedBy || '____________________'}</div>
+          <div style="height: 40px;"></div>
+          <div class="line"><strong>${meta.approvedByName || 'SK Chairperson'}</strong></div>
           <div class="title">${meta.approvedByTitle || 'SK Chairperson'}</div>
         </div>
       </div>

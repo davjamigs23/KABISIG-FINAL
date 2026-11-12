@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { kabisigApi } from '../lib/api';
+import PopupDialog, { PopupMessage } from './PopupDialog';
 
 export default function RestrictedUsers() {
   const [restrictions, setRestrictions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [clearingId, setClearingId] = useState<string | null>(null);
+  const [popupMsg, setPopupMsg] = useState<PopupMessage | null>(null);
 
   const loadRestrictions = async () => {
     setLoading(true);
@@ -19,14 +21,24 @@ export default function RestrictedUsers() {
   useEffect(() => { loadRestrictions(); }, []);
 
   const handleClear = async (r: any) => {
-    if (!confirm('Clear restriction for ' + (r.users?.full_name || 'this user') + '?')) return;
-    setClearingId(r.id);
-    try {
-      const res = await kabisigApi.clearRestriction(r.id);
-      if (res.success) loadRestrictions();
-      else alert(res.message);
-    } catch (e: any) { alert(e.message); }
-    finally { setClearingId(null); }
+    setPopupMsg({
+      title: 'Clear Restriction?',
+      message: 'Clear restriction for ' + (r.users?.full_name || 'this user') + '?',
+      type: 'info',
+      confirmLabel: 'Clear Restriction',
+      onConfirm: () => {
+        setClearingId(r.id);
+        void kabisigApi.clearRestriction(r.id)
+          .then(res => {
+            if (res.success) return loadRestrictions();
+            setPopupMsg({ title: 'Could Not Clear Restriction', message: res.message || 'The restriction could not be cleared.', type: 'error' });
+          })
+          .catch((error: any) => {
+            setPopupMsg({ title: 'Could Not Clear Restriction', message: error.message || 'The restriction could not be cleared.', type: 'error' });
+          })
+          .finally(() => setClearingId(null));
+      }
+    });
   };
 
   return (
@@ -73,6 +85,7 @@ export default function RestrictedUsers() {
             </tbody>
           </table>
         </div>
+        <PopupDialog notice={popupMsg} onClose={() => setPopupMsg(null)} />
       </div>
     </div>
   );

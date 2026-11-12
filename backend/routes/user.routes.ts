@@ -8,9 +8,37 @@ import { resolveAvatarUrl } from '../services/avatar.service.js';
 import { sendSuccess, sendError } from '../utils/response.js';
 import {authenticateUser, requireActiveUser, requireRoles} from '../middleware/auth.js';
 import type { AuthRequest } from '../types/database.types.js';
-import { resolveName } from '../utils/name.js';
+import { resolveName, splitFullName } from '../utils/name.js';
 
 const router = express.Router();
+
+router.get(
+  '/federation-president',
+  authenticateUser,
+  requireActiveUser,
+  requireRoles('BARANGAY_ADMIN', 'SUPER_ADMIN'),
+  async (_req: Request, res: Response): Promise<void> => {
+    const { data: president, error } = await supabaseAdmin
+      .from('users')
+      .select('full_name')
+      .eq('role_id', 1)
+      .eq('status', 'active')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      sendError(res, `Failed to retrieve the SK Federation President: ${error.message}`, 500);
+      return;
+    }
+    if (!president?.full_name) {
+      sendError(res, 'No active SK Federation President is configured.', 404);
+      return;
+    }
+
+    sendSuccess(res, { full_name: president.full_name }, 'SK Federation President retrieved.');
+  }
+);
 
 
 function calculateAge(birthdateStr: string): number {
@@ -262,7 +290,7 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
     const userId = authenticatedUser.id;
     const { data: user, error: userError } = await supabaseAdmin
       .from('users')
-      .select('id, email, tenant_id, full_name, first_name, middle_name, last_name, suffix, suspension_reason, is_demoted')
+      .select('id, email, tenant_id, role_id, status, full_name, first_name, middle_name, last_name, suffix, suspension_reason, is_demoted')
       .eq('id', userId)
       .maybeSingle();
 
@@ -276,6 +304,57 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
     }
 
     const body = req.body || {};
+    const scholarshipSource = body.scholarshipSource ?? body.scholarship_source;
+    const scholarshipSourceDetail = body.scholarshipSourceDetail ?? body.scholarship_source_detail;
+    const scholarshipStatus = body.scholarStatus ?? body.scholar_status;
+    const validScholarshipSources = ['Government', 'Private', 'Academic', 'NGO', 'Other'];
+    if (scholarshipSource && !validScholarshipSources.includes(scholarshipSource)) {
+      sendError(res, 'Invalid scholarship source.', 400);
+      return;
+    }
+    if (scholarshipStatus === 'Scholar' && scholarshipSource === 'Other' && !String(scholarshipSourceDetail || '').trim()) {
+      sendError(res, 'Please specify the scholarship source.', 400);
+      return;
+    }
+
+    const { data: existingProfile, error: existingProfileError } = await supabaseAdmin
+      .from('resident_profile')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (existingProfileError) {
+      sendError(res, `Failed to retrieve resident profile: ${existingProfileError.message}`, 500);
+      return;
+    }
+
+    const isVerifiedYouth = user.role_id === 4
+      && (user.status === 'active' || existingProfile?.verification_status === 'verified');
+    if (isVerifiedYouth) {
+      const storedNameParts = splitFullName(user.full_name || '');
+      const lockedFieldChanges: Array<{ field: string; submitted: unknown; stored: unknown }> = [
+        { field: 'first_name', submitted: body.first_name, stored: user.first_name || storedNameParts.first_name },
+        { field: 'middle_name', submitted: body.middle_name, stored: user.middle_name || storedNameParts.middle_name },
+        { field: 'last_name', submitted: body.last_name, stored: user.last_name || storedNameParts.last_name },
+        { field: 'suffix', submitted: body.suffix, stored: user.suffix || storedNameParts.suffix },
+        { field: 'full_name', submitted: body.full_name ?? body.name, stored: user.full_name },
+        { field: 'birthdate', submitted: body.birthdate, stored: existingProfile?.birthdate },
+        { field: 'sex', submitted: body.sex, stored: existingProfile?.sex },
+        { field: 'address', submitted: body.address, stored: existingProfile?.address },
+        { field: 'zone', submitted: body.zone ?? body.purok, stored: existingProfile?.zone },
+        { field: 'civil_status', submitted: body.civilStatus ?? body.civil_status ?? body.marital_status, stored: existingProfile?.civil_status ?? existingProfile?.marital_status ?? 'Single' },
+        { field: 'youth_sector', submitted: body.youthSector ?? body.youth_sector, stored: existingProfile?.youth_sector },
+        { field: 'id_type', submitted: body.idType ?? body.id_type, stored: existingProfile?.id_type },
+        { field: 'id_number', submitted: body.idNumber ?? body.id_number, stored: existingProfile?.id_number },
+      ];
+
+      for (const { field, submitted, stored } of lockedFieldChanges) {
+        if (submitted !== undefined && String(submitted ?? '').trim() !== String(stored ?? '').trim()) {
+          sendError(res, `${field} cannot be changed after verification.`, 403);
+          return;
+        }
+      }
+    }
 
     // 1. Update public.users
     const userUpdates: Record<string, any> = {
@@ -312,12 +391,6 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
     }
 
     // 2. Fetch or update resident_profile
-    const { data: existingProfile } = await supabaseAdmin
-      .from('resident_profile')
-      .select('*')
-      .eq('user_id', userId)
-      .maybeSingle();
-
     const { data: dbUser } = await supabaseAdmin
       .from('users')
       .select('tenant_id, email, full_name')
@@ -332,6 +405,7 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
     const rawEmp = body.employmentStatus || body.employment_status;
     const normalizedEdu = normalizeEducationalStatus(rawEdu) || existingProfile?.educational_status;
     const normalizedEmp = normalizeEmploymentStatus(rawEmp) || existingProfile?.employment_status;
+    const civilStatus = body.civilStatus || body.civil_status || existingProfile?.civil_status || existingProfile?.marital_status || null;
 
     const residentPayload: Record<string, any> = {
       school: body.school ?? undefined,
@@ -345,6 +419,8 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
       address,
       educational_status: normalizedEdu || null,
       employment_status: normalizedEmp || null,
+      civil_status: civilStatus,
+      marital_status: civilStatus,
       guardian_name: body.guardianName !== undefined
         ? (typeof body.guardianName === 'string' ? body.guardianName.trim() || null : null)
         : existingProfile?.guardian_name ?? null,
@@ -355,6 +431,9 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
       youth_sector: body.youthSector ?? body.youth_sector ?? undefined,
       scholar_status: body.scholarStatus ?? body.scholar_status ?? undefined,
     };
+    if (scholarshipSource !== undefined) {
+      residentPayload.scholarship_source = scholarshipSource || null;
+    }
 
     if (body.digital_youth_id || body.id) {
       residentPayload.digital_youth_id = body.digital_youth_id || body.id;
@@ -368,13 +447,18 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
       .upsert(residentPayload, { onConflict: 'user_id' });
 
     if (profileUpsertErr) {
-      console.warn('Resident Profile Upsert Notice:', profileUpsertErr.message);
+      sendError(res, `Failed to save resident profile: ${profileUpsertErr.message}`, 500);
+      return;
     }
 
     // 3. Update Supabase Auth user_metadata to persist all 20 KK fields
     let updatedMetadata: Record<string, any> = {};
     try {
-      const { data: authData } = await supabaseAdmin.auth.admin.getUserById(userId);
+      const { data: authData, error: authLookupError } = await supabaseAdmin.auth.admin.getUserById(userId);
+      if (authLookupError) {
+        sendError(res, `Failed to retrieve profile metadata: ${authLookupError.message}`, 500);
+        return;
+      }
       const prevMeta = authData?.user?.user_metadata || {};
       const safePrevMeta = Object.fromEntries(
         Object.entries(prevMeta).filter(([key]) => !['profilePic', 'qrCode', 'picture'].includes(key)),
@@ -388,7 +472,7 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
         sex: body.sex || prevMeta.sex || sex,
         birthdate: birthdate,
         age: body.age || calculatedAge || prevMeta.age || 20,
-        civilStatus: body.civilStatus || prevMeta.civilStatus || 'Single',
+        civilStatus: body.civilStatus || body.civil_status || civilStatus || prevMeta.civilStatus || 'Single',
         address: body.address || prevMeta.address || address,
         zone: body.zone || prevMeta.zone || null,
         mobile: body.mobile || body.phone || prevMeta.mobile || userUpdates.phone,
@@ -399,6 +483,10 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
         year: body.year ?? prevMeta.year ?? '1st Year',
         employmentStatus: body.employmentStatus || prevMeta.employmentStatus || normalizedEmp || 'Student',
         scholarStatus: body.scholarStatus || prevMeta.scholarStatus || 'Non-Scholar',
+        scholarshipSource: scholarshipSource ?? prevMeta.scholarshipSource ?? '',
+        scholarshipSourceDetail: scholarshipSourceDetail !== undefined
+          ? scholarshipSourceDetail || ''
+          : prevMeta.scholarshipSourceDetail ?? '',
         scholarshipType: body.scholarshipType ?? prevMeta.scholarshipType ?? '',
         youthSector: body.youthSector || prevMeta.youthSector || 'In-School Youth',
         guardianName: body.guardianName ?? prevMeta.guardianName ?? '',
@@ -408,11 +496,17 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
         dateRegistered: body.dateRegistered || prevMeta.dateRegistered || new Date().toISOString().split('T')[0],
       };
 
-      await supabaseAdmin.auth.admin.updateUserById(userId, {
+      const { error: metadataUpdateError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
         user_metadata: updatedMetadata,
       });
+      if (metadataUpdateError) {
+        sendError(res, `Failed to save profile metadata: ${metadataUpdateError.message}`, 500);
+        return;
+      }
     } catch (metaErr) {
-      console.warn('Failed to update Supabase Auth user_metadata:', metaErr);
+      const message = metaErr instanceof Error ? metaErr.message : String(metaErr);
+      sendError(res, `Failed to save profile metadata: ${message}`, 500);
+      return;
     }
 
     // 4. Record Audit Log
@@ -496,7 +590,7 @@ router.get('/profile', authenticateUser, async (req: Request, res: Response): Pr
       sex: resident.sex || meta.sex || 'Female',
       birthdate: resident.birthdate || meta.birthdate || '2005-01-01',
       age: meta.age || (resident.birthdate ? calculateAge(resident.birthdate) : 20),
-      civilStatus: (resident as any).marital_status || meta.civilStatus || 'Single',
+      civilStatus: (resident as any).civil_status || (resident as any).marital_status || meta.civilStatus || 'Single',
       address: resident.address || meta.address || '',
       zone: resident.zone || meta.zone || null,
       mobile: dbUser?.phone || meta.mobile || '',
@@ -507,6 +601,8 @@ router.get('/profile', authenticateUser, async (req: Request, res: Response): Pr
       year: resident.year_level || meta.year || '',
       employmentStatus: (resident as any).employment_status || meta.employmentStatus || 'Not Specified',
       scholarStatus: (resident as any).scholar_status || meta.scholarStatus || 'Not Specified',
+      scholarshipSource: (resident as any).scholarship_source || meta.scholarshipSource || '',
+      scholarshipSourceDetail: meta.scholarshipSourceDetail || '',
       scholarshipType: meta.scholarshipType || '',
       youthSector: meta.youthSector || 'In-School Youth',
           isPwd: (resident as any).is_pwd || false,
@@ -597,7 +693,7 @@ router.get(
           sex: resident.sex || meta.sex || 'Female',
           birthdate: resident.birthdate || meta.birthdate || '2005-01-01',
           age: meta.age || (resident.birthdate ? calculateAge(resident.birthdate) : 20),
-          civilStatus: (resident as any).marital_status || meta.civilStatus || 'Single',
+          civilStatus: (resident as any).civil_status || (resident as any).marital_status || meta.civilStatus || 'Single',
           address: resident.address || meta.address || '',
           zone: resident.zone || meta.zone || null,
           mobile: u.phone || meta.mobile || '',
@@ -608,6 +704,8 @@ router.get(
           year: resident.year_level || meta.year || '1st Year',
           employmentStatus: (resident as any).employment_status || meta.employmentStatus || 'Not Specified',
           scholarStatus: (resident as any).scholar_status || meta.scholarStatus || 'Not Specified',
+          scholarshipSource: (resident as any).scholarship_source || meta.scholarshipSource || '',
+          scholarshipSourceDetail: meta.scholarshipSourceDetail || '',
           scholarshipType: meta.scholarshipType || '',
           youthSector: meta.youthSector || 'In-School Youth',
           isPwd: (resident as any).is_pwd || false,
@@ -1455,7 +1553,7 @@ router.get(
         birthdate: prof.birthdate || '',
         address: prof.address || '',
         sex: prof.sex || '',
-        civilStatus: prof.marital_status || 'Single',
+        civilStatus: prof.civil_status || prof.marital_status || 'Single',
         educationalLevel: prof.educational_status || '',
         school: prof.school || '',
         course: prof.course || '',
@@ -1464,6 +1562,8 @@ router.get(
         employmentStatus: prof.employment_status || '',
         youthSector: prof.youth_sector || '',
         scholarStatus: prof.scholar_status || 'Non-Scholar',
+        scholarshipSource: prof.scholarship_source || '',
+        scholarshipSourceDetail: '',
         guardianName: prof.guardian_name || '',
         guardianContact: prof.guardian_contact || '',
         isPwd: prof.is_pwd || false,

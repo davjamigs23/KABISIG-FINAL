@@ -5,6 +5,7 @@ import { supabaseAdmin, canAccessTenant, recordAuditLog } from '../services/supa
 import { sendSuccess, sendCreated, sendError } from '../utils/response.js';
 import { authenticateUser, optionalAuthenticateUser, requireActiveUser, requireRoles } from '../middleware/auth.js';
 import type { AuthRequest } from '../types/database.types.js';
+import { sendEmail } from '../utils/email.js';
 
 const router = express.Router();
 
@@ -185,6 +186,22 @@ router.post(
     }
 
     const user = (req as AuthRequest).user!;
+
+    // --- PUBMAT UPLOAD LOGIC ---
+    let imageUrl: string | null = null;
+    if (req.body.image_base64 && req.body.image_mime_type) {
+      try {
+        const buffer = Buffer.from(req.body.image_base64, 'base64');
+        const ext = req.body.image_mime_type.split('/')[1] || 'png';
+        const fileName = user.tenant_id + '/' + Date.now() + '_pubmat.' + ext;
+        const { error: uploadErr } = await supabaseAdmin.storage.from('program-pubmats').upload(fileName, buffer, { contentType: req.body.image_mime_type, upsert: true });
+        if (!uploadErr) {
+          const { data: urlData } = supabaseAdmin.storage.from('program-pubmats').getPublicUrl(fileName);
+          imageUrl = urlData.publicUrl;
+        }
+      } catch (err) { console.error('Pubmat upload error:', err); }
+    }
+    // --- END PUBMAT UPLOAD ---
     const programData = parseResult.data;
 
     const tenantId = user.tenant_id;
@@ -203,6 +220,7 @@ router.post(
       .insert([
         {
           ...programData,
+          image_url: imageUrl,
           tenant_id: tenantId,
           created_by: user.id,
         },
@@ -283,7 +301,7 @@ router.delete(
   '/:id',
   authenticateUser,
   requireActiveUser,
-  requireRoles('BARANGAY_ADMIN', 'SUPER_ADMIN'),
+  requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'),
   async (req: Request, res: Response): Promise<void> => {
     const id = String(req.params.id || '');
     const user = (req as AuthRequest).user!;
@@ -491,7 +509,7 @@ router.post('/:id/attendance', authenticateUser, requireActiveUser, requireRoles
     }
     if (!canAccessTenant(user, program.tenant_id)) { sendError(res, 'Forbidden.', 403); return; }
 
-    const { data: uData } = await supabaseAdmin.from('users').select('id, full_name').eq('id', resolvedUserId).maybeSingle();
+    const { data: uData } = await supabaseAdmin.from('users').select('id, full_name, email').eq('id', resolvedUserId).maybeSingle();
     const attendeeName = uData ? uData.full_name : 'Youth Constituent';
 
     const { data: existingAttendance } = await supabaseAdmin.from('program_attendance').select('id').eq('program_id', programId).eq('user_id', resolvedUserId).maybeSingle();
@@ -515,6 +533,21 @@ router.post('/:id/attendance', authenticateUser, requireActiveUser, requireRoles
     if (attendError) { sendError(res, `Failed to record attendance: ${attendError.message}`, 500); return; }
 
     await supabaseAdmin.from('program_registrations').update({ status: 'attended' }).eq('id', registration.id);
+
+    if (uData?.email) {
+      const escapeHtml = (value: string) => value.replace(/[&<>"']/g, character => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[character] || character);
+      await sendEmail(
+        uData.email,
+        `Attendance confirmed: ${program.title}`,
+        `<p>Hello ${escapeHtml(attendeeName)},</p><p>Your attendance has been recorded as <strong>Present</strong> for <strong>${escapeHtml(program.title)}</strong>.</p><p>Checked in at ${escapeHtml(new Date(checkInTime).toLocaleString())}.</p>`
+      );
+    }
 
     sendSuccess(res, {
       attendance: newAttendance,

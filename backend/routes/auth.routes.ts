@@ -200,8 +200,11 @@ const RegisterYouthSchema = z.object({
   guardian_contact: z.string().max(50).optional().nullable(),
   is_registered_voter: z.boolean().default(false),
   scholar_status: z.string().optional(),
+  scholarship_source: z.enum(['Government', 'Private', 'Academic', 'NGO', 'Other']).optional(),
+  scholarship_source_detail: z.string().max(250).optional(),
   is_pwd: z.boolean().default(false),
   is_solo_parent: z.boolean().default(false),
+  civil_status: z.enum(['Single', 'Married', 'Widowed', 'Separated']).optional(),
   marital_status: z.enum(['Single', 'Married', 'Widowed', 'Separated']).optional().default('Single'),
   id_type: z.enum(["Philippine Passport", "Driver's License", "PRC ID", "UMID", "PhilHealth ID", "SSS ID", "Pag-IBIG ID", "Voter's ID (COMELEC)", "Postal ID", "NBI Clearance", "Police Clearance", "PhilSys National ID", "Student ID", "Barangay Certificate", "Other"]).optional(),
   id_number: z.string().min(1, 'ID Number is required').max(100),
@@ -211,6 +214,16 @@ const RegisterYouthSchema = z.object({
   id_back_document_name: z.string().max(200).optional(),
   id_back_document_mime: z.string().regex(/^image\/(jpeg|png|webp)$/).optional(),
   id_back_document_base64: z.string().min(20).optional(),
+}).superRefine((data, context) => {
+  if (data.scholar_status === 'Scholar'
+    && data.scholarship_source === 'Other'
+    && !data.scholarship_source_detail?.trim()) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['scholarship_source_detail'],
+      message: 'Please specify the scholarship source.',
+    });
+  }
 });
 
 const ApproveUserSchema = z.object({
@@ -270,10 +283,13 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
     id_back_document_base64,
     guardian_name,
     guardian_contact,
+    civil_status,
     marital_status,
     is_pwd,
     is_solo_parent,
     scholar_status,
+    scholarship_source,
+    scholarship_source_detail,
   } = parseResult.data;
 
   const resolvedName = resolveName({
@@ -391,7 +407,7 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
       }
 
       // 3. Update profile with new info
-            await supabaseAdmin.from('resident_profile').update({
+      const { error: rejectedProfileError } = await supabaseAdmin.from('resident_profile').update({
         verification_status: 'submitted',
         id_type: id_type || null,
         id_number: id_number || null,
@@ -405,7 +421,10 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
         course: course || null,
         year_level: year || null,
         youth_sector: (parseResult.data as any).youth_sector || (educational_status === 'Out of School Youth' ? 'Out-of-School Youth' : 'In-School Youth'),
-        marital_status: marital_status || 'Single',
+        civil_status: civil_status || marital_status || 'Single',
+        marital_status: civil_status || marital_status || 'Single',
+        scholar_status: scholar_status || 'Non-Scholar',
+        scholarship_source: scholarship_source || (scholar_status === 'Scholar' ? 'Other' : null),
         is_pwd: is_pwd || false,
         is_solo_parent: is_solo_parent || false,
         guardian_name: guardian_name || null,
@@ -414,26 +433,27 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
         ...(backPath ? { id_back_document_path: backPath } : {}),
         updated_at: new Date().toISOString()
       }).eq('user_id', existingUser!.id);
+      if (rejectedProfileError) {
+        sendError(res, `Failed to update rejected registration profile: ${rejectedProfileError.message}`, 500);
+        return;
+      }
 
-
-      // 🔔 Notify the Barangay Chairperson about this new/re-submitted registration
-      try {
-        const targetTenantId = existingUser?.tenant_id || (req.body as any)?.tenant_id;
-        if (targetTenantId) {
-          const { data: chair } = await supabaseAdmin.from('users').select('id').eq('tenant_id', targetTenantId).eq('role_id', 2).maybeSingle();
-          if (chair) {
-            await supabaseAdmin.from('notifications').insert({
-              user_id: chair.id,
-              tenant_id: targetTenantId,
-              title: 'New Youth Registration',
-              message: 'A new youth has registered and is pending your approval.',
-              type: 'system',
-              is_read: false
-            });
-          }
+      if (scholarship_source_detail !== undefined) {
+        const { data: existingAuthData, error: existingAuthError } = await supabaseAdmin.auth.admin.getUserById(existingUser.id);
+        if (existingAuthError || !existingAuthData.user) {
+          sendError(res, `Failed to retrieve registration metadata: ${existingAuthError?.message || 'Auth user was not found.'}`, 500);
+          return;
         }
-      } catch (notifErr) {
-        console.warn('Failed to create notification for chairperson:', notifErr);
+        const { error: metadataError } = await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
+          user_metadata: {
+            ...(existingAuthData.user.user_metadata || {}),
+            scholarshipSourceDetail: scholarship_source_detail,
+          },
+        });
+        if (metadataError) {
+          sendError(res, `Failed to save scholarship source details: ${metadataError.message}`, 500);
+          return;
+        }
       }
 
       sendSuccess(res, { id: existingUser!.id, status: 'pending' }, 'Registration submitted successfully. Your updated profile is pending review.');
@@ -455,7 +475,16 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
     email: normalizedEmail,
     password,
     options: {
-      data: { full_name: resolvedName.full_name, first_name: resolvedName.first_name, middle_name: resolvedName.middle_name, last_name: resolvedName.last_name, suffix: resolvedName.suffix, barangay_id, tenant_id: barangay_id },
+      data: {
+        full_name: resolvedName.full_name,
+        first_name: resolvedName.first_name,
+        middle_name: resolvedName.middle_name,
+        last_name: resolvedName.last_name,
+        suffix: resolvedName.suffix,
+        barangay_id,
+        tenant_id: barangay_id,
+        scholarshipSourceDetail: scholarship_source_detail || '',
+      },
     },
   });
 
@@ -517,6 +546,7 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
       educational_status: educational_status || null,
       employment_status: employment_status || null,
       scholar_status: scholar_status || 'Non-Scholar',
+      scholarship_source: scholarship_source || (scholar_status === 'Scholar' ? 'Other' : null),
       school: school || null,
       course: course || null,
       year_level: year || null,
@@ -524,7 +554,8 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
       is_registered_voter,
       guardian_name: guardian_name || null,
       guardian_contact: guardian_contact || null,
-      marital_status: marital_status || 'Single',
+      civil_status: civil_status || marital_status || 'Single',
+      marital_status: civil_status || marital_status || 'Single',
       is_pwd: is_pwd || false,
       is_solo_parent: is_solo_parent || false,
       digital_youth_id: null,
@@ -928,10 +959,9 @@ router.post('/forgot-password', async (req: Request, res: Response): Promise<voi
   }
 
   const { email, redirectTo } = parseResult.data;
+  const finalRedirect = redirectTo || ((process.env.FRONTEND_URL || 'http://localhost:3000') + '/reset-password');
 
-  const finalRedirect = redirectTo || ((process.env.FRONTEND_URL || (process.env.FRONTEND_URL || 'http://localhost:3000')) + '/reset-password');
-
-  // 1. Generate recovery link via Supabase Admin (doesn't send email)
+  // 1. Generate recovery link via Supabase Admin
   const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
     type: 'recovery',
     email: email.trim().toLowerCase(),
@@ -939,134 +969,63 @@ router.post('/forgot-password', async (req: Request, res: Response): Promise<voi
   });
 
   if (linkError || !linkData?.properties?.action_link) {
-    console.error('[FORGOT-PASSWORD] generateLink failed:', JSON.stringify({
-      error: linkError?.message,
-      code: (linkError as any)?.code,
-      status: (linkError as any)?.status,
-      hasServiceKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
-      hasAnonKey: !!process.env.SUPABASE_ANON_KEY,
-      email: email,
-      redirectTo: finalRedirect
-    }));
-
-    // Fallback: Use Supabase's built-in resetPasswordForEmail
-    console.warn('[FORGOT-PASSWORD] Falling back to supabase.auth.resetPasswordForEmail');
-    const { error: fallbackErr } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: finalRedirect
-    });
-
+    console.error('[FORGOT-PASSWORD] generateLink failed:', linkError?.message);
+    const { error: fallbackErr } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: finalRedirect });
     if (fallbackErr) {
-      console.error('[FORGOT-PASSWORD] Fallback also failed:', fallbackErr.message);
-      sendError(res, 'Could not send reset email. Please try again later.', 500);
+      sendError(res, fallbackErr.message, 400);
       return;
     }
-
     sendSuccess(res, null, 'Password reset link sent (via Supabase fallback).');
     return;
   }
 
   const resetLink = linkData.properties.action_link;
 
-  // 2. Send via Brevo (bypasses Supabase email sender)
-  const emailSubject = 'Reset Your KABISIG Password';
-  const emailHtml = [
-    '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">',
-    '<div style="background-color: #091d64; padding: 24px; text-align: center;">',
-    '<h1 style="color: #ffffff; margin: 0; font-size: 24px;">KABISIG</h1>',
-    '<p style="color: #93c5fd; margin: 4px 0 0 0; font-size: 14px;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p>',
-    '</div>',
-    '<div style="padding: 32px; background-color: #ffffff;">',
-    '<h2 style="color: #091d64; margin-top: 0;">Password Reset Request</h2>',
-    '<p style="color: #334155; font-size: 16px; line-height: 1.6;">We received a request to reset the password for your KABISIG account.</p>',
-    '<p style="color: #334155; font-size: 16px; line-height: 1.6;">Click the button below to set a new password. This link is valid for 1 hour.</p>',
-    '<div style="text-align: center; margin: 32px 0;">',
-    '<a href="' + resetLink + '" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; display: inline-block;">Reset Password</a>',
-    '</div>',
-    '<p style="color: #64748b; font-size: 14px; line-height: 1.6;">If you did not request this, you can safely ignore this email.</p>',
-    '</div>',
-    '<div style="background-color: #f8fafc; padding: 16px; text-align: center; border-top: 1px solid #e2e8f0;">',
-    '<p style="color: #94a3b8; font-size: 12px; margin: 0;">&copy; ' + new Date().getFullYear() + ' KABISIG. All rights reserved.</p>',
-    '</div>',
-    '</div>'
-  ].join('');
-
+  // 2. Send email via Brevo API
+    const brevoHtml = `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+      <div style="background-color: #091d64; padding: 32px 20px; text-align: center;">
+        <h1 style="color: #ffffff; margin: 0 0 8px 0; font-size: 28px;">KABISIG</h1>
+        <p style="color: #e2e8f0; font-size: 14px; margin: 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p>
+      </div>
+      <div style="padding: 32px; text-align: left;">
+        <h2 style="color: #091d64; margin-top: 0; font-size: 20px;">Password Reset Request</h2>
+        <p style="color: #334155; line-height: 1.6; font-size: 14px;">We received a request to reset the password for your KABISIG account.</p>
+        <p style="color: #334155; line-height: 1.6; font-size: 14px;">Click the button below to set a new password. This link is valid for 1 hour.</p>
+        <div style="text-align: center; margin: 32px 0;">
+          <a href="${resetLink}" style="background-color: #091d64; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block; font-size: 16px;">Reset Password</a>
+        </div>
+        <p style="color: #64748b; font-size: 12px; margin-bottom: 0;">If you did not request this, you can safely ignore this email.</p>
+      </div>
+      <div style="background-color: #f8fafc; padding: 16px; text-align: center; border-top: 1px solid #e2e8f0;">
+        <p style="color: #94a3b8; font-size: 11px; margin: 0;">© 2026 KABISIG. All rights reserved.</p>
+      </div>
+    </div>`;
   try {
+    const emailHtml = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;"><h1 style="color: #091d64; margin: 0 0 8px 0;">KABISIG</h1><p style="color: #64748b; font-size: 12px; margin: 0 0 24px 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p><h2 style="color: #091d64;">Reset Your Password</h2><p style="color: #334155; line-height: 1.6;">We received a request to reset your KABISIG account password. Click the button below to set a new password:</p><div style="text-align: center; margin: 24px 0;"><a href="' + resetLink + '" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Reset Password</a></div><p style="color: #94a3b8; font-size: 11px;">If you did not request this, please ignore this email.</p></div>';
+
     const brevoRes = await fetch('https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
       headers: {
-        'accept': 'application/json',
-        'api-key': process.env.BREVO_API_KEY || '',
-        'content-type': 'application/json'
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'api-key': process.env.BREVO_API_KEY || ''
       },
       body: JSON.stringify({
-        sender: { email: process.env.BREVO_SENDER_EMAIL || 'noreply@kabisig.com', name: 'KABISIG' },
-        to: [{ email: email.trim() }],
-        subject: emailSubject,
-        htmlContent: emailHtml
+        sender: { name: 'KABISIG', email: process.env.BREVO_SENDER_EMAIL || 'noreply@kabisig.com' },
+        to: [{ email: email }],
+        subject: 'Reset Your KABISIG Password',
+        htmlContent: brevoHtml
       })
     });
 
     if (!brevoRes.ok) {
       const errText = await brevoRes.text();
-      console.warn('Brevo send failed:', brevoRes.status, errText);
-      sendError(res, 'Failed to send reset email. Please try again.', 500);
-      return;
+      throw new Error(errText);
     }
+    sendSuccess(res, null, 'Password reset instructions sent to your email.');
   } catch (mailErr: any) {
-    console.warn('Brevo exception:', mailErr.message);
-    sendError(res, 'Failed to send reset email. Please try again.', 500);
-    return;
-  }
-
-  sendSuccess(res, null, 'Password reset instructions sent to your email.');
-});
-// POST /api/auth/password-changed-notification
-router.post('/password-changed-notification', async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { email } = req.body;
-    if (!email) { sendError(res, 'Email is required.', 400); return; }
-
-    const emailSubject = 'Security Alert: Your KABISIG Password Was Changed';
-    const emailHtml = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
-        <div style="background-color: #091d64; padding: 24px; text-align: center;">
-          <h1 style="color: #ffffff; margin: 0; font-size: 24px;">KABISIG</h1>
-          <p style="color: #93c5fd; margin: 4px 0 0 0; font-size: 14px;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p>
-        </div>
-        <div style="padding: 32px; background-color: #ffffff;">
-          <h2 style="color: #091d64; margin-top: 0;">Password Successfully Changed</h2>
-          <p style="color: #334155; font-size: 16px; line-height: 1.6;">Hello,</p>
-          <p style="color: #334155; font-size: 16px; line-height: 1.6;">The password for your KABISIG account (<strong>${email}</strong>) has been successfully updated.</p>
-          <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 24px 0;">
-            <p style="margin: 0; color: #64748b; font-size: 12px; text-transform: uppercase; font-weight: bold;">Security Notice</p>
-            <p style="margin: 8px 0 0 0; color: #334155; font-size: 14px;">If you did not make this change, please contact the SK Federation President immediately. Your account may be compromised.</p>
-          </div>
-          <div style="text-align: center; margin: 32px 0;">
-            <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">Log In to KABISIG</a>
-          </div>
-        </div>
-        <div style="background-color: #f8fafc; padding: 16px; text-align: center; border-top: 1px solid #e2e8f0;">
-          <p style="color: #94a3b8; font-size: 12px; margin: 0;">&copy; ${new Date().getFullYear()} KABISIG. All rights reserved.</p>
-        </div>
-      </div>
-    `;
-
-    try {
-      await fetch('https://api.brevo.com/v3/smtp/email', {
-        method: 'POST',
-        headers: { 'accept': 'application/json', 'api-key': process.env.BREVO_API_KEY || '', 'content-type': 'application/json' },
-        body: JSON.stringify({
-          sender: { email: process.env.BREVO_SENDER_EMAIL || 'noreply@kabisig.com', name: 'KABISIG Security' },
-          to: [{ email: email }],
-          subject: emailSubject,
-          htmlContent: emailHtml
-        })
-      });
-    } catch (err) { console.warn('Failed to send password change alert:', err); }
-
-    sendSuccess(res, null, 'Password changed notification sent.');
-  } catch (err: any) {
-    sendError(res, 'Unexpected error: ' + err.message, 500);
+    console.error('Brevo email failed:', mailErr.message);
+    sendError(res, 'Failed to send email. Please try again later.', 500);
   }
 });
 
@@ -1100,7 +1059,7 @@ router.get('/check-chairperson-invite', async (req: Request, res: Response): Pro
   // Check users table
   const { data: user } = await supabaseAdmin
     .from('users')
-    .select('id, email, tenant_id, role_id, full_name, status, barangay(id, name, city, district, sk_district)')
+    .select('id, email, tenant_id, role_id, full_name, status, barangay(name, city, district)')
     .eq('email', normalizedEmail)
     .maybeSingle();
 
@@ -1198,21 +1157,6 @@ router.post('/setup-chairperson-password', async (req: Request, res: Response): 
   // with a valid email to self-create as Chairperson. Now reject without a valid invite.
   if (!tenantId) {
     sendError(res, 'No Chairperson invitation found for this email. Contact the SK Federation President.', 403);
-    return;
-  }
-
-  // === Reused-email guard (mirror of /invite-chairperson) ===
-  // If an existing non-Chairperson (Youth / SK Official) reaches this route
-  // with a valid tenant_id, refuse to silently promote them to Chairperson.
-  if (existingUser && Number(existingUser.role_id) !== 2) {
-    const _roleNames: Record<number, string> = { 1: 'Super Admin', 3: 'SK Official', 4: 'Youth Constituent', 5: 'Viewer' };
-    const _currentRole = _roleNames[Number(existingUser.role_id)] || 'another role';
-    sendError(
-      res,
-      'This email is already registered as ' + _currentRole + '. Each email can only be linked to one account across all roles.',
-      409,
-      { code: 'EMAIL_ALREADY_REGISTERED_OTHER_ROLE', current_role_id: existingUser.role_id }
-    );
     return;
   }
 
@@ -1352,7 +1296,7 @@ router.post('/setup-chairperson-password', async (req: Request, res: Response): 
   // Retrieve complete user profile
   const { data: profile } = await supabaseAdmin
     .from('users')
-    .select('*, roles(role_name), barangay(id, name, city, district, sk_district), resident_profile!resident_profile_user_id_fkey(*)')
+    .select('*, roles(role_name), barangay(name, city, district), resident_profile!resident_profile_user_id_fkey(*)')
     .eq('id', userId)
     .single();
 
@@ -1561,7 +1505,7 @@ router.post('/setup-official-password', async (req: Request, res: Response): Pro
 
   const { data: profile } = await supabaseAdmin
     .from('users')
-    .select('*, roles(role_name), barangay(id, name, city, district, sk_district), resident_profile!resident_profile_user_id_fkey(*)')
+    .select('*, roles(role_name), barangay(name, city, district), resident_profile!resident_profile_user_id_fkey(*)')
     .eq('id', userId)
     .single();
 
@@ -1600,7 +1544,7 @@ router.get('/me', authenticateUser, async (req: Request, res: Response): Promise
   const user = (req as AuthRequest).user!;
   const { data: profile } = await supabaseAdmin
     .from('users')
-    .select('*, roles(role_name), barangay(id, name, city, district, sk_district), resident_profile!resident_profile_user_id_fkey(*)')
+    .select('*, roles(role_name), barangay(name, city, district), resident_profile!resident_profile_user_id_fkey(*)')
     .eq('id', user.id)
     .single();
 
@@ -1621,7 +1565,7 @@ router.get('/me', authenticateUser, async (req: Request, res: Response): Promise
   }
 
   const avatarUrl = await resolveAvatarUrl(profile?.avatar_url);
-  sendSuccess(res, { ...(profile || user), avatar_url: avatarUrl, user_metadata: userMeta }, 'User profile retrieved.');
+  sendSuccess(res, { ...(profile || user), avatar_url: avatarUrl ?? null, user_metadata: userMeta }, 'User profile retrieved.');
 });
 
 // POST /api/auth/logout

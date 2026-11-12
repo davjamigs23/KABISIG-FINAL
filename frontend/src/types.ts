@@ -61,6 +61,8 @@ export interface YouthProfile {
   year?: string; // Year Level (Optional)
   employmentStatus?: 'Student' | 'Employed' | 'Unemployed' | 'Self-employed' | 'Out-of-School Youth'; // Employment Status (Required)
   scholarStatus: 'Scholar' | 'Non-Scholar' | 'Yes' | 'No'; // Scholar Status (Required)
+  scholarshipSource?: string;
+  scholarshipSourceDetail?: string;
   scholarshipType?: string; // Scholarship Type (if applicable)
   youthSector?: 'In-School Youth' | 'Out-of-School Youth' | 'Working Youth' | 'Youth with Special Needs' | 'PWD' | 'Solo Parent'; // Youth Sector (Required - DILG MC 2022-033)
   guardianName: string; // Parent/Guardian Information (Required)
@@ -93,6 +95,7 @@ export interface Program {
   id: string;
   title: string;
   description: string;
+  imageUrl?: string;
   startDate: string;
   endDate: string;
   location: string;
@@ -204,10 +207,13 @@ export interface FeedbackRecord {
 
 export interface ResolutionRecord {
   id: string;
+  tenant_id?: string;
+  end_date?: string;
   resolutionNumber: string; // e.g. Res-2026-005
   author?: string;
   title: string;
   content: string;
+  options?: string[];
   status: 'Draft' | 'Under Review' | 'Approved' | 'Archived' | 'Voting Open' | 'Closed';
   validityPeriod: string; // e.g., "July 2026 - Dec 2026"
   votesSupport: number;

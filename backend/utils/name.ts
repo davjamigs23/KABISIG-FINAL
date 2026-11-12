@@ -86,16 +86,16 @@ export function splitFullName(fullName: string): SplitNameParts {
   }
   if (tokens.length === 1) {
     const only = tokens[0] || '';
-    return { first_name: only, middle_name: '', last_name: only, suffix };
+    return { first_name: only, middle_name: '', last_name: '', suffix };
   }
   if (tokens.length === 2) {
     return { first_name: tokens[0] || '', middle_name: '', last_name: tokens[1] || '', suffix };
   }
 
-  // ≥3 tokens: first = token[0], last = last, middle = everything between
-  const first_name = tokens[0] || '';
+  // Keep multi-word given names together; use the penultimate token as middle name.
+  const first_name = tokens.length === 3 ? tokens[0] || '' : tokens.slice(0, -2).join(' ');
   const last_name = tokens[tokens.length - 1] || '';
-  const middle_name = tokens.slice(1, -1).join(' ');
+  const middle_name = tokens[tokens.length - 2] || '';
   return { first_name, middle_name, last_name, suffix };
 }
 

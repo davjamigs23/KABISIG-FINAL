@@ -30,6 +30,7 @@ import {
 import { BarangayTenant, Program, YouthProfile, UserRole } from '../types';
 import { kabisigApi } from '../lib/api';
 import { resolveUserRole } from '../lib/role-routing';
+import PopupDialog, { PopupMessage } from './PopupDialog';
 
 export function validatePassword(password: string) {
   return {
@@ -125,6 +126,10 @@ export default function PublicPages({
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isSubmittingSignUp, setIsSubmittingSignUp] = useState(false);
+  const [popupMsg, setPopupMsg] = useState<PopupMessage | null>(null);
+  const showPopup = (message: string, type: PopupMessage['type'] = 'error') => {
+    setPopupMsg({ title: type === 'success' ? 'Success' : type === 'error' ? 'Notice' : 'Information', message, type });
+  };
 
   // Chairperson Password Setup State
   const [isChairpersonSetup, setIsChairpersonSetup] = useState(false);
@@ -181,6 +186,8 @@ export default function PublicPages({
     year: '',
     youthSector: '',
     scholarStatus: 'Non-Scholar' as 'Scholar' | 'Non-Scholar',
+    scholarshipSource: '' as '' | 'Government' | 'Private' | 'Academic' | 'NGO' | 'Other',
+    scholarshipSourceDetail: '',
     password: '',
     confirmPassword: '',
     agreeTerms: false,
@@ -195,7 +202,7 @@ export default function PublicPages({
     scholar_status: 'Non-Scholar',
     is_pwd: false,
     is_solo_parent: false,
-        marital_status: 'Single',
+        civil_status: 'Single' as NonNullable<YouthProfile['civilStatus']>,
   });
 
   // Rule #1: compose display name from split fields
@@ -292,12 +299,12 @@ export default function PublicPages({
         return;
       }
       if (dbUser?.status === 'pending') {
-        alert('Access Denied!\n\nYour account is currently PENDING approval by your Sangguniang Kabataan Chairperson.');
+        showPopup('Access Denied!\n\nYour account is currently PENDING approval by your Sangguniang Kabataan Chairperson.');
         setIsLoggingIn(false);
         return;
       }
       if (dbUser?.status === 'rejected') {
-        alert('Access Denied!\n\nYour account application was rejected.');
+        showPopup('Access Denied!\n\nYour account application was rejected.');
         setIsLoggingIn(false);
         return;
       }
@@ -365,12 +372,12 @@ export default function PublicPages({
 
   const handleSignUpSubmit = async () => {
     if (!signUpForm.educational_status || !signUpForm.employment_status) {
-      alert("Please go back to Step 3 and fill out Educational Attainment and Employment Status.");
+      showPopup("Please go back to Step 3 and fill out Educational Attainment and Employment Status.");
       setSignUpStep(3);
       return;
     }
     if (!signUpForm.educational_status || !signUpForm.employment_status) {
-      alert("Please go back to Step 3 and fill out Educational Attainment and Employment Status.");
+      showPopup("Please go back to Step 3 and fill out Educational Attainment and Employment Status.");
       setSignUpStep(3);
       return;
     }
@@ -380,7 +387,7 @@ export default function PublicPages({
       return;
     }
     if (!signUpForm.idFrontFile) {
-      alert("A valid ID is required to register. Please upload your ID to continue.");
+      showPopup("A valid ID is required to register. Please upload your ID to continue.");
       setSignUpStep(4);
       return;
     }
@@ -391,26 +398,26 @@ export default function PublicPages({
       return;
     }
     if (!signUpForm.registeredRole) {
-      alert('Please select your Desired KABISIG Role.');
+      showPopup('Please select your Desired KABISIG Role.');
       return;
     }
     if (!signUpForm.email.trim()) {
-      alert('Please enter your KABISIG email address.');
+      showPopup('Please enter your KABISIG email address.');
       return;
     }
     if (!signUpForm.agreeTerms) {
-      alert('Please consent to the Data Privacy guidelines before proceeding.');
+      showPopup('Please consent to the Data Privacy guidelines before proceeding.');
       return;
     }
 
     const checks = validatePassword(signUpForm.password);
     if (!checks.minLength || !checks.hasUpper || !checks.hasLower || !checks.hasNumber || !checks.hasSymbol) {
-      alert('Password is not secure! It must be at least 8 characters long and include at least one uppercase letter, one lowercase letter, one number, and one symbol.');
+      showPopup('Password is not secure! It must be at least 8 characters long and include at least one uppercase letter, one lowercase letter, one number, and one symbol.');
       return;
     }
 
     if (signUpForm.password !== signUpForm.confirmPassword) {
-      alert('Passwords do not match.');
+      showPopup('Passwords do not match.');
       return;
     }
 
@@ -438,6 +445,8 @@ export default function PublicPages({
       zone: signUpForm.zone,
       educationalLevel: signUpForm.educationalLevel,
       scholarStatus: signUpForm.scholarStatus,
+      scholarshipSource: signUpForm.scholarshipSource,
+      civilStatus: signUpForm.civil_status,
       status: 'Pending',
       dateRegistered: new Date().toISOString().split('T')[0],
       profilePic: signUpForm.profilePic,
@@ -553,7 +562,10 @@ export default function PublicPages({
           educational_status: educationalStatus,
           employment_status: employmentStatus,
           scholar_status: signUpForm.scholar_status || 'Non-Scholar',
-          marital_status: signUpForm.marital_status || 'Single',
+          scholarship_source: signUpForm.scholarshipSource || undefined,
+          scholarship_source_detail: signUpForm.scholarshipSource === 'Other' ? signUpForm.scholarshipSourceDetail.trim() : '',
+          civil_status: signUpForm.civil_status || 'Single',
+          marital_status: signUpForm.civil_status || 'Single',
           is_pwd: signUpForm.is_pwd || false,
           is_solo_parent: signUpForm.is_solo_parent || false,
           is_registered_voter: true,
@@ -595,11 +607,11 @@ export default function PublicPages({
       }
 
       onSignUp(newProfile);
-      alert('Registration submitted successfully!\n\nYour profile has been saved into the database and is pending validation by your Sangguniang Kabataan officials.');
+      showPopup('Registration submitted successfully!\n\nYour profile has been saved into the database and is pending validation by your Sangguniang Kabataan officials.', 'success');
       setActiveTab('login');
       setSignUpStep(1);
     } catch (err: any) {
-      alert(`Registration error: ${err.message || 'Network error.'}`);
+      showPopup(`Registration error: ${err.message || 'Network error.'}`);
     } finally {
       setIsSubmittingSignUp(false);
     }
@@ -832,7 +844,7 @@ export default function PublicPages({
                           <label className="block text-xs font-bold text-slate-900 font-sans">
                             Password
                           </label>
-                          <button type="button" onClick={async () => { if (!email.trim()) { alert('Please enter your registered email address first, then click Forgot Password.'); return; } try { const res = await kabisigApi.requestPasswordReset(email.trim()); alert(res.success ? 'Password reset instructions have been sent to ' + email + '. Please check your inbox.' : 'Error: ' + (res.message || 'Could not send reset link.')); } catch (err) { alert('Error: ' + (err.message || 'Could not send reset link.')); } }} className="text-xs text-[#1a237e] font-bold hover:underline cursor-pointer">Forgot Password?</button>
+                          <button type="button" onClick={async () => { if (!email.trim()) { showPopup('Please enter your registered email address first, then click Forgot Password.'); return; } try { const res = await kabisigApi.requestPasswordReset(email.trim()); showPopup(res.success ? 'Password reset instructions have been sent to ' + email + '. Check your email for the reset link.' : 'Error: ' + (res.message || 'Could not send reset link.'), res.success ? 'success' : 'error'); } catch (err: any) { showPopup('Error: ' + (err.message || 'Could not send reset link.')); } }} className="text-xs text-[#1a237e] font-bold hover:underline cursor-pointer">Forgot Password?</button>
                         </div>
                         <div className="relative w-full">
                           <input
@@ -1049,7 +1061,7 @@ export default function PublicPages({
                           </label>
                           <a 
                             href="#barangay-info" 
-                            onClick={(e) => { e.preventDefault(); alert('Barangay information is sourced from the official KABISIG registry and is used for tenant association.'); }}
+                            onClick={(e) => { e.preventDefault(); showPopup('Barangay information is sourced from the official KABISIG registry and is used for tenant association.', 'info'); }}
                             className="text-[10px] text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded"
                           >
                             27 Naga Barangays
@@ -1291,13 +1303,48 @@ export default function PublicPages({
 
 
 <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans mt-4">Scholarship Status <span className="text-red-500">*</span></label>
-<select value={signUpForm.scholar_status || 'Non-Scholar'} onChange={(e) => setSignUpForm({...signUpForm, scholar_status: e.target.value})} className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none appearance-none cursor-pointer" required>
+<select value={signUpForm.scholar_status || 'Non-Scholar'} onChange={(e) => setSignUpForm({...signUpForm, scholar_status: e.target.value, scholarshipSource: e.target.value === 'Scholar' ? signUpForm.scholarshipSource : '', scholarshipSourceDetail: e.target.value === 'Scholar' && signUpForm.scholarshipSource === 'Other' ? signUpForm.scholarshipSourceDetail : ''})} className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none appearance-none cursor-pointer" required>
   <option value="Non-Scholar">Non-Scholar</option>
   <option value="Scholar">Scholar / Grantee</option>
 </select>
 
-<label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans mt-4">Marital Status <span className="text-red-500">*</span></label>
-<select value={signUpForm.marital_status || 'Single'} onChange={(e) => setSignUpForm({...signUpForm, marital_status: e.target.value})} className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none appearance-none cursor-pointer" required>
+{signUpForm.scholar_status === 'Scholar' && (
+  <div className="mt-4">
+    <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans">
+      Scholarship Source <span className="text-rose-500">*</span>
+    </label>
+    <select
+      value={signUpForm.scholarshipSource}
+      onChange={(e) => setSignUpForm({
+        ...signUpForm,
+        scholarshipSource: e.target.value as typeof signUpForm.scholarshipSource,
+        scholarshipSourceDetail: e.target.value === 'Other' ? signUpForm.scholarshipSourceDetail : '',
+      })}
+      className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none appearance-none cursor-pointer"
+      required
+    >
+      <option value="" disabled>Select Scholarship Source</option>
+      <option value="Government">Government (DOST, CHED, CMO, etc.)</option>
+      <option value="Private">Private (Corporate, Foundation)</option>
+      <option value="Academic">Academic (University-funded)</option>
+      <option value="NGO">NGO / Civic Organization</option>
+      <option value="Other">Other (specify below)</option>
+    </select>
+    {signUpForm.scholarshipSource === 'Other' && (
+      <input
+        type="text"
+        placeholder="e.g., Barangay-funded sports scholarship"
+        value={signUpForm.scholarshipSourceDetail}
+        onChange={(e) => setSignUpForm({ ...signUpForm, scholarshipSourceDetail: e.target.value })}
+        className="w-full p-3 border border-slate-200 rounded-lg mt-2"
+        required
+      />
+    )}
+  </div>
+)}
+
+<label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans mt-4">Civil Status <span className="text-red-500">*</span></label>
+<select value={signUpForm.civil_status || 'Single'} onChange={(e) => setSignUpForm({...signUpForm, civil_status: e.target.value as NonNullable<YouthProfile['civilStatus']>})} className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none appearance-none cursor-pointer" required>
   <option value="Single">Single</option>
   <option value="Married">Married</option>
   <option value="Widowed">Widowed</option>
@@ -1484,7 +1531,7 @@ export default function PublicPages({
                             onChange={(e) => {
                               const f = e.target.files && e.target.files[0] ? e.target.files[0] : null;
                               if (f && f.size > 5 * 1024 * 1024) {
-                                alert('File must be 5 MB or smaller.');
+                                showPopup('File must be 5 MB or smaller.');
                                 e.target.value = '';
                                 return;
                               }
@@ -1504,7 +1551,7 @@ export default function PublicPages({
                             onChange={(e) => {
                               const f = e.target.files && e.target.files[0] ? e.target.files[0] : null;
                               if (f && f.size > 5 * 1024 * 1024) {
-                                alert('File must be 5 MB or smaller.');
+                                showPopup('File must be 5 MB or smaller.');
                                 e.target.value = '';
                                 return;
                               }
@@ -1543,23 +1590,23 @@ export default function PublicPages({
                       type="button"
                       onClick={() => {
                         if (signUpStep === 1) {
-                          if (!signUpForm.registeredRole) { alert('Please select your Desired KABISIG Role.'); return; }
-                          if (!signUpForm.firstName.trim() || !signUpForm.lastName.trim()) { alert('First Name and Last Name are required.'); return; }
+                          if (!signUpForm.registeredRole) { showPopup('Please select your Desired KABISIG Role.'); return; }
+                          if (!signUpForm.firstName.trim() || !signUpForm.lastName.trim()) { showPopup('First Name and Last Name are required.'); return; }
                           if (!signUpForm.birthdate) {
-                            alert(birthdateInput ? 'Please enter a valid birthdate in MM/DD/YYYY format.' : 'Birthdate is required.');
+                            showPopup(birthdateInput ? 'Please enter a valid birthdate in MM/DD/YYYY format.' : 'Birthdate is required.');
                             return;
                           }
                         }
                         if (signUpStep === 2) {
-                          if (!signUpForm.mobile.trim()) { alert('Mobile phone number is required.'); return; }
-                          if (/[a-zA-Z]/i.test(signUpForm.mobile)) { alert('Mobile phone number can only contain numbers and cannot accept alphabetic letters.'); return; }
-      if (!/^09\d{9}$/.test(signUpForm.mobile.trim())) { alert('Mobile number must be exactly 11 digits starting with 09 (e.g., 09171234567).'); return; }
-                          if (!signUpForm.address.trim()) { alert('Street address is required.'); return; }
-                          if (!signUpForm.guardianName.trim()) { alert('Parent or guardian name is required.'); return; }
-                          if (!signUpForm.guardianContact.trim()) { alert('Parent or guardian contact number is required.'); return; }
+                          if (!signUpForm.mobile.trim()) { showPopup('Mobile phone number is required.'); return; }
+                          if (/[a-zA-Z]/i.test(signUpForm.mobile)) { showPopup('Mobile phone number can only contain numbers and cannot accept alphabetic letters.'); return; }
+      if (!/^09\d{9}$/.test(signUpForm.mobile.trim())) { showPopup('Mobile number must be exactly 11 digits starting with 09 (e.g., 09171234567).'); return; }
+                          if (!signUpForm.address.trim()) { showPopup('Street address is required.'); return; }
+                          if (!signUpForm.guardianName.trim()) { showPopup('Parent or guardian name is required.'); return; }
+                          if (!signUpForm.guardianContact.trim()) { showPopup('Parent or guardian contact number is required.'); return; }
                         }
                         if (signUpStep === 3) {
-                          if (!signUpForm.educationalLevel.trim()) { alert('Status is required.'); return; }
+                          if (!signUpForm.educationalLevel.trim()) { showPopup('Status is required.'); return; }
                         }
                         setSignUpStep(signUpStep + 1);
                       }}
@@ -1635,6 +1682,8 @@ export default function PublicPages({
             </button>
           </div>
         </div>
-      )}</div>
+      )}
+      <PopupDialog notice={popupMsg} onClose={() => setPopupMsg(null)} />
+    </div>
   );
 }

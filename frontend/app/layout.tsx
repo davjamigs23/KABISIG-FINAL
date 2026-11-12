@@ -1,9 +1,12 @@
-import type { Metadata } from 'next';
+﻿import type { Metadata } from 'next';
 import '../src/index.css';
 import SupabaseCookieCleanup from '../src/components/SupabaseCookieCleanup';
 import GlobalFormBehavior from '../src/components/GlobalFormBehavior';
 
 export const metadata: Metadata = {
+  icons: {
+    icon: '/icon.png',
+  },
   title: 'KABISIG',
   description: 'Frontend portal for Sangguniang Kabataan councils in Naga City.',
 };

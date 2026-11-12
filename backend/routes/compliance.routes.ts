@@ -2,7 +2,7 @@ import express from 'express';
 import type { Request, Response } from 'express';
 import { supabaseAdmin } from '../services/supabase.service.js';
 import { sendSuccess, sendError } from '../utils/response.js';
-import { authenticateUser, requireActiveUser } from '../middleware/auth.js';
+import { authenticateUser, requireActiveUser, requireRoles } from '../middleware/auth.js';
 import type { AuthRequest } from '../types/database.types.js';
 
 const router = express.Router();
@@ -12,7 +12,7 @@ const router = express.Router();
  * Returns real COA compliance records from compliance_monitoring table
  * plus auto-detected approved documents (reports + liquidations).
  */
-router.get('/', authenticateUser, requireActiveUser, async (req: Request, res: Response): Promise<void> => {
+router.get('/', authenticateUser, requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'), requireActiveUser, async (req: Request, res: Response): Promise<void> => {
   const user = (req as AuthRequest).user!;
   if (!user.tenant_id) {
     sendError(res, 'User is not bound to a barangay.', 403);
