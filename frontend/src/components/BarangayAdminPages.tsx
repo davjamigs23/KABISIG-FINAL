@@ -1224,13 +1224,31 @@ export default function BarangayAdminPages({
   const utilizationRate = (totalSpent / totalBudget) * 100;
 
   const budgetUtilizationTable = [
-    ...budgetPrograms.map(p => {
-      const allocated = Number(budgetAllocations.find((budget: any) => budget.category === p.title)?.allocated_amount || p.budgetAllocation || 0);
-      const spent = expenses.filter(e => e.programId === p.id).reduce((sum, e) => sum + Number(e.gross_amount || e.amount || 0), 0) || p.spentBudget || 0;
+    ...budgetAllocations
+    .filter((budget: any) =>
+      String(budget.category || '').trim().toLowerCase() !== 'general youth development fund'
+      && !['heha', 'aaaa'].includes(String(budget.category || '').trim().toLowerCase())
+    )
+    .map((budget: any) => {
+      const allocated = Number(budget.allocated_amount) || 0;
+      const programId = budget.program_id || budget.programId;
+      const program = programs.find(p => p.id === programId)
+        || programs.find(p => p.title.trim().toLowerCase() === String(budget.category || '').trim().toLowerCase());
+      const spent = expenses
+        .filter((expense: any) => {
+          const expenseDate = expense.expense_date || expense.created_at || expense.date;
+          if (expenseDate && new Date(expenseDate).getFullYear() !== Number(budgetYear)) return false;
+          const expenseBudgetId = expense.budgetId || expense.budget_id;
+          if (expenseBudgetId) return String(expenseBudgetId) === String(budget.id);
+          const expenseProgramId = expense.programId || expense.program_id;
+          return Boolean(programId && String(expenseProgramId) === String(programId))
+            || Boolean(program && expense.programId === program.id);
+        })
+        .reduce((sum, expense: any) => sum + Number(expense.netAmount ?? expense.net_amount ?? 0), 0);
       const remaining = allocated - spent;
       const rate = allocated > 0 ? Number(((spent / allocated) * 100).toFixed(1)) : 0;
       return {
-        program: p.title,
+        program: program?.title || budget.category || 'Unallocated',
         allocated,
         spent,
         remaining,
