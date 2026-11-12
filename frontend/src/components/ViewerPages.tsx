@@ -1218,7 +1218,7 @@ export default function ViewerPages({
       {/* READ MORE ANNOUNCEMENT DETAIL MODAL */}
       {readAnnounce && (
         <div className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-200">
             <div className="bg-[#091d64] text-white p-5 border-b-4 border-amber-400 flex items-center justify-between">
               <div>
                 <span className="text-[10px] bg-white/20 text-white font-mono font-bold px-2.5 py-0.5 rounded-full uppercase">
@@ -1241,18 +1241,20 @@ export default function ViewerPages({
                 <span>DATE: {readAnnounce.datePosted}</span>
               </div>
 
-              {((readAnnounce as any).image_url || readAnnounce.imageUrl) && (
-                <img
-                  src={(readAnnounce as any).image_url || readAnnounce.imageUrl}
-                  alt={readAnnounce.title}
-                  className="w-full max-h-[40vh] object-contain rounded-lg border border-slate-200 my-4 mx-auto cursor-pointer hover:opacity-90"
-                  onClick={() => setLightboxImg((readAnnounce as any).image_url || readAnnounce.imageUrl || null)}
-                />
-              )}
-              <div className="space-y-1.5 text-slate-600">
-                {readAnnounce.what && <p><strong>What:</strong> {readAnnounce.what}</p>}
-                {readAnnounce.where && <p><strong>Where:</strong> {readAnnounce.where}</p>}
-                {readAnnounce.when && <p><strong>When:</strong> {readAnnounce.when}</p>}
+              <div className="grid grid-cols-1 items-start gap-8 md:grid-cols-12">
+                <div className="space-y-2 text-slate-600 md:col-span-7">
+                  {readAnnounce.what && <p><strong>What:</strong> {readAnnounce.what}</p>}
+                  {readAnnounce.where && <p><strong>Where:</strong> {readAnnounce.where}</p>}
+                  {readAnnounce.when && <p><strong>When:</strong> {readAnnounce.when}</p>}
+                </div>
+                {((readAnnounce as any).image_url || readAnnounce.imageUrl) && (
+                  <img
+                    src={(readAnnounce as any).image_url || readAnnounce.imageUrl}
+                    alt={readAnnounce.title}
+                    className="h-auto max-h-[500px] w-full rounded-xl border border-slate-200 object-contain shadow-sm cursor-pointer transition-opacity hover:opacity-90 md:col-span-5"
+                    onClick={() => setLightboxImg((readAnnounce as any).image_url || readAnnounce.imageUrl || null)}
+                  />
+                )}
               </div>
               <h4 className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Body Content</h4>
               <p className="text-slate-600 leading-relaxed text-sm font-medium whitespace-pre-wrap">

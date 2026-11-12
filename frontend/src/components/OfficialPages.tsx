@@ -858,6 +858,25 @@ export default function OfficialPages({
   };
   const totalWithheld = (expenses || []).reduce((sum: number, expense: any) => sum + getWithholdingTax(expense), 0);
   const totalNetPayable = (expenses || []).reduce((sum: number, expense: any) => sum + getNetPayable(expense), 0);
+  const complianceDocumentGroups = [
+    (category: string) => category.includes('resolution'),
+    (category: string) => category.includes('minute'),
+    (category: string) => category.includes('report') || category.includes('budget') || category.includes('financial'),
+    (category: string) => category.includes('voucher') || category.includes('transmittal'),
+  ];
+  const approvedComplianceCategories = localDocs
+    .filter(document => String(document.status || '').toLowerCase() === 'approved')
+    .map(document => String(document.category || '').toLowerCase());
+  const approvedComplianceGroups = complianceDocumentGroups.filter(matches =>
+    approvedComplianceCategories.some(matches)
+  ).length;
+  const trackerCompliancePercent = Number(complianceStats.total) > 0
+    ? Math.round((Number(complianceStats.completed_count || 0) / Number(complianceStats.total)) * 100)
+    : 0;
+  const secretaryCompliancePercent = Math.max(
+    trackerCompliancePercent,
+    Math.round((approvedComplianceGroups / complianceDocumentGroups.length) * 100)
+  );
   const accomplishmentPrograms = programs.filter(program =>
     ['Upcoming', 'Ongoing', 'Completed'].includes(program.status)
   );
@@ -2122,23 +2141,25 @@ export default function OfficialPages({
                       </span>
                     </div>
                     <h3 className="mb-2 text-lg font-bold text-slate-800">{announcement.title}</h3>
-                    {(announcement.imageUrl || (announcement as any).image_url) && (
-                      <div className="my-4 flex justify-center">
-                        <img
-                          src={announcement.imageUrl || (announcement as any).image_url}
-                          alt={announcement.title}
-                          className="max-h-96 max-w-full cursor-pointer rounded-xl object-contain hover:opacity-90 transition-opacity"
-                          onClick={() => setLightboxImg(announcement.imageUrl || (announcement as any).image_url)}
-                        />
-                      </div>
-                    )}
-                    {(announcement.what || announcement.where || announcement.when) && (
-                      <div className="grid grid-cols-1 gap-3 text-left text-sm text-slate-700 sm:grid-cols-2">
-                        <p className="text-left"><span className="font-bold text-slate-500">What:</span> {announcement.what || '—'}</p>
-                        <p className="text-left"><span className="font-bold text-slate-500">Where:</span> {announcement.where || '—'}</p>
-                        <p className="text-left"><span className="font-bold text-slate-500">When:</span> {announcement.when || '—'}</p>
-                      </div>
-                    )}
+                    <div className="grid grid-cols-1 items-start gap-8 md:grid-cols-12">
+                      {(announcement.what || announcement.where || announcement.when) && (
+                        <div className="space-y-2 text-left text-sm text-slate-700 md:col-span-7">
+                          {announcement.what && <p><span className="font-bold text-slate-500">What:</span> {announcement.what}</p>}
+                          {announcement.where && <p><span className="font-bold text-slate-500">Where:</span> {announcement.where}</p>}
+                          {announcement.when && <p><span className="font-bold text-slate-500">When:</span> {announcement.when}</p>}
+                        </div>
+                      )}
+                      {(announcement.imageUrl || (announcement as any).image_url) && (
+                        <div className="flex justify-center md:col-span-5">
+                          <img
+                            src={announcement.imageUrl || (announcement as any).image_url}
+                            alt={announcement.title}
+                            className="h-auto max-h-[500px] w-full rounded-xl border border-slate-200 object-contain shadow-sm cursor-pointer transition-opacity hover:opacity-90"
+                            onClick={() => setLightboxImg(announcement.imageUrl || (announcement as any).image_url)}
+                          />
+                        </div>
+                      )}
+                    </div>
                     {announcement.content && (
                       <p className="border-t border-slate-100 pt-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{announcement.content}</p>
                     )}
@@ -2318,9 +2339,7 @@ export default function OfficialPages({
                           <span className="hidden sm:inline text-[9px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded">See Reports</span>
                         </div>
                         <h3 className="text-lg sm:text-2xl font-black text-emerald-600 mt-0.5">
-                          {complianceStats.total > 0
-                            ? `${Math.round((Number(complianceStats.completed_count || 0) / Number(complianceStats.total)) * 100)}%`
-                            : Number(complianceStats.overdue_count || 0) === 0 ? '100%' : '0%'}
+                          {secretaryCompliancePercent}%
                         </h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">RA 10742 & CBYDP Standard</p>
                       </div>

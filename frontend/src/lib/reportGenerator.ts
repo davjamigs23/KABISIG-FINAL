@@ -22,7 +22,7 @@ export function openPrintableReport(title: string, subtitle: string, columns: st
         th { background: #091d64; color: #fff; text-align: left; padding: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
         td { padding: 10px 12px; border-bottom: 1px solid #e2e8f0; }
         tr:nth-child(even) { background-color: #f8fafc; }
-        .footer { margin-top: 60px; display: flex; justify-content: space-between; font-size: 12px; page-break-inside: avoid; }
+        .footer { width: 100%; box-sizing: border-box; margin-top: 60px; padding: 0 48px; display: flex; justify-content: space-between; align-items: flex-start; font-size: 12px; page-break-inside: avoid; }
         .signature { text-align: center; width: 250px; }
         .signature p { margin: 0 0 50px; font-weight: 600; }
         .signature .line { border-top: 1px solid #000; padding-top: 5px; font-weight: 700; text-transform: uppercase; }

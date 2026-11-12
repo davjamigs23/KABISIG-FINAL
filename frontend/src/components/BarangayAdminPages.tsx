@@ -217,10 +217,20 @@ export default function BarangayAdminPages({
    | 'profile' | 'inventory' | 'restrictions'>('dashboard');
   const getAlertDestination = (code: string): 'budget' | 'documents' | 'youth' | 'dashboard' => {
     const c = (code || '').toUpperCase();
+    if (c.includes('DOCUMENT') || c.includes('LIQUIDATION') || c.includes('COMPLIANCE') || c.includes('REPORT')) return 'documents';
     if (c.includes('BUDGET') || c.includes('DEFICIT') || c.includes('OVER') || c.includes('ALLOCAT')) return 'budget';
-    if (c.includes('DOC') || c.includes('LIQUIDATION') || c.includes('COMPLIANCE') || c.includes('REPORT')) return 'documents';
+    if (c.includes('DOC')) return 'documents';
     if (c.includes('YOUTH') || c.includes('APPROVAL') || c.includes('REGISTRATION') || c.includes('ENGAGEMENT')) return 'youth';
     return 'dashboard';
+  };
+  const navigateFromAlert = (code: string) => {
+    const alertCode = code.toUpperCase();
+    if (['COMPLIANCE', 'DOCUMENT', 'LIQUIDATION', 'REPORT'].some(keyword => alertCode.includes(keyword))) {
+      setActiveMenu('reports');
+      setReportSubTab('compliance');
+      return;
+    }
+    setActiveMenu(getAlertDestination(code));
   };
   const [inventory, setInventory] = useState<any[]>([]);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -228,7 +238,7 @@ export default function BarangayAdminPages({
   useEffect(() => { if (activeMenu === 'budget' && inventory.length === 0) { kabisigApi.getInventory().then((rows: any[]) => setInventory(Array.isArray(rows) ? rows : [])).catch(() => {}); } }, [activeMenu, inventory.length]);
 
   const [searchTerm, setSearchTerm] = useState('');
-  const [reportSubTab, setReportSubTab] = useState<'executive'|'attendance'|'accomplishments'|'beneficiaries'|'demographics'|'financial'>('attendance');
+  const [reportSubTab, setReportSubTab] = useState<'executive'|'attendance'|'accomplishments'|'beneficiaries'|'demographics'|'financial'|'compliance'>('attendance');
   const [showClosedPolls, setShowClosedPolls] = useState(false);
   const barangayLogo = currentBarangay?.logo || DEFAULT_BARANGAY_LOGOS[currentBarangay?.name || ''] || '';
   const closedPolls = (resolutions || []).filter((resolution: any) =>
@@ -1225,10 +1235,17 @@ export default function BarangayAdminPages({
 
   const budgetUtilizationTable = [
     ...budgetAllocations
-    .filter((budget: any) =>
-      String(budget.category || '').trim().toLowerCase() !== 'general youth development fund'
-      && !['heha', 'aaaa'].includes(String(budget.category || '').trim().toLowerCase())
-    )
+    .filter((budget: any) => {
+      const category = String(budget.category || '').trim().toLowerCase();
+      if (category === 'general youth development fund' || ['heha', 'aaaa'].includes(category)) return false;
+      if (budgetProgramFilter === 'All Programs') return true;
+      const programId = budget.program_id || budget.programId;
+      const program = programs.find(item => item.id === programId)
+        || programs.find(item => item.title.trim().toLowerCase() === category);
+      return String(programId || '') === budgetProgramFilter
+        || category === budgetProgramFilter.toLowerCase()
+        || program?.id === budgetProgramFilter;
+    })
     .map((budget: any) => {
       const allocated = Number(budget.allocated_amount) || 0;
       const programId = budget.program_id || budget.programId;
@@ -2006,10 +2023,10 @@ return (
                         </div>
                       ) : (
                         dashboardAlerts.map((alert, i) => (
-                          <div key={i} role="button" tabIndex={0} onClick={() => setActiveMenu(getAlertDestination(alert.code || ''))} onKeyDown={(event) => {
+                          <div key={i} role="button" tabIndex={0} onClick={() => navigateFromAlert(alert.code || '')} onKeyDown={(event) => {
                             if (event.key === 'Enter' || event.key === ' ') {
                               event.preventDefault();
-                              setActiveMenu(getAlertDestination(alert.code || ''));
+                              navigateFromAlert(alert.code || '');
                             }
                           }} className="flex items-start gap-2.5 p-3 rounded-lg bg-white border border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors group">
                             <span className="text-sm mt-0.5">{alert.level === 'Critical' ? '🚨' : '⚠️'}</span>
@@ -2642,7 +2659,18 @@ return (
                     <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Program
                       <select value={budgetProgramFilter} onChange={event => setBudgetProgramFilter(event.target.value)} className="mt-1 block min-w-44 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700">
                         <option>All Programs</option>
-                        {programs.filter(p => { const yr = Number(budgetYear); const s = new Date(p.startDate).getFullYear(); const e = p.endDate ? new Date(p.endDate).getFullYear() : s; return s <= yr && e >= yr; }).map(program => <option key={program.id} value={program.id}>{program.title}</option>)}
+                        {budgetAllocations
+                          .filter((budget: any) => {
+                            const category = String(budget.category || '').trim().toLowerCase();
+                            return category !== 'general youth development fund' && !['heha', 'aaaa'].includes(category);
+                          })
+                          .map((budget: any) => {
+                            const programId = budget.program_id || budget.programId;
+                            const program = programs.find(item => item.id === programId)
+                              || programs.find(item => item.title.trim().toLowerCase() === String(budget.category || '').trim().toLowerCase());
+                            const value = programId || program?.id || budget.category;
+                            return <option key={budget.id} value={value}>{program?.title || budget.category}</option>;
+                          })}
                       </select>
                     </label>
                     <button type="button" onClick={() => { setBudgetYear(String(new Date().getFullYear())); setBudgetProgramFilter('All Programs'); }} className="px-1 py-1.5 text-[10px] font-semibold text-slate-400 hover:text-[#091d64]">Reset</button>
@@ -2947,44 +2975,54 @@ return (
                     <span className="px-2.5 py-0.5 bg-blue-50 text-[#091d64] font-black text-[10px] rounded uppercase tracking-wider">GOVERNANCE REPORTS - AYDP ALIGNED</span>
                     {/* Resolution tracking and community voting */}
                     {resolutions && resolutions.length > 0 && (
-                      <div className="rounded-xl bg-white p-5 shadow-xs border border-slate-100 mb-4">
-                        <div className="flex items-center justify-between mb-3">
+                      <div className="mb-4 min-h-[200px] rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <div className="mb-3 flex items-center justify-between gap-3">
                           <div>
                             <h3 className="text-sm font-extrabold text-[#091d64]">Resolution Tracking & Community Votes</h3>
                             <p className="text-[11px] text-slate-400 mt-0.5">Support and oppose counts for community polls.</p>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => setShowClosedPolls(value => !value)}
-                            className="rounded-lg border border-slate-200 px-3 py-1.5 text-[10px] font-bold text-[#091d64] hover:bg-slate-50"
-                          >
-                            {showClosedPolls ? 'View Open Polls' : `View Closed Polls (${closedPolls.length})`}
-                          </button>
+                          <div className="flex shrink-0 gap-1 rounded-lg bg-slate-100 p-1">
+                            <button
+                              type="button"
+                              onClick={() => setShowClosedPolls(false)}
+                              aria-pressed={!showClosedPolls}
+                              className={`rounded-md px-3 py-1.5 text-[10px] font-bold transition-colors ${!showClosedPolls ? 'bg-white text-[#091d64] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                              Open ({openPolls.length})
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setShowClosedPolls(true)}
+                              aria-pressed={showClosedPolls}
+                              className={`rounded-md px-3 py-1.5 text-[10px] font-bold transition-colors ${showClosedPolls ? 'bg-white text-[#091d64] shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                              Closed ({closedPolls.length})
+                            </button>
+                          </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           {(showClosedPolls ? closedPolls : openPolls).map((res: any) => (
-                            <div key={res.id} className="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-[10px] font-mono font-bold text-slate-500">{res.resolutionNumber || 'POLL'}</p>
-                                  <p className="text-xs font-bold text-slate-800 mt-0.5 leading-tight">{res.title || 'Untitled'}</p>
-                                  {res.end_date && <span className="text-[10px] text-slate-400 font-medium">Closes: {new Date(res.end_date).toLocaleDateString()}</span>}
+                            <div key={res.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-[10px] font-mono font-bold text-slate-500">{res.resolutionNumber || 'POLL'}</p>
+                                    <p className="mt-1 text-sm font-bold leading-snug text-slate-800">{res.title || 'Untitled'}</p>
+                                  </div>
+                                  <span className={res.status === 'Voting Open' ? 'shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-[9px] font-bold text-emerald-700' : 'shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[9px] font-bold text-slate-600'}>
+                                    {res.status || 'Unknown'}
+                                  </span>
                                 </div>
-                                <span className={res.status === 'Voting Open' ? 'px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-100 text-emerald-700' : 'px-2 py-0.5 rounded-full text-[9px] font-bold bg-slate-200 text-slate-600'}>
-                                  {res.status || 'Unknown'}
-                                </span>
-                              </div>
-                              <div className="mt-2 flex items-center gap-3 text-[10px]">
-                                <span className="font-bold text-emerald-700">👍 {Number(res.votesSupport) || 0} Support</span>
-                                <span className="font-bold text-rose-600">👎 {Number(res.votesOppose) || 0} Oppose</span>
-                              </div>
-                              {res.validityPeriod && <p className="text-[9px] text-slate-400 mt-1">Valid: {res.validityPeriod}</p>}
+                                <div className="mt-3 flex flex-wrap items-center gap-2">
+                                  <span className="rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">Support <span className="ml-1 tabular-nums">{Number(res.votesSupport) || 0}</span></span>
+                                  <span className="rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700">Oppose <span className="ml-1 tabular-nums">{Number(res.votesOppose) || 0}</span></span>
+                                </div>
+                                {(res.end_date || res.validityPeriod) && <p className="mt-2 text-[10px] text-slate-400">{res.end_date ? `Closes ${new Date(res.end_date).toLocaleDateString()}` : `Valid: ${res.validityPeriod}`}</p>}
                             </div>
                           ))}
                           {(showClosedPolls ? closedPolls : openPolls).length === 0 && (
-                            <p className="col-span-full py-4 text-center text-xs text-slate-500">
+                            <div className="col-span-full flex min-h-[120px] flex-col items-center justify-center py-4 text-center text-xs text-slate-400">
                               {showClosedPolls ? 'There are no closed polls.' : 'There are no open polls.'}
-                            </p>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -3009,7 +3047,32 @@ return (
                   <button onClick={() => setReportSubTab('beneficiaries')} className={reportSubTab === 'beneficiaries' ? 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-[#091d64] text-white' : 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-slate-50 text-slate-600 hover:bg-slate-100'}>Beneficiaries</button>
                   <button onClick={() => setReportSubTab('demographics')} className={reportSubTab === 'demographics' ? 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-[#091d64] text-white' : 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-slate-50 text-slate-600 hover:bg-slate-100'}>Demographics</button>
                   <button onClick={() => setReportSubTab('financial')} className={reportSubTab === 'financial' ? 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-[#091d64] text-white' : 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-slate-50 text-slate-600 hover:bg-slate-100'}>Financial</button>
+                  <button onClick={() => setReportSubTab('compliance')} className={reportSubTab === 'compliance' ? 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-[#091d64] text-white' : 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-slate-50 text-slate-600 hover:bg-slate-100'}>Compliance</button>
                 </div>
+                {reportSubTab === 'compliance' && (
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-bold text-slate-800">Compliance documents</h4>
+                    <div className="overflow-x-auto rounded-xl border border-slate-100">
+                      <table className="w-full min-w-[600px] text-left text-xs">
+                        <thead className="bg-[#091d64] text-[10px] font-bold uppercase text-white">
+                          <tr><th className="px-4 py-3">Document</th><th className="px-4 py-3">Category</th><th className="px-4 py-3">Status</th></tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {documents.filter(document => /compliance|resolution|minutes|report|budget|voucher|liquidation/i.test(`${document.category} ${document.title}`)).map(document => (
+                            <tr key={document.id}>
+                              <td className="px-4 py-3 font-semibold text-slate-700">{document.title}</td>
+                              <td className="px-4 py-3 text-slate-500">{document.category}</td>
+                              <td className="px-4 py-3 text-slate-500">{document.status}</td>
+                            </tr>
+                          ))}
+                          {documents.filter(document => /compliance|resolution|minutes|report|budget|voucher|liquidation/i.test(`${document.category} ${document.title}`)).length === 0 && (
+                            <tr><td colSpan={3} className="px-4 py-8 text-center text-slate-400">No compliance documents found.</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
                 {reportSubTab === 'attendance' && (<div className="border border-slate-100 rounded-xl">
                   <div className="w-full overflow-x-auto block"><table className="w-full text-left text-xs min-w-[600px]"><thead className="bg-[#091d64] text-white text-[10px] font-bold uppercase"><tr><th className="px-4 py-3 whitespace-nowrap">Program</th><th className="px-4 py-3 text-right whitespace-nowrap">Registered</th><th className="px-4 py-3 text-right whitespace-nowrap">Slots</th><th className="px-4 py-3 text-right whitespace-nowrap">Fill Rate</th></tr></thead><tbody className="divide-y divide-slate-100">{programs.map(p => { const reg = p.registeredCount || 0; const max = p.maxParticipants || 1; return <tr key={p.id}><td className="px-4 py-3 font-bold whitespace-nowrap">{p.title}</td><td className="px-4 py-3 text-right font-mono whitespace-nowrap">{reg}</td><td className="px-4 py-3 text-right font-mono whitespace-nowrap">{p.maxParticipants || 0}</td><td className="px-4 py-3 text-right font-mono font-bold text-[#091d64] whitespace-nowrap">{((max > 0 ? (max > 0 ? (reg / max) * 100 : 0) : 0)).toFixed(0)}%</td></tr>; })}</tbody></table></div>
                 </div>)}
