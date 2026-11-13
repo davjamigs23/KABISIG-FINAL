@@ -268,6 +268,14 @@ router.patch(
     const chairName = updates.chairperson;
     const chairEmail = updates.chairperson_email || updates.chairpersonEmail;
     const phone = updates.contact;
+    if (
+      admin.role_id === 2
+      && chairEmail?.trim()
+      && chairEmail.trim().toLowerCase() !== (admin.email || '').trim().toLowerCase()
+    ) {
+      sendError(res, 'Only the Super Admin can assign or change the Chairperson.', 403);
+      return;
+    }
 
     // 1. If allocating budget, upsert into budget table for current year
     if (typeof allocatedBudget === 'number' && allocatedBudget >= 0) {

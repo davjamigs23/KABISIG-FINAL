@@ -378,6 +378,7 @@ router.post(
       .select('id, email, tenant_id, role_id, full_name, first_name, middle_name, last_name, suffix, status')
       .eq('email', cleanEmail)
       .maybeSingle();
+    const chairpersonAuthFullName = existingUser?.full_name || 'Pending Invitation';
 
     // 3. Check Supabase Auth users too, since invite/create may fail if the auth user already exists
     const { data: authUsersData, error: listAuthError } = await supabaseAdmin.auth.admin.listUsers();
@@ -414,6 +415,7 @@ router.post(
             data: {
               tenant_id: barangay_id,
               role_id: 2,
+              full_name: chairpersonAuthFullName,
             },
             redirectTo: `${FRONTEND_URL}/chairperson-setup?invite_email=${encodeURIComponent(cleanEmail)}&role=chairperson&tenant_id=${barangay_id}`,
           } as any
@@ -523,6 +525,7 @@ router.post(
           data: {
             tenant_id: barangay_id,
             role_id: 2,
+            full_name: chairpersonAuthFullName,
           },
             redirectTo: `${FRONTEND_URL}/chairperson-setup?invite_email=${encodeURIComponent(cleanEmail)}&role=chairperson&tenant_id=${barangay_id}`,
         } as any
@@ -707,6 +710,18 @@ router.post(
     const { data: existingUser } = await supabaseAdmin
       .from('users').select('id, email, tenant_id, role_id, full_name, first_name, middle_name, last_name, suffix, status')
       .eq('email', cleanEmail).maybeSingle();
+    const officialAuthFullName = resolveName({
+      payload: { first_name, middle_name, last_name, suffix },
+      existing: existingUser ? {
+        first_name: (existingUser as any).first_name,
+        middle_name: (existingUser as any).middle_name,
+        last_name: (existingUser as any).last_name,
+        suffix: (existingUser as any).suffix,
+        full_name: existingUser.full_name,
+      } : null,
+      placeholders: ['Pending Invitation'],
+      fallback: { first_name: 'SK', last_name: 'Official' },
+    }).full_name;
 
     const { data: authUsersData, error: listAuthError } = await supabaseAdmin.auth.admin.listUsers();
     if (listAuthError) { sendError(res, 'Failed to inspect existing auth users: ' + listAuthError.message, 500); return; }
@@ -752,7 +767,7 @@ router.post(
       targetUserId = existingUser.id;
       if (!existingAuthUser) {
         const { data: inviteData, error: inviteErr } = await inviteWithBrevo(cleanEmail, {
-          data: { tenant_id: barangay_id, role_id: 3, official_role },
+          data: { tenant_id: barangay_id, role_id: 3, official_role, full_name: officialAuthFullName },
           redirectTo: redirectUrl,
         } as any);
         if (!inviteErr && inviteData?.user) {
@@ -764,7 +779,7 @@ router.post(
             email: cleanEmail,
             password: tempPassword,
             email_confirm: true,
-            user_metadata: { tenant_id: barangay_id, role_id: 3, official_role },
+            user_metadata: { tenant_id: barangay_id, role_id: 3, official_role, full_name: officialAuthFullName },
             redirectTo: redirectUrl,
           } as any);
           if (createErr || !createData?.user) { sendError(res, createErr?.message || 'Failed to initialize SK Official account.', 500); return; }
@@ -855,7 +870,7 @@ router.post(
       if (insertUserErr) { sendError(res, 'Failed to bind existing auth user: ' + insertUserErr.message, 500); return; }
     } else {
       const { data: inviteData, error: inviteErr } = await inviteWithBrevo(cleanEmail, {
-        data: { tenant_id: barangay_id, role_id: 3, official_role },
+        data: { tenant_id: barangay_id, role_id: 3, official_role, full_name: officialAuthFullName },
         redirectTo: redirectUrl,
       } as any);
       if (!inviteErr && inviteData?.user) {
@@ -867,7 +882,7 @@ router.post(
           email: cleanEmail,
           password: tempPassword,
           email_confirm: true,
-          user_metadata: { tenant_id: barangay_id, role_id: 3, official_role },
+          user_metadata: { tenant_id: barangay_id, role_id: 3, official_role, full_name: officialAuthFullName },
           redirectTo: redirectUrl,
         } as any);
         if (createErr || !createData?.user) { sendError(res, createErr?.message || 'Failed to initialize SK Official account.', 500); return; }
