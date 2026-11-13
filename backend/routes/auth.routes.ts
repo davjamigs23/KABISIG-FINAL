@@ -959,7 +959,7 @@ router.post('/forgot-password', async (req: Request, res: Response): Promise<voi
   }
 
   const { email, redirectTo } = parseResult.data;
-  const finalRedirect = redirectTo || ((process.env.FRONTEND_URL || 'http://localhost:3000') + '/reset-password');
+  const finalRedirect = redirectTo || ((process.env.FRONTEND_URL || 'https://kabisig-naga.vercel.app') + '/reset-password');
 
   // 1. Generate recovery link via Supabase Admin
   const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({

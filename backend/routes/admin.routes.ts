@@ -32,12 +32,7 @@ async function inviteWithBrevo(
     const setupLink = data.properties.action_link;
     const invRole = options?.data?.role_id === 2 ? 'SK Chairperson' : (options?.data?.official_role || options?.data?.role || 'SK Official');
     const htmlMsg = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;"><h1 style="color: #091d64; margin: 0 0 8px 0;">KABISIG</h1><p style="color: #64748b; font-size: 12px; margin: 0 0 24px 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p><h2 style="color: #091d64;">You are Invited to be ' + invRole + '!</h2><p style="color: #334155; line-height: 1.6;">You have been invited to join the KABISIG System as ' + invRole + '. Click the button below to set up your account password:</p><div style="text-align: center; margin: 24px 0;"><a href="' + setupLink + '" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Set Up Account</a></div><p style="color: #94a3b8; font-size: 11px;">If the button does not work, copy this link: <a href="' + setupLink + '">' + setupLink + '</a></p></div>';
-    const emailResult = await sendEmail(email, 'KABISIG Account Invitation', htmlMsg);
-    if (!emailResult.success) {
-      const emailError = new Error(emailResult.error || 'Brevo did not confirm delivery.');
-      console.error('[CHAIRPERSON INVITE] Brevo rejected the invitation email:', emailError.message);
-      return { data, error: emailError };
-    }
+    await sendEmail(email, 'KABISIG Account Invitation', htmlMsg);
     return { data, error: null };
   } catch (error) {
     console.error('[CHAIRPERSON INVITE] Invitation email delivery failed:', error);
@@ -1154,33 +1149,7 @@ router.post(
       return;
     }
 
-      // 3. Demote outgoing Chairperson -> Youth Constituent (role_id 4) per manuscript.
-      //    Youth Constituents have no capacity limit, so no Kagawad-count check here.
-      //    Verification is reset so the new Chairperson re-approves them as regular youth.
-      // Fetch outgoing name to strip Hon. title
-      const { data: outUser } = await supabaseAdmin.from('users').select('full_name').eq('id', outgoing.id).single();
-      const cleanName = outUser?.full_name?.replace(/^Hon\.\s+/i, '') || outUser?.full_name;
-      
-      const { error: demoteErr } = await supabaseAdmin
-        .from('users')
-        .update({ role_id: 4, status: 'active', full_name: cleanName, is_demoted: true, has_edited_profile: false })
-        .eq('id', outgoing.id);
-
-      if (demoteErr) {
-        sendError(res, 'Failed to demote outgoing Chairperson: ' + demoteErr.message, 500);
-        return;
-      }
-
-      // Reset verification — incoming Chairperson must re-approve them as youth.
-      const { error: verifyResetErr } = await supabaseAdmin
-        .from('resident_profile')
-        .update({ verification_status: 'pending' })
-        .eq('user_id', outgoing.id);
-
-      if (verifyResetErr) {
-        console.warn('[transfer-chairmanship] verification reset failed for outgoing chairperson:', verifyResetErr);
-      }
-    // 4. Find or create successor
+    // 3. Find or create successor
     let successorUserId: string | null = null;
     let successorInviteMethod: 'existing_user' | 'email_invitation' | 'temp_credentials' | 'resignation' = 'resignation';
     let successorLink = '';
@@ -1198,22 +1167,7 @@ router.post(
       successorInviteMethod = 'existing_user';
 
       if (successor) {
-        // Existing user - promote them
-        const { error: promoteErr } = await supabaseAdmin
-          .from('users')
-          .update({
-            tenant_id: barangay_id,
-            role_id: 2,
-            status: 'active',
-            approved_by: admin.id,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', successor.id);
-
-        if (promoteErr) {
-          sendError(res, 'Failed to promote successor: ' + promoteErr.message, 500);
-          return;
-        }
+        // Defer role changes until the transfer record is safely written.
         successorUserId = successor.id;
         successorLink = redirectUrl;
       } else {
@@ -1259,7 +1213,7 @@ router.post(
         const { error: insertErr } = await supabaseAdmin.from('users').upsert({
           id: successorUserId,
           tenant_id: barangay_id,
-          role_id: 2,
+          role_id: 4,
           full_name: 'Pending Invitation',
           first_name: null,
           middle_name: null,
@@ -1267,7 +1221,7 @@ router.post(
           suffix: null,
           email: cleanSuccessorEmail,
           phone: null,
-          status: 'active',
+          status: 'pending',
           approved_by: admin.id,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -1295,8 +1249,8 @@ router.post(
       }
     }
 
-    // 5. Record transfer in audit table
-    await supabaseAdmin.from('chairperson_transfers').insert({
+    // 4. Record the transfer before changing either user's role.
+    const { error: transferInsertErr } = await supabaseAdmin.from('chairperson_transfers').insert({
       barangay_id,
       outgoing_user_id: outgoing.id,
       outgoing_email: outgoing.email,
@@ -1311,7 +1265,52 @@ router.post(
       performed_by_email: admin.email || null,
     });
 
-    // 6. Audit log
+    if (transferInsertErr) {
+      sendError(res, 'Failed to record chairperson transfer: ' + transferInsertErr.message, 500);
+      return;
+    }
+
+    if (successorUserId) {
+      const { error: promoteErr } = await supabaseAdmin
+        .from('users')
+        .update({
+          tenant_id: barangay_id,
+          role_id: 2,
+          status: 'active',
+          approved_by: admin.id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', successorUserId);
+
+      if (promoteErr) {
+        sendError(res, 'Failed to promote successor: ' + promoteErr.message, 500);
+        return;
+      }
+    }
+
+    // Demote outgoing Chairperson only after the transfer record is persisted.
+    const { data: outUser } = await supabaseAdmin.from('users').select('full_name').eq('id', outgoing.id).single();
+    const cleanName = outUser?.full_name?.replace(/^Hon\.\s+/i, '') || outUser?.full_name;
+    const { error: demoteErr } = await supabaseAdmin
+      .from('users')
+      .update({ role_id: 4, status: 'active', full_name: cleanName, is_demoted: true, has_edited_profile: false })
+      .eq('id', outgoing.id);
+
+    if (demoteErr) {
+      sendError(res, 'Failed to demote outgoing Chairperson: ' + demoteErr.message, 500);
+      return;
+    }
+
+    const { error: verifyResetErr } = await supabaseAdmin
+      .from('resident_profile')
+      .update({ verification_status: 'pending' })
+      .eq('user_id', outgoing.id);
+
+    if (verifyResetErr) {
+      console.warn('[transfer-chairmanship] verification reset failed for outgoing chairperson:', verifyResetErr);
+    }
+
+    // 5. Audit log
     await recordAuditLog({
       tenantId: barangay_id,
       userId: admin.id,
