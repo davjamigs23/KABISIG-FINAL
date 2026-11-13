@@ -30,7 +30,7 @@ function SetupForm() {
   const [suffix, setSuffix] = useState('');
   const [phone, setPhone] = useState('');
   const [birthdate, setBirthdate] = useState('');
-  const [sex, setSex] = useState<'Male' | 'Female' | 'Other' | 'Prefer not to say'>('Male');
+  const [sex, setSex] = useState<'Male' | 'Female' | 'Other' | 'Prefer not to say' | ''>('');
   const [address, setAddress] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -38,6 +38,7 @@ function SetupForm() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showMobileValidationModal, setShowMobileValidationModal] = useState(false);
 
   const composedFullName = composeFullName({ first_name: firstName, middle_name: middleName, last_name: lastName, suffix });
 
@@ -65,6 +66,11 @@ function SetupForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    if (!sex) { setError('Please select your biological sex.'); return; }
+    if (!/^09\d{9}$/.test(phone)) {
+      setShowMobileValidationModal(true);
+      return;
+    }
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail) { setError('Please enter your KABISIG email address.'); return; }
     if (!password) { setError('Please create your password.'); return; }
@@ -170,19 +176,19 @@ function SetupForm() {
                 <div className="relative">
                   <input type="text" required value={firstName} onChange={(e) => setFirstName(e.target.value)}
                     className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
-                    placeholder="Juan (First Name)" />
+                    placeholder="" />
                   <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
                 <div className="relative">
                   <input type="text" required value={lastName} onChange={(e) => setLastName(e.target.value)}
                     className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
-                    placeholder="Dela Cruz (Last Name)" />
+                    placeholder="" />
                   <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
                 <div className="relative">
                   <input type="text" value={middleName} onChange={(e) => setMiddleName(e.target.value)}
                     className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
-                    placeholder="Santos (Middle Name)" />
+                    placeholder="" />
                   <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 </div>
                 <select value={suffix} onChange={(e) => setSuffix(e.target.value)}
@@ -202,10 +208,10 @@ function SetupForm() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-bold text-slate-900 mb-1">Mobile Contact <span className="text-rose-500">*</span></label>
-                <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
-                  placeholder="0917-123-4567"
+                <input type="tel" inputMode="numeric" maxLength={11} value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
+                  placeholder=""
                   className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
-                  required />
+                  />
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-900 mb-1">Birthdate <span className="text-rose-500">*</span></label>
@@ -214,9 +220,10 @@ function SetupForm() {
                   required />
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-900 mb-1">Biological Sex</label>
-                <select value={sex} onChange={(e) => setSex(e.target.value as any)}
+                <label className="block text-xs font-bold text-slate-900 mb-1">Biological Sex <span className="text-rose-500">*</span></label>
+                <select value={sex} required onChange={(e) => setSex(e.target.value as typeof sex)}
                   className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600 cursor-pointer">
+                  <option value="" disabled>Select Gender</option>
                   <option value="Male">Male</option>
                   <option value="Female">Female</option>
                   <option value="Other">Other</option>
@@ -226,7 +233,7 @@ function SetupForm() {
               <div>
                 <label className="block text-xs font-bold text-slate-900 mb-1">Address <span className="text-rose-500">*</span></label>
                 <input type="text" value={address} onChange={(e) => setAddress(e.target.value)}
-                  placeholder="Purok/Zone, Street, Naga City"
+                  placeholder=""
                   className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
                   required />
               </div>
@@ -310,6 +317,27 @@ function SetupForm() {
           </form>
         </div>
       </div>
+      {showMobileValidationModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4" role="presentation">
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="mobile-validation-title"
+            className="w-full max-w-sm rounded-2xl border border-rose-200 bg-white p-6 text-center shadow-2xl"
+          >
+            <AlertCircle className="mx-auto mb-3 h-10 w-10 text-rose-600" />
+            <h2 id="mobile-validation-title" className="mb-2 text-base font-black text-rose-700">Invalid Mobile Contact</h2>
+            <p className="mb-5 text-sm text-slate-700">Mobile number must start with 09 and be exactly 11 digits.</p>
+            <button
+              type="button"
+              onClick={() => setShowMobileValidationModal(false)}
+              className="rounded-lg bg-rose-600 px-5 py-2 text-sm font-bold text-white hover:bg-rose-700"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -2228,13 +2228,14 @@ useEffect(() => {
                   </div>
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-3 w-full mt-3">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full mt-3">
                   <div>
                     <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">SK Chairperson</span>
                     <span className="block mt-1 text-xs font-bold text-slate-800">{editingBarangay?.chairperson || 'Unassigned'}</span>
                     <span className="block text-[10px] text-slate-500">{editingBarangay?.chairpersonEmail || 'No email recorded'}</span>
                   </div>
-                  {(() => {
+                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:ml-auto">
+                    {(() => {
                     const ch = editingBarangay?.chairperson;
                     const isPendingInvite = ch === 'Pending Invitation';
                     const hasRealChair = Boolean(ch && ch !== 'Unassigned' && ch !== 'Pending Invitation');
@@ -2248,7 +2249,7 @@ useEffect(() => {
                             setShowModal(false);
                             if (barangay) handleOpenTransferModal(barangay, true);
                           }}
-                          className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-bold whitespace-nowrap w-full sm:w-auto"
+                          className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold whitespace-nowrap w-full sm:w-auto"
                         >
                           Transfer Leadership
                         </button>
@@ -2263,7 +2264,7 @@ useEffect(() => {
                             setShowModal(false);
                             if (barangay) handleOpenCancelInviteModal(barangay, true);
                           }}
-                          className="px-3 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-[10px] font-bold whitespace-nowrap w-full sm:w-auto"
+                          className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold whitespace-nowrap w-full sm:w-auto"
                         >
                           Cancel Invitation
                         </button>
@@ -2277,23 +2278,24 @@ useEffect(() => {
                           setShowModal(false);
                           if (barangay) handleOpenAssignModal(barangay, true);
                         }}
-                        className="px-3 py-2 bg-[#091d64] text-white rounded-lg text-[10px] font-bold whitespace-nowrap w-full sm:w-auto"
+                        className="px-4 py-2 bg-[#091d64] hover:bg-[#102a83] text-white rounded-lg text-xs font-bold whitespace-nowrap w-full sm:w-auto"
                       >
                         Assign Chairperson
                       </button>
                     );
-                  })()}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const barangay = editingBarangay;
-                      setShowModal(false);
-                      if (barangay) handleOpenInviteOfficialModal(barangay, true);
-                    }}
-                    className="px-3 py-2 bg-amber-400 text-amber-950 rounded-lg text-[10px] font-bold whitespace-nowrap ml-2 w-full sm:w-auto"
-                  >
-                    Invite Official
-                  </button>
+                    })()}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const barangay = editingBarangay;
+                        setShowModal(false);
+                        if (barangay) handleOpenInviteOfficialModal(barangay, true);
+                      }}
+                      className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-amber-950 rounded-lg text-xs font-bold whitespace-nowrap w-full sm:w-auto"
+                    >
+                      Invite Official
+                    </button>
+                  </div>
                 </div>
 
               </div>
