@@ -13,18 +13,36 @@ async function inviteWithBrevo(
   email: string,
   options: any = {}
 ): Promise<{ data: any; error: any }> {
-  const { data, error } = await supabaseAdmin.auth.admin.generateLink({
-    type: 'invite',
-    email,
-    options,
-  });
-  if (!error && data?.properties?.action_link) {
+  try {
+    const { data, error } = await supabaseAdmin.auth.admin.generateLink({
+      type: 'invite',
+      email,
+      options,
+    });
+    if (error) {
+      console.error('[CHAIRPERSON INVITE] Supabase invite link generation failed:', error);
+      return { data, error };
+    }
+    if (!data?.properties?.action_link) {
+      const linkError = new Error('Supabase did not return an invitation action link.');
+      console.error('[CHAIRPERSON INVITE]', linkError.message);
+      return { data, error: linkError };
+    }
+
     const setupLink = data.properties.action_link;
     const invRole = options?.data?.role_id === 2 ? 'SK Chairperson' : (options?.data?.official_role || options?.data?.role || 'SK Official');
     const htmlMsg = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;"><h1 style="color: #091d64; margin: 0 0 8px 0;">KABISIG</h1><p style="color: #64748b; font-size: 12px; margin: 0 0 24px 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p><h2 style="color: #091d64;">You are Invited to be ' + invRole + '!</h2><p style="color: #334155; line-height: 1.6;">You have been invited to join the KABISIG System as ' + invRole + '. Click the button below to set up your account password:</p><div style="text-align: center; margin: 24px 0;"><a href="' + setupLink + '" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Set Up Account</a></div><p style="color: #94a3b8; font-size: 11px;">If the button does not work, copy this link: <a href="' + setupLink + '">' + setupLink + '</a></p></div>';
-    await sendEmail(email, 'KABISIG Account Invitation', htmlMsg);
+    const emailResult = await sendEmail(email, 'KABISIG Account Invitation', htmlMsg);
+    if (!emailResult.success) {
+      const emailError = new Error(emailResult.error || 'Brevo did not confirm delivery.');
+      console.error('[CHAIRPERSON INVITE] Brevo rejected the invitation email:', emailError.message);
+      return { data, error: emailError };
+    }
+    return { data, error: null };
+  } catch (error) {
+    console.error('[CHAIRPERSON INVITE] Invitation email delivery failed:', error);
+    return { data: null, error };
   }
-  return { data, error };
 }
 
 
@@ -406,30 +424,15 @@ router.post(
           } as any
         );
 
-        if (!inviteErr && inviteData?.user) {
-          targetUserId = inviteData.user.id;
-          inviteMethod = 'email_invitation';
-        } else {
-          const tempPassword = 'Kb' + Math.random().toString(36).slice(-6) + 'A!1';
-          const { data: createData, error: createErr } = await supabaseAdmin.auth.admin.createUser({
-            email: cleanEmail,
-            password: tempPassword,
-            email_confirm: true,
-            user_metadata: {
-              tenant_id: barangay_id,
-              role_id: 2,
-            },
-            redirectTo: `${FRONTEND_URL}/chairperson-setup?invite_email=${encodeURIComponent(cleanEmail)}&role=chairperson&tenant_id=${barangay_id}`,
-          } as any);
-
-          if (createErr || !createData?.user) {
-            sendError(res, createErr?.message || 'Failed to initialize Chairperson account via Supabase Auth.', 500);
-            return;
-          }
-
-          targetUserId = createData.user.id;
-          inviteMethod = 'temp_credentials';
+        if (inviteErr || !inviteData?.user) {
+          const errorMessage = inviteErr instanceof Error
+            ? inviteErr.message
+            : inviteErr?.message || 'Supabase did not return an invited Chairperson account.';
+          sendError(res, `Failed to send Chairperson invitation: ${errorMessage}`, 500);
+          return;
         }
+        targetUserId = inviteData.user.id;
+        inviteMethod = 'email_invitation';
 
         const { error: rebindErr } = await supabaseAdmin
           .from('users')
@@ -530,32 +533,15 @@ router.post(
         } as any
       );
 
-      if (!inviteErr && inviteData?.user) {
-        targetUserId = inviteData.user.id;
-        inviteMethod = 'email_invitation';
-      } else {
-        // Fallback for environments without active SMTP mailers:
-        // Create user with standard initial credentials so testing never halts
-        const tempPassword = 'Kb' + Math.random().toString(36).slice(-6) + 'A!1';
-        const { data: createData, error: createErr } = await supabaseAdmin.auth.admin.createUser({
-          email: cleanEmail,
-          password: tempPassword,
-          email_confirm: true,
-          user_metadata: {
-            tenant_id: barangay_id,
-            role_id: 2,
-          },
-            redirectTo: `${FRONTEND_URL}/chairperson-setup?invite_email=${encodeURIComponent(cleanEmail)}&role=chairperson&tenant_id=${barangay_id}`,
-        } as any);
-
-        if (createErr || !createData?.user) {
-          sendError(res, createErr?.message || 'Failed to initialize Chairperson account via Supabase Auth.', 500);
-          return;
-        }
-
-        targetUserId = createData.user.id;
-        inviteMethod = 'temp_credentials';
+      if (inviteErr || !inviteData?.user) {
+        const errorMessage = inviteErr instanceof Error
+          ? inviteErr.message
+          : inviteErr?.message || 'Supabase did not return an invited Chairperson account.';
+        sendError(res, `Failed to send Chairperson invitation: ${errorMessage}`, 500);
+        return;
       }
+      targetUserId = inviteData.user.id;
+      inviteMethod = 'email_invitation';
 
       // 5. Pre-set public.users record with role_id: 2, tenant_id, status: 'active'
       const { error: insertUserErr } = await supabaseAdmin.from('users').upsert(
