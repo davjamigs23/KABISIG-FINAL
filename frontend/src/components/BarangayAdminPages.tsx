@@ -1231,7 +1231,7 @@ export default function BarangayAdminPages({
     )
     .reduce((sum: number, budget: any) => sum + Number(budget.allocated_amount || 0), 0);
   const remainingBalance = totalBudget - totalSpent;
-  const utilizationRate = (totalSpent / totalBudget) * 100;
+  const utilizationRate = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
 
   const budgetUtilizationTable = [
     ...budgetAllocations

@@ -895,7 +895,9 @@ export default function OfficialPages({
   const totalSpentExpenses = expenses.reduce((sum: number, expense: any) =>
     sum + Number(expense.net_amount ?? expense.netAmount ?? 0), 0);
   const remainingCash = totalBarangayBudget - totalSpentExpenses;
-  const budgetUtilizationRate = (totalSpentExpenses / totalBarangayBudget) * 100;
+  const budgetUtilizationRate = totalBarangayBudget > 0
+    ? (totalSpentExpenses / totalBarangayBudget) * 100
+    : 0;
   const allocatedToPrograms = budgetOptions
     .filter((budget: any) =>
       budget.category !== 'General Youth Development Fund'
@@ -3081,7 +3083,7 @@ export default function OfficialPages({
                           <p className="text-xs text-slate-400 mt-0.5">Disbursement tracking per AYDP center of participation with utilization velocity.</p>
                         </div>
                         <span className="text-xs font-mono font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded">
-                          {((totalSpentExpenses / (totalBarangayBudget || 1)) * 100).toFixed(1)}% Utilized
+                          {(totalBarangayBudget > 0 ? (totalSpentExpenses / totalBarangayBudget) * 100 : 0).toFixed(1)}% Utilized
                         </span>
                       </div>
 
