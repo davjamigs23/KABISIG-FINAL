@@ -1138,27 +1138,50 @@ router.post('/setup-chairperson-password', async (req: Request, res: Response): 
   }
 
   const normalizedEmail = email.trim().toLowerCase();
+  const setupAccessToken = req.headers.authorization?.startsWith('Bearer ')
+    ? req.headers.authorization.slice('Bearer '.length)
+    : '';
+  if (!setupAccessToken) {
+    sendError(res, 'A valid account invitation session is required.', 401);
+    return;
+  }
+  const { data: setupAuthData, error: setupAuthError } = await supabaseAdmin.auth.getUser(setupAccessToken);
+  const setupAuthUser = setupAuthData.user;
+  if (setupAuthError || !setupAuthUser || setupAuthUser.email?.toLowerCase() !== normalizedEmail) {
+    sendError(res, 'A valid account invitation session is required.', 401);
+    return;
+  }
+  if (setupAuthUser.user_metadata?.setup_completed === true || setupAuthUser.app_metadata?.setup_completed === true) {
+    sendError(res, 'This link has already been used', 400);
+    return;
+  }
+  if (
+    setupAuthUser.user_metadata?.setup_completed !== false ||
+    setupAuthUser.app_metadata?.setup_completed !== false ||
+    Number(setupAuthUser.user_metadata?.role_id) !== ROLE_IDS.BARANGAY_ADMIN
+  ) {
+    sendError(res, 'This invitation is not valid for account setup.', 400);
+    return;
+  }
 
-  // Find user in public.users or auth.users
   const { data: existingUser } = await supabaseAdmin
     .from('users')
     .select('id, tenant_id, role_id, full_name, first_name, middle_name, last_name, suffix, status, barangay(name)')
     .eq('email', normalizedEmail)
     .maybeSingle();
 
-  const { data: authList } = await supabaseAdmin.auth.admin.listUsers();
-  const existingAuthUser = authList?.users?.find((u) => u.email?.toLowerCase() === normalizedEmail);
-
-  let userId: string;
-  let tenantId = existingUser?.tenant_id || existingAuthUser?.user_metadata?.tenant_id;
-
-  // SECURITY (per manuscript 3.3.2 RBAC + rules file SA-only official creation):
-  // Previously defaulted to Barangay Abella when no invite existed, allowing anyone
-  // with a valid email to self-create as Chairperson. Now reject without a valid invite.
-  if (!tenantId) {
+  const tenantId = existingUser?.tenant_id;
+  if (
+    !existingUser ||
+    existingUser.id !== setupAuthUser.id ||
+    Number(existingUser.role_id) !== ROLE_IDS.BARANGAY_ADMIN ||
+    !tenantId ||
+    String(setupAuthUser.user_metadata?.tenant_id) !== String(tenantId)
+  ) {
     sendError(res, 'No Chairperson invitation found for this email. Contact the SK Federation President.', 403);
     return;
   }
+  const userId = setupAuthUser.id;
 
   const resolvedName = resolveName({
     payload: { first_name, middle_name, last_name, suffix, full_name },
@@ -1178,49 +1201,30 @@ router.post('/setup-chairperson-password', async (req: Request, res: Response): 
   const _baseChairName = resolvedName.full_name || 'SK Chairperson';
   const cleanFullName = _baseChairName.startsWith('Hon.') ? _baseChairName : 'Hon. ' + _baseChairName;
 
-  if (existingAuthUser) {
-    userId = existingAuthUser.id;
-    const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(userId, {
-      password,
-      email_confirm: true,
-      user_metadata: {
-        tenant_id: tenantId,
-        role_id: ROLE_IDS.BARANGAY_ADMIN,
-        role: 'Barangay Admin',
-        full_name: cleanFullName,
-              first_name: resolvedName.first_name,
-              middle_name: resolvedName.middle_name,
-              last_name: resolvedName.last_name,
-              suffix: resolvedName.suffix,
-        must_set_password: false,
-      },
-    });
-    if (updateErr) {
-      sendError(res, `Failed to update password credentials: ${updateErr.message}`, 400);
-      return;
-    }
-  } else {
-    const { data: newAuthUser, error: createErr } = await supabaseAdmin.auth.admin.createUser({
-      email: normalizedEmail,
-      password,
-      email_confirm: true,
-      user_metadata: {
-        tenant_id: tenantId,
-        role_id: ROLE_IDS.BARANGAY_ADMIN,
-        role: 'Barangay Admin',
-        full_name: cleanFullName,
-              first_name: resolvedName.first_name,
-              middle_name: resolvedName.middle_name,
-              last_name: resolvedName.last_name,
-              suffix: resolvedName.suffix,
-        must_set_password: false,
-      },
-    });
-    if (createErr || !newAuthUser?.user) {
-      sendError(res, `Failed to initialize Chairperson auth account: ${createErr?.message}`, 400);
-      return;
-    }
-    userId = newAuthUser.user.id;
+  const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+    password,
+    email_confirm: true,
+    user_metadata: {
+      ...setupAuthUser.user_metadata,
+      tenant_id: tenantId,
+      role_id: ROLE_IDS.BARANGAY_ADMIN,
+      role: 'Barangay Admin',
+      full_name: cleanFullName,
+      first_name: resolvedName.first_name,
+      middle_name: resolvedName.middle_name,
+      last_name: resolvedName.last_name,
+      suffix: resolvedName.suffix,
+      must_set_password: false,
+      setup_completed: true,
+    },
+    app_metadata: {
+      ...setupAuthUser.app_metadata,
+      setup_completed: true,
+    },
+  });
+  if (updateErr) {
+    sendError(res, `Failed to update password credentials: ${updateErr.message}`, 400);
+    return;
   }
 
   // Update public.users
@@ -1321,6 +1325,7 @@ router.post('/setup-chairperson-password', async (req: Request, res: Response): 
               middle_name: resolvedName.middle_name,
               last_name: resolvedName.last_name,
               suffix: resolvedName.suffix,
+              setup_completed: true,
     },
     resident_profile: {
       birthdate: '2001-01-01',
@@ -1367,6 +1372,31 @@ router.post('/setup-official-password', async (req: Request, res: Response): Pro
   }
 
   const normalizedEmail = email.trim().toLowerCase();
+  const setupAccessToken = req.headers.authorization?.startsWith('Bearer ')
+    ? req.headers.authorization.slice('Bearer '.length)
+    : '';
+  if (!setupAccessToken) {
+    sendError(res, 'A valid account invitation session is required.', 401);
+    return;
+  }
+  const { data: setupAuthData, error: setupAuthError } = await supabaseAdmin.auth.getUser(setupAccessToken);
+  const setupAuthUser = setupAuthData.user;
+  if (setupAuthError || !setupAuthUser || setupAuthUser.email?.toLowerCase() !== normalizedEmail) {
+    sendError(res, 'A valid account invitation session is required.', 401);
+    return;
+  }
+  if (setupAuthUser.user_metadata?.setup_completed === true || setupAuthUser.app_metadata?.setup_completed === true) {
+    sendError(res, 'This link has already been used', 400);
+    return;
+  }
+  if (
+    setupAuthUser.user_metadata?.setup_completed !== false ||
+    setupAuthUser.app_metadata?.setup_completed !== false ||
+    Number(setupAuthUser.user_metadata?.role_id) !== ROLE_IDS.SK_OFFICIAL
+  ) {
+    sendError(res, 'This invitation is not valid for account setup.', 400);
+    return;
+  }
 
   const { data: existingUser } = await supabaseAdmin
     .from('users')
@@ -1374,16 +1404,18 @@ router.post('/setup-official-password', async (req: Request, res: Response): Pro
     .eq('email', normalizedEmail)
     .maybeSingle();
 
-  const { data: authList } = await supabaseAdmin.auth.admin.listUsers();
-  const existingAuthUser = authList?.users?.find((u) => u.email?.toLowerCase() === normalizedEmail);
-
-  let userId: string;
-  let tenantId = existingUser?.tenant_id || existingAuthUser?.user_metadata?.tenant_id;
-
-  if (!tenantId) {
-    sendError(res, 'No SK Official invitation found for this email. Please contact your SK Federation President.', 404);
+  const tenantId = existingUser?.tenant_id;
+  if (
+    !existingUser ||
+    existingUser.id !== setupAuthUser.id ||
+    Number(existingUser.role_id) !== ROLE_IDS.SK_OFFICIAL ||
+    !tenantId ||
+    String(setupAuthUser.user_metadata?.tenant_id) !== String(tenantId)
+  ) {
+    sendError(res, 'No SK Official invitation found for this email. Please contact your SK Federation President.', 403);
     return;
   }
+  const userId = setupAuthUser.id;
 
   const resolvedName = resolveName({
     payload: { first_name, middle_name, last_name, suffix, full_name },
@@ -1419,31 +1451,24 @@ router.post('/setup-official-password', async (req: Request, res: Response): Pro
     last_name: resolvedName.last_name,
     suffix: resolvedName.suffix,
     must_set_password: false,
+    setup_completed: true,
   };
 
-  if (existingAuthUser) {
-    userId = existingAuthUser.id;
-    const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(userId, {
-      password,
-      email_confirm: true,
-      user_metadata: userMetadata,
-    });
-    if (updateErr) {
-      sendError(res, 'Failed to update password credentials: ' + updateErr.message, 400);
-      return;
-    }
-  } else {
-    const { data: newAuthUser, error: createErr } = await supabaseAdmin.auth.admin.createUser({
-      email: normalizedEmail,
-      password,
-      email_confirm: true,
-      user_metadata: userMetadata,
-    });
-    if (createErr || !newAuthUser?.user) {
-      sendError(res, 'Failed to initialize SK Official auth account: ' + (createErr?.message || 'unknown error'), 400);
-      return;
-    }
-    userId = newAuthUser.user.id;
+  const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+    password,
+    email_confirm: true,
+    user_metadata: {
+      ...setupAuthUser.user_metadata,
+      ...userMetadata,
+    },
+    app_metadata: {
+      ...setupAuthUser.app_metadata,
+      setup_completed: true,
+    },
+  });
+  if (updateErr) {
+    sendError(res, 'Failed to update password credentials: ' + updateErr.message, 400);
+    return;
   }
 
   const { error: userUpsertErr } = await supabaseAdmin.from('users').upsert(

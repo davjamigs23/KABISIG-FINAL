@@ -14,10 +14,17 @@ async function inviteWithBrevo(
   options: any = {}
 ): Promise<{ data: any; error: any }> {
   try {
+    const inviteOptions = {
+      ...options,
+      data: {
+        ...(options.data || {}),
+        setup_completed: false,
+      },
+    };
     const { data, error } = await supabaseAdmin.auth.admin.generateLink({
       type: 'invite',
       email,
-      options,
+      options: inviteOptions,
     });
     if (error) {
       console.error('[CHAIRPERSON INVITE] Supabase invite link generation failed:', error);
@@ -28,9 +35,24 @@ async function inviteWithBrevo(
       console.error('[CHAIRPERSON INVITE]', linkError.message);
       return { data, error: linkError };
     }
+    if (!data.user?.id) {
+      const linkError = new Error('Supabase did not return the invited user account.');
+      console.error('[CHAIRPERSON INVITE]', linkError.message);
+      return { data, error: linkError };
+    }
+    const { error: setupMetadataError } = await supabaseAdmin.auth.admin.updateUserById(data.user.id, {
+      app_metadata: {
+        ...(data.user.app_metadata || {}),
+        setup_completed: false,
+      },
+    });
+    if (setupMetadataError) {
+      console.error('[CHAIRPERSON INVITE] Failed to initialize setup state:', setupMetadataError);
+      return { data, error: setupMetadataError };
+    }
 
     const setupLink = data.properties.action_link;
-    const invRole = options?.data?.role_id === 2 ? 'SK Chairperson' : (options?.data?.official_role || options?.data?.role || 'SK Official');
+    const invRole = inviteOptions.data.role_id === 2 ? 'SK Chairperson' : (inviteOptions.data.official_role || inviteOptions.data.role || 'SK Official');
     const htmlMsg = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;"><h1 style="color: #091d64; margin: 0 0 8px 0;">KABISIG</h1><p style="color: #64748b; font-size: 12px; margin: 0 0 24px 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p><h2 style="color: #091d64;">You are Invited to be ' + invRole + '!</h2><p style="color: #334155; line-height: 1.6;">You have been invited to join the KABISIG System as ' + invRole + '. Click the button below to set up your account password:</p><div style="text-align: center; margin: 24px 0;"><a href="' + setupLink + '" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Set Up Account</a></div><p style="color: #94a3b8; font-size: 11px;">If the button does not work, copy this link: <a href="' + setupLink + '">' + setupLink + '</a></p></div>';
     await sendEmail(email, 'KABISIG Account Invitation', htmlMsg);
     return { data, error: null };
@@ -779,7 +801,8 @@ router.post(
             email: cleanEmail,
             password: tempPassword,
             email_confirm: true,
-            user_metadata: { tenant_id: barangay_id, role_id: 3, official_role, full_name: officialAuthFullName },
+            app_metadata: { setup_completed: false },
+            user_metadata: { tenant_id: barangay_id, role_id: 3, official_role, full_name: officialAuthFullName, setup_completed: false },
             redirectTo: redirectUrl,
           } as any);
           if (createErr || !createData?.user) { sendError(res, createErr?.message || 'Failed to initialize SK Official account.', 500); return; }
@@ -882,7 +905,8 @@ router.post(
           email: cleanEmail,
           password: tempPassword,
           email_confirm: true,
-          user_metadata: { tenant_id: barangay_id, role_id: 3, official_role, full_name: officialAuthFullName },
+          app_metadata: { setup_completed: false },
+          user_metadata: { tenant_id: barangay_id, role_id: 3, official_role, full_name: officialAuthFullName, setup_completed: false },
           redirectTo: redirectUrl,
         } as any);
         if (createErr || !createData?.user) { sendError(res, createErr?.message || 'Failed to initialize SK Official account.', 500); return; }
@@ -1211,7 +1235,8 @@ router.post(
               email: cleanSuccessorEmail,
               password: tempPassword,
               email_confirm: true,
-              user_metadata: { tenant_id: barangay_id, role_id: 2 },
+              app_metadata: { setup_completed: false },
+              user_metadata: { tenant_id: barangay_id, role_id: 2, setup_completed: false },
               redirectTo: redirectUrl,
             } as any);
 

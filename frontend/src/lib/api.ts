@@ -108,7 +108,7 @@ class KabisigApiClient {
     };
 
     const token = localStorage.getItem('kabisig_token') || this.getToken();
-    if (token) {
+    if (token && !headers.Authorization) {
       headers.Authorization = "Bearer " + token;
     }
 
@@ -345,10 +345,11 @@ class KabisigApiClient {
     suffix?: string | null;
     official_role: string;
     tenant_id: string;
-  }): Promise<{ success: boolean; message?: string; data?: any }> {
+  }, inviteAccessToken: string): Promise<{ success: boolean; message?: string; data?: any }> {
     return await this.request<any>('/auth/setup-official-password', {
       method: 'POST',
       body: JSON.stringify(payload),
+      headers: { Authorization: `Bearer ${inviteAccessToken}` },
     });
   }
   async getPublicDocuments(): Promise<any[]> {
@@ -423,10 +424,11 @@ class KabisigApiClient {
     birthdate?: string;
     sex?: 'Male' | 'Female' | 'Other' | 'Prefer not to say';
     address?: string;
-  }): Promise<{ success: boolean; token?: string; user?: any; message?: string }> {
+  }, inviteAccessToken: string): Promise<{ success: boolean; token?: string; user?: any; message?: string }> {
     const res = await this.request<{ token: string; user: any }>('/auth/setup-chairperson-password', {
       method: 'POST',
       body: JSON.stringify(data),
+      headers: { Authorization: `Bearer ${inviteAccessToken}` },
     });
 
     if (res.success && res.data?.token) {

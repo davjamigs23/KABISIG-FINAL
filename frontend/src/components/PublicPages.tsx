@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createClient } from '@supabase/supabase-js';
 // Logo served from /public/icon.png (single source of truth)
 import { 
   Building, 
@@ -345,12 +346,34 @@ export default function PublicPages({
 
     setIsSettingUp(true);
     try {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      if (!supabaseUrl || !supabaseAnonKey) {
+        setSetupError('This invitation link has already been used or has expired. Please log in normally or contact the Super Admin.');
+        return;
+      }
+      const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+      });
+      const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
+      const inviteSession = sessionData.session;
+      if (
+        sessionError ||
+        !inviteSession ||
+        inviteSession.user.user_metadata?.setup_completed !== false ||
+        inviteSession.user.app_metadata?.setup_completed !== false ||
+        inviteSession.user.email?.toLowerCase() !== cleanEmail
+      ) {
+        setSetupError('This invitation link has already been used or has expired. Please log in normally or contact the Super Admin.');
+        return;
+      }
+
       const res = await kabisigApi.setupChairpersonPassword({
         email: cleanEmail,
         password: chairpersonPassword,
         confirmPassword: chairpersonConfirmPassword,
         full_name: chairpersonFullName.trim() || 'Hon. SK Chairperson',
-      });
+      }, inviteSession.access_token);
 
       if (!res.success || !res.user) {
         setSetupError(res.message || 'Password setup failed. Please check your inputs and try again.');

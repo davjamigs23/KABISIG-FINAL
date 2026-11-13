@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { ShieldCheck, Lock, Eye, EyeOff, User, Loader2, CheckCircle2, AlertCircle, Award } from 'lucide-react';
 import { kabisigApi } from '../../src/lib/api';
 import { composeFullName } from '../../src/lib/name';
@@ -20,6 +21,8 @@ function validatePassword(pw: string) {
 function SetupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const [supabaseClient, setSupabaseClient] = useState<SupabaseClient | null>(null);
+  const [inviteStatus, setInviteStatus] = useState<'checking' | 'ready' | 'invalid'>('checking');
   const [email, setEmail] = useState('');
   const [tenantId, setTenantId] = useState('');
   const [barangayName, setBarangayName] = useState('');
@@ -37,6 +40,61 @@ function SetupForm() {
   const [error, setError] = useState<string | null>(null);
 
   const composedFullName = composeFullName({ first_name: firstName, middle_name: middleName, last_name: lastName, suffix });
+
+  useEffect(() => {
+    let active = true;
+    const invalidInviteMessage = 'This invitation link has already been used or has expired. Please log in normally or contact the Super Admin.';
+
+    const verifyInvite = async () => {
+      try {
+        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+        const queryParams = new URLSearchParams(window.location.search);
+        const authError = hashParams.get('error_description') || queryParams.get('error_description') ||
+          hashParams.get('error') || queryParams.get('error');
+        if (authError) throw new Error(authError);
+        const hasInviteCredentials = hashParams.has('access_token') || hashParams.has('token_hash') ||
+          queryParams.has('code') || queryParams.has('token_hash');
+
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        if (!supabaseUrl || !supabaseAnonKey) throw new Error('Supabase authentication is not configured.');
+
+        const client = createClient(supabaseUrl, supabaseAnonKey, {
+          auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+        });
+        if (!active) return;
+        setSupabaseClient(client);
+        const { data, error: sessionError } = await client.auth.getSession();
+        if (sessionError) throw sessionError;
+        if (!data.session) throw new Error(invalidInviteMessage);
+        if (!hasInviteCredentials) {
+          router.replace('/');
+          return;
+        }
+        if (
+          data.session.user.user_metadata?.setup_completed === true ||
+          data.session.user.app_metadata?.setup_completed === true
+        ) {
+          throw new Error(invalidInviteMessage);
+        }
+
+        const inviteEmail = searchParams.get('invite_email')?.trim().toLowerCase();
+        if (inviteEmail && data.session.user.email?.toLowerCase() !== inviteEmail) {
+          throw new Error(invalidInviteMessage);
+        }
+        if (active) setInviteStatus('ready');
+      } catch (verificationError) {
+        console.error('SK Official invitation verification failed:', verificationError);
+        if (active) {
+          setInviteStatus('invalid');
+          setError(invalidInviteMessage);
+        }
+      }
+    };
+
+    void verifyInvite();
+    return () => { active = false; };
+  }, [router, searchParams]);
 
   useEffect(() => {
     const inviteEmail = searchParams.get('invite_email');
@@ -64,6 +122,10 @@ function SetupForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    if (inviteStatus !== 'ready' || !supabaseClient) {
+      setError('This invitation link has already been used or has expired. Please log in normally or contact the Super Admin.');
+      return;
+    }
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail) { setError('Please enter your KABISIG email address.'); return; }
     if (!password) { setError('Please create your password.'); return; }
@@ -76,6 +138,17 @@ function SetupForm() {
     }
     setIsSubmitting(true);
     try {
+      const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
+      const session = sessionData.session;
+      if (sessionError || !session ||
+          session.user.user_metadata?.setup_completed !== false ||
+          session.user.app_metadata?.setup_completed !== false ||
+          session.user.email?.toLowerCase() !== cleanEmail) {
+        setInviteStatus('invalid');
+        setError('This invitation link has already been used or has expired. Please log in normally or contact the Super Admin.');
+        return;
+      }
+
       const res = await kabisigApi.setupOfficialPassword({
         email: cleanEmail,
         password: password,
@@ -87,8 +160,9 @@ function SetupForm() {
         suffix: suffix.trim() || null,
         official_role: officialRole,
         tenant_id: tenantId,
-      });
+      }, session.access_token);
       if (!res.success) {
+        if (res.message?.toLowerCase().includes('already been used')) setInviteStatus('invalid');
         setError(res.message || 'Password setup failed. Please check your inputs and try again.');
         return;
       }
@@ -97,6 +171,7 @@ function SetupForm() {
         setError('Account configured. Please sign in manually with your new password.');
         return;
       }
+      window.history.replaceState(window.history.state, '', window.location.pathname);
       router.replace('/');
     } catch (err: any) {
       setError((err && err.message) ? err.message : 'Network error setting up Chairperson password.');
@@ -217,7 +292,7 @@ function SetupForm() {
               </div>
             )}
 
-            <button type="submit" disabled={isSubmitting}
+            <button type="submit" disabled={isSubmitting || inviteStatus !== 'ready'}
               className="w-full py-3.5 bg-[#133285] hover:bg-[#112d75] disabled:opacity-60 text-white font-bold rounded-xl shadow-sm transition-all active:scale-[0.99] text-xs flex items-center justify-center gap-2 cursor-pointer mt-2">
               {isSubmitting ? (
                 <>
