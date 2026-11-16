@@ -366,8 +366,8 @@ useEffect(() => {
         </span>
       )}
       <span className="break-words">{official.full_name || 'Pending Invitation'}</span>
-      <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${official.setup_completed ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>
-        {official.setup_completed ? 'Assigned' : 'Pending'}
+      <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${official.email ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>
+        {official.email ? 'Active' : 'Unassigned'}
       </span>
     </span>
   );
@@ -2537,13 +2537,13 @@ useEffect(() => {
                   </div>
                 </div>
 
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full mt-3">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 w-full mt-3">
                   <div>
                     <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">SK Chairperson</span>
                     <span className="block mt-1 text-xs font-bold text-slate-800">{editingBarangay?.chairpersonUser?.full_name || 'Unassigned'}</span>
                     <span className="block text-[10px] text-slate-500">{editingBarangay?.chairpersonEmail || 'No email recorded'}</span>
                   </div>
-                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:ml-auto">
+                  <div className="flex flex-wrap gap-2 justify-end items-center w-full md:w-auto">
                     {editingBarangay?.chairpersonUser?.full_name ? (
                       <>
                         <button
