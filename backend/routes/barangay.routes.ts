@@ -124,12 +124,12 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
     // Include chairperson records regardless of email or status so pending invitations remain visible.
     const { data: allUsers } = await supabaseAdmin
       .from('users')
-      .select('id, tenant_id, role_id, full_name')
+      .select('id, tenant_id, role_id, full_name, email, status')
       .eq('role_id', 2);
-    const chairMap = new Map<string, { id: string; full_name: string | null }>();
+    const chairMap = new Map<string, { id: string; full_name: string | null; email: string | null; status: string | null }>();
     allUsers?.forEach((c) => {
       if (c.tenant_id && !chairMap.has(c.tenant_id)) {
-        chairMap.set(c.tenant_id, { id: c.id, full_name: c.full_name });
+        chairMap.set(c.tenant_id, { id: c.id, full_name: c.full_name, email: c.email, status: c.status });
       }
     });
 
@@ -172,6 +172,16 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
 
     const enrichedBarangays = barangays.map((b: any) => {
       const chairpersonUser = chairMap.get(b.id) || null;
+      const canViewChairpersonContacts = canSeeBarangayContacts(req, b.id);
+      const visibleChairpersonUser = chairpersonUser
+        ? {
+            id: chairpersonUser.id,
+            full_name: chairpersonUser.full_name,
+            ...(canViewChairpersonContacts
+              ? { email: chairpersonUser.email, status: chairpersonUser.status }
+              : {}),
+          }
+        : null;
       const budget = budgetMap.get(b.id) || { allocated: 0, spent: 0 };
       
       return {
@@ -181,8 +191,8 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
         district: b.district,
         skDistrict: b.sk_district ?? null,
         chairperson: chairpersonUser?.full_name || (chairpersonUser ? 'Pending Invitation' : 'Unassigned'),
-        chairpersonUser,
-        chairpersonEmail: '',
+        chairpersonUser: visibleChairpersonUser,
+        chairpersonEmail: canViewChairpersonContacts ? (chairpersonUser?.email || '') : '',
         contact: '',
         youthPopulation: youthCountMap.get(b.id) || 0,
         youthPopulationAvailable: !youthUsersError,
