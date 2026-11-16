@@ -171,7 +171,11 @@ class KabisigApiClient {
 
   // --- BARANGAY REGISTRY (27 Naga City Barangays) ---
   async getBarangays(): Promise<BarangayTenant[]> {
-    const res = await this.request<BarangayTenant[]>('/barangays', { method: 'GET' });
+    const token = this.getToken();
+    const res = await this.request<BarangayTenant[]>('/barangays', {
+      method: 'GET',
+      ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+    });
     if (res.success && res.data && res.data.length > 0) {
       return res.data;
     }
