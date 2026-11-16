@@ -643,6 +643,23 @@ router.post(
       }
     }
 
+    if (existingAuthUser) {
+      const { error: setupResetError } = await supabaseAdmin.auth.admin.updateUserById(existingAuthUser.id, {
+        app_metadata: {
+          ...(existingAuthUser.app_metadata || {}),
+          setup_completed: false,
+        },
+        user_metadata: {
+          ...(existingAuthUser.user_metadata || {}),
+          setup_completed: false,
+        },
+      });
+      if (setupResetError) {
+        sendError(res, `Failed to reset Chairperson setup state: ${setupResetError.message}`, 500);
+        return;
+      }
+    }
+
     // 6. Generate direct Action / Setup link
     let actionLink = '';
     try {
@@ -1004,10 +1021,15 @@ router.post(
         role_id: 3,
         role: 'SK Official',
         official_role,
+        setup_completed: false,
+      },
+      app_metadata: {
+        ...(authUserData.user.app_metadata || {}),
+        setup_completed: false,
       },
     });
     if (metadataUpdateError) {
-      sendError(res, 'Failed to save SK Official role assignment: ' + metadataUpdateError.message, 500);
+      sendError(res, 'Failed to save SK Official setup metadata: ' + metadataUpdateError.message, 500);
       return;
     }
 

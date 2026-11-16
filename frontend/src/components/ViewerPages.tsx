@@ -911,7 +911,7 @@ export default function ViewerPages({
                         </h4>
                         <div className="h-48 w-full min-w-0 overflow-hidden">
                           <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
-                            <BarChart data={educationDemographicData}>
+                            <BarChart data={educationDemographicData} margin={{ bottom: 20 }}>
                               <XAxis dataKey="name" fontSize={10} interval={0} angle={0} textAnchor="middle" height={50} tickFormatter={(value) => { const name = String(value || ''); return name.length > 10 ? `${name.substring(0, 10)}...` : name; }} tick={{ fill: '#475569', fontSize: 10 }} />
                               <YAxis fontSize={10} />
                               <Tooltip />

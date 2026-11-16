@@ -59,6 +59,27 @@ function normalizeDocumentCategory(raw: string): string {
   };
   return map[raw] || raw;
 }
+
+function mapBackendProgram(program: any): Program {
+  return {
+    id: program.id,
+    title: program.title,
+    imageUrl: program.image_url || program.imageUrl || '',
+    description: program.description || '',
+    startDate: program.start_date ? program.start_date.split('T')[0] : '',
+    endDate: program.end_date ? program.end_date.split('T')[0] : '',
+    location: program.location || '',
+    maxParticipants: Number(program.total_slots) || 0,
+    budgetAllocation: Number(program.budget_allocation) || 0,
+    spentBudget: 0,
+    aipReference: program.aip_reference || '',
+    category: program.category || 'Other',
+    status: String(program.status).toLowerCase() === 'completed' ? 'Completed' : computeProgramStatus(program),
+    registeredCount: program.program_registrations?.[0]?.count || 0,
+    barangayId: program.tenant_id,
+  };
+}
+
 export default function App() {
   // --- Client state synchronized with the backend ---
   const [tenants, setTenants] = useState<BarangayTenant[]>(NAGA_BARANGAYS);
@@ -568,23 +589,7 @@ export default function App() {
     const refreshPrograms = () => {
       kabisigApi.getPrograms().then(progs => {
         if (!isMounted) return;
-        setPrograms(progs.map((p: any): Program => ({
-          id: p.id,
-          title: p.title,
-          imageUrl: p.image_url || p.imageUrl || '',
-          description: p.description || '',
-          startDate: p.start_date ? p.start_date.split('T')[0] : '',
-          endDate: p.end_date ? p.end_date.split('T')[0] : '',
-          location: p.location || '',
-          maxParticipants: Number(p.total_slots) || 0,
-          budgetAllocation: Number(p.budget_allocation) || 0,
-          spentBudget: 0,
-          aipReference: p.aip_reference || '',
-          category: p.category || 'Other',
-          status: (String((p as any).status).toLowerCase() === 'completed' ? 'Completed' : computeProgramStatus(p)),
-          registeredCount: p.program_registrations?.[0]?.count || 0,
-          barangayId: p.tenant_id,
-        })));
+        setPrograms(progs.map(mapBackendProgram));
       }).catch(error => console.warn('Unable to load programs for active role:', error));
     };
     const refreshProgramsWhenVisible = () => {
@@ -1151,6 +1156,16 @@ export default function App() {
     };
 
     setPrograms(prev => [persistedProgram, ...prev]);
+    try {
+      const refreshedPrograms = await kabisigApi.getPrograms();
+      const mappedPrograms = refreshedPrograms.map(mapBackendProgram);
+      setPrograms(mappedPrograms.some(program => program.id === persistedProgram.id)
+        ? mappedPrograms
+        : [persistedProgram, ...mappedPrograms]);
+    } catch (error) {
+      console.warn('Unable to refresh programs after creation:', error);
+      showGlobalAlert('The program was saved, but the latest program list could not be refreshed. It will sync on the next refresh.', 'error');
+    }
 
     // Also log a public announcement about the new program automatically!
     const authorName = currentUser?.full_name || (currentTenant?.chairperson && currentTenant.chairperson !== 'Unassigned' ? currentTenant.chairperson : 'SK Chairperson');

@@ -4,7 +4,7 @@ import ProfileSettings from './ProfileSettings';
 import RestrictedUsersPanel from './RestrictedUsersPanel';
 import RestrictedUsers from './RestrictedUsers';
 import { formatAuditDetails } from '../lib/auditFormatter';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { CartesianGrid } from 'recharts';
 import { FolderClosed } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -803,6 +803,55 @@ export default function BarangayAdminPages({
       level: issue.level === 'Urgent' ? 'Critical' as const : issue.level,
     })),
   ];
+  const systemInsights = useMemo(() => {
+    const approvedProfiles = youthProfiles.filter(profile =>
+      profile.status === 'Approved'
+      && (!currentBarangay?.id || profile.barangayId === currentBarangay.id)
+    );
+    const profilesWithRegistrations = approvedProfiles.map(profile => {
+      const profileIds = new Set(
+        [profile.id, profile.userId].filter((id): id is string => Boolean(id))
+      );
+      const profileRegistrations = registrations
+        .filter((registration: any) => [
+          registration.participantId,
+          registration.participant_id,
+          registration.userId,
+          registration.user_id,
+        ].some(id => typeof id === 'string' && profileIds.has(id)))
+        .map((registration: any) => ({ ...registration, participantId: profile.id }));
+
+      return { profile, profileRegistrations };
+    });
+    const activePrograms = programs.filter(program => program.status !== 'Completed');
+    const scheduleConflicts = activePrograms.flatMap((program, index) =>
+      detectScheduleConflicts(
+        {
+          title: program.title,
+          startDate: program.startDate,
+          endDate: program.endDate,
+          location: program.location,
+        },
+        activePrograms.slice(index + 1)
+      )
+    );
+    const recommendations = profilesWithRegistrations.flatMap(({ profile, profileRegistrations }) =>
+      recommendPrograms(profile, programs, profileRegistrations)
+    );
+    const averageEngagementScore = profilesWithRegistrations.length > 0
+      ? Math.round(profilesWithRegistrations.reduce(
+        (total, { profile, profileRegistrations }) =>
+          total + calculateEngagementScore(profile, profileRegistrations, feedback, resolutions).score,
+        0
+      ) / profilesWithRegistrations.length)
+      : null;
+
+    return {
+      scheduleConflicts,
+      topRecommendation: recommendations[0] || null,
+      averageEngagementScore,
+    };
+  }, [currentBarangay?.id, youthProfiles, registrations, programs, feedback, resolutions]);
   const lowEngagementItems = detectLowEngagement(_filterYouth, _filterRegs);
   const complianceIssueSignature = complianceIssues
     .map(issue => `${issue.code}:${issue.level}:${issue.message}`)
@@ -2037,6 +2086,47 @@ return (
                             </div>
                           </div>
                         ))
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-xs">
+                    <div className="flex items-center gap-2 mb-4">
+                      <Sparkles className="w-4 h-4 text-[#091d64]" />
+                      <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">System Insights</h3>
+                    </div>
+                    <div className="space-y-3">
+                      {systemInsights.scheduleConflicts.length === 0 ? (
+                        <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-100 rounded-lg">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <p className="text-[11px] font-bold text-emerald-800">Zero Schedule Overlaps</p>
+                        </div>
+                      ) : (
+                        <div className="p-3 bg-amber-50 border border-amber-100 rounded-lg space-y-1">
+                          <p className="text-[11px] font-bold text-amber-800 flex items-center gap-1.5">
+                            <AlertTriangle className="w-4 h-4" />
+                            {systemInsights.scheduleConflicts.length} Schedule Conflict{systemInsights.scheduleConflicts.length === 1 ? '' : 's'}
+                          </p>
+                          {systemInsights.scheduleConflicts.slice(0, 2).map((conflict, index) => (
+                            <p key={`${index}-${conflict}`} className="text-[10px] text-slate-600">{conflict}</p>
+                          ))}
+                        </div>
+                      )}
+                      <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg">
+                        <p className="text-[10px] font-bold text-blue-800 uppercase tracking-wide">Top Program Recommendation</p>
+                        {systemInsights.topRecommendation ? (
+                          <>
+                            <p className="text-xs font-bold text-slate-800 mt-1">{systemInsights.topRecommendation.program.title}</p>
+                            <p className="text-[10px] text-slate-600 mt-0.5">{systemInsights.topRecommendation.reason}</p>
+                          </>
+                        ) : (
+                          <p className="text-[10px] text-slate-500 mt-1">No program recommendations right now.</p>
+                        )}
+                      </div>
+                      {systemInsights.averageEngagementScore !== null && (
+                        <p className="text-[10px] text-slate-500">
+                          Average youth engagement: <span className="font-bold text-slate-700">{systemInsights.averageEngagementScore}/100</span>
+                        </p>
                       )}
                     </div>
                   </div>

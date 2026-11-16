@@ -1,7 +1,7 @@
 
 import { formatCurrencyInput } from '../lib/utils';
 import ProfileSettings from './ProfileSettings';
-import { useRef, useState, useEffect, type FormEvent } from 'react';
+import { useRef, useState, useEffect, useMemo, type FormEvent } from 'react';
 import { composeFullName, splitFullName } from '../lib/name';
 import { 
   Building2, 
@@ -1917,6 +1917,34 @@ export default function OfficialPages({
         : y.zone === filterCategory || y.scholarStatus === filterCategory;
     return matchSearch && matchCat;
   });
+  const youthEngagementInsights = useMemo(() => {
+    const approvedProfiles = youthProfiles.filter(profile => profile.status === 'Approved');
+    const profileInsights = approvedProfiles.map(profile => {
+      const profileIds = new Set(
+        [profile.id, profile.userId].filter((id): id is string => Boolean(id))
+      );
+      const profileRegistrations = registrations
+        .filter(registration =>
+          profileIds.has(registration.participantId)
+          || Boolean(registration.userId && profileIds.has(registration.userId))
+        )
+        .map(registration => ({ ...registration, participantId: profile.id }));
+
+      return {
+        engagementScore: calculateEngagementScore(profile, profileRegistrations, feedback, resolutions).score,
+        recommendations: recommendPrograms(profile, programs, profileRegistrations),
+      };
+    });
+    const recommendations = profileInsights.flatMap(insight => insight.recommendations);
+
+    return {
+      approvedYouthCount: profileInsights.length,
+      averageEngagementScore: profileInsights.length > 0
+        ? Math.round(profileInsights.reduce((total, insight) => total + insight.engagementScore, 0) / profileInsights.length)
+        : null,
+      topRecommendation: recommendations[0] || null,
+    };
+  }, [youthProfiles, registrations, feedback, resolutions, programs]);
   const complianceIssues = getComplianceIssues(currentRole || 'SK Secretary', filteredYouth, filteredPrograms, localDocs, filteredExpenses);
 
   return (
@@ -2967,6 +2995,43 @@ export default function OfficialPages({
                             </div>
                           );
                         })()}
+                      </div>
+
+                      <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-2xs space-y-3">
+                        <div className="flex items-center gap-2">
+                          <TrendingUp className="w-4 h-4 text-[#091d64]" />
+                          <h4 className="font-sans font-bold text-slate-800 text-xs uppercase tracking-wider">Average Youth Engagement Score</h4>
+                        </div>
+                        <div className="flex items-end gap-2">
+                          <span className="text-3xl font-black text-[#091d64]">
+                            {youthEngagementInsights.averageEngagementScore ?? '—'}
+                          </span>
+                          {youthEngagementInsights.averageEngagementScore !== null && (
+                            <span className="text-xs font-bold text-slate-400 mb-1">/ 100</span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-500">
+                          Rule-based average across {youthEngagementInsights.approvedYouthCount} approved youth profiles.
+                        </p>
+                      </div>
+
+                      <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-2xs space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="w-4 h-4 text-amber-500" />
+                          <h4 className="font-sans font-bold text-slate-800 text-xs uppercase tracking-wider">Top Recommendation</h4>
+                        </div>
+                        {youthEngagementInsights.topRecommendation ? (
+                          <div className="p-3 rounded-lg bg-amber-50/70 border border-amber-100">
+                            <p className="text-xs font-bold text-slate-800">
+                              {youthEngagementInsights.topRecommendation.program.title}
+                            </p>
+                            <p className="text-[10px] text-slate-600 mt-1">
+                              {youthEngagementInsights.topRecommendation.reason}
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-500 italic">No program recommendations for approved youth right now.</p>
+                        )}
                       </div>
 
                       {/* Low Engagement Youth Detection & Outreach Recommendations */}
