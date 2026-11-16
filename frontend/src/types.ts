@@ -18,6 +18,7 @@ export interface BarangayTenant {
   id: string;
   name: string;
   chairperson: string;
+  chairpersonUser?: { id?: string; full_name: string } | null;
   youthPopulation: number;
   youthPopulationAvailable?: boolean;
   activePrograms: number;

@@ -121,14 +121,16 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
       return;
     }
 
-    // Fetch only active-role aggregates; personal details are not needed for the public registry.
+    // Include chairperson records regardless of email or status so pending invitations remain visible.
     const { data: allUsers } = await supabaseAdmin
       .from('users')
-      .select('tenant_id, role_id')
-      .eq('status', 'active');
-    const chairMap = new Set<string>();
+      .select('id, tenant_id, role_id, full_name')
+      .eq('role_id', 2);
+    const chairMap = new Map<string, { id: string; full_name: string | null }>();
     allUsers?.forEach((c) => {
-      if (c.tenant_id && String(c.role_id) === '2') chairMap.add(c.tenant_id);
+      if (c.tenant_id && !chairMap.has(c.tenant_id)) {
+        chairMap.set(c.tenant_id, { id: c.id, full_name: c.full_name });
+      }
     });
 
     const { data: programs } = await supabaseAdmin
@@ -169,7 +171,7 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
     });
 
     const enrichedBarangays = barangays.map((b: any) => {
-      const hasChairperson = chairMap.has(b.id);
+      const chairpersonUser = chairMap.get(b.id) || null;
       const budget = budgetMap.get(b.id) || { allocated: 0, spent: 0 };
       
       return {
@@ -178,7 +180,8 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
         city: b.city,
         district: b.district,
         skDistrict: b.sk_district ?? null,
-        chairperson: hasChairperson ? 'Assigned' : 'Unassigned',
+        chairperson: chairpersonUser?.full_name || (chairpersonUser ? 'Pending Invitation' : 'Unassigned'),
+        chairpersonUser,
         chairpersonEmail: '',
         contact: '',
         youthPopulation: youthCountMap.get(b.id) || 0,

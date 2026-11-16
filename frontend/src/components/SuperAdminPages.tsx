@@ -409,11 +409,7 @@ useEffect(() => {
   }));
 
   const hasAssignedChairperson = (barangay: BarangayTenant): boolean => {
-    const chairpersonName = (barangay.chairperson || '').trim().toLowerCase();
-    const chairpersonEmail = (barangay.chairpersonEmail || '').trim();
-    const isPlaceholderName = chairpersonName === 'assigned' || chairpersonName === 'pending invitation';
-    if (!chairpersonEmail && isPlaceholderName) return false;
-    return Boolean(chairpersonName && chairpersonName !== 'unassigned');
+    return Boolean(barangay.chairpersonUser && barangay.chairpersonUser.full_name);
   };
 
   // Filtered Barangays list
@@ -555,7 +551,7 @@ useEffect(() => {
         setCancelInviteNotice({ type: 'error', text: res.message || 'Failed to cancel invitation.' });
         return;
       }
-      onSyncBarangay(cancellingBarangay.id, { chairperson: 'Unassigned', chairpersonEmail: '' });
+      onSyncBarangay(cancellingBarangay.id, { chairperson: 'Unassigned', chairpersonUser: null, chairpersonEmail: '' });
       await onRefreshAuditLogs();
       setCancelInviteNotice({ type: 'success', text: res.message || 'Invitation cancelled.' });
     } catch (err: any) {
@@ -613,6 +609,7 @@ useEffect(() => {
 
       onSyncBarangay(transferringBarangay.id, {
         chairperson: res.data?.incoming?.full_name || 'Pending Invitation',
+        chairpersonUser: { full_name: res.data?.incoming?.full_name || 'Pending Invitation' },
         chairpersonEmail: email,
       });
       await onRefreshAuditLogs();
@@ -664,6 +661,7 @@ useEffect(() => {
 
       onSyncBarangay(assigningBarangay.id, {
         chairperson: res.data?.full_name || (assigningBarangay.chairperson && assigningBarangay.chairperson !== 'Unassigned' ? assigningBarangay.chairperson : 'Pending Invitation'),
+        chairpersonUser: { full_name: res.data?.full_name || 'Pending Invitation' },
         chairpersonEmail: email,
       });
       await onRefreshAuditLogs();
@@ -2542,17 +2540,12 @@ useEffect(() => {
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full mt-3">
                   <div>
                     <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">SK Chairperson</span>
-                    <span className="block mt-1 text-xs font-bold text-slate-800">{editingBarangay?.chairperson || 'Unassigned'}</span>
+                    <span className="block mt-1 text-xs font-bold text-slate-800">{editingBarangay?.chairpersonUser?.full_name || 'Unassigned'}</span>
                     <span className="block text-[10px] text-slate-500">{editingBarangay?.chairpersonEmail || 'No email recorded'}</span>
                   </div>
                   <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto sm:ml-auto">
-                    {(() => {
-                    const ch = editingBarangay?.chairperson;
-                    const isPendingInvite = ch === 'Pending Invitation';
-                    const hasRealChair = Boolean(ch && ch !== 'Unassigned' && ch !== 'Pending Invitation');
-
-                    if (hasRealChair) {
-                      return (
+                    {editingBarangay?.chairpersonUser?.full_name ? (
+                      <>
                         <button
                           type="button"
                           onClick={() => {
@@ -2564,24 +2557,32 @@ useEffect(() => {
                         >
                           Transfer Leadership
                         </button>
-                      );
-                    }
-                    if (isPendingInvite) {
-                      return (
+                        {editingBarangay.chairpersonUser.full_name === 'Pending Invitation' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const barangay = editingBarangay;
+                              setShowModal(false);
+                              if (barangay) handleOpenCancelInviteModal(barangay, true);
+                            }}
+                            className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold whitespace-nowrap w-full sm:w-auto"
+                          >
+                            Cancel Invitation
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => {
                             const barangay = editingBarangay;
                             setShowModal(false);
-                            if (barangay) handleOpenCancelInviteModal(barangay, true);
+                            if (barangay) handleOpenInviteOfficialModal(barangay, true);
                           }}
-                          className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold whitespace-nowrap w-full sm:w-auto"
+                          className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-amber-950 rounded-lg text-xs font-bold whitespace-nowrap w-full sm:w-auto"
                         >
-                          Cancel Invitation
+                          Invite Official
                         </button>
-                      );
-                    }
-                    return (
+                      </>
+                    ) : (
                       <button
                         type="button"
                         onClick={() => {
@@ -2593,19 +2594,7 @@ useEffect(() => {
                       >
                         Assign Chairperson
                       </button>
-                    );
-                    })()}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const barangay = editingBarangay;
-                        setShowModal(false);
-                        if (barangay) handleOpenInviteOfficialModal(barangay, true);
-                      }}
-                      className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-amber-950 rounded-lg text-xs font-bold whitespace-nowrap w-full sm:w-auto"
-                    >
-                      Invite Official
-                    </button>
+                    )}
                   </div>
                 </div>
 
