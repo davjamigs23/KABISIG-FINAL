@@ -1,6 +1,6 @@
 import NotificationMenu from './NotificationMenu';
 /* PDF Export Available */ import { generateBudgetUtilizationReport } from '../lib/pdfReports';
-import { Fragment, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import ProfileSettings from './ProfileSettings';
 import { formatAuditDetails } from '../lib/auditFormatter';
 import { 
@@ -82,7 +82,6 @@ useEffect(() => {
   // Search and Filter states
   const [searchTerm, setSearchTerm] = useState('');
   const [auditSearchTerm, setAuditSearchTerm] = useState('');
-  const [expandedAuditRowId, setExpandedAuditRowId] = useState<string | null>(null);
 
   // LYDP Report Modal
   const [showLydpModal, setShowLydpModal] = useState(false);
@@ -409,6 +408,14 @@ useEffect(() => {
     color: budgetColors[index % budgetColors.length],
   }));
 
+  const hasAssignedChairperson = (barangay: BarangayTenant): boolean => {
+    const chairpersonName = (barangay.chairperson || '').trim().toLowerCase();
+    const chairpersonEmail = (barangay.chairpersonEmail || '').trim();
+    const isPlaceholderName = chairpersonName === 'assigned' || chairpersonName === 'pending invitation';
+    if (!chairpersonEmail && isPlaceholderName) return false;
+    return Boolean(chairpersonName && chairpersonName !== 'unassigned');
+  };
+
   // Filtered Barangays list
   const filteredBarangays = sortedBarangays.filter(b => {
     const bgyDistrict = b.skDistrict || BARANGAY_SK_DISTRICTS[b.name];
@@ -416,7 +423,7 @@ useEffect(() => {
                           b.chairperson.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           (b.chairpersonEmail && b.chairpersonEmail.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesDistrict = districtFilter === 'All' || bgyDistrict === districtFilter;
-    const isAssigned = Boolean(b.chairperson?.trim() && b.chairperson.toLowerCase() !== 'unassigned');
+    const isAssigned = hasAssignedChairperson(b);
     const matchesChairperson = chairpersonFilter === 'All'
       || (chairpersonFilter === 'Assigned' ? isAssigned : !isAssigned);
     return matchesSearch && matchesDistrict && matchesChairperson;
@@ -1314,8 +1321,7 @@ useEffect(() => {
                     <tbody className="divide-y divide-slate-100 font-medium">
                       {filteredBarangays.map(b => {
                         const bDistrict = b.skDistrict || BARANGAY_SK_DISTRICTS[b.name] || 'Unassigned';
-                        const chairpersonStatus = (b.chairperson || '').trim().toLowerCase();
-                        const isAssigned = chairpersonStatus !== '' && chairpersonStatus !== 'unassigned';
+                        const isAssigned = hasAssignedChairperson(b);
                         const hasCurrentChairperson = isAssigned;
 
                         return (
@@ -1630,20 +1636,7 @@ useEffect(() => {
                     </thead>
                     <tbody className="divide-y divide-slate-50 font-medium">
                       {filteredAuditLogs.map(log => (
-                        <Fragment key={log.id}>
-                          <tr
-                            className="cursor-pointer hover:bg-slate-50/50"
-                            tabIndex={0}
-                            role="button"
-                            aria-expanded={expandedAuditRowId === log.id}
-                            onClick={() => setExpandedAuditRowId((current) => current === log.id ? null : log.id)}
-                            onKeyDown={(event) => {
-                              if (event.key === 'Enter' || event.key === ' ') {
-                                event.preventDefault();
-                                setExpandedAuditRowId((current) => current === log.id ? null : log.id);
-                              }
-                            }}
-                          >
+                          <tr key={log.id} className="hover:bg-slate-50/50">
                             <td className="p-3 font-mono text-slate-400 whitespace-nowrap align-top">
                               {new Date(log.timestamp).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
                             </td>
@@ -1651,21 +1644,13 @@ useEffect(() => {
                               <span className="text-[#091d64]">{log.user}</span>
                               <span className="block text-[10px] text-slate-400 font-semibold">{log.role === 'Barangay Admin' ? 'SK Chairperson' : log.role}</span>
                             </td>
-                            <td className="p-3 whitespace-normal break-words align-top">
-                              <span className="inline-block max-w-full break-words rounded bg-blue-50 px-2 py-0.5 font-mono text-[11px] font-bold text-blue-800">
-                                {log.action}
-                              </span>
-                            </td>
-                            <td className="p-3 text-slate-500 whitespace-normal break-words align-top">Click row to expand</td>
-                          </tr>
-                          {expandedAuditRowId === log.id && (
-                            <tr>
-                              <td colSpan={4} className="bg-slate-50 px-4 py-3 text-xs text-slate-700 whitespace-normal break-words">
+                            <td className="p-3 font-mono text-[10px] whitespace-normal break-words align-top">{log.action}</td>
+                            <td className="p-3 align-top">
+                              <div className="max-w-md whitespace-normal break-words text-xs text-slate-600">
                                 {formatAuditDetails(log.action, log.details)}
-                              </td>
-                            </tr>
-                          )}
-                        </Fragment>
+                              </div>
+                            </td>
+                          </tr>
                       ))}
                       {filteredAuditLogs.length === 0 && (
                         <tr>

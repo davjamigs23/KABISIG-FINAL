@@ -215,7 +215,6 @@ export default function BarangayAdminPages({
   const [activeMenu, setActiveMenu] = useState<
     'dashboard' | 'youth' | 'programs' | 'budget' | 'documents' | 'reports' | 'announcements' | 'audit' | 'calendar' | 'facebook_sync' | 'settings' | 'profile'
    | 'profile' | 'inventory' | 'restrictions'>('dashboard');
-  const [expandedAuditRowId, setExpandedAuditRowId] = useState<string | null>(null);
   const getAlertDestination = (code: string): 'budget' | 'documents' | 'youth' | 'dashboard' => {
     const c = (code || '').toUpperCase();
     if (c.includes('DOCUMENT') || c.includes('LIQUIDATION') || c.includes('COMPLIANCE') || c.includes('REPORT')) return 'documents';
@@ -3531,20 +3530,7 @@ return (
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium text-slate-700">{auditLogs.map(log => (
-                      <React.Fragment key={log.id}>
-                        <tr
-                          className="cursor-pointer hover:bg-slate-50/50"
-                          tabIndex={0}
-                          role="button"
-                          aria-expanded={expandedAuditRowId === log.id}
-                          onClick={() => setExpandedAuditRowId((current) => current === log.id ? null : log.id)}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault();
-                              setExpandedAuditRowId((current) => current === log.id ? null : log.id);
-                            }
-                          }}
-                        >
+                        <tr key={log.id} className="hover:bg-slate-50/50">
                           <td className="p-3.5 font-mono text-slate-400 text-[11px] whitespace-nowrap align-top">
                             {new Date(log.timestamp).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
                           </td>
@@ -3552,16 +3538,12 @@ return (
                             {log.user} ({log.role})
                           </td>
                           <td className="p-3.5 font-mono text-[10px] whitespace-normal break-words align-top">{log.action}</td>
-                          <td className="p-3.5 text-slate-500 whitespace-normal break-words align-top">Click row to expand</td>
-                        </tr>
-                        {expandedAuditRowId === log.id && (
-                          <tr>
-                            <td colSpan={4} className="bg-slate-50 px-4 py-3 text-xs text-slate-700 whitespace-normal break-words">
+                          <td className="p-3.5 align-top">
+                            <div className="max-w-md whitespace-normal break-words text-xs text-slate-600">
                               {formatAuditDetails(log.action, log.details)}
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
+                            </div>
+                          </td>
+                        </tr>
                     ))}
                       {auditLogs.length === 0 && (
                         <tr>
