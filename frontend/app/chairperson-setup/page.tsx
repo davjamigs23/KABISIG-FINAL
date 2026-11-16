@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js';
 import { ShieldCheck, Lock, Eye, EyeOff, User, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { kabisigApi } from '../../src/lib/api';
 import { composeFullName } from '../../src/lib/name';
@@ -22,6 +22,9 @@ function SetupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [supabaseClient, setSupabaseClient] = useState<SupabaseClient | null>(null);
+  const [inviteSession, setInviteSession] = useState<Session | null>(null);
+  const [cachedToken, setCachedToken] = useState<string | null>(null);
+  const [cachedEmail, setCachedEmail] = useState<string | null>(null);
   const [inviteStatus, setInviteStatus] = useState<'checking' | 'ready' | 'invalid'>('checking');
   const [email, setEmail] = useState('');
   const [tenantId, setTenantId] = useState('');
@@ -48,6 +51,7 @@ function SetupForm() {
   useEffect(() => {
     let active = true;
     const invalidInviteMessage = 'This invitation link has already been used or has expired. Please log in normally or contact the Super Admin.';
+    let subscription: { unsubscribe: () => void } | undefined;
 
     const verifyInvite = async () => {
       try {
@@ -68,9 +72,22 @@ function SetupForm() {
         });
         if (!active) return;
         setSupabaseClient(client);
+        const authState = client.auth.onAuthStateChange((_event, session) => {
+          if (active && session) {
+            setInviteSession(session);
+            setCachedToken(session.access_token);
+            setCachedEmail(session.user.email?.trim().toLowerCase() || null);
+          }
+        });
+        subscription = authState.data.subscription;
         const { data, error: sessionError } = await client.auth.getSession();
         if (sessionError) throw sessionError;
         if (!data.session) throw new Error(invalidInviteMessage);
+        if (active) {
+          setInviteSession(data.session);
+          setCachedToken(data.session.access_token);
+          setCachedEmail(data.session.user.email?.trim().toLowerCase() || null);
+        }
         if (!hasInviteCredentials) {
           router.replace('/');
           return;
@@ -82,7 +99,7 @@ function SetupForm() {
           throw new Error(invalidInviteMessage);
         }
 
-        const inviteEmail = searchParams.get('invite_email')?.trim().toLowerCase();
+        const inviteEmail = queryParams.get('invite_email')?.trim().toLowerCase();
         if (inviteEmail && data.session.user.email?.toLowerCase() !== inviteEmail) {
           throw new Error(invalidInviteMessage);
         }
@@ -97,8 +114,11 @@ function SetupForm() {
     };
 
     void verifyInvite();
-    return () => { active = false; };
-  }, [router, searchParams]);
+    return () => {
+      active = false;
+      subscription?.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     const inviteEmail = searchParams.get('invite_email');
@@ -133,6 +153,16 @@ function SetupForm() {
       setShowMobileValidationModal(true);
       return;
     }
+    if (!birthdate) { setError('Please enter your birthdate.'); return; }
+    if (new Date(birthdate) > new Date()) {
+      setError('Birthdate cannot be in the future.');
+      return;
+    }
+    const age = Math.floor((Date.now() - new Date(birthdate).getTime()) / 31557600000);
+    if (age < 15 || age > 30) {
+      setError('You must be between 15 and 30 years old (RA 10742).');
+      return;
+    }
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail) { setError('Please enter your KABISIG email address.'); return; }
     if (!password) { setError('Please create your password.'); return; }
@@ -145,19 +175,17 @@ function SetupForm() {
     }
     setIsSubmitting(true);
     try {
-      const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
-      const session = sessionData.session;
-      if (sessionError || !session ||
+      const session = inviteSession;
+      if (!cachedToken || !cachedEmail || cachedEmail !== cleanEmail || !session ||
           session.user.user_metadata?.setup_completed !== false ||
-          session.user.app_metadata?.setup_completed !== false ||
-          session.user.email?.toLowerCase() !== cleanEmail) {
+          session.user.app_metadata?.setup_completed !== false) {
         setInviteStatus('invalid');
         setError('This invitation link has already been used or has expired. Please log in normally or contact the Super Admin.');
         return;
       }
 
       const res = await kabisigApi.setupChairpersonPassword({
-        email: cleanEmail,
+        email: cachedEmail,
         password: password,
         confirmPassword: confirmPassword,
         full_name: composedFullName || ('Hon. ' + firstName.trim() + ' ' + lastName.trim()).trim(),
@@ -169,18 +197,17 @@ function SetupForm() {
         birthdate: birthdate || undefined,
         sex: sex,
         address: address.trim() || undefined,
-      }, session.access_token);
+      }, cachedToken);
       if (!res.success) {
         if (res.message?.toLowerCase().includes('already been used')) setInviteStatus('invalid');
         setError(res.message || 'Password setup failed. Please check your inputs and try again.');
         return;
       }
-      const loginRes = await kabisigApi.login(cleanEmail, password);
+      const loginRes = await kabisigApi.login(cachedEmail, password);
       if (!loginRes.success) {
         setError('Account configured. Please sign in manually with your new password.');
         return;
       }
-      window.history.replaceState(window.history.state, '', window.location.pathname);
       router.replace('/');
     } catch (err: any) {
       setError((err && err.message) ? err.message : 'Network error setting up Chairperson password.');
@@ -214,11 +241,6 @@ function SetupForm() {
             <span className="font-bold text-amber-400">{barangayName || 'your Barangay'}</span>.
           </p>
         </div>
-        <div className="space-y-2 text-xs text-slate-300">
-          <p>Password is stored encrypted</p>
-          <p>You will not be asked for a temporary password</p>
-          <p>You may change it anytime from Settings</p>
-        </div>
       </div>
 
       <div className="flex items-center justify-center p-6 lg:p-12">
@@ -246,26 +268,31 @@ function SetupForm() {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-900 mb-1">Chairperson Full Name <span className="text-rose-500">*</span></label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="relative">
-                  <input type="text" required value={firstName} onChange={(e) => setFirstName(e.target.value)}
-                    className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
-                    placeholder="" />
-                  <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                </div>
-                <div className="relative">
-                  <input type="text" required value={lastName} onChange={(e) => setLastName(e.target.value)}
-                    className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
-                    placeholder="" />
-                  <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                </div>
-                <div className="relative">
-                  <input type="text" value={middleName} onChange={(e) => setMiddleName(e.target.value)}
-                    className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
-                    placeholder="" />
-                  <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                </div>
+                <label className="block text-xs font-bold text-slate-900">First Name <span className="text-rose-500">*</span>
+                  <div className="relative mt-1">
+                    <input type="text" required value={firstName} onChange={(e) => setFirstName(e.target.value)}
+                      className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
+                      placeholder="Enter your first name" />
+                    <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                </label>
+                <label className="block text-xs font-bold text-slate-900">Middle Name
+                  <div className="relative mt-1">
+                    <input type="text" value={middleName} onChange={(e) => setMiddleName(e.target.value)}
+                      className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
+                      placeholder="Enter your middle name" />
+                    <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                </label>
+                <label className="block text-xs font-bold text-slate-900">Last Name <span className="text-rose-500">*</span>
+                  <div className="relative mt-1">
+                    <input type="text" required value={lastName} onChange={(e) => setLastName(e.target.value)}
+                      className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
+                      placeholder="Enter your last name" />
+                    <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                </label>
                 <select value={suffix} onChange={(e) => setSuffix(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600 cursor-pointer">
                   <option value="">Suffix — None</option>
@@ -290,7 +317,7 @@ function SetupForm() {
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-900 mb-1">Birthdate <span className="text-rose-500">*</span></label>
-                <input type="date" value={birthdate} onChange={(e) => setBirthdate(e.target.value)}
+                <input type="date" value={birthdate} max={new Date().toISOString().split('T')[0]} onChange={(e) => setBirthdate(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
                   required />
               </div>
@@ -383,12 +410,6 @@ function SetupForm() {
               )}
             </button>
 
-            <div className="text-center pt-2">
-              <button type="button" onClick={() => router.push('/')}
-                className="text-xs text-slate-500 hover:text-slate-800 font-medium hover:underline cursor-pointer">
-                Already have a password? Return to standard sign in
-              </button>
-            </div>
           </form>
         </div>
       </div>

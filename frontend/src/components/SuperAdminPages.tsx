@@ -1,8 +1,8 @@
 import NotificationMenu from './NotificationMenu';
 /* PDF Export Available */ import { generateBudgetUtilizationReport } from '../lib/pdfReports';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import ProfileSettings from './ProfileSettings';
-import { formatAuditAction, formatAuditDetails } from '../lib/auditFormatter';
+import { formatAuditDetails } from '../lib/auditFormatter';
 import { 
   LayoutDashboard, Building2, BarChart3, History, 
   Plus, Edit2, Search, Filter, Download, FileSpreadsheet,
@@ -82,6 +82,7 @@ useEffect(() => {
   // Search and Filter states
   const [searchTerm, setSearchTerm] = useState('');
   const [auditSearchTerm, setAuditSearchTerm] = useState('');
+  const [expandedAuditRowId, setExpandedAuditRowId] = useState<string | null>(null);
 
   // LYDP Report Modal
   const [showLydpModal, setShowLydpModal] = useState(false);
@@ -212,13 +213,22 @@ useEffect(() => {
   const [inviteOfficialBarangay, setInviteOfficialBarangay] = useState<BarangayTenant | null>(null);
   const [inviteReturnToConfigure, setInviteReturnToConfigure] = useState(false);
   const [inviteOfficialEmail, setInviteOfficialEmail] = useState('');
-  const [inviteOfficialRole, setInviteOfficialRole] = useState<'SK Kagawad' | 'SK Secretary' | 'SK Treasurer'>('SK Kagawad');
+  const [inviteOfficialRole, setInviteOfficialRole] = useState<'SK Kagawad' | 'SK Secretary' | 'SK Treasurer' | ''>('');
   const [isInvitingOfficial, setIsInvitingOfficial] = useState(false);
   const [inviteOfficialNotice, setInviteOfficialNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [officialSetupLink, setOfficialSetupLink] = useState('');
   // Role capacity for the selected barangay
   const [roleCapacity, setRoleCapacity] = useState<any>(null);
   const [isLoadingCapacity, setIsLoadingCapacity] = useState(false);
+  const [showOfficialsModal, setShowOfficialsModal] = useState(false);
+  const [officialsModalBarangay, setOfficialsModalBarangay] = useState<BarangayTenant | null>(null);
+  const [officialsRoster, setOfficialsRoster] = useState<any>(null);
+  const [officialsRosterLoading, setOfficialsRosterLoading] = useState(false);
+  const [officialsRosterError, setOfficialsRosterError] = useState<string | null>(null);
+  const [showAllOfficialsModal, setShowAllOfficialsModal] = useState(false);
+  const [allOfficialsRoster, setAllOfficialsRoster] = useState<any[]>([]);
+  const [allOfficialsLoading, setAllOfficialsLoading] = useState(false);
+  const [allOfficialsError, setAllOfficialsError] = useState<string | null>(null);
 
   
   useEffect(() => {
@@ -300,6 +310,68 @@ useEffect(() => {
 
   // Consistently sort barangays in alphabetical order
   const sortedBarangays = [...barangays].sort((a, b) => a.name.localeCompare(b.name));
+  const getShortBarangayId = (barangayName: string) => {
+    const sorted = sortedBarangays.map((barangay) => barangay.name);
+    const index = sorted.findIndex((name) => name === barangayName);
+    return `${String(index + 1).padStart(2, '0')}-${new Date().getFullYear()}`;
+  };
+  const displayBarangayId = editingBarangay ? getShortBarangayId(editingBarangay.name) : '';
+
+  const handleOpenOfficialsModal = async (barangay: BarangayTenant) => {
+    setOfficialsModalBarangay(barangay);
+    setOfficialsRoster(null);
+    setOfficialsRosterError(null);
+    setOfficialsRosterLoading(true);
+    setShowOfficialsModal(true);
+    try {
+      const response = await kabisigApi.getAllOfficials();
+      if (!response.success || !Array.isArray(response.data)) {
+        throw new Error(response.message || 'Unable to load officials for this Barangay.');
+      }
+      const officialsForThisBarangay = response.data.filter(
+        (official) => String(official.tenant_id) === String(barangay.id)
+      );
+      setOfficialsRoster(officialsForThisBarangay);
+    } catch (error: any) {
+      setOfficialsRosterError(error?.message || 'Unable to load officials for this Barangay.');
+    } finally {
+      setOfficialsRosterLoading(false);
+    }
+  };
+
+  const handleOpenAllOfficialsModal = async () => {
+    setShowAllOfficialsModal(true);
+    setAllOfficialsRoster([]);
+    setAllOfficialsError(null);
+    setAllOfficialsLoading(true);
+    try {
+      const response = await kabisigApi.getAllOfficials();
+      if (!response.success || !response.data) {
+        throw new Error(response.message || 'Unable to load officials across all Barangays.');
+      }
+      setAllOfficialsRoster(response.data);
+    } catch (error: any) {
+      setAllOfficialsError(error?.message || 'Unable to load officials across all Barangays.');
+    } finally {
+      setAllOfficialsLoading(false);
+    }
+  };
+
+  const renderAllOfficial = (official: any) => (
+    <span key={official.id} className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">
+      {official.avatar_url ? (
+        <img src={official.avatar_url} alt="" className="h-6 w-6 rounded-full object-cover" />
+      ) : (
+        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-[10px] font-black text-[#091d64]">
+          {(official.full_name || '?').trim().charAt(0).toUpperCase()}
+        </span>
+      )}
+      <span className="break-words">{official.full_name || 'Pending Invitation'}</span>
+      <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${official.setup_completed ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>
+        {official.setup_completed ? 'Assigned' : 'Pending'}
+      </span>
+    </span>
+  );
 
   // Data for Charts
   const federationRows = federationAnalytics?.barangay_rankings || [];
@@ -355,20 +427,28 @@ useEffect(() => {
     ? chartBarangayData
     : chartBarangayData.filter((item: any) => filteredBarangays.some(b => b.id === item.id));
 
-  const handleOpenInviteOfficialModal = (b?: BarangayTenant, returnToConfigure: boolean = false) => {
-    const target = b || sortedBarangays[0];
-    setInviteOfficialBarangay(target || null);
+  const handleOpenInviteOfficialModal = (_b?: BarangayTenant, returnToConfigure: boolean = false) => {
+    setInviteOfficialBarangay(null);
     setInviteOfficialEmail('');
-    setInviteOfficialRole('SK Kagawad');
+    setInviteOfficialRole('');
     setInviteOfficialNotice(null);
     setOfficialSetupLink('');
+    setRoleCapacity(null);
+    setIsLoadingCapacity(false);
     setInviteReturnToConfigure(returnToConfigure);
     setShowInviteOfficialModal(true);
   };
 
   const handleInviteOfficialSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inviteOfficialBarangay) return;
+    if (!inviteOfficialBarangay) {
+      setInviteOfficialNotice({ type: 'error', text: 'Please select a Barangay.' });
+      return;
+    }
+    if (!inviteOfficialRole) {
+      setInviteOfficialNotice({ type: 'error', text: 'Please select an official role.' });
+      return;
+    }
     const email = inviteOfficialEmail.trim().toLowerCase();
     if (!email) {
       setInviteOfficialNotice({ type: 'error', text: 'Please enter a valid official email address.' });
@@ -384,7 +464,10 @@ useEffect(() => {
         return;
       }
       setOfficialSetupLink(res.data?.action_link || res.data?.setup_url || '');
-      setInviteOfficialNotice({ type: 'success', text: res.message || (inviteOfficialRole + ' invitation sent to ' + email + '.') });
+      setInviteOfficialNotice({
+        type: 'success',
+        text: `SK Official invitation sent to ${email} for ${inviteOfficialBarangay.name}.`,
+      });
     } catch (err: any) {
       setInviteOfficialNotice({ type: 'error', text: err.message || 'Network connection failed.' });
     } finally {
@@ -534,10 +617,9 @@ useEffect(() => {
       setIsTransferring(false);
     }
   };
-  const handleOpenAssignModal = (b?: BarangayTenant, returnToConfigure: boolean = false) => {
-    const target = b || sortedBarangays[0];
-    setAssigningBarangay(target || null);
-    setAssignEmail(target?.chairpersonEmail && target.chairpersonEmail !== '' ? target.chairpersonEmail : '');
+  const handleOpenAssignModal = (_b?: BarangayTenant, returnToConfigure: boolean = false) => {
+    setAssigningBarangay(null);
+    setAssignEmail('');
     setAssignError(null);
     setAssignNotice(null);
     setChairpersonSetupLink('');
@@ -548,7 +630,10 @@ useEffect(() => {
 
   const handleAssignChairpersonSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!assigningBarangay) return;
+    if (!assigningBarangay) {
+      setAssignError('Please select a Barangay.');
+      return;
+    }
 
     const email = assignEmail.trim().toLowerCase();
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -576,7 +661,10 @@ useEffect(() => {
       });
       await onRefreshAuditLogs();
       setChairpersonSetupLink(res.data?.action_link || res.data?.setup_url || '');
-      setAssignNotice({ type: 'success', text: res.message || `Chairperson assignment created for ${email}.` });
+      setAssignNotice({
+        type: 'success',
+        text: `SK Chairperson invitation sent to ${email} for ${assigningBarangay.name}.`,
+      });
     } catch (err: any) {
       setAssignError(err.message || 'Network connection failed.');
       setAssignNotice({ type: 'error', text: err.message || 'Network connection failed.' });
@@ -1196,9 +1284,17 @@ useEffect(() => {
 
                 </div>
 
-                <div className="text-xs text-slate-500 font-semibold flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
                   <span>{filteredBarangays.length} of 27 Naga Barangays</span>
+                  <button
+                    type="button"
+                    onClick={() => { void handleOpenAllOfficialsModal(); }}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-blue-100 bg-blue-50 px-3 py-1.5 text-[10px] font-bold text-[#091d64] transition-colors hover:bg-blue-100"
+                  >
+                    <Users className="h-3.5 w-3.5" />
+                    View All Officials
+                  </button>
                 </div>
               </div>
 
@@ -1218,7 +1314,9 @@ useEffect(() => {
                     <tbody className="divide-y divide-slate-100 font-medium">
                       {filteredBarangays.map(b => {
                         const bDistrict = b.skDistrict || BARANGAY_SK_DISTRICTS[b.name] || 'Unassigned';
-                        const isAssigned = b.chairperson && b.chairperson.trim() !== '' && b.chairperson.toLowerCase() !== 'unassigned';
+                        const chairpersonStatus = (b.chairperson || '').trim().toLowerCase();
+                        const isAssigned = chairpersonStatus !== '' && chairpersonStatus !== 'unassigned';
+                        const hasCurrentChairperson = isAssigned;
 
                         return (
                           <tr key={b.id} className="hover:bg-slate-50/70 transition-colors">
@@ -1238,7 +1336,7 @@ useEffect(() => {
                                 )}
                                 <div>
                                   <span className="font-bold text-slate-900 block text-xs">Brgy. {displayBarangayName(b.name)}</span>
-                                  <span className="text-[10px] text-slate-400 font-mono">ID: {b.id.slice(0, 8)}...</span>
+                                  <span className="text-[10px] text-slate-400 font-mono">ID: {getShortBarangayId(b.name)}</span>
                                 </div>
                               </div>
                             </td>
@@ -1291,18 +1389,25 @@ useEffect(() => {
                             {/* Status */}
                             <td className="py-3.5 px-4 whitespace-nowrap">
                               <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
-                                b.chairperson !== 'Unassigned' && b.chairperson !== 'Pending Invitation'
+                                hasCurrentChairperson
                                   ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                   : 'bg-slate-100 text-slate-600 border border-slate-200'
                               }`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${b.chairperson !== 'Unassigned' && b.chairperson !== 'Pending Invitation' ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
-                                {b.status}
+                                <span className={`w-1.5 h-1.5 rounded-full ${hasCurrentChairperson ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
+                                {hasCurrentChairperson ? 'Active' : 'Inactive'}
                               </span>
                             </td>
 
                             {/* Action */}
                               <td className="py-3.5 px-4 text-right whitespace-nowrap">
                                 <div className="flex items-center justify-end gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => { void handleOpenOfficialsModal(b); }}
+                                    className="px-2 py-1 text-[10px] font-bold text-[#091d64] hover:bg-blue-50 rounded-lg border border-blue-100 transition-colors"
+                                  >
+                                    View Details
+                                  </button>
                                   <button onClick={() => handleOpenHistory(b)} className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-colors" title="View Transfer History">
                                     <Clock className="w-3.5 h-3.5" />
                                   </button>
@@ -1513,43 +1618,64 @@ useEffect(() => {
                   </div>
                 </div>
 
-                <div className="border border-slate-100 rounded-xl">
-                  <div className="w-full overflow-x-auto pb-4 block">
-                  <table className="w-full min-w-[800px] text-left text-xs">
+                <div className="w-full overflow-hidden rounded-xl border border-slate-100">
+                  <table className="w-full table-fixed text-left text-xs">
                     <thead className="bg-slate-50 text-[10px] text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100">
                       <tr>
-                        <th className="p-3 w-[12%] whitespace-nowrap">Timestamp</th>
-                        <th className="p-3 w-[22%] whitespace-nowrap">SK Chairperson & Barangay</th>
-                        <th className="p-3 w-[18%] whitespace-nowrap">Action</th>
-                        <th className="p-3 w-[48%] whitespace-nowrap">Activity & Executive Details</th>
+                        <th className="p-3 w-[20%]">Timestamp</th>
+                        <th className="p-3 w-[22%]">SK Chairperson & Barangay</th>
+                        <th className="p-3 w-[18%]">Action</th>
+                        <th className="p-3 w-[40%]">Activity & Executive Details</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50 font-medium">
                       {filteredAuditLogs.map(log => (
-                        <tr key={log.id} className="hover:bg-slate-50/50">
-                          <td className="p-3 font-mono text-slate-400 whitespace-nowrap">{new Date(log.timestamp).toLocaleString()}</td>
-                          <td className="p-3 font-bold text-slate-800 whitespace-nowrap">
-                            <span className="text-[#091d64]">{log.user}</span>
-                            <span className="block text-[10px] text-slate-400 font-semibold">{log.role === 'Barangay Admin' ? 'SK Chairperson' : log.role}</span>
-                          </td>
-                          <td className="p-3 whitespace-nowrap">
-                            <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-800 font-mono font-bold text-[11px] break-words inline-block max-w-full">
-                              {formatAuditAction(log.action)}
-                            </span>
-                          </td>
-                          <td className="p-3 text-slate-600 whitespace-nowrap align-top">{formatAuditDetails(log.action, log.details)}</td>
-                        </tr>
+                        <Fragment key={log.id}>
+                          <tr
+                            className="cursor-pointer hover:bg-slate-50/50"
+                            tabIndex={0}
+                            role="button"
+                            aria-expanded={expandedAuditRowId === log.id}
+                            onClick={() => setExpandedAuditRowId((current) => current === log.id ? null : log.id)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                setExpandedAuditRowId((current) => current === log.id ? null : log.id);
+                              }
+                            }}
+                          >
+                            <td className="p-3 font-mono text-slate-400 whitespace-nowrap align-top">
+                              {new Date(log.timestamp).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
+                            </td>
+                            <td className="p-3 font-bold text-slate-800 whitespace-normal break-words align-top">
+                              <span className="text-[#091d64]">{log.user}</span>
+                              <span className="block text-[10px] text-slate-400 font-semibold">{log.role === 'Barangay Admin' ? 'SK Chairperson' : log.role}</span>
+                            </td>
+                            <td className="p-3 whitespace-normal break-words align-top">
+                              <span className="inline-block max-w-full break-words rounded bg-blue-50 px-2 py-0.5 font-mono text-[11px] font-bold text-blue-800">
+                                {log.action}
+                              </span>
+                            </td>
+                            <td className="p-3 text-slate-500 whitespace-normal break-words align-top">Click row to expand</td>
+                          </tr>
+                          {expandedAuditRowId === log.id && (
+                            <tr>
+                              <td colSpan={4} className="bg-slate-50 px-4 py-3 text-xs text-slate-700 whitespace-normal break-words">
+                                {formatAuditDetails(log.action, log.details)}
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
                       ))}
                       {filteredAuditLogs.length === 0 && (
                         <tr>
-                          <td colSpan={4} className="p-6 text-center text-slate-400 font-bold whitespace-nowrap">
+                          <td colSpan={4} className="p-6 text-center text-slate-400 font-bold">
                             No audit records found matching the search.
                           </td>
                         </tr>
                       )}
                     </tbody>
                   </table>
-                </div>
                 </div>
               </div>
 
@@ -1884,9 +2010,154 @@ useEffect(() => {
           </div>
         </div>
       )}
+      {showOfficialsModal && officialsModalBarangay && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4">
+          <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between bg-[#091d64] p-5 text-white">
+              <div>
+                <h3 className="text-base font-black">Barangay Officials</h3>
+                <p className="mt-1 text-xs text-blue-100">{officialsModalBarangay.name}</p>
+              </div>
+              <button type="button" onClick={() => setShowOfficialsModal(false)} aria-label="Close officials details">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-5 overflow-y-auto p-5">
+              {officialsRosterLoading && (
+                <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading Barangay officials…
+                </div>
+              )}
+              {officialsRosterError && (
+                <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+                  {officialsRosterError}
+                </div>
+              )}
+              {!officialsRosterLoading && !officialsRosterError && officialsRoster && (
+                [
+                  { title: 'SK Chairperson', members: officialsRoster.filter((person: any) => Number(person.role_id) === 2) },
+                  { title: 'SK Kagawad', members: officialsRoster.filter((person: any) => Number(person.role_id) === 3 && String(person.official_role || '').toLowerCase().includes('kagawad')) },
+                  { title: 'SK Secretary', members: officialsRoster.filter((person: any) => Number(person.role_id) === 3 && String(person.official_role || '').toLowerCase().includes('secretary')) },
+                  { title: 'SK Treasurer', members: officialsRoster.filter((person: any) => Number(person.role_id) === 3 && String(person.official_role || '').toLowerCase().includes('treasurer')) },
+                ].map((group) => (
+                  <section key={group.title}>
+                    <h4 className="mb-2 border-b border-slate-100 pb-2 text-xs font-black uppercase tracking-wide text-slate-500">
+                      {group.title}
+                    </h4>
+                    {group.members.length > 0 ? (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {group.members.map((person: any) => (
+                          <div key={person.id} className="flex min-w-0 items-center gap-3 rounded-xl border border-slate-200 p-3">
+                            {person.avatar_url ? (
+                              <img src={person.avatar_url} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />
+                            ) : (
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-black text-[#091d64]">
+                                {(person.full_name || '?').trim().charAt(0).toUpperCase()}
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-bold text-slate-800">{person.full_name || 'Pending Invitation'}</p>
+                              <p className="truncate text-xs text-slate-500">{person.email || 'No email recorded'}</p>
+                              <span className="mt-1 inline-block rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold capitalize text-slate-600">
+                                {person.status || 'unassigned'}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="rounded-lg bg-slate-50 px-3 py-4 text-center text-xs text-slate-400">
+                        No {group.title} assigned.
+                      </p>
+                    )}
+                  </section>
+                ))
+              )}
+            </div>
+            <div className="flex justify-end border-t border-slate-100 bg-slate-50 p-4">
+              <button type="button" onClick={() => setShowOfficialsModal(false)}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showAllOfficialsModal && (
+        <div className="fixed inset-0 z-[75] flex items-center justify-center bg-slate-950/50 p-4">
+          <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between bg-[#091d64] p-5 text-white">
+              <div>
+                <h3 className="text-base font-black">All Barangay Officials</h3>
+                <p className="mt-1 text-xs text-blue-100">Chairpersons and SK officials across Naga City</p>
+              </div>
+              <button type="button" onClick={() => setShowAllOfficialsModal(false)} aria-label="Close all Barangay officials">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-3 overflow-y-auto p-5">
+              {allOfficialsLoading && (
+                <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading all Barangay officials…
+                </div>
+              )}
+              {allOfficialsError && (
+                <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+                  {allOfficialsError}
+                </div>
+              )}
+              {!allOfficialsLoading && !allOfficialsError && sortedBarangays.map((barangay) => {
+                const members = allOfficialsRoster.filter((official) => official.tenant_id === barangay.id);
+                const chairpersons = members.filter((official) => Number(official.role_id) === 2);
+                const skOfficials = members.filter((official) => Number(official.role_id) === 3);
+                const kagawad = skOfficials.filter((official) => String(official.official_role || '').toLowerCase().includes('kagawad'));
+                const secretaries = skOfficials.filter((official) => String(official.official_role || '').toLowerCase().includes('secretary'));
+                const treasurers = skOfficials.filter((official) => String(official.official_role || '').toLowerCase().includes('treasurer'));
+                return (
+                  <section key={barangay.id} className="rounded-xl border border-slate-200 p-4">
+                    <h4 className="mb-3 border-b border-slate-100 pb-2 text-sm font-black text-[#091d64]">
+                      Barangay {barangay.name}
+                    </h4>
+                    <div className="space-y-3 text-xs">
+                      <div>
+                        <p className="mb-1 font-bold text-slate-600">SK Chairperson</p>
+                        <div className="flex flex-wrap gap-2">
+                          {chairpersons.length ? chairpersons.map(renderAllOfficial) : (
+                            <span className="text-slate-400">Pending / Unassigned</span>
+                          )}
+                        </div>
+                      </div>
+                      {[
+                        { label: 'SK Kagawad', people: kagawad },
+                        { label: 'SK Secretary', people: secretaries },
+                        { label: 'SK Treasurer', people: treasurers },
+                      ].map((group) => (
+                        <div key={group.label}>
+                          <p className="mb-1 font-bold text-slate-600">{group.label}</p>
+                          <div className="flex flex-wrap gap-2">
+                            {group.people.length ? group.people.map(renderAllOfficial) : (
+                              <span className="text-slate-400">None assigned</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+            <div className="flex justify-end border-t border-slate-100 bg-slate-50 p-4">
+              <button type="button" onClick={() => setShowAllOfficialsModal(false)}
+                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* DEDICATED ASSIGN SK CHAIRPERSON MODAL (ONLY CHAIRPERSON EMAIL) */}
       {/* P9/P10: INVITE SK OFFICIAL MODAL */}
-      {showInviteOfficialModal && inviteOfficialBarangay && (
+      {showInviteOfficialModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200 max-w-[95vw] md:max-w-2xl lg:max-w-md">
             <div className="bg-[#091d64] p-5 text-white flex justify-between items-center text-left">
@@ -1895,7 +2166,7 @@ useEffect(() => {
                   <ShieldCheck className="w-5 h-5 text-amber-300" />
                   Invite SK Official
                 </h3>
-                <p className="text-xs text-blue-100">Barangay {inviteOfficialBarangay.name}</p>
+                <p className="text-xs text-blue-100">{inviteOfficialBarangay ? `Barangay ${inviteOfficialBarangay.name}` : 'Select a Barangay to continue'}</p>
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -1913,22 +2184,51 @@ useEffect(() => {
             <form onSubmit={handleInviteOfficialSubmit} className="p-6 space-y-4 text-left text-xs">
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Target Barangay</label>
-                <select value={inviteOfficialBarangay.id}
+                <select value={inviteOfficialBarangay?.id || ''}
                   onChange={(e) => {
                     const selected = barangays.find(b => b.id === e.target.value);
-                    if (selected) setInviteOfficialBarangay(selected);
+                    setInviteOfficialBarangay(selected || null);
+                    setRoleCapacity(null);
+                    setInviteOfficialNotice(null);
                   }}
                   className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-1 focus:ring-[#091d64] focus:outline-none cursor-pointer"
                 >
+                  <option value="" disabled>Select Barangay...</option>
                   {sortedBarangays.map(b => (<option key={b.id} value={b.id}>Barangay {b.name}</option>))}
                 </select>
               </div>
+              {inviteOfficialBarangay && (
+                <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex items-center gap-3">
+                    {inviteOfficialBarangay.logo ? (
+                      <img
+                        src={inviteOfficialBarangay.logo}
+                        alt=""
+                        className="h-10 w-10 shrink-0 rounded-full border border-slate-200 bg-white object-contain p-0.5"
+                      />
+                    ) : (
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-blue-100 bg-blue-50 text-xs font-bold text-[#091d64]">
+                        {inviteOfficialBarangay.name.charAt(0)}
+                      </div>
+                    )}
+                    <div>
+                      <span className="block text-[10px] font-mono font-semibold text-slate-400">Target Jurisdiction</span>
+                      <h4 className="text-xs font-extrabold text-[#091d64]">Barangay {inviteOfficialBarangay.name}</h4>
+                    </div>
+                  </div>
+                  <span className="rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-[9px] font-extrabold uppercase text-blue-700">
+                    {inviteOfficialBarangay.skDistrict || BARANGAY_SK_DISTRICTS[inviteOfficialBarangay.name] || 'Unassigned'}
+                  </span>
+                </div>
+              )}
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Official Role</label>
                 <select value={inviteOfficialRole}
-                  onChange={(e) => setInviteOfficialRole(e.target.value as any)}
+                  disabled={!inviteOfficialBarangay}
+                  onChange={(e) => setInviteOfficialRole(e.target.value as typeof inviteOfficialRole)}
                   className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-1 focus:ring-[#091d64] focus:outline-none cursor-pointer"
                 >
+                  <option value="" disabled>Select Official Role...</option>
                   <option value="SK Kagawad">SK Kagawad</option>
                   <option value="SK Secretary">SK Secretary</option>
                   <option value="SK Treasurer">SK Treasurer</option>
@@ -1986,13 +2286,36 @@ useEffect(() => {
                 </div>
               )}
 
-              {(() => {                 const _key = inviteOfficialRole === 'SK Kagawad' ? 'kagawad' : inviteOfficialRole === 'SK Secretary' ? 'secretary' : 'treasurer';                 const _row = roleCapacity?.[_key];                 const _full = _row ? _row.current >= _row.limit : false;                 return (                   <>                     {_full && (                       <p className="text-[10px] text-rose-600 font-bold text-center">                         {inviteOfficialRole} slots are full for this barangay. Choose a different role or barangay.                       </p>                     )}                     <button type="submit" disabled={isInvitingOfficial || _full}                       className="w-full py-3 bg-[#091d64] hover:bg-[#102a83] disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer">                       {isInvitingOfficial ? 'Sending...' : (_full ? inviteOfficialRole + ' — At Capacity' : 'Send ' + inviteOfficialRole + ' Invitation')}                     </button>                   </>                 );               })()}
+              {(() => {
+                const _key = inviteOfficialRole === 'SK Kagawad' ? 'kagawad' : inviteOfficialRole === 'SK Secretary' ? 'secretary' : 'treasurer';
+                const _row = roleCapacity?.[_key];
+                const _full = Boolean(inviteOfficialRole && _row && _row.current >= _row.limit);
+                return (
+                  <>
+                    {_full && (
+                      <p className="text-[10px] text-rose-600 font-bold text-center">
+                        {inviteOfficialRole} slots are full for this barangay. Choose a different role or barangay.
+                      </p>
+                    )}
+                    <button type="submit" disabled={isInvitingOfficial || !inviteOfficialBarangay || !inviteOfficialRole || _full}
+                      className="w-full py-3 bg-[#091d64] hover:bg-[#102a83] disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer">
+                      {isInvitingOfficial
+                        ? 'Sending...'
+                        : !inviteOfficialBarangay || !inviteOfficialRole
+                          ? 'Select Barangay and Role'
+                          : _full
+                            ? inviteOfficialRole + ' — At Capacity'
+                            : 'Send ' + inviteOfficialRole + ' Invitation'}
+                    </button>
+                  </>
+                );
+              })()}
             </form>
           </div>
         </div>
       )}
 
-      {showAssignModal && assigningBarangay && (
+      {showAssignModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 max-w-[95vw] md:max-w-2xl lg:max-w-md">
             <div className="bg-[#091d64] p-5 text-white flex justify-between items-center text-left">
@@ -2001,7 +2324,9 @@ useEffect(() => {
                   <ShieldCheck className="w-5 h-5 text-amber-300" />
                   Assign SK Chairperson
                 </h3>
-                <p className="text-xs text-blue-100">Barangay {assigningBarangay.name} • Naga City Multi-Tenant Registry</p>
+                <p className="text-xs text-blue-100">
+                  {assigningBarangay ? `Barangay ${assigningBarangay.name} • Naga City Multi-Tenant Registry` : 'Select a Barangay to continue'}
+                </p>
               </div>
               <button 
                 onClick={() => { setShowAssignModal(false); setAssigningBarangay(null); if (assignReturnToConfigure) { setShowModal(true); setAssignReturnToConfigure(false); } }} 
@@ -2014,31 +2339,33 @@ useEffect(() => {
               <form onSubmit={handleAssignChairpersonSubmit} className="p-6 space-y-4 text-left text-xs">
 
                 {/* Selected Barangay Card */}
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    {assigningBarangay.logo ? (
-                      <img 
-                        src={assigningBarangay.logo} 
-                        alt="" 
-                        className="w-10 h-10 rounded-xl object-contain bg-white border border-slate-200 p-0.5 shrink-0" 
-                      />
-                    ) : (
-                      <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#091d64] font-bold text-xs flex items-center justify-center border border-blue-100 shrink-0">
-                        {assigningBarangay.name.charAt(0)}
+                {assigningBarangay && (
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      {assigningBarangay.logo ? (
+                        <img
+                          src={assigningBarangay.logo}
+                          alt=""
+                          className="w-10 h-10 rounded-xl object-contain bg-white border border-slate-200 p-0.5 shrink-0"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#091d64] font-bold text-xs flex items-center justify-center border border-blue-100 shrink-0">
+                          {assigningBarangay.name.charAt(0)}
+                        </div>
+                      )}
+                      <div>
+                        <span className="text-[10px] font-mono text-slate-400 font-semibold block">Target Jurisdiction</span>
+                        <h4 className="font-extrabold text-[#091d64] text-xs">Barangay {assigningBarangay.name}</h4>
                       </div>
-                    )}
-                    <div>
-                      <span className="text-[10px] font-mono text-slate-400 font-semibold block">Target Jurisdiction</span>
-                      <h4 className="font-extrabold text-[#091d64] text-xs">Barangay {assigningBarangay.name}</h4>
+                    </div>
+
+                    <div className="text-right">
+                      <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                        {assigningBarangay.skDistrict || BARANGAY_SK_DISTRICTS[assigningBarangay.name] || 'Unassigned'}
+                      </span>
                     </div>
                   </div>
-
-                  <div className="text-right">
-                    <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
-                      {assigningBarangay.skDistrict || BARANGAY_SK_DISTRICTS[assigningBarangay.name] || 'Unassigned'}
-                    </span>
-                  </div>
-                </div>
+                )}
 
                 {/* Target Barangay Selector */}
                 <div>
@@ -2046,17 +2373,16 @@ useEffect(() => {
                     Change Target Barangay (27 Naga Barangays)
                   </label>
                   <select
-                    value={assigningBarangay.id}
+                    value={assigningBarangay?.id || ''}
                     onChange={(e) => {
                       const selected = barangays.find(b => b.id === e.target.value);
-                      if (selected) {
-                        setAssigningBarangay(selected);
-                        setAssignEmail(selected.chairpersonEmail || '');
-                        setAssignError(null);
-                      }
+                      setAssigningBarangay(selected || null);
+                      setAssignEmail('');
+                      setAssignError(null);
                     }}
                     className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-1 focus:ring-[#091d64] focus:outline-none cursor-pointer"
                   >
+                    <option value="" disabled>Select Barangay...</option>
                     {sortedBarangays.map(b => (
                       <option key={b.id} value={b.id}>
                         Barangay {b.name} ({b.chairperson && b.chairperson !== 'Unassigned' ? `Assigned: ${b.chairperson}` : 'Unassigned'})
@@ -2066,7 +2392,7 @@ useEffect(() => {
                 </div>
 
                 {/* Chairperson Official Email Input */}
-                <div>
+                {assigningBarangay && <div>
                   <label className="block text-xs font-bold text-slate-800 mb-1">
                     Chairperson Official Email Address <span className="text-rose-500">*</span>
                   </label>
@@ -2084,7 +2410,7 @@ useEffect(() => {
                   <p className="text-[10px] text-slate-500 mt-1">
                     Enter ONLY the Chairperson's email. An invitation link will be triggered.
                   </p>
-                </div>
+                </div>}
 
 
                 {assignNotice?.type === 'success' && (                   <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800">                     {assignNotice.text}                   </div>                 )}
@@ -2107,7 +2433,7 @@ useEffect(() => {
                   </button>
                   <button 
                     type="submit"
-                    disabled={isAssigning}
+                    disabled={isAssigning || !assigningBarangay || !assignEmail.trim()}
                     className="px-5 py-2 bg-[#091d64] hover:bg-[#112d75] text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs disabled:opacity-50 flex items-center gap-2"
                   >
                     {isAssigning ? (
@@ -2176,7 +2502,7 @@ useEffect(() => {
                   </label>
                   <input
                     type="text"
-                    value={editingBarangay?.id || ''}
+                    value={displayBarangayId}
                     readOnly
                     className="w-full p-2.5 border border-slate-200 rounded-xl bg-slate-100 text-slate-700 font-mono"
                   />

@@ -251,6 +251,7 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
   }
 });
 
+// Authenticated download; the loaded document is checked against the user's tenant before signing.
 router.get('/:id/download', authenticateUser, async (req: Request, res: Response): Promise<void> => {
   const id = String(req.params.id || '');
   const user = (req as AuthRequest).user!;
@@ -282,6 +283,7 @@ router.get('/:id/download', authenticateUser, async (req: Request, res: Response
   }
 });
 
+// Authenticated detail read; the loaded document is checked against the user's tenant before return.
 router.get('/:id', authenticateUser, async (req: Request, res: Response): Promise<void> => {
   const id = String(req.params.id || '');
   const user = (req as AuthRequest).user!;

@@ -3,6 +3,7 @@ import express from 'express';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { supabaseAdmin, recordAuditLog } from '../services/supabase.service.js';
+import { resolveAvatarUrl } from '../services/avatar.service.js';
 import { sendSuccess, sendCreated, sendError } from '../utils/response.js';
 import { authenticateUser, requireRoles } from '../middleware/auth.js';
 import type { AuthRequest } from '../types/database.types.js';
@@ -16,6 +17,7 @@ async function inviteWithBrevo(
   try {
     const inviteOptions = {
       ...options,
+      expiresIn: 18000,
       data: {
         ...(options.data || {}),
         setup_completed: false,
@@ -74,12 +76,64 @@ const AssignChairpersonByEmailSchema = z.object({
   barangay_id: z.string().uuid('Valid Barangay ID is required'),
 });
 
+router.get('/all-officials', authenticateUser, requireRoles('SUPER_ADMIN'), async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const { data: officials, error } = await supabaseAdmin
+      .from('users')
+      .select('id, tenant_id, role_id, full_name, first_name, middle_name, last_name, suffix, email, status, avatar_url, barangay(name)')
+      .in('role_id', [2, 3])
+      .not('tenant_id', 'is', null);
+
+    if (error) {
+      sendError(res, `Failed to load officials: ${error.message}`, 500);
+      return;
+    }
+
+    const authUsers = new Map<string, any>();
+    const perPage = 1000;
+    for (let page = 1; ; page += 1) {
+      const { data, error: authError } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+      if (authError) {
+        sendError(res, `Failed to load official account details: ${authError.message}`, 500);
+        return;
+      }
+      for (const authUser of data.users) authUsers.set(authUser.id, authUser);
+      if (data.users.length < perPage) break;
+    }
+
+    const roster = await Promise.all((officials || []).map(async (official: any) => {
+      const authUser = authUsers.get(official.id);
+      const userMetadata = authUser?.user_metadata || {};
+      const composedName = [official.first_name, official.middle_name, official.last_name, official.suffix]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+      const barangay = Array.isArray(official.barangay) ? official.barangay[0] : official.barangay;
+      return {
+        id: official.id,
+        tenant_id: official.tenant_id,
+        barangay_name: barangay?.name || '',
+        role_id: Number(official.role_id),
+        official_role: userMetadata.official_role || authUser?.app_metadata?.official_role || 'SK Kagawad',
+        full_name: composedName || official.full_name || 'Pending Invitation',
+        email: official.email || authUser?.email || '',
+        status: official.status || 'pending',
+        setup_completed: userMetadata.setup_completed === true || authUser?.app_metadata?.setup_completed === true,
+        avatar_url: await resolveAvatarUrl(official.avatar_url),
+      };
+    }));
+
+    sendSuccess(res, roster, 'Barangay officials retrieved.');
+  } catch (error: any) {
+    console.error('Failed to retrieve all Barangay officials:', error);
+    sendError(res, error?.message || 'Failed to load officials.', 500);
+  }
+});
+
 // PUT /api/admin/users/:userId/update-name - SA only
 // GET /api/admin/users/lookup/:identifier - SA only
-router.get('/users/lookup', authenticateUser, async (req: Request, res: Response): Promise<void> => {
+router.get('/users/lookup', authenticateUser, requireRoles('SUPER_ADMIN'), async (req: Request, res: Response): Promise<void> => {
   try {
-    const authUser = (req as AuthRequest).user!;
-    if (authUser.role_id !== 1) { sendError(res, 'Forbidden. Super Admin access only.', 403); return; }
     const identifier = String(req.query.identifier || '').trim();
     if (!identifier) { sendError(res, 'Identifier is required.', 400); return; }
 
@@ -116,10 +170,9 @@ router.get('/users/lookup', authenticateUser, async (req: Request, res: Response
   }
 });
 
-router.put('/users/:userId/update-name', authenticateUser, async (req: Request, res: Response): Promise<void> => {
+router.put('/users/:userId/update-name', authenticateUser, requireRoles('SUPER_ADMIN'), async (req: Request, res: Response): Promise<void> => {
   try {
     const authUser = (req as AuthRequest).user!;
-    if (authUser.role_id !== 1) { sendError(res, 'Forbidden. Super Admin access only.', 403); return; }
     const rawId = String(req.params.userId || '').trim();
     const { full_name, first_name, middle_name, last_name, suffix, email, phone, birthdate, reason } = req.body;
     if (!full_name) { sendError(res, 'Full name is required.', 400); return; }
@@ -598,6 +651,7 @@ router.post(
         email: cleanEmail,
         options: {
           redirectTo: `${FRONTEND_URL}/chairperson-setup?invite_email=${encodeURIComponent(cleanEmail)}&role=chairperson&tenant_id=${barangay_id}`,
+          expiresIn: 18000,
         } as any,
       });
       if (linkData?.properties?.action_link) {
@@ -962,7 +1016,7 @@ router.post(
       const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
         type: 'magiclink',
         email: cleanEmail,
-        options: { redirectTo: redirectUrl } as any,
+        options: { redirectTo: redirectUrl, expiresIn: 18000 } as any,
       });
       if (linkData?.properties?.action_link) actionLink = linkData.properties.action_link;
     } catch (linkErr) {
@@ -1277,7 +1331,7 @@ router.post(
           const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
             type: 'magiclink',
             email: cleanSuccessorEmail,
-            options: { redirectTo: redirectUrl } as any,
+            options: { redirectTo: redirectUrl, expiresIn: 18000 } as any,
           });
           if (linkData?.properties?.action_link) {
             successorLink = linkData.properties.action_link;
@@ -1546,6 +1600,7 @@ router.patch('/users/:id/email', authenticateUser, requireRoles('SUPER_ADMIN'), 
 });
 
 // POST /api/users/request-email-change - Notifies Super Admin
+// Self-service: the request is attributed to the authenticated user and accepts no target user ID.
 router.post('/request-email-change', authenticateUser, async (req: Request, res: Response): Promise<void> => {
   const { new_email } = req.body;
   if (!new_email || !new_email.includes('@')) { sendError(res, 'Valid email required', 400); return; }

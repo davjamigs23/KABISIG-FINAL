@@ -69,6 +69,7 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
   sendSuccess(res, data, 'Programs retrieved successfully.');
 });
 
+// Self-service: registration results are always filtered by the authenticated user's ID.
 router.get('/registrations/mine', authenticateUser, requireActiveUser, async (req: Request, res: Response): Promise<void> => {
   const user = (req as AuthRequest).user!;
   const { data, error } = await supabaseAdmin
@@ -86,6 +87,7 @@ router.get('/registrations/mine', authenticateUser, requireActiveUser, async (re
   sendSuccess(res, data || [], 'Your program registrations were retrieved successfully.');
 });
 
+// Authenticated tenant read; access to the loaded program is checked with canAccessTenant.
 router.get('/:id', authenticateUser, async (req: Request, res: Response): Promise<void> => {
   const id = String(req.params.id || '');
   const user = (req as AuthRequest).user!;
@@ -343,6 +345,7 @@ router.delete(
   }
 );
 
+// Self-service registration; the profile and registration are tied to the authenticated user.
 router.post(
   '/:id/register',
   authenticateUser,

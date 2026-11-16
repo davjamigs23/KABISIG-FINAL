@@ -1132,6 +1132,10 @@ router.post('/setup-chairperson-password', async (req: Request, res: Response): 
   }
 
   const { email, password, confirmPassword, full_name, first_name, middle_name, last_name, suffix, phone, birthdate, sex, address } = parseResult.data;
+  if (birthdate && new Date(birthdate) > new Date()) {
+    sendError(res, 'Birthdate cannot be in the future.', 400);
+    return;
+  }
   if (password !== confirmPassword) {
     sendError(res, 'Password and Confirm Password do not match.', 400);
     return;
@@ -1239,6 +1243,7 @@ router.post('/setup-chairperson-password', async (req: Request, res: Response): 
               last_name: resolvedName.last_name,
               suffix: resolvedName.suffix,
       email: normalizedEmail,
+      phone: phone || null,
       status: 'active',
       updated_at: new Date().toISOString(),
     },
@@ -1356,6 +1361,10 @@ const SetupOfficialPasswordSchema = z.object({
   middle_name: z.string().max(100).optional().nullable(),
   last_name: z.string().max(100).optional(),
   suffix: z.string().max(20).optional().nullable(),
+  phone: z.string().regex(/^09\d{9}$/, 'Mobile number must be exactly 11 digits and start with 09'),
+  birthdate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Birthdate must be formatted as YYYY-MM-DD'),
+  sex: z.enum(['Male', 'Female', 'Other', 'Prefer not to say']),
+  address: z.string().min(3).max(500),
 });
 
 router.post('/setup-official-password', async (req: Request, res: Response): Promise<void> => {
@@ -1365,7 +1374,11 @@ router.post('/setup-official-password', async (req: Request, res: Response): Pro
     return;
   }
 
-  const { email, password, confirmPassword, full_name, official_role, first_name, middle_name, last_name, suffix } = parseResult.data;
+  const { email, password, confirmPassword, full_name, official_role, first_name, middle_name, last_name, suffix, phone, birthdate, sex, address } = parseResult.data;
+  if (birthdate && new Date(birthdate) > new Date()) {
+    sendError(res, 'Birthdate cannot be in the future.', 400);
+    return;
+  }
   if (password !== confirmPassword) {
     sendError(res, 'Password and Confirm Password do not match.', 400);
     return;
@@ -1482,6 +1495,7 @@ router.post('/setup-official-password', async (req: Request, res: Response): Pro
       last_name: resolvedName.last_name,
       suffix: resolvedName.suffix,
       email: normalizedEmail,
+      phone,
       status: 'active',
       updated_at: new Date().toISOString(),
     },
@@ -1496,9 +1510,9 @@ router.post('/setup-official-password', async (req: Request, res: Response): Pro
     {
       user_id: userId,
       tenant_id: tenantId,
-      birthdate: '2001-01-01',
-      sex: 'Female',
-      address: 'Barangay Hall, Naga City',
+      birthdate,
+      sex,
+      address,
       updated_at: new Date().toISOString(),
     },
     { onConflict: 'user_id' }

@@ -47,6 +47,18 @@ export interface SystemNotification {
   created_at: string;
 }
 
+export interface PublicOfficialRosterEntry {
+  id: string;
+  full_name: string;
+  role_id: number;
+  avatar_url: string | null;
+}
+
+export interface PublicOfficialsGroup {
+  barangay_name: string;
+  officials: PublicOfficialRosterEntry[];
+}
+
 
 function toResolutionRecord(poll: any): ResolutionRecord {
   const description = String(poll.description || '');
@@ -208,6 +220,10 @@ class KabisigApiClient {
     return await this.request<any>('/users/role-capacity/' + barangayId, { method: 'GET' });
   }
 
+  async getAllOfficials(): Promise<{ success: boolean; data?: any[]; message?: string }> {
+    return await this.request<any[]>('/admin/all-officials', { method: 'GET' });
+  }
+
   async cancelChairpersonInvitation(barangayId: string): Promise<{ success: boolean; message?: string; data?: any }> {
     return await this.request<any>('/admin/cancel-chairperson-invitation', {
       method: 'POST',
@@ -343,6 +359,10 @@ class KabisigApiClient {
     middle_name?: string | null;
     last_name?: string;
     suffix?: string | null;
+    phone: string;
+    birthdate: string;
+    sex: 'Male' | 'Female' | 'Other' | 'Prefer not to say';
+    address: string;
     official_role: string;
     tenant_id: string;
   }, inviteAccessToken: string): Promise<{ success: boolean; message?: string; data?: any }> {
@@ -356,6 +376,13 @@ class KabisigApiClient {
     const res = await this.request<any>('/public/documents', { method: 'GET' });
     const data = (res as any)?.data ?? res;
     return Array.isArray(data) ? data : [];
+  }
+
+  async getPublicOfficials(): Promise<PublicOfficialsGroup[]> {
+    const res = await this.request<PublicOfficialsGroup[]>('/public/officials', { method: 'GET' });
+    if (!res.success) throw new Error(res.message || 'Public officials could not be loaded.');
+    if (!Array.isArray(res.data)) throw new Error('The public officials endpoint returned an invalid response.');
+    return res.data;
   }
 
   async getPublicDemographics(): Promise<any | null> {

@@ -6,6 +6,7 @@ import {
   TrendingUp, 
   Download, 
   Users, 
+  UserRound,
   ChevronRight, 
   X, 
   BookOpen, 
@@ -45,7 +46,7 @@ import {
   YouthProfile
 } from '../types';
 import { KabisigLogo } from './PublicPages';
-import { kabisigApi } from '../lib/api';
+import { kabisigApi, type PublicOfficialsGroup } from '../lib/api';
 import PopupDialog, { PopupMessage } from './PopupDialog';
 
 interface ViewerPagesProps {
@@ -77,12 +78,15 @@ export default function ViewerPages({
   const [activeMenu, setActiveMenu] = useState<'home' | 'transparency' | 'announcements'>('home');
   const [lightboxImg, setLightboxImg] = useState<string | null>(null);
 
-  // Sub-tab inside Transparency: 'financial' | 'demographics' | 'fpd' | 'auditing'
-  const [transparencySubTab, setTransparencySubTab] = useState<'financial' | 'demographics' | 'fpd' | 'auditing'>('financial');
+  // Sub-tab inside Transparency
+  const [transparencySubTab, setTransparencySubTab] = useState<'financial' | 'demographics' | 'fpd' | 'auditing' | 'officials'>('financial');
 
   // --- Public demographics (anonymized aggregate) ---
   const [publicDemographics, setPublicDemographics] = useState<any>(null);
   const [publicDemographicsLoading, setPublicDemographicsLoading] = useState(false);
+  const [publicOfficials, setPublicOfficials] = useState<PublicOfficialsGroup[] | null>(null);
+  const [publicOfficialsLoading, setPublicOfficialsLoading] = useState(false);
+  const [publicOfficialsError, setPublicOfficialsError] = useState<string | null>(null);
 
   // P13: Program budget transparency state
   const [expandedBudget, setExpandedBudget] = useState<string | null>(null);
@@ -98,6 +102,22 @@ export default function ViewerPages({
       .finally(() => { if (isMounted) setPublicDemographicsLoading(false); });
     return () => { isMounted = false; };
   }, [activeMenu, transparencySubTab]);
+
+  useEffect(() => {
+    if (activeMenu !== 'transparency' || transparencySubTab !== 'officials' || publicOfficials !== null) return;
+    let isMounted = true;
+    setPublicOfficialsLoading(true);
+    setPublicOfficialsError(null);
+    kabisigApi.getPublicOfficials()
+      .then((officials) => { if (isMounted) setPublicOfficials(officials); })
+      .catch((error: unknown) => {
+        if (isMounted) {
+          setPublicOfficialsError(error instanceof Error ? error.message : 'Public officials could not be loaded.');
+        }
+      })
+      .finally(() => { if (isMounted) setPublicOfficialsLoading(false); });
+    return () => { isMounted = false; };
+  }, [activeMenu, transparencySubTab, publicOfficials]);
 
   // P13: Fetch + toggle program budget breakdown
   const toggleBudget = async (progId: string) => {
@@ -645,10 +665,10 @@ export default function ViewerPages({
             <div className="space-y-6">
               
               {/* SUB-MODULE SELECTOR HEADERS */}
-              <div className="flex flex-col md:flex-row gap-2 w-full mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-2 w-full mb-6">
                 <button
                   onClick={() => setTransparencySubTab('financial')}
-                  className={`flex-1 py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 border-2 transition-all ${
+                  className={`flex-1 min-w-0 whitespace-nowrap py-2 px-3 rounded-xl font-bold text-[10px] flex items-center justify-center gap-2 border-2 transition-all ${
                     transparencySubTab === 'financial'
                       ? 'bg-[#091d64] text-white shadow-xs'
                       : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
@@ -659,7 +679,7 @@ export default function ViewerPages({
 
                 <button
                   onClick={() => setTransparencySubTab('demographics')}
-                  className={`flex-1 py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 border-2 transition-all ${
+                  className={`flex-1 min-w-0 whitespace-nowrap py-2 px-3 rounded-xl font-bold text-[10px] flex items-center justify-center gap-2 border-2 transition-all ${
                     transparencySubTab === 'demographics'
                       ? 'bg-[#091d64] text-white shadow-xs'
                       : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
@@ -670,7 +690,7 @@ export default function ViewerPages({
 
                 <button
                   onClick={() => setTransparencySubTab('fpd')}
-                  className={`flex-1 py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 border-2 transition-all ${
+                  className={`flex-1 min-w-0 whitespace-nowrap py-2 px-3 rounded-xl font-bold text-[10px] flex items-center justify-center gap-2 border-2 transition-all ${
                     transparencySubTab === 'fpd'
                       ? 'bg-[#091d64] text-white shadow-xs'
                       : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
@@ -681,7 +701,7 @@ export default function ViewerPages({
 
                 <button
                   onClick={() => setTransparencySubTab('auditing')}
-                  className={`flex-1 py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 border-2 transition-all ${
+                  className={`flex-1 min-w-0 whitespace-nowrap py-2 px-3 rounded-xl font-bold text-[10px] flex items-center justify-center gap-2 border-2 transition-all ${
                     transparencySubTab === 'auditing'
                       ? 'bg-[#091d64] text-white shadow-xs'
                       : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
@@ -689,7 +709,83 @@ export default function ViewerPages({
                 >
                   <ShieldCheck className="w-4 h-4" /> Municipal Public Auditing Desk
                 </button>
+
+                <button
+                  onClick={() => setTransparencySubTab('officials')}
+                  className={`flex-1 min-w-0 whitespace-nowrap py-2 px-3 rounded-xl font-bold text-[10px] flex items-center justify-center gap-2 border-2 transition-all ${
+                    transparencySubTab === 'officials'
+                      ? 'bg-[#091d64] text-white shadow-xs'
+                      : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                  }`}
+                >
+                  <Building2 className="w-4 h-4" /> Barangay Directory
+                </button>
               </div>
+
+              {transparencySubTab === 'officials' && (
+                <div className="space-y-5">
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
+                    <h3 className="font-bold text-slate-800 text-base">Barangay Officials Roster</h3>
+                    <p className="text-xs text-slate-500 mt-1">Public names, positions, and official avatars only. No contact details or addresses are displayed.</p>
+                  </div>
+
+                  {publicOfficialsLoading && (
+                    <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-500">
+                      Loading barangay officials...
+                    </div>
+                  )}
+
+                  {publicOfficialsError && (
+                    <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">
+                      {publicOfficialsError}
+                    </div>
+                  )}
+
+                  {!publicOfficialsLoading && !publicOfficialsError && publicOfficials?.length === 0 && (
+                    <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-500">
+                      No barangay officials are currently listed.
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+                    {publicOfficials?.map((group) => (
+                      <section key={group.barangay_name} className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+                        <h4 className="px-5 py-4 bg-slate-50 border-b border-slate-100 text-sm font-extrabold text-[#091d64]">
+                          Barangay {group.barangay_name}
+                        </h4>
+                        <div className="p-4 space-y-3">
+                          {group.officials.length === 0 ? (
+                            <p className="text-xs text-slate-500 py-2">No active officials listed.</p>
+                          ) : group.officials.map((official) => (
+                            <div key={official.id} className="flex items-center gap-3 rounded-xl border border-slate-100 p-3">
+                              <div className="h-11 w-11 rounded-full bg-blue-50 text-[#091d64] flex items-center justify-center overflow-hidden shrink-0">
+                                {official.avatar_url ? (
+                                  <img
+                                    src={official.avatar_url}
+                                    alt={`${official.full_name || 'Official'} avatar`}
+                                    loading="lazy"
+                                    className="h-full w-full object-cover"
+                                  />
+                                ) : (
+                                  <UserRound className="h-5 w-5" aria-hidden="true" />
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm font-bold text-slate-800 break-words">
+                                  {official.full_name || 'Name not listed'}
+                                </p>
+                                <p className="text-xs font-semibold text-slate-500">
+                                  {official.role_id === 2 ? 'SK Chairperson' : 'SK Official'}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* SUB-TAB 1: PUBLIC FINANCIAL DASHBOARD */}
               {transparencySubTab === 'financial' && (
@@ -739,7 +835,7 @@ export default function ViewerPages({
                       </h4>
                       <div className="h-56 w-full min-w-0 overflow-hidden">
                         <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
-                          <BarChart data={cityWideBarData}>
+                          <BarChart data={cityWideBarData} margin={{ bottom: 20 }}>
                             <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} interval={0} angle={0} textAnchor="middle" height={50} tickFormatter={(value) => { const name = String(value || ''); return name.length > 10 ? `${name.substring(0, 10)}...` : name; }} tick={{ fill: '#475569', fontSize: 10 }} />
                             <YAxis stroke="#64748b" fontSize={10} tickLine={false} />
                             <Tooltip />

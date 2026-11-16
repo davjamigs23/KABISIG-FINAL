@@ -121,12 +121,14 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
       return;
     }
 
-    // Fetch ALL users to bypass any role_id type mismatches in PostgREST
-    const { data: allUsers } = await supabaseAdmin.from('users').select('*');
-    const chairMap = new Map<string, any>();
+    // Fetch only active-role aggregates; personal details are not needed for the public registry.
+    const { data: allUsers } = await supabaseAdmin
+      .from('users')
+      .select('tenant_id, role_id')
+      .eq('status', 'active');
+    const chairMap = new Set<string>();
     allUsers?.forEach((c) => {
-      const isChair = String(c.role_id) === '2' && String(c.status).toLowerCase() === 'active';
-      if (c.tenant_id && isChair) chairMap.set(c.tenant_id, c);
+      if (c.tenant_id && String(c.role_id) === '2') chairMap.add(c.tenant_id);
     });
 
     const { data: programs } = await supabaseAdmin
@@ -167,7 +169,7 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
     });
 
     const enrichedBarangays = barangays.map((b: any) => {
-      const chair = chairMap.get(b.id);
+      const hasChairperson = chairMap.has(b.id);
       const budget = budgetMap.get(b.id) || { allocated: 0, spent: 0 };
       
       return {
@@ -176,9 +178,9 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
         city: b.city,
         district: b.district,
         skDistrict: b.sk_district ?? null,
-        chairperson: chair?.full_name || 'Unassigned',
-        chairpersonEmail: canSeeBarangayContacts(req, b.id) ? (chair?.email || '') : '',
-        contact: canSeeBarangayContacts(req, b.id) ? (chair?.phone || '') : '',
+        chairperson: hasChairperson ? 'Assigned' : 'Unassigned',
+        chairpersonEmail: '',
+        contact: '',
         youthPopulation: youthCountMap.get(b.id) || 0,
         youthPopulationAvailable: !youthUsersError,
         activePrograms: progCountMap.get(b.id) || 0,

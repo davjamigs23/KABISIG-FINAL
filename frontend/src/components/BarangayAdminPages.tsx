@@ -3,7 +3,7 @@ import { generateBudgetUtilizationReport } from '../lib/pdfReports';
 import ProfileSettings from './ProfileSettings';
 import RestrictedUsersPanel from './RestrictedUsersPanel';
 import RestrictedUsers from './RestrictedUsers';
-import { formatAuditAction, formatAuditDetails } from '../lib/auditFormatter';
+import { formatAuditDetails } from '../lib/auditFormatter';
 import React, { useEffect, useState } from 'react';
 import { CartesianGrid } from 'recharts';
 import { FolderClosed } from 'lucide-react';
@@ -215,6 +215,7 @@ export default function BarangayAdminPages({
   const [activeMenu, setActiveMenu] = useState<
     'dashboard' | 'youth' | 'programs' | 'budget' | 'documents' | 'reports' | 'announcements' | 'audit' | 'calendar' | 'facebook_sync' | 'settings' | 'profile'
    | 'profile' | 'inventory' | 'restrictions'>('dashboard');
+  const [expandedAuditRowId, setExpandedAuditRowId] = useState<string | null>(null);
   const getAlertDestination = (code: string): 'budget' | 'documents' | 'youth' | 'dashboard' => {
     const c = (code || '').toUpperCase();
     if (c.includes('DOCUMENT') || c.includes('LIQUIDATION') || c.includes('COMPLIANCE') || c.includes('REPORT')) return 'documents';
@@ -3429,39 +3430,58 @@ return (
             <div className="space-y-6">
               <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-xs space-y-4">
                 <h3 className="text-lg font-extrabold text-[#091d64]">Barangay Official Activity & Audit Log</h3>
-                <div className="border border-slate-100 rounded-xl">
-                  <div className="w-full overflow-x-auto block">
-                  <table className="w-full text-left text-xs font-semibold text-slate-600 min-w-[600px]">
+                <div className="w-full overflow-hidden rounded-xl border border-slate-100">
+                  <table className="w-full table-fixed text-left text-xs font-semibold text-slate-600">
                     <thead className="bg-slate-50 text-[10px] text-slate-500 font-extrabold uppercase border-b border-slate-100">
                       <tr>
-                        <th className="p-3.5 whitespace-nowrap">Timestamp</th>
-                        <th className="p-3.5 whitespace-nowrap">Official Name & Role</th>
-                        <th className="p-3.5 whitespace-nowrap">Action Code</th>
-                        <th className="p-3.5 whitespace-nowrap">Activity Details</th>
+                        <th className="w-[22%] p-3.5">Timestamp</th>
+                        <th className="w-[24%] p-3.5">Official Name & Role</th>
+                        <th className="w-[18%] p-3.5">Action Code</th>
+                        <th className="w-[36%] p-3.5">Activity Details</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium text-slate-700">{auditLogs.map(log => (
-                        <tr key={log.id} className="hover:bg-slate-50/50">
-                          <td className="p-3.5 font-mono text-slate-400 text-[11px] whitespace-nowrap">
-                            {new Date(log.timestamp).toLocaleString()}
+                      <React.Fragment key={log.id}>
+                        <tr
+                          className="cursor-pointer hover:bg-slate-50/50"
+                          tabIndex={0}
+                          role="button"
+                          aria-expanded={expandedAuditRowId === log.id}
+                          onClick={() => setExpandedAuditRowId((current) => current === log.id ? null : log.id)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              setExpandedAuditRowId((current) => current === log.id ? null : log.id);
+                            }
+                          }}
+                        >
+                          <td className="p-3.5 font-mono text-slate-400 text-[11px] whitespace-nowrap align-top">
+                            {new Date(log.timestamp).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
                           </td>
-                          <td className="p-3.5 font-bold text-slate-800 whitespace-nowrap">
+                          <td className="p-3.5 font-bold text-slate-800 whitespace-normal break-words align-top">
                             {log.user} ({log.role})
                           </td>
-                          <td className="p-3.5 font-mono text-[10px] whitespace-nowrap">{formatAuditAction(log.action)}</td>
-                          <td className="p-3.5 text-slate-600 max-w-md whitespace-normal break-words whitespace-nowrap">{formatAuditDetails(log.action, log.details)}</td>
+                          <td className="p-3.5 font-mono text-[10px] whitespace-normal break-words align-top">{log.action}</td>
+                          <td className="p-3.5 text-slate-500 whitespace-normal break-words align-top">Click row to expand</td>
                         </tr>
-                      ))}
+                        {expandedAuditRowId === log.id && (
+                          <tr>
+                            <td colSpan={4} className="bg-slate-50 px-4 py-3 text-xs text-slate-700 whitespace-normal break-words">
+                              {formatAuditDetails(log.action, log.details)}
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    ))}
                       {auditLogs.length === 0 && (
                         <tr>
-                          <td colSpan={4} className="p-6 text-center text-slate-400 font-bold whitespace-nowrap">
+                          <td colSpan={4} className="p-6 text-center text-slate-400 font-bold">
                             No audit logs recorded yet.
                           </td>
                         </tr>
                       )}
                     </tbody>
                   </table>
-                </div>
                 </div>
               </div>
             </div>

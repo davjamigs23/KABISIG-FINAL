@@ -1,6 +1,7 @@
 import express from 'express';
 import type { Request, Response } from 'express';
 import { supabaseAdmin } from '../services/supabase.service.js';
+import { resolveAvatarUrl } from '../services/avatar.service.js';
 import { sendSuccess, sendError } from '../utils/response.js';
 
 const router = express.Router();
@@ -133,6 +134,67 @@ router.get('/programs', async (_req: Request, res: Response): Promise<void> => {
   sendSuccess(res, data || [], 'Public programs retrieved.');
 });
 
+// GET /api/public/officials — active public roster without contact or address data
+router.get('/officials', async (_req: Request, res: Response): Promise<void> => {
+  const { data: barangays, error: barangayError } = await supabaseAdmin
+    .from('barangay')
+    .select('id, name')
+    .order('name', { ascending: true });
+
+  if (barangayError) {
+    sendError(res, `Failed to load barangays for the public officials roster: ${barangayError.message}`, 500);
+    return;
+  }
+
+  const { data: officials, error } = await supabaseAdmin
+    .from('users')
+    .select('id, tenant_id, full_name, role_id, avatar_url, barangay(name)')
+    .in('role_id', [2, 3])
+    .eq('status', 'active')
+    .not('tenant_id', 'is', null);
+
+  if (error) {
+    sendError(res, `Failed to load public officials: ${error.message}`, 500);
+    return;
+  }
+
+  const groupedOfficials = new Map<string, {
+    barangay_name: string;
+    officials: Array<{
+      id: string;
+      full_name: string;
+      role_id: number;
+      avatar_url: string | null;
+    }>;
+  }>();
+
+  (barangays || []).forEach(barangay => {
+    groupedOfficials.set(barangay.id, { barangay_name: barangay.name, officials: [] });
+  });
+
+  const resolvedOfficials = await Promise.all((officials || []).map(async (official: any) => ({
+    ...official,
+    avatar_url: await resolveAvatarUrl(official.avatar_url),
+  })));
+
+  resolvedOfficials.forEach((official: any) => {
+    if (!official.tenant_id) return;
+    const group = groupedOfficials.get(official.tenant_id);
+    if (!group) return;
+
+    const joinedBarangay = Array.isArray(official.barangay) ? official.barangay[0] : official.barangay;
+    if (joinedBarangay?.name) group.barangay_name = joinedBarangay.name;
+    group.officials.push({
+      id: official.id,
+      full_name: official.full_name || '',
+      role_id: Number(official.role_id),
+      avatar_url: official.avatar_url,
+    });
+  });
+
+  sendSuccess(res, Array.from(groupedOfficials.values()), 'Public officials roster retrieved.');
+});
+
 // GET /api/public/programs/:id/budget - itemized budget breakdown
 router.get('/programs/:id/budget', async (req: Request, res: Response): Promise<void> => {
   const programId = String(req.params.id || '');
@@ -209,30 +271,12 @@ router.get('/documents', async (_req: Request, res: Response): Promise<void> => 
     return;
   }
 
-  const { data: chairpersons, error: chairpersonError } = await supabaseAdmin
-    .from('users')
-    .select('tenant_id, email')
-    .eq('role_id', 2);
-
-  if (chairpersonError) {
-    sendError(res, `Failed to load public document contacts: ${chairpersonError.message}`, 500);
-    return;
-  }
-
-  const emailMap: Record<string, string> = {};
-  (chairpersons || []).forEach(chairperson => {
-    if (chairperson.tenant_id && chairperson.email) {
-      emailMap[chairperson.tenant_id] = chairperson.email;
-    }
-  });
-
   const publicDocuments = (data || []).map(document => ({
     id: document.id,
     title: document.title,
     document_type: document.document_type,
     category: document.document_type,
     barangayId: document.tenant_id,
-    chairpersonEmail: emailMap[document.tenant_id] || null,
     uploadedDate: document.created_at?.split('T')[0],
     created_at: document.created_at,
     status: document.status,

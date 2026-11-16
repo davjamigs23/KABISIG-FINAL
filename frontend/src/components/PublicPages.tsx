@@ -824,15 +824,6 @@ export default function PublicPages({
                         )}
                       </button>
 
-                      <div className="text-center pt-2">
-                        <button
-                          type="button"
-                          onClick={() => setIsChairpersonSetup(false)}
-                          className="text-xs text-slate-500 hover:text-slate-800 font-medium hover:underline cursor-pointer"
-                        >
-                          Already have a password? Return to standard sign in
-                        </button>
-                      </div>
                     </div>
                   </>
                 ) : (
@@ -845,7 +836,7 @@ export default function PublicPages({
                       {/* Email */}
                       <div>
                         <label className="block text-xs font-bold text-slate-900 mb-1.5 font-sans">
-                          KABISIG Email
+                          Email
                         </label>
                         <div className="relative w-full">
                           <input

@@ -104,6 +104,7 @@ const UpdateBudgetSchema = z.object({
   allocated_amount: z.number().positive('Allocated amount must be greater than zero'),
 });
 
+// Authenticated tenant read; non-super-admin users are restricted to their own tenant.
 router.get('/', authenticateUser, async (req: Request, res: Response): Promise<void> => {
   const user = (req as AuthRequest).user!;
   const { fiscal_year, tenant_id } = req.query;
@@ -415,6 +416,7 @@ router.delete(
   }
 );
 
+// Authenticated tenant read; non-super-admin users are restricted to their own tenant.
 router.get('/expenses', authenticateUser, async (req: Request, res: Response): Promise<void> => {
   const user = (req as AuthRequest).user!;
   const { budget_id, status, tenant_id } = req.query;

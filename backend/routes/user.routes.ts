@@ -280,6 +280,7 @@ function normalizeEmploymentStatus(status?: string | null): 'Employed' | 'Unempl
  * Updates Constituent / Youth Profile in public.users, public.resident_profile,
  * and permanently saves all 20 Katipunan ng Kabataan profile fields in Supabase Auth user_metadata.
  */
+// Self-service: profile reads and updates use the authenticated user's ID, not a caller-supplied target.
 router.put('/profile', authenticateUser, async (req: Request, res: Response): Promise<void> => {
   const authUser = (req as any).user;
   if (authUser.role_id === 1 && req.body.email && req.body.email !== authUser.email) {
@@ -564,6 +565,7 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
  * GET /api/users/profile
  * Returns the current user's complete KK profile from database.
  */
+// Self-service by default; administrative lookup requires an explicit Super Admin check in the handler.
 router.get('/profile', authenticateUser, async (req: Request, res: Response): Promise<void> => {
   try {
     const authenticatedUser = (req as AuthRequest).user!;
@@ -1226,7 +1228,7 @@ router.get(
     // Fetch all SK Officials for this barangay (role_id 2 or 3)
     const { data: officials, error } = await supabaseAdmin
       .from('users')
-      .select('id, email, role_id, status, full_name, first_name, middle_name, last_name, suffix, suspension_reason')
+      .select('id, email, role_id, status, full_name, first_name, middle_name, last_name, suffix, suspension_reason, avatar_url')
       .eq('tenant_id', barangayId)
       .in('role_id', [2, 3]);
 
@@ -1261,9 +1263,23 @@ router.get(
       else kagawad++;
     });
 
-    const skRoster = (officials || [])
+    const chairpersonRoster = await Promise.all((officials || [])
+      .filter((o: any) => o.role_id === 2)
+      .map(async (o: any) => {
+        const row: any = o;
+        const composed = [row.first_name, row.middle_name, row.last_name, row.suffix].filter(Boolean).join(' ').trim();
+        return {
+          id: o.id,
+          email: o.email,
+          status: o.status,
+          full_name: composed || row.full_name || 'Pending Invitation',
+          avatar_url: await resolveAvatarUrl(o.avatar_url),
+        };
+      }));
+
+    const skRoster = await Promise.all((officials || [])
       .filter((o: any) => o.role_id === 3)
-      .map((o: any) => {
+      .map(async (o: any) => {
         const meta = metaMap[o.id] || {};
         const sub = String(meta.official_role || '').toLowerCase();
         const official_role = sub.includes('secretary') ? 'SK Secretary'
@@ -1277,8 +1293,9 @@ router.get(
           official_role,
           status: o.status,
           full_name: composed || row.full_name || 'Pending Invitation',
+          avatar_url: await resolveAvatarUrl(o.avatar_url),
         };
-      });
+      }));
     sendSuccess(
       res,
       {
@@ -1286,6 +1303,7 @@ router.get(
         secretary:   { current: secretary,   limit: 1 },
         treasurer:   { current: treasurer,   limit: 1 },
         kagawad:     { current: kagawad,     limit: 7 },
+        chairperson_details: chairpersonRoster,
         officials: skRoster,
       },
       'Role capacity retrieved.'
@@ -1293,6 +1311,7 @@ router.get(
   }
 );
 // POST /api/users/upload-avatar
+// Self-service: the avatar storage path and database update use the authenticated user's ID.
 router.post('/upload-avatar', authenticateUser, async (req: Request, res: Response): Promise<void> => {
   try {
     const { base64, mime_type } = req.body;

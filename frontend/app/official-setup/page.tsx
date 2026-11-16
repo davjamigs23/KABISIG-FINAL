@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js';
 import { ShieldCheck, Lock, Eye, EyeOff, User, Loader2, CheckCircle2, AlertCircle, Award } from 'lucide-react';
 import { kabisigApi } from '../../src/lib/api';
 import { composeFullName } from '../../src/lib/name';
@@ -22,6 +22,9 @@ function SetupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [supabaseClient, setSupabaseClient] = useState<SupabaseClient | null>(null);
+  const [inviteSession, setInviteSession] = useState<Session | null>(null);
+  const [cachedToken, setCachedToken] = useState<string | null>(null);
+  const [cachedEmail, setCachedEmail] = useState<string | null>(null);
   const [inviteStatus, setInviteStatus] = useState<'checking' | 'ready' | 'invalid'>('checking');
   const [email, setEmail] = useState('');
   const [tenantId, setTenantId] = useState('');
@@ -32,18 +35,24 @@ function SetupForm() {
   const [lastName, setLastName] = useState('');
   const [suffix, setSuffix] = useState('');
   const [officialRole, setOfficialRole] = useState('SK Kagawad');
+  const [phone, setPhone] = useState('');
+  const [birthdate, setBirthdate] = useState('');
+  const [sex, setSex] = useState<'Male' | 'Female' | 'Other' | 'Prefer not to say' | ''>('');
+  const [address, setAddress] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showMobileValidationModal, setShowMobileValidationModal] = useState(false);
 
   const composedFullName = composeFullName({ first_name: firstName, middle_name: middleName, last_name: lastName, suffix });
 
   useEffect(() => {
     let active = true;
     const invalidInviteMessage = 'This invitation link has already been used or has expired. Please log in normally or contact the Super Admin.';
+    let subscription: { unsubscribe: () => void } | undefined;
 
     const verifyInvite = async () => {
       try {
@@ -64,9 +73,22 @@ function SetupForm() {
         });
         if (!active) return;
         setSupabaseClient(client);
+        const authState = client.auth.onAuthStateChange((_event, session) => {
+          if (active && session) {
+            setInviteSession(session);
+            setCachedToken(session.access_token);
+            setCachedEmail(session.user.email?.trim().toLowerCase() || null);
+          }
+        });
+        subscription = authState.data.subscription;
         const { data, error: sessionError } = await client.auth.getSession();
         if (sessionError) throw sessionError;
         if (!data.session) throw new Error(invalidInviteMessage);
+        if (active) {
+          setInviteSession(data.session);
+          setCachedToken(data.session.access_token);
+          setCachedEmail(data.session.user.email?.trim().toLowerCase() || null);
+        }
         if (!hasInviteCredentials) {
           router.replace('/');
           return;
@@ -78,7 +100,7 @@ function SetupForm() {
           throw new Error(invalidInviteMessage);
         }
 
-        const inviteEmail = searchParams.get('invite_email')?.trim().toLowerCase();
+        const inviteEmail = queryParams.get('invite_email')?.trim().toLowerCase();
         if (inviteEmail && data.session.user.email?.toLowerCase() !== inviteEmail) {
           throw new Error(invalidInviteMessage);
         }
@@ -93,8 +115,11 @@ function SetupForm() {
     };
 
     void verifyInvite();
-    return () => { active = false; };
-  }, [router, searchParams]);
+    return () => {
+      active = false;
+      subscription?.unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     const inviteEmail = searchParams.get('invite_email');
@@ -126,6 +151,23 @@ function SetupForm() {
       setError('This invitation link has already been used or has expired. Please log in normally or contact the Super Admin.');
       return;
     }
+    if (!/^09\d{9}$/.test(phone)) {
+      setShowMobileValidationModal(true);
+      return;
+    }
+    if (!birthdate || !sex || !address.trim()) {
+      setError('Please complete your birthdate, biological sex, and address.');
+      return;
+    }
+    if (new Date(birthdate) > new Date()) {
+      setError('Birthdate cannot be in the future.');
+      return;
+    }
+    const age = Math.floor((Date.now() - new Date(birthdate).getTime()) / 31557600000);
+    if (age < 15 || age > 30) {
+      setError('You must be between 15 and 30 years old (RA 10742).');
+      return;
+    }
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail) { setError('Please enter your KABISIG email address.'); return; }
     if (!password) { setError('Please create your password.'); return; }
@@ -138,19 +180,17 @@ function SetupForm() {
     }
     setIsSubmitting(true);
     try {
-      const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
-      const session = sessionData.session;
-      if (sessionError || !session ||
+      const session = inviteSession;
+      if (!cachedToken || !cachedEmail || cachedEmail !== cleanEmail || !session ||
           session.user.user_metadata?.setup_completed !== false ||
-          session.user.app_metadata?.setup_completed !== false ||
-          session.user.email?.toLowerCase() !== cleanEmail) {
+          session.user.app_metadata?.setup_completed !== false) {
         setInviteStatus('invalid');
         setError('This invitation link has already been used or has expired. Please log in normally or contact the Super Admin.');
         return;
       }
 
       const res = await kabisigApi.setupOfficialPassword({
-        email: cleanEmail,
+        email: cachedEmail,
         password: password,
         confirmPassword: confirmPassword,
         full_name: composedFullName || ('Hon. ' + firstName.trim() + ' ' + lastName.trim()).trim(),
@@ -158,23 +198,26 @@ function SetupForm() {
         middle_name: middleName.trim() || null,
         last_name: lastName.trim() || null,
         suffix: suffix.trim() || null,
+        phone: phone.trim(),
+        birthdate,
+        sex,
+        address: address.trim(),
         official_role: officialRole,
         tenant_id: tenantId,
-      }, session.access_token);
+      }, cachedToken);
       if (!res.success) {
         if (res.message?.toLowerCase().includes('already been used')) setInviteStatus('invalid');
         setError(res.message || 'Password setup failed. Please check your inputs and try again.');
         return;
       }
-      const loginRes = await kabisigApi.login(cleanEmail, password);
+      const loginRes = await kabisigApi.login(cachedEmail, password);
       if (!loginRes.success) {
         setError('Account configured. Please sign in manually with your new password.');
         return;
       }
-      window.history.replaceState(window.history.state, '', window.location.pathname);
       router.replace('/');
     } catch (err: any) {
-      setError((err && err.message) ? err.message : 'Network error setting up Chairperson password.');
+      setError((err && err.message) ? err.message : 'Network error setting up SK Official password.');
     } finally {
       setIsSubmitting(false);
     }
@@ -183,6 +226,7 @@ function SetupForm() {
   const checks = validatePassword(password);
   const match = password.length > 0 && password === confirmPassword;
   const allPass = checks.minLength && checks.hasUpper && checks.hasLower && checks.hasNumber && checks.hasSymbol && match;
+  const invalidMobileMessage = 'Mobile number must start with 09 and be exactly 11 digits.';
 
   return (
     <div className="min-h-screen bg-slate-50 grid lg:grid-cols-[2fr_3fr]">
@@ -204,11 +248,6 @@ function SetupForm() {
             Set up your password to activate your official account for Barangay{' '}
             <span className="font-bold text-amber-400">{barangayName || 'your Barangay'}</span>.
           </p>
-        </div>
-        <div className="space-y-2 text-xs text-slate-300">
-          <p>Password is stored encrypted</p>
-          <p>You will not be asked for a temporary password</p>
-          <p>You may change it anytime from Settings</p>
         </div>
       </div>
 
@@ -236,7 +275,71 @@ function SetupForm() {
               </div>
             </div>
 
-              <div>               <label className="block text-xs font-bold text-slate-900 mb-1">Full Name <span className="text-rose-500">*</span></label>               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">                 <input type="text" required value={firstName} onChange={(e) => setFirstName(e.target.value)}                   className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"                   placeholder="Juan (First Name)" />                 <input type="text" required value={lastName} onChange={(e) => setLastName(e.target.value)}                   className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"                   placeholder="Dela Cruz (Last Name)" />                 <input type="text" value={middleName} onChange={(e) => setMiddleName(e.target.value)}                   className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"                   placeholder="Santos (Middle Name)" />                 <select value={suffix} onChange={(e) => setSuffix(e.target.value)}                   className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600 cursor-pointer">                   <option value="">Suffix — None</option>                   <option value="Jr.">Jr.</option>                   <option value="Sr.">Sr.</option>                   <option value="II">II</option>                   <option value="III">III</option>                   <option value="IV">IV</option>                   <option value="V">V</option>                 </select>               </div>               </div>
+            <div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="block text-xs font-bold text-slate-900">First Name <span className="text-rose-500">*</span>
+                  <input type="text" required value={firstName} onChange={(e) => setFirstName(e.target.value)}
+                    className="mt-1 w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
+                    placeholder="Enter your first name" />
+                </label>
+                <label className="block text-xs font-bold text-slate-900">Middle Name
+                  <input type="text" value={middleName} onChange={(e) => setMiddleName(e.target.value)}
+                    className="mt-1 w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
+                    placeholder="Enter your middle name" />
+                </label>
+                <label className="block text-xs font-bold text-slate-900">Last Name <span className="text-rose-500">*</span>
+                  <input type="text" required value={lastName} onChange={(e) => setLastName(e.target.value)}
+                    className="mt-1 w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
+                    placeholder="Enter your last name" />
+                </label>
+                <select value={suffix} onChange={(e) => setSuffix(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600 cursor-pointer">
+                  <option value="">Suffix — None</option>
+                  <option value="Jr.">Jr.</option>
+                  <option value="Sr.">Sr.</option>
+                  <option value="II">II</option>
+                  <option value="III">III</option>
+                  <option value="IV">IV</option>
+                  <option value="V">V</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-900 mb-1">Mobile Contact <span className="text-rose-500">*</span></label>
+                <input type="tel" inputMode="numeric" maxLength={11} value={phone}
+                  onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
+                  placeholder=""
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
+                  required />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-900 mb-1">Birthdate <span className="text-rose-500">*</span></label>
+                <input type="date" value={birthdate} max={new Date().toISOString().split('T')[0]}
+                  onChange={(e) => setBirthdate(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
+                  required />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-900 mb-1">Biological Sex <span className="text-rose-500">*</span></label>
+                <select value={sex} required onChange={(e) => setSex(e.target.value as typeof sex)}
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600 cursor-pointer">
+                  <option value="" disabled>Select Gender</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Other">Other</option>
+                  <option value="Prefer not to say">Prefer not to say</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-900 mb-1">Address <span className="text-rose-500">*</span></label>
+                <input type="text" value={address} onChange={(e) => setAddress(e.target.value)}
+                  placeholder=""
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
+                  required />
+              </div>
+            </div>
 
             <div>
               <label className="block text-xs font-bold text-slate-900 mb-1">Create Password <span className="text-rose-500">*</span></label>
@@ -307,15 +410,23 @@ function SetupForm() {
               )}
             </button>
 
-            <div className="text-center pt-2">
-              <button type="button" onClick={() => router.push('/')}
-                className="text-xs text-slate-500 hover:text-slate-800 font-medium hover:underline cursor-pointer">
-                Already have a password? Return to standard sign in
-              </button>
-            </div>
           </form>
         </div>
       </div>
+      {showMobileValidationModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4" role="presentation">
+          <div role="alertdialog" aria-modal="true" aria-labelledby="official-mobile-validation-title"
+            className="w-full max-w-sm rounded-2xl border border-rose-200 bg-white p-6 text-center shadow-2xl">
+            <AlertCircle className="mx-auto mb-3 h-10 w-10 text-rose-600" />
+            <h2 id="official-mobile-validation-title" className="mb-2 text-base font-black text-rose-700">Invalid Mobile Contact</h2>
+            <p className="mb-5 text-sm text-slate-700">{invalidMobileMessage}</p>
+            <button type="button" onClick={() => setShowMobileValidationModal(false)}
+              className="rounded-lg bg-rose-600 px-5 py-2 text-sm font-bold text-white hover:bg-rose-700">
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
