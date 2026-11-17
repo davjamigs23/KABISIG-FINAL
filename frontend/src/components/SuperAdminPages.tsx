@@ -11,7 +11,7 @@ import {
   ArrowUpRight, Lock, Eye, ShieldCheck, FileText, Check,
   X, ChevronDown, RefreshCw, Layers, Award, TrendingUp, LogOut, Menu,
   Upload, Image as ImageIcon, Trash2, Mail, Loader2, Settings, AlertCircle,
-  Copy, ExternalLink, ShieldAlert
+  ShieldAlert
 , ArrowLeft, Clock } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
@@ -216,8 +216,6 @@ useEffect(() => {
   const [inviteOfficialRole, setInviteOfficialRole] = useState<'SK Kagawad' | 'SK Secretary' | 'SK Treasurer' | ''>('');
   const [isInvitingOfficial, setIsInvitingOfficial] = useState(false);
   const [inviteOfficialNotice, setInviteOfficialNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [officialSetupLink, setOfficialSetupLink] = useState('');
-  const [copiedOfficialSetupLink, setCopiedOfficialSetupLink] = useState(false);
   const [pendingOfficialToCancel, setPendingOfficialToCancel] = useState<any>(null);
   const [isCancellingOfficialInvite, setIsCancellingOfficialInvite] = useState(false);
   const [isResendingOfficialId, setIsResendingOfficialId] = useState<string | null>(null);
@@ -236,15 +234,19 @@ useEffect(() => {
   const [allOfficialsError, setAllOfficialsError] = useState<string | null>(null);
 
   const normalizedInviteOfficialEmail = inviteOfficialEmail.trim().toLowerCase();
-  const isInviteOfficialEmailDuplicate = Boolean(normalizedInviteOfficialEmail && (
-    inviteOfficialBarangay?.chairpersonEmail?.trim().toLowerCase() === normalizedInviteOfficialEmail
-    || (Array.isArray(roleCapacity?.chairperson_details) && roleCapacity.chairperson_details.some(
-      (official: any) => String(official.email || '').trim().toLowerCase() === normalizedInviteOfficialEmail
-    ))
-    || (Array.isArray(roleCapacity?.officials) && roleCapacity.officials.some(
-      (official: any) => String(official.email || '').trim().toLowerCase() === normalizedInviteOfficialEmail
-    ))
-  ));
+  const isEmailAlreadyAssigned = (email: string): boolean => {
+    const normalizedEmail = email.trim().toLowerCase();
+    return Boolean(normalizedEmail && (
+      inviteOfficialBarangay?.chairpersonEmail?.trim().toLowerCase() === normalizedEmail
+      || (Array.isArray(roleCapacity?.chairperson_details) && roleCapacity.chairperson_details.some(
+        (official: any) => String(official.email || '').trim().toLowerCase() === normalizedEmail
+      ))
+      || (Array.isArray(roleCapacity?.officials) && roleCapacity.officials.some(
+        (official: any) => String(official.email || '').trim().toLowerCase() === normalizedEmail
+      ))
+    ));
+  };
+  const isInviteOfficialEmailDuplicate = isEmailAlreadyAssigned(normalizedInviteOfficialEmail);
   const pendingOfficialInvites = Array.isArray(roleCapacity?.officials)
     ? roleCapacity.officials.filter((official: any) =>
         official.setup_completed !== true
@@ -268,13 +270,27 @@ useEffect(() => {
     
     if (!showInviteOfficialModal || !inviteOfficialBarangay?.id) {
       setRoleCapacity(null);
+      setIsLoadingCapacity(false);
       return;
     }
     let cancelled = false;
     setIsLoadingCapacity(true);
     kabisigApi.getRoleCapacity(inviteOfficialBarangay.id)
-      .then((res) => { if (!cancelled && res.success) setRoleCapacity(res.data); })
-      .catch(() => { if (!cancelled) setRoleCapacity(null); })
+      .then((res) => {
+        if (cancelled) return;
+        if (res.success && res.data) {
+          setRoleCapacity(res.data);
+          setInviteOfficialNotice(null);
+        } else {
+          setRoleCapacity(null);
+          setInviteOfficialNotice({ type: 'error', text: res.message || 'Unable to verify assigned officials.' });
+        }
+      })
+      .catch((error: any) => {
+        if (cancelled) return;
+        setRoleCapacity(null);
+        setInviteOfficialNotice({ type: 'error', text: error?.message || 'Unable to verify assigned officials.' });
+      })
       .finally(() => { if (!cancelled) setIsLoadingCapacity(false); });
     return () => { cancelled = true; };
   }, [showInviteOfficialModal, inviteOfficialBarangay?.id]);
@@ -487,9 +503,8 @@ useEffect(() => {
     setInviteOfficialEmail('');
     setInviteOfficialRole('');
     setInviteOfficialNotice(null);
-    setOfficialSetupLink('');
     setRoleCapacity(null);
-    setIsLoadingCapacity(false);
+    setIsLoadingCapacity(Boolean(barangay?.id));
     setInviteReturnToConfigure(returnToConfigure);
     setShowInviteOfficialModal(true);
   };
@@ -513,7 +528,11 @@ useEffect(() => {
       setInviteOfficialNotice({ type: 'error', text: 'Checking existing officials. Please wait.' });
       return;
     }
-    if (isInviteOfficialEmailDuplicate) {
+    if (!roleCapacity) {
+      setInviteOfficialNotice({ type: 'error', text: 'Unable to verify assigned officials. Please try again before sending an invitation.' });
+      return;
+    }
+    if (isEmailAlreadyAssigned(email)) {
       setInviteOfficialNotice({ type: 'error', text: 'This email is already assigned in this barangay.' });
       return;
     }
@@ -526,12 +545,10 @@ useEffect(() => {
         setIsInvitingOfficial(false);
         return;
       }
-      setOfficialSetupLink(res.data?.action_link || res.data?.setup_url || '');
       setInviteOfficialNotice({
         type: 'success',
         text: `SK Official invitation sent to ${email} for ${inviteOfficialBarangay.name}.`,
       });
-      setCopiedOfficialSetupLink(false);
       const refreshedCapacity = await kabisigApi.getRoleCapacity(inviteOfficialBarangay.id);
       if (refreshedCapacity.success) setRoleCapacity(refreshedCapacity.data);
     } catch (err: any) {
@@ -549,8 +566,6 @@ useEffect(() => {
 
     setIsResendingOfficialId(official.id);
     setInviteOfficialNotice(null);
-    setOfficialSetupLink('');
-    setCopiedOfficialSetupLink(false);
     try {
       const response = await kabisigApi.inviteSkOfficial(
         inviteOfficialBarangay.id,
@@ -561,7 +576,6 @@ useEffect(() => {
         setInviteOfficialNotice({ type: 'error', text: response.message || 'Failed to resend invitation.' });
         return;
       }
-      setOfficialSetupLink(response.data?.action_link || response.data?.setup_url || '');
       setInviteOfficialNotice({
         type: 'success',
         text: `A new invitation was sent to ${official.email}.`,
@@ -597,17 +611,6 @@ useEffect(() => {
     }
   };
 
-  const handleCopyOfficialSetupLink = async () => {
-    try {
-      await navigator.clipboard.writeText(officialSetupLink);
-      setCopiedOfficialSetupLink(true);
-    } catch (error) {
-      setInviteOfficialNotice({
-        type: 'error',
-        text: error instanceof Error ? `Unable to copy the invitation link: ${error.message}` : 'Unable to copy the invitation link.',
-      });
-    }
-  };
 
   const loadRestrictions = async () => {
     setRestrictionsLoading(true);
@@ -2284,8 +2287,8 @@ useEffect(() => {
       {/* P9/P10: INVITE SK OFFICIAL MODAL */}
       {showInviteOfficialModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200 max-w-[95vw] md:max-w-2xl lg:max-w-md">
-            <div className="bg-[#091d64] p-5 text-white flex justify-between items-center text-left">
+          <div className="flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl max-w-[95vw] md:max-w-2xl lg:max-w-md">
+            <div className="shrink-0 bg-[#091d64] p-5 text-white flex justify-between items-center text-left">
               <div>
                 <h3 className="font-sans font-black text-base flex items-center gap-2">
                   <ShieldCheck className="w-5 h-5 text-amber-300" />
@@ -2306,7 +2309,7 @@ useEffect(() => {
               </button>
               </div>
             </div>
-            <form onSubmit={handleInviteOfficialSubmit} className="p-6 space-y-4 text-left text-xs">
+            <form onSubmit={handleInviteOfficialSubmit} className="min-h-0 flex-1 overflow-y-auto p-6 space-y-4 text-left text-xs">
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Target Barangay</label>
                 <select value={inviteOfficialBarangay?.id || ''}
@@ -2314,6 +2317,7 @@ useEffect(() => {
                     const selected = barangays.find(b => b.id === e.target.value);
                     setInviteOfficialBarangay(selected || null);
                     setRoleCapacity(null);
+                    setIsLoadingCapacity(Boolean(selected));
                     setInviteOfficialNotice(null);
                   }}
                   className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-1 focus:ring-[#091d64] focus:outline-none cursor-pointer"
@@ -2457,35 +2461,6 @@ useEffect(() => {
                   {inviteOfficialNotice.text}
                 </div>
               )}
-              {officialSetupLink && (
-                <div className="space-y-2 rounded-xl border border-blue-200 bg-blue-50 p-3">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-[#091d64]">Invitation Link</p>
-                  <input
-                    readOnly
-                    value={officialSetupLink}
-                    className="w-full rounded-lg border border-blue-100 bg-white p-2 font-mono text-[10px] text-slate-700"
-                    aria-label="SK Official invitation link"
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => void handleCopyOfficialSetupLink()}
-                      className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-[#091d64] px-2 py-2 text-[10px] font-bold text-white"
-                    >
-                      <Copy className="h-3 w-3" /> {copiedOfficialSetupLink ? 'Copied' : 'Keep Link'}
-                    </button>
-                    <a
-                      href={officialSetupLink}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-blue-200 bg-white px-2 py-2 text-[10px] font-bold text-[#091d64]"
-                    >
-                      <ExternalLink className="h-3 w-3" /> Open Link
-                    </a>
-                  </div>
-                </div>
-              )}
-
               {(() => {
                 const _key = inviteOfficialRole === 'SK Kagawad' ? 'kagawad' : inviteOfficialRole === 'SK Secretary' ? 'secretary' : 'treasurer';
                 const _row = roleCapacity?.[_key];
@@ -2497,7 +2472,7 @@ useEffect(() => {
                         {inviteOfficialRole} slots are full for this barangay. Choose a different role or barangay.
                       </p>
                     )}
-                    <button type="submit" disabled={isInvitingOfficial || isLoadingCapacity || isInviteOfficialEmailDuplicate || !inviteOfficialBarangay || !inviteOfficialRole || _full}
+                    <button type="submit" disabled={isInvitingOfficial || isLoadingCapacity || !roleCapacity || isInviteOfficialEmailDuplicate || !inviteOfficialBarangay || !inviteOfficialRole || _full}
                       className="w-full py-3 bg-[#091d64] hover:bg-[#102a83] disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer">
                       {isInvitingOfficial
                         ? 'Sending...'
@@ -2507,6 +2482,8 @@ useEffect(() => {
                             ? 'Checking existing officials...'
                         : !inviteOfficialBarangay || !inviteOfficialRole
                           ? 'Select Barangay and Role'
+                          : !roleCapacity
+                            ? 'Unable to verify assigned officials'
                           : _full
                             ? inviteOfficialRole + ' — At Capacity'
                             : 'Send ' + inviteOfficialRole + ' Invitation'}

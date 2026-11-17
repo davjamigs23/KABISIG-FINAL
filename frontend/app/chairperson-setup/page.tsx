@@ -33,6 +33,16 @@ function validatePassword(pw: string) {
 }
 
 function SetupForm() {
+  if (typeof window !== 'undefined' && window.location.hash) {
+    const params = new URLSearchParams(window.location.hash.substring(1));
+    const accessToken = params.get('access_token');
+    const refreshToken = params.get('refresh_token');
+    if (accessToken && refreshToken) {
+      sessionStorage.setItem('setup_access_token', accessToken);
+      sessionStorage.setItem('setup_refresh_token', refreshToken);
+    }
+  }
+
   const router = useRouter();
   const searchParams = useSearchParams();
   const [supabaseClient, setSupabaseClient] = useState<SupabaseClient | null>(null);
@@ -107,8 +117,12 @@ function SetupForm() {
         }
         if (sessionResolved) return;
 
-        const storedAccessToken = sessionStorage.getItem('setup_token');
+        const storedAccessToken = sessionStorage.getItem('setup_access_token')
+          || sessionStorage.getItem('setup_token');
         const storedRefreshToken = sessionStorage.getItem('setup_refresh_token');
+        if (storedAccessToken && !sessionStorage.getItem('setup_access_token')) {
+          sessionStorage.setItem('setup_access_token', storedAccessToken);
+        }
         if (storedAccessToken && storedRefreshToken) {
           const { data: storedSessionData, error: storedSessionError } = await client.auth.setSession({
             access_token: storedAccessToken,
@@ -133,7 +147,7 @@ function SetupForm() {
           hashParams.get('error') || queryParams.get('error');
         const accessToken = hashParams.get('access_token');
         const refreshToken = hashParams.get('refresh_token');
-        if (accessToken) sessionStorage.setItem('setup_token', accessToken);
+        if (accessToken) sessionStorage.setItem('setup_access_token', accessToken);
         if (refreshToken) sessionStorage.setItem('setup_refresh_token', refreshToken);
         const recoveryAccessToken = accessToken || storedAccessToken;
         const recoveryRefreshToken = refreshToken || storedRefreshToken;
@@ -163,7 +177,7 @@ function SetupForm() {
         if (sessionResolved) return;
         if (hashParams.get('error') === 'access_denied' || hashParams.get('error_code') === 'otp_expired') {
           sessionResolved = true;
-          const canRecoverSession = Boolean(window.location.hash || sessionStorage.getItem('setup_token'));
+          const canRecoverSession = Boolean(window.location.hash || sessionStorage.getItem('setup_access_token') || sessionStorage.getItem('setup_token'));
           setError(
             canRecoverSession
               ? 'Unable to restore your invitation session. Please reopen the invitation link.'
@@ -186,7 +200,7 @@ function SetupForm() {
               }
               sessionResolved = true;
               setInviteStatus('invalid');
-              const hasRecoverableLink = Boolean(window.location.hash || sessionStorage.getItem('setup_token'));
+              const hasRecoverableLink = Boolean(window.location.hash || sessionStorage.getItem('setup_access_token') || sessionStorage.getItem('setup_token'));
               setError(
                 !hasRecoverableLink
                   ? authError || INVALID_INVITE_MESSAGE
@@ -208,7 +222,7 @@ function SetupForm() {
           sessionResolved = true;
           setInviteStatus('invalid');
           setError(
-            !window.location.hash && !sessionStorage.getItem('setup_token')
+            !window.location.hash && !sessionStorage.getItem('setup_access_token') && !sessionStorage.getItem('setup_token')
               ? INVALID_INVITE_MESSAGE
               : verificationError instanceof Error
                 ? verificationError.message
@@ -348,6 +362,7 @@ function SetupForm() {
         }
         return;
       }
+      sessionStorage.removeItem('setup_access_token');
       sessionStorage.removeItem('setup_token');
       sessionStorage.removeItem('setup_refresh_token');
       const loginRes = await kabisigApi.login(sessionEmail, password);
