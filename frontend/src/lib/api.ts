@@ -89,7 +89,8 @@ export function getFirstValidationError(error: unknown): string | null {
   return firstMessage(data?.errors)
     || firstMessage(root.errors)
     || firstMessage(root.details)
-    || firstMessage(root.error);
+    || firstMessage(root.error)
+    || firstMessage(error);
 }
 
 function toResolutionRecord(poll: any): ResolutionRecord {

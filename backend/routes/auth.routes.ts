@@ -1109,6 +1109,12 @@ router.get('/check-chairperson-invite', async (req: Request, res: Response): Pro
 });
 
 // POST /api/auth/setup-chairperson-password - Chairperson creates password and confirm password
+const SetupPhoneSchema = z.string()
+  .transform(value => value.replace(/[\s-]/g, ''))
+  .refine(value => /^09\d{9}$/.test(value), {
+    message: 'Mobile number must be exactly 11 digits and start with 09',
+  });
+
 const SetupChairpersonPasswordSchema = z.object({
   email: z.string().email('Valid email is required'),
   password: SecurePasswordSchema,
@@ -1118,7 +1124,7 @@ const SetupChairpersonPasswordSchema = z.object({
   middle_name: z.string().max(100).optional().nullable(),
   last_name: z.string().max(100).optional(),
   suffix: z.string().max(20).optional().nullable(),
-  phone: z.string().regex(/^09\d{9}$/, 'Mobile number must be exactly 11 digits and start with 09').max(30).optional().nullable(),
+  phone: SetupPhoneSchema.optional().nullable(),
   birthdate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Birthdate must be formatted as YYYY-MM-DD').optional(),
   sex: z.enum(['Male', 'Female', 'Other', 'Prefer not to say']).optional(),
   address: z.string().min(3).max(500).optional(),
@@ -1417,7 +1423,7 @@ const SetupOfficialPasswordSchema = z.object({
   middle_name: z.string().max(100).optional().nullable(),
   last_name: z.string().max(100).optional(),
   suffix: z.string().max(20).optional().nullable(),
-  phone: z.string().regex(/^09\d{9}$/, 'Mobile number must be exactly 11 digits and start with 09'),
+  phone: SetupPhoneSchema,
   birthdate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Birthdate must be formatted as YYYY-MM-DD'),
   sex: z.enum(['Male', 'Female', 'Other', 'Prefer not to say']),
   address: z.string().min(3).max(500),
