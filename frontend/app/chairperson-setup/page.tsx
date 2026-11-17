@@ -36,6 +36,7 @@ function SetupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [supabaseClient, setSupabaseClient] = useState<SupabaseClient | null>(null);
+  const [cachedSession, setCachedSession] = useState<Session | null>(null);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [inviteStatus, setInviteStatus] = useState<'checking' | 'ready' | 'invalid'>('checking');
   const [email, setEmail] = useState('');
@@ -86,6 +87,7 @@ function SetupForm() {
         const acceptSession = (session: Session) => {
           if (!active) return;
           sessionResolved = true;
+          setCachedSession(session);
           setIsCheckingSession(false);
           setError(null);
           if (
@@ -105,6 +107,7 @@ function SetupForm() {
         };
         const authState = client.auth.onAuthStateChange((_event, session) => {
           if (session) acceptSession(session);
+          else setCachedSession(null);
         });
         subscription = authState.data.subscription;
         const accessToken = hashParams.get('access_token');
@@ -123,13 +126,12 @@ function SetupForm() {
               document.title,
               `${window.location.pathname}${window.location.search}`
             );
-            acceptSession(hashSessionData.session);
-            return;
           }
         }
         const { data, error: sessionError } = await client.auth.getSession();
         if (sessionError) throw sessionError;
         if (data.session) {
+          setCachedSession(data.session);
           acceptSession(data.session);
           return;
         }
@@ -249,7 +251,8 @@ function SetupForm() {
         setError(`Unable to verify your invitation session: ${sessionError.message}`);
         return;
       }
-      const session = sessionData.session;
+      const session = sessionData.session || cachedSession;
+      setCachedSession(session);
       if (!session?.access_token) {
         setInviteStatus('invalid');
         setError('Your session has expired. Please request a new invitation link.');
@@ -311,8 +314,9 @@ function SetupForm() {
       }
       router.replace('/');
     } catch (err: any) {
+      const validationError = getFirstValidationError(err?.response?.data?.errors) || getFirstValidationError(err);
       setError(
-        getFirstValidationError(err)
+        validationError
         || ((err && err.message) ? err.message : 'Network error setting up Chairperson password.')
       );
     } finally {
