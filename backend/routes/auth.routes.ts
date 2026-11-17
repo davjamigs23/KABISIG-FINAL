@@ -1124,7 +1124,17 @@ const SetupChairpersonPasswordSchema = z.object({
   address: z.string().min(3).max(500).optional(),
 });
 
-router.post('/setup-chairperson-password', async (req: Request, res: Response): Promise<void> => {
+router.post('/setup-chairperson-password', authenticateUser, async (req: Request, res: Response): Promise<void> => {
+  const authenticatedUser = (req as AuthRequest).user;
+  if (!authenticatedUser) {
+    sendError(res, 'A valid account invitation session is required.', 401);
+    return;
+  }
+  if (authenticatedUser.app_metadata.setup_completed === true) {
+    sendError(res, 'This link has already been used', 400);
+    return;
+  }
+
   const parseResult = SetupChairpersonPasswordSchema.safeParse(req.body);
   if (!parseResult.success) {
     sendError(res, 'Validation failed', 400, parseResult.error.flatten().fieldErrors);
@@ -1151,7 +1161,12 @@ router.post('/setup-chairperson-password', async (req: Request, res: Response): 
   }
   const { data: setupAuthData, error: setupAuthError } = await supabaseAdmin.auth.getUser(setupAccessToken);
   const setupAuthUser = setupAuthData.user;
-  if (setupAuthError || !setupAuthUser || setupAuthUser.email?.toLowerCase() !== normalizedEmail) {
+  if (
+    setupAuthError
+    || !setupAuthUser
+    || setupAuthUser.id !== authenticatedUser.id
+    || setupAuthUser.email?.toLowerCase() !== normalizedEmail
+  ) {
     sendError(res, 'A valid account invitation session is required.', 401);
     return;
   }

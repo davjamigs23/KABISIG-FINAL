@@ -23,7 +23,6 @@ function SetupForm() {
   const searchParams = useSearchParams();
   const [supabaseClient, setSupabaseClient] = useState<SupabaseClient | null>(null);
   const [inviteSession, setInviteSession] = useState<Session | null>(null);
-  const [cachedToken, setCachedToken] = useState<string | null>(null);
   const [cachedEmail, setCachedEmail] = useState<string | null>(null);
   const [inviteStatus, setInviteStatus] = useState<'checking' | 'ready' | 'invalid'>('checking');
   const [email, setEmail] = useState('');
@@ -60,8 +59,6 @@ function SetupForm() {
         const authError = hashParams.get('error_description') || queryParams.get('error_description') ||
           hashParams.get('error') || queryParams.get('error');
         if (authError) throw new Error(authError);
-        const hasInviteCredentials = hashParams.has('access_token') || hashParams.has('token_hash') ||
-          queryParams.has('code') || queryParams.has('token_hash');
 
         const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
         const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -72,43 +69,47 @@ function SetupForm() {
         });
         if (!active) return;
         setSupabaseClient(client);
-        const authState = client.auth.onAuthStateChange((_event, session) => {
-          if (active && session) {
-            setInviteSession(session);
-            setCachedToken(session.access_token);
-            setCachedEmail(session.user.email?.trim().toLowerCase() || null);
+        const acceptSession = (session: Session) => {
+          if (!active) return;
+          setInviteSession(session);
+          setCachedEmail(session.user.email?.trim().toLowerCase() || null);
+          if (
+            session.user.user_metadata?.setup_completed === true ||
+            session.user.app_metadata?.setup_completed === true
+          ) {
+            router.replace('/');
+            return;
           }
+          const inviteEmail = queryParams.get('invite_email')?.trim().toLowerCase();
+          if (inviteEmail && session.user.email?.toLowerCase() !== inviteEmail) {
+            setInviteStatus('invalid');
+            setError('This invitation link does not match the signed-in email address.');
+            return;
+          }
+          setInviteStatus('ready');
+        };
+        const authState = client.auth.onAuthStateChange((_event, session) => {
+          if (session) acceptSession(session);
         });
         subscription = authState.data.subscription;
         const { data, error: sessionError } = await client.auth.getSession();
         if (sessionError) throw sessionError;
-        if (!data.session) throw new Error(invalidInviteMessage);
-        if (active) {
-          setInviteSession(data.session);
-          setCachedToken(data.session.access_token);
-          setCachedEmail(data.session.user.email?.trim().toLowerCase() || null);
+        if (!data.session) {
+          if (!window.location.hash) throw new Error(invalidInviteMessage);
+          throw new Error('Unable to establish a session from this invitation. Please reopen the invitation link.');
         }
-        if (!hasInviteCredentials) {
-          router.replace('/');
-          return;
-        }
-        if (
-          data.session.user.user_metadata?.setup_completed === true ||
-          data.session.user.app_metadata?.setup_completed === true
-        ) {
-          throw new Error(invalidInviteMessage);
-        }
-
-        const inviteEmail = queryParams.get('invite_email')?.trim().toLowerCase();
-        if (inviteEmail && data.session.user.email?.toLowerCase() !== inviteEmail) {
-          throw new Error(invalidInviteMessage);
-        }
-        if (active) setInviteStatus('ready');
+        acceptSession(data.session);
       } catch (verificationError) {
         console.error('Chairperson invitation verification failed:', verificationError);
         if (active) {
           setInviteStatus('invalid');
-          setError(invalidInviteMessage);
+          setError(
+            !window.location.hash && verificationError instanceof Error && verificationError.message === invalidInviteMessage
+              ? invalidInviteMessage
+              : verificationError instanceof Error
+                ? verificationError.message
+                : 'Unable to verify this invitation. Please reopen the invitation link.'
+          );
         }
       }
     };
@@ -176,7 +177,7 @@ function SetupForm() {
     setIsSubmitting(true);
     try {
       const session = inviteSession;
-      if (!cachedToken || !cachedEmail || cachedEmail !== cleanEmail || !session ||
+      if (!session?.access_token || !cachedEmail || cachedEmail !== cleanEmail ||
           session.user.user_metadata?.setup_completed !== false ||
           session.user.app_metadata?.setup_completed !== false) {
         setInviteStatus('invalid');
@@ -197,7 +198,7 @@ function SetupForm() {
         birthdate: birthdate || undefined,
         sex: sex,
         address: address.trim() || undefined,
-      }, cachedToken);
+      }, session.access_token);
       if (!res.success) {
         if (res.message?.toLowerCase().includes('already been used')) setInviteStatus('invalid');
         setError(res.message || 'Password setup failed. Please check your inputs and try again.');

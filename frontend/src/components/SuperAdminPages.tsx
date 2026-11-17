@@ -323,6 +323,9 @@ useEffect(() => {
     setOfficialsRosterLoading(true);
     setShowOfficialsModal(true);
     try {
+      if (!kabisigApi.getToken()) {
+        throw new Error('Your session has expired. Please sign in again.');
+      }
       const response = await kabisigApi.getAllOfficials();
       if (!response.success || !Array.isArray(response.data)) {
         throw new Error(response.message || 'Unable to load officials for this Barangay.');
@@ -344,6 +347,9 @@ useEffect(() => {
     setAllOfficialsError(null);
     setAllOfficialsLoading(true);
     try {
+      if (!kabisigApi.getToken()) {
+        throw new Error('Your session has expired. Please sign in again.');
+      }
       const response = await kabisigApi.getAllOfficials();
       if (!response.success || !response.data) {
         throw new Error(response.message || 'Unable to load officials across all Barangays.');
@@ -450,8 +456,8 @@ useEffect(() => {
     ? chartBarangayData
     : chartBarangayData.filter((item: any) => filteredBarangays.some(b => b.id === item.id));
 
-  const handleOpenInviteOfficialModal = (_b?: BarangayTenant, returnToConfigure: boolean = false) => {
-    setInviteOfficialBarangay(null);
+  const handleOpenInviteOfficialModal = (barangay?: BarangayTenant, returnToConfigure: boolean = false) => {
+    setInviteOfficialBarangay(barangay || null);
     setInviteOfficialEmail('');
     setInviteOfficialRole('');
     setInviteOfficialNotice(null);
@@ -1058,12 +1064,12 @@ useEffect(() => {
               </div>
 
               {/* CITY-WIDE QUICK ACTIONS BAR */}
-              <div className="bg-white border border-slate-200 p-5 rounded-2xl text-slate-800 shadow-sm flex flex-col gap-4">
+              <div className="bg-white border border-slate-200 p-5 rounded-2xl text-slate-800 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                   <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Super Admin Tools</span>
                   <h3 className="font-sans font-black text-lg text-slate-900">Super Admin Quick Actions</h3>
                 </div>
-                <div className="flex flex-wrap lg:flex-nowrap items-center justify-end gap-2 w-full">
+                <div className="flex flex-wrap gap-2 w-full md:w-auto md:justify-end">
                   <button 
                     onClick={() => setActiveMenu('barangays')}
                     className="px-3 py-2 bg-white text-[#091d64] hover:bg-blue-50 font-bold rounded-xl text-[11px] transition-colors flex items-center gap-2 cursor-pointer shadow-xs border border-slate-200 whitespace-nowrap"

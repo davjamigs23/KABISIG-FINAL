@@ -54,7 +54,8 @@ export async function authenticateUser(req: Request, res: Response, next: NextFu
       tenant_id: profile.tenant_id,
       barangay_name: barangayName,
       status: profile.status,
-       official_role: ((authUser.user_metadata as any)?.official_role) || null,
+      official_role: ((authUser.user_metadata as any)?.official_role) || null,
+      app_metadata: authUser.app_metadata || {},
     };
 
     (req as AuthRequest).user = authenticatedUser;
@@ -115,6 +116,8 @@ export async function optionalAuthenticateUser(req: Request, res: Response, next
       tenant_id: profile.tenant_id,
       barangay_name: barangayName,
       status: profile.status,
+      official_role: ((authUser.user_metadata as any)?.official_role) || null,
+      app_metadata: authUser.app_metadata || {},
     };
 
     (req as AuthRequest).user = authenticatedUser;

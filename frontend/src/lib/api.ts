@@ -107,7 +107,7 @@ class KabisigApiClient {
   }
 
   getToken(): string | null {
-    if (!this.token && typeof window !== 'undefined') {
+    if (typeof window !== 'undefined') {
       this.token = localStorage.getItem('kabisig_token');
     }
     return this.token;
@@ -225,7 +225,11 @@ class KabisigApiClient {
   }
 
   async getAllOfficials(): Promise<{ success: boolean; data?: any[]; message?: string }> {
-    return await this.request<any[]>('/admin/all-officials', { method: 'GET' });
+    const token = this.getToken();
+    return await this.request<any[]>('/admin/all-officials', {
+      method: 'GET',
+      ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+    });
   }
 
   async cancelChairpersonInvitation(barangayId: string): Promise<{ success: boolean; message?: string; data?: any }> {

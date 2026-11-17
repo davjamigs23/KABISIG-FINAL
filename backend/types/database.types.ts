@@ -335,7 +335,8 @@ export interface AuthenticatedUser {
   tenant_id: string | null;
   barangay_name?: string | null;
   status: UserStatus;
-   official_role?: string | null;
+  official_role?: string | null;
+  app_metadata: Record<string, unknown>;
 }
 
 export interface AuthRequest extends Request {
