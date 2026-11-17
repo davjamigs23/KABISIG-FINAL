@@ -26,7 +26,7 @@ export default function ResetPasswordPage() {
       return;
     }
     const sb = createClient(SB_URL, SB_KEY, {
-      auth: { persistSession: false, detectSessionInUrl: false },
+      auth: { persistSession: true, detectSessionInUrl: false },
     });
     setClient(sb);
 
@@ -41,17 +41,36 @@ export default function ResetPasswordPage() {
 
     (async () => {
       try {
-        if (accessToken && type === 'recovery') {
-          const { error: sessErr } = await sb.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+        if (accessToken && refreshToken && type === 'recovery') {
+          const { data: sessionData, error: sessErr } = await sb.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
           if (sessErr) { setStatus('invalid'); setError(sessErr.message); return; }
+          if (!sessionData.session) {
+            setStatus('invalid');
+            setError('Link invalid or expired. Please request a new password reset link.');
+            return;
+          }
+          window.history.replaceState(null, document.title, `${window.location.pathname}${window.location.search}`);
           setStatus('ready');
         } else if (code) {
           const { error: exchErr } = await sb.auth.exchangeCodeForSession(code);
           if (exchErr) { setStatus('invalid'); setError(exchErr.message); return; }
           setStatus('ready');
         } else {
-          setStatus('invalid');
-          setError('No recovery token found in the link.');
+          const { data: sessionData, error: sessionError } = await sb.auth.getSession();
+          if (sessionError) throw sessionError;
+          if (sessionData.session) {
+            setStatus('ready');
+          } else {
+            setStatus('invalid');
+            setError(
+              hash
+                ? 'No recovery token found in the link.'
+                : 'Link invalid or expired. Please request a new password reset link.'
+            );
+          }
         }
       } catch (err: any) {
         setStatus('invalid');

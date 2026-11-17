@@ -252,7 +252,7 @@ function SetupForm() {
       const session = sessionData.session;
       if (!session?.access_token) {
         setInviteStatus('invalid');
-        setError('Your invitation session could not be restored. Please request a new invitation.');
+        setError('Your session has expired. Please request a new invitation link.');
         return;
       }
       const sessionEmail = session.user.email?.trim().toLowerCase() || null;
