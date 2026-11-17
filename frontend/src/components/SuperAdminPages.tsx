@@ -2574,13 +2574,13 @@ useEffect(() => {
                   </div>
                 </div>
 
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 w-full mt-3">
-                  <div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 w-full mt-3">
+                  <div className="min-w-0 flex-1">
                     <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">SK Chairperson</span>
                     <span className="block mt-1 text-xs font-bold text-slate-800">{editingBarangay?.chairpersonUser?.full_name || 'Unassigned'}</span>
-                    <span className="block text-[10px] text-slate-500">{editingBarangay?.chairpersonEmail || 'No email recorded'}</span>
+                    <span className="block break-all text-[10px] text-slate-500">{editingBarangay?.chairpersonEmail || 'No email recorded'}</span>
                   </div>
-                  <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto sm:ml-auto">
+                  <div className="flex flex-wrap shrink-0 gap-2 w-full sm:w-auto">
                     {!editingBarangay?.chairpersonUser ? (
                       <button
                         type="button"

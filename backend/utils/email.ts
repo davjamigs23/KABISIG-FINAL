@@ -22,8 +22,8 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
     throw new Error(`Brevo request failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 
-  if (!response.ok) {
-    const responseBody = await response.text().catch(() => '');
+  if (response.status !== 200 && response.status !== 201) {
+    const responseBody = await response.text();
     let providerMessage = responseBody;
     try {
       const parsed = JSON.parse(responseBody);
@@ -31,7 +31,8 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
     } catch {
       // Keep the raw provider response when it is not JSON.
     }
-    const errorMessage = `Brevo email request failed (${response.status}): ${providerMessage || response.statusText}`;
+    const errorMessage = [response.statusText, providerMessage].filter(Boolean).join(': ')
+      || `Brevo email request failed with status ${response.status}`;
     console.error('[EMAIL]', errorMessage);
     throw new Error(errorMessage);
   }

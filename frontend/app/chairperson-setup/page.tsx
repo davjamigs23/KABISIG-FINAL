@@ -8,6 +8,20 @@ import { kabisigApi } from '../../src/lib/api';
 import { composeFullName } from '../../src/lib/name';
 import { KabisigLogo } from '../../src/components/PublicPages';
 
+const INVALID_INVITE_MESSAGE = 'This invitation link has already been used or has expired. Please log in normally or contact the Super Admin.';
+let setupSupabaseClient: SupabaseClient | null = null;
+
+function getSetupSupabaseClient(): SupabaseClient {
+  if (setupSupabaseClient) return setupSupabaseClient;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !supabaseAnonKey) throw new Error('Supabase authentication is not configured.');
+  setupSupabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+  });
+  return setupSupabaseClient;
+}
+
 function validatePassword(pw: string) {
   return {
     minLength: pw.length >= 8,
@@ -22,8 +36,6 @@ function SetupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [supabaseClient, setSupabaseClient] = useState<SupabaseClient | null>(null);
-  const [inviteSession, setInviteSession] = useState<Session | null>(null);
-  const [cachedEmail, setCachedEmail] = useState<string | null>(null);
   const [inviteStatus, setInviteStatus] = useState<'checking' | 'ready' | 'invalid'>('checking');
   const [email, setEmail] = useState('');
   const [tenantId, setTenantId] = useState('');
@@ -49,7 +61,6 @@ function SetupForm() {
 
   useEffect(() => {
     let active = true;
-    const invalidInviteMessage = 'This invitation link has already been used or has expired. Please log in normally or contact the Super Admin.';
     let subscription: { unsubscribe: () => void } | undefined;
 
     const verifyInvite = async () => {
@@ -60,19 +71,12 @@ function SetupForm() {
           hashParams.get('error') || queryParams.get('error');
         if (authError) throw new Error(authError);
 
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-        const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-        if (!supabaseUrl || !supabaseAnonKey) throw new Error('Supabase authentication is not configured.');
-
-        const client = createClient(supabaseUrl, supabaseAnonKey, {
-          auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
-        });
+        const client = getSetupSupabaseClient();
         if (!active) return;
         setSupabaseClient(client);
         const acceptSession = (session: Session) => {
           if (!active) return;
-          setInviteSession(session);
-          setCachedEmail(session.user.email?.trim().toLowerCase() || null);
+          setError(null);
           if (
             session.user.user_metadata?.setup_completed === true ||
             session.user.app_metadata?.setup_completed === true
@@ -95,7 +99,7 @@ function SetupForm() {
         const { data, error: sessionError } = await client.auth.getSession();
         if (sessionError) throw sessionError;
         if (!data.session) {
-          if (!window.location.hash) throw new Error(invalidInviteMessage);
+          if (!window.location.hash) throw new Error(INVALID_INVITE_MESSAGE);
           throw new Error('Unable to establish a session from this invitation. Please reopen the invitation link.');
         }
         acceptSession(data.session);
@@ -104,8 +108,8 @@ function SetupForm() {
         if (active) {
           setInviteStatus('invalid');
           setError(
-            !window.location.hash && verificationError instanceof Error && verificationError.message === invalidInviteMessage
-              ? invalidInviteMessage
+            !window.location.hash && verificationError instanceof Error && verificationError.message === INVALID_INVITE_MESSAGE
+              ? INVALID_INVITE_MESSAGE
               : verificationError instanceof Error
                 ? verificationError.message
                 : 'Unable to verify this invitation. Please reopen the invitation link.'
@@ -145,8 +149,13 @@ function SetupForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (inviteStatus !== 'ready' || !supabaseClient) {
-      setError('This invitation link has already been used or has expired. Please log in normally or contact the Super Admin.');
+    if (inviteStatus === 'checking') {
+      setError('Please wait while we verify your invitation session.');
+      return;
+    }
+    if (inviteStatus === 'invalid') return;
+    if (!supabaseClient) {
+      setError('Unable to access your invitation session. Please reload the page and try again.');
       return;
     }
     if (!sex) { setError('Please select your biological sex.'); return; }
@@ -176,17 +185,39 @@ function SetupForm() {
     }
     setIsSubmitting(true);
     try {
-      const session = inviteSession;
-      if (!session?.access_token || !cachedEmail || cachedEmail !== cleanEmail ||
-          session.user.user_metadata?.setup_completed !== false ||
-          session.user.app_metadata?.setup_completed !== false) {
-        setInviteStatus('invalid');
-        setError('This invitation link has already been used or has expired. Please log in normally or contact the Super Admin.');
+      const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
+      if (sessionError) {
+        setError(`Unable to verify your invitation session: ${sessionError.message}`);
         return;
       }
-
+      const session = sessionData.session;
+      if (!session?.access_token) {
+        setInviteStatus('invalid');
+        setError('Your invitation session could not be restored. Please request a new invitation.');
+        return;
+      }
+      const sessionEmail = session.user.email?.trim().toLowerCase() || null;
+      if (
+        session.user.user_metadata?.setup_completed === true ||
+        session.user.app_metadata?.setup_completed === true
+      ) {
+        router.replace('/');
+        setError('This account has already completed setup. Please sign in.');
+        return;
+      }
+      if (
+        session.user.user_metadata?.setup_completed !== false ||
+        session.user.app_metadata?.setup_completed !== false
+      ) {
+        setError('This invitation is not pending setup. Please contact the Super Admin.');
+        return;
+      }
+      if (!sessionEmail || sessionEmail !== cleanEmail) {
+        setError('The email address must match the invitation.');
+        return;
+      }
       const res = await kabisigApi.setupChairpersonPassword({
-        email: cachedEmail,
+        email: sessionEmail,
         password: password,
         confirmPassword: confirmPassword,
         full_name: composedFullName || ('Hon. ' + firstName.trim() + ' ' + lastName.trim()).trim(),
@@ -200,11 +231,21 @@ function SetupForm() {
         address: address.trim() || undefined,
       }, session.access_token);
       if (!res.success) {
-        if (res.message?.toLowerCase().includes('already been used')) setInviteStatus('invalid');
-        setError(res.message || 'Password setup failed. Please check your inputs and try again.');
+        const responseMessage = res.message || 'Password setup failed. Please check your inputs and try again.';
+        const lowerMessage = responseMessage.toLowerCase();
+        if (
+          lowerMessage.includes('already been used') ||
+          lowerMessage.includes('unauthorized') ||
+          lowerMessage.includes('invitation session')
+        ) {
+          setInviteStatus('invalid');
+          setError(INVALID_INVITE_MESSAGE);
+        } else {
+          setError(responseMessage);
+        }
         return;
       }
-      const loginRes = await kabisigApi.login(cachedEmail, password);
+      const loginRes = await kabisigApi.login(sessionEmail, password);
       if (!loginRes.success) {
         setError('Account configured. Please sign in manually with your new password.');
         return;

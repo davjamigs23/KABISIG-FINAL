@@ -9,6 +9,11 @@ import { authenticateUser, requireRoles } from '../middleware/auth.js';
 import type { AuthRequest } from '../types/database.types.js';
 import { resolveName } from '../utils/name.js';
 
+async function sendInvitationEmail(email: string, role: string, setupLink: string): Promise<void> {
+  const htmlMsg = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;"><h1 style="color: #091d64; margin: 0 0 8px 0;">KABISIG</h1><p style="color: #64748b; font-size: 12px; margin: 0 0 24px 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p><h2 style="color: #091d64;">You are Invited to be ' + role + '!</h2><p style="color: #334155; line-height: 1.6;">You have been invited to join the KABISIG System as ' + role + '. Click the button below to set up your account password:</p><div style="text-align: center; margin: 24px 0;"><a href="' + setupLink + '" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Set Up Account</a></div><p style="color: #94a3b8; font-size: 11px;">If the button does not work, copy this link: <a href="' + setupLink + '">' + setupLink + '</a></p></div>';
+  await sendEmail(email, 'KABISIG Account Invitation', htmlMsg);
+}
+
 // Wrapper: generate invite link via Supabase, then email it via Brevo
 async function inviteWithBrevo(
   email: string,
@@ -55,8 +60,7 @@ async function inviteWithBrevo(
 
     const setupLink = data.properties.action_link;
     const invRole = inviteOptions.data.role_id === 2 ? 'SK Chairperson' : (inviteOptions.data.official_role || inviteOptions.data.role || 'SK Official');
-    const htmlMsg = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;"><h1 style="color: #091d64; margin: 0 0 8px 0;">KABISIG</h1><p style="color: #64748b; font-size: 12px; margin: 0 0 24px 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p><h2 style="color: #091d64;">You are Invited to be ' + invRole + '!</h2><p style="color: #334155; line-height: 1.6;">You have been invited to join the KABISIG System as ' + invRole + '. Click the button below to set up your account password:</p><div style="text-align: center; margin: 24px 0;"><a href="' + setupLink + '" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Set Up Account</a></div><p style="color: #94a3b8; font-size: 11px;">If the button does not work, copy this link: <a href="' + setupLink + '">' + setupLink + '</a></p></div>';
-    await sendEmail(email, 'KABISIG Account Invitation', htmlMsg);
+    await sendInvitationEmail(email, invRole, setupLink);
     return { data, error: null };
   } catch (error) {
     console.error('[CHAIRPERSON INVITE] Invitation email delivery failed:', error);
@@ -69,7 +73,7 @@ async function inviteWithBrevo(
 
 
 const router = express.Router();
-const FRONTEND_URL = (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, '');
+const FRONTEND_URL = (process.env.FRONTEND_URL || 'https://kabisig-naga.vercel.app').replace(/\/$/, '');
 
 const AssignChairpersonByEmailSchema = z.object({
   email: z.string().email('Valid email address is required'),
@@ -453,7 +457,8 @@ router.post(
     }
 
     let targetUserId: string = '';
-    let inviteMethod: 'email_invitation' | 'existing_auth_user' | 'temp_credentials' = 'email_invitation';
+    let actionLink = '';
+    let inviteMethod: 'email_invitation' | 'existing_auth_user' | 'temp_credentials' = 'existing_auth_user';
 
     // 2. Check the app's users table first
     const { data: existingUser } = await supabaseAdmin
@@ -512,6 +517,7 @@ router.post(
           return;
         }
         targetUserId = inviteData.user.id;
+        actionLink = inviteData.properties.action_link;
         inviteMethod = 'email_invitation';
 
         const { error: rebindErr } = await supabaseAdmin
@@ -538,6 +544,7 @@ router.post(
         }
       } else {
         // Update the existing user to BARANGAY_ADMIN for the selected barangay
+        inviteMethod = 'existing_auth_user';
         const _preserveChair = resolveName({
           payload: {},
           existing: {
@@ -622,6 +629,7 @@ router.post(
         return;
       }
       targetUserId = inviteData.user.id;
+      actionLink = inviteData.properties.action_link;
       inviteMethod = 'email_invitation';
 
       // 5. Pre-set public.users record with role_id: 2, tenant_id, status: 'active'
@@ -669,21 +677,39 @@ router.post(
     }
 
     // 6. Generate direct Action / Setup link
-    let actionLink = '';
-    try {
-      const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
-        type: 'magiclink',
-        email: cleanEmail,
-        options: {
-          redirectTo: `${FRONTEND_URL}/chairperson-setup?invite_email=${encodeURIComponent(cleanEmail)}&role=chairperson&tenant_id=${barangay_id}`,
-          expiresIn: 18000,
-        } as any,
-      });
-      if (linkData?.properties?.action_link) {
-        actionLink = linkData.properties.action_link;
+    let actionLinkError: unknown;
+    if (!actionLink) {
+      try {
+        const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+          type: 'magiclink',
+          email: cleanEmail,
+          options: {
+            redirectTo: `${FRONTEND_URL}/chairperson-setup?invite_email=${encodeURIComponent(cleanEmail)}&role=chairperson&tenant_id=${barangay_id}`,
+            expiresIn: 18000,
+          } as any,
+        });
+        if (linkError) throw linkError;
+        actionLink = linkData?.properties?.action_link || '';
+      } catch (linkErr) {
+        actionLinkError = linkErr;
+        console.warn('generateLink warning:', linkErr);
       }
-    } catch (linkErr) {
-      console.warn('generateLink warning:', linkErr);
+    }
+
+    if (inviteMethod === 'existing_auth_user') {
+      if (!actionLink) {
+        const errorMessage = actionLinkError instanceof Error ? actionLinkError.message : 'Supabase did not return a setup link.';
+        sendError(res, `Failed to generate Chairperson invitation: ${errorMessage}`, 502);
+        return;
+      }
+      try {
+        await sendInvitationEmail(cleanEmail, 'SK Chairperson', actionLink);
+        inviteMethod = 'email_invitation';
+      } catch (emailError) {
+        const errorMessage = emailError instanceof Error ? emailError.message : String(emailError);
+        sendError(res, `Failed to send Chairperson invitation: ${errorMessage}`, 502);
+        return;
+      }
     }
 
     const directSetupUrl = `${FRONTEND_URL}/chairperson-setup?invite_email=${encodeURIComponent(cleanEmail)}&role=chairperson&tenant_id=${barangay_id}`;
