@@ -1,6 +1,6 @@
 import NotificationMenu from './NotificationMenu';
 /* PDF Export Available */ import { generateBudgetUtilizationReport } from '../lib/pdfReports';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ProfileSettings from './ProfileSettings';
 import { formatAuditDetails } from '../lib/auditFormatter';
 import { formatOfficialName } from '../lib/officialFormatting';
@@ -213,6 +213,7 @@ useEffect(() => {
   const [inviteOfficialBarangay, setInviteOfficialBarangay] = useState<BarangayTenant | null>(null);
   const [inviteReturnToConfigure, setInviteReturnToConfigure] = useState(false);
   const [inviteOfficialEmail, setInviteOfficialEmail] = useState('');
+  const inviteOfficialEmailRef = useRef('');
   const [inviteOfficialRole, setInviteOfficialRole] = useState<'SK Kagawad' | 'SK Secretary' | 'SK Treasurer' | ''>('');
   const [isInvitingOfficial, setIsInvitingOfficial] = useState(false);
   const [inviteOfficialNotice, setInviteOfficialNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -234,19 +235,6 @@ useEffect(() => {
   const [allOfficialsError, setAllOfficialsError] = useState<string | null>(null);
 
   const normalizedInviteOfficialEmail = inviteOfficialEmail.trim().toLowerCase();
-  const isEmailAlreadyAssigned = (email: string): boolean => {
-    const normalizedEmail = email.trim().toLowerCase();
-    return Boolean(normalizedEmail && (
-      inviteOfficialBarangay?.chairpersonEmail?.trim().toLowerCase() === normalizedEmail
-      || (Array.isArray(roleCapacity?.chairperson_details) && roleCapacity.chairperson_details.some(
-        (official: any) => String(official.email || '').trim().toLowerCase() === normalizedEmail
-      ))
-      || (Array.isArray(roleCapacity?.officials) && roleCapacity.officials.some(
-        (official: any) => String(official.email || '').trim().toLowerCase() === normalizedEmail
-      ))
-    ));
-  };
-  const isInviteOfficialEmailDuplicate = isEmailAlreadyAssigned(normalizedInviteOfficialEmail);
   const pendingOfficialInvites = Array.isArray(roleCapacity?.officials)
     ? roleCapacity.officials.filter((official: any) =>
         official.setup_completed !== true
@@ -257,6 +245,32 @@ useEffect(() => {
   const completedOfficialRoster = Array.isArray(roleCapacity?.officials)
     ? roleCapacity.officials.filter((official: any) => !pendingOfficialInvites.some((pending: any) => pending.id === official.id))
     : [];
+  const isPendingInviteForEmail = (email: string): boolean => {
+    const normalizedEmail = email.trim().toLowerCase();
+    return Boolean(normalizedEmail && pendingOfficialInvites.some(
+      (official: any) =>
+        String(official.email || '').trim().toLowerCase() === normalizedEmail
+        && official.official_role === inviteOfficialRole
+    ));
+  };
+  const isEmailAlreadyAssigned = (email: string): boolean => {
+    const normalizedEmail = email.trim().toLowerCase();
+    return Boolean(normalizedEmail && (
+      inviteOfficialBarangay?.chairpersonEmail?.trim().toLowerCase() === normalizedEmail
+      || (Array.isArray(roleCapacity?.chairperson_details) && roleCapacity.chairperson_details.some(
+        (official: any) => String(official.email || '').trim().toLowerCase() === normalizedEmail
+      ))
+      || completedOfficialRoster.some(
+        (official: any) => String(official.email || '').trim().toLowerCase() === normalizedEmail
+      )
+      || pendingOfficialInvites.some(
+        (official: any) =>
+          String(official.email || '').trim().toLowerCase() === normalizedEmail
+          && official.official_role !== inviteOfficialRole
+      )
+    ));
+  };
+  const isInviteOfficialEmailDuplicate = isEmailAlreadyAssigned(normalizedInviteOfficialEmail);
 
   useEffect(() => {
     const handleFocus = () => {
@@ -294,6 +308,16 @@ useEffect(() => {
       .finally(() => { if (!cancelled) setIsLoadingCapacity(false); });
     return () => { cancelled = true; };
   }, [showInviteOfficialModal, inviteOfficialBarangay?.id]);
+
+  useEffect(() => {
+    const pendingInvite = pendingOfficialInvites.find(
+      (official: any) => String(official.email || '').trim().toLowerCase() === normalizedInviteOfficialEmail
+    );
+    if (pendingInvite?.official_role && pendingInvite.official_role !== inviteOfficialRole) {
+      setInviteOfficialRole(pendingInvite.official_role);
+    }
+  }, [normalizedInviteOfficialEmail, roleCapacity, inviteOfficialRole]);
+
   const [federationAnalytics, setFederationAnalytics] = useState<any>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const [analyticsError, setAnalyticsError] = useState('');
@@ -500,6 +524,7 @@ useEffect(() => {
 
   const handleOpenInviteOfficialModal = (barangay?: BarangayTenant, returnToConfigure: boolean = false) => {
     setInviteOfficialBarangay(barangay || null);
+    inviteOfficialEmailRef.current = '';
     setInviteOfficialEmail('');
     setInviteOfficialRole('');
     setInviteOfficialNotice(null);
@@ -532,8 +557,22 @@ useEffect(() => {
       setInviteOfficialNotice({ type: 'error', text: 'Unable to verify assigned officials. Please try again before sending an invitation.' });
       return;
     }
+    const isPendingResend = isPendingInviteForEmail(email);
     if (isEmailAlreadyAssigned(email)) {
       setInviteOfficialNotice({ type: 'error', text: 'This email is already assigned in this barangay.' });
+      return;
+    }
+    const capacityKey = inviteOfficialRole === 'SK Kagawad'
+      ? 'kagawad'
+      : inviteOfficialRole === 'SK Secretary'
+        ? 'secretary'
+        : 'treasurer';
+    const roleCapacityRow = roleCapacity[capacityKey];
+    if (roleCapacityRow && roleCapacityRow.current >= roleCapacityRow.limit && !isPendingResend) {
+      setInviteOfficialNotice({
+        type: 'error',
+        text: `${inviteOfficialRole} slots are full for this barangay.`,
+      });
       return;
     }
     setIsInvitingOfficial(true);
@@ -541,18 +580,24 @@ useEffect(() => {
     try {
       const res = await kabisigApi.inviteSkOfficial(inviteOfficialBarangay.id, email, inviteOfficialRole);
       if (!res.success) {
-        setInviteOfficialNotice({ type: 'error', text: res.message || 'Failed to send SK Official invitation.' });
+        if (inviteOfficialEmailRef.current.trim().toLowerCase() === email) {
+          setInviteOfficialNotice({ type: 'error', text: res.message || 'Failed to send SK Official invitation.' });
+        }
         setIsInvitingOfficial(false);
         return;
       }
-      setInviteOfficialNotice({
-        type: 'success',
-        text: `SK Official invitation sent to ${email} for ${inviteOfficialBarangay.name}.`,
-      });
       const refreshedCapacity = await kabisigApi.getRoleCapacity(inviteOfficialBarangay.id);
       if (refreshedCapacity.success) setRoleCapacity(refreshedCapacity.data);
+      if (inviteOfficialEmailRef.current.trim().toLowerCase() === email) {
+        setInviteOfficialNotice({
+          type: 'success',
+          text: `SK Official invitation sent to ${email} for ${inviteOfficialBarangay.name}.`,
+        });
+      }
     } catch (err: any) {
-      setInviteOfficialNotice({ type: 'error', text: err.message || 'Network connection failed.' });
+      if (inviteOfficialEmailRef.current.trim().toLowerCase() === email) {
+        setInviteOfficialNotice({ type: 'error', text: err.message || 'Network connection failed.' });
+      }
     } finally {
       setIsInvitingOfficial(false);
     }
@@ -2447,7 +2492,19 @@ useEffect(() => {
               )}
               <div>
                 <label className="block text-xs font-bold text-slate-800 mb-1">Official Email Address <span className="text-rose-500">*</span></label>
-                <input type="email" value={inviteOfficialEmail} onChange={(e) => setInviteOfficialEmail(e.target.value)}
+                <input
+                  type="email"
+                  value={inviteOfficialEmail}
+                  onChange={(e) => {
+                    const email = e.target.value;
+                    const pendingInvite = pendingOfficialInvites.find(
+                      (official: any) => String(official.email || '').trim().toLowerCase() === email.trim().toLowerCase()
+                    );
+                    setInviteOfficialEmail(email);
+                    inviteOfficialEmailRef.current = email;
+                    if (pendingInvite?.official_role) setInviteOfficialRole(pendingInvite.official_role);
+                    setInviteOfficialNotice(null);
+                  }}
                   className={`w-full p-2.5 bg-white border ${isInviteOfficialEmailDuplicate ? 'border-rose-500 focus:ring-rose-500' : 'border-slate-200 focus:ring-[#091d64]'} rounded-xl text-xs font-semibold text-slate-800 focus:ring-1 focus:outline-none`}
                   placeholder="official@example.com" required />
                 {isInviteOfficialEmailDuplicate && (
@@ -2465,14 +2522,16 @@ useEffect(() => {
                 const _key = inviteOfficialRole === 'SK Kagawad' ? 'kagawad' : inviteOfficialRole === 'SK Secretary' ? 'secretary' : 'treasurer';
                 const _row = roleCapacity?.[_key];
                 const _full = Boolean(inviteOfficialRole && _row && _row.current >= _row.limit);
+                const _pendingResend = isPendingInviteForEmail(normalizedInviteOfficialEmail);
+                const _emailBlocked = isInviteOfficialEmailDuplicate || (_full && !_pendingResend);
                 return (
                   <>
-                    {_full && (
+                    {_full && !_pendingResend && (
                       <p className="text-[10px] text-rose-600 font-bold text-center">
                         {inviteOfficialRole} slots are full for this barangay. Choose a different role or barangay.
                       </p>
                     )}
-                    <button type="submit" disabled={isInvitingOfficial || isLoadingCapacity || !roleCapacity || isInviteOfficialEmailDuplicate || !inviteOfficialBarangay || !inviteOfficialRole || _full}
+                    <button type="submit" disabled={isInvitingOfficial || isLoadingCapacity || !roleCapacity || _emailBlocked || !inviteOfficialBarangay || !inviteOfficialRole}
                       className="w-full py-3 bg-[#091d64] hover:bg-[#102a83] disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer">
                       {isInvitingOfficial
                         ? 'Sending...'
@@ -2484,7 +2543,9 @@ useEffect(() => {
                           ? 'Select Barangay and Role'
                           : !roleCapacity
                             ? 'Unable to verify assigned officials'
-                          : _full
+                            : _pendingResend
+                              ? 'Resend Invitation'
+                            : _full
                             ? inviteOfficialRole + ' — At Capacity'
                             : 'Send ' + inviteOfficialRole + ' Invitation'}
                     </button>

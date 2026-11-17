@@ -823,9 +823,13 @@ router.post(
     let inviteMethod: 'email_invitation' | 'existing_auth_user' | 'temp_credentials' = 'email_invitation';
     const redirectUrl = FRONTEND_URL + '/official-setup?invite_email=' + encodeURIComponent(cleanEmail) + '&role=official&tenant_id=' + barangay_id + '&official_role=' + encodeURIComponent(official_role);
 
-    const { data: existingUser } = await supabaseAdmin
+    const { data: existingUser, error: existingUserError } = await supabaseAdmin
       .from('users').select('id, email, tenant_id, role_id, full_name, first_name, middle_name, last_name, suffix, status')
       .eq('email', cleanEmail).maybeSingle();
+    if (existingUserError) {
+      sendError(res, 'Failed to inspect existing user record: ' + existingUserError.message, 500);
+      return;
+    }
     const officialAuthFullName = resolveName({
       payload: { first_name, middle_name, last_name, suffix },
       existing: existingUser ? {
@@ -842,12 +846,22 @@ router.post(
     const { user: existingAuthUser, error: listAuthError } = await findAuthUserByEmail(cleanEmail);
     if (listAuthError) { sendError(res, 'Failed to inspect existing auth users: ' + listAuthError.message, 500); return; }
 
+    const existingOfficialRoleMetadata = String(existingAuthUser?.user_metadata?.official_role || '').toLowerCase();
+    const existingOfficialRole = existingOfficialRoleMetadata.includes('secretary') ? 'SK Secretary'
+      : existingOfficialRoleMetadata.includes('treasurer') ? 'SK Treasurer'
+      : 'SK Kagawad';
+    const setupMarkedIncomplete = Boolean(existingAuthUser && (
+      existingAuthUser.user_metadata?.setup_completed === false
+      || existingAuthUser.app_metadata?.setup_completed === false
+      || String(existingUser?.full_name || '').toLowerCase().includes('pending invitation')
+    ) && existingAuthUser.user_metadata?.setup_completed !== true
+      && existingAuthUser.app_metadata?.setup_completed !== true);
     const isPendingSetupReinvite = Boolean(
       existingUser
       && Number(existingUser.role_id) === 3
       && existingUser.tenant_id === barangay_id
-      && existingAuthUser?.user_metadata?.setup_completed === false
-      && existingAuthUser?.app_metadata?.setup_completed === false
+      && setupMarkedIncomplete
+      && existingOfficialRole === official_role
     );
 
     // Exclude the pending account being re-invited from the capacity calculation.
@@ -859,24 +873,39 @@ router.post(
       };
       const limit = ROLE_LIMITS[official_role] || 0;
 
-      const { data: existingOfficials } = await supabaseAdmin
+      const { data: existingOfficials, error: existingOfficialsError } = await supabaseAdmin
         .from('users')
         .select('id, role_id, status')
         .eq('tenant_id', barangay_id)
         .eq('role_id', 3)
         .eq('status', 'active');
+      if (existingOfficialsError) {
+        sendError(res, 'Failed to verify role capacity: ' + existingOfficialsError.message, 500);
+        return;
+      }
 
       const list = (existingOfficials || []).filter(
         official => !isPendingSetupReinvite || official.id !== existingUser?.id
       );
       if (list.length > 0) {
-        const authList = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
-        const metaMap: Record<string, any> = {};
-        (authList.data?.users || []).forEach((u) => { metaMap[u.id] = u.user_metadata || {}; });
+        const officialIds = new Set(list.map(official => official.id));
+        const metaMap = new Map<string, Record<string, any>>();
+        const perPage = 1000;
+        for (let page = 1; ; page += 1) {
+          const { data: authList, error: authListError } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+          if (authListError) {
+            sendError(res, 'Failed to verify official roles for capacity: ' + authListError.message, 500);
+            return;
+          }
+          for (const authUser of authList.users) {
+            if (officialIds.has(authUser.id)) metaMap.set(authUser.id, authUser.user_metadata || {});
+          }
+          if (authList.users.length < perPage) break;
+        }
 
         let current = 0;
         for (const o of list) {
-          const sub = String(metaMap[o.id]?.official_role || '').toLowerCase();
+          const sub = String(metaMap.get(o.id)?.official_role || '').toLowerCase();
           const normalized = sub.includes('secretary') ? 'SK Secretary'
             : sub.includes('treasurer') ? 'SK Treasurer'
             : 'SK Kagawad';
@@ -984,6 +1013,7 @@ router.post(
         }).eq('email', cleanEmail);
         if (rebindErr) { sendError(res, 'Failed to rebind SK Official record: ' + rebindErr.message, 500); return; }
       } else {
+        inviteMethod = 'existing_auth_user';
         const _preserveOff = resolveName({
           payload: { first_name, middle_name, last_name, suffix },
           existing: {
