@@ -5281,18 +5281,20 @@ export default function OfficialPages({
                           <span className="text-[10px] font-bold text-emerald-700 uppercase">Approved Records</span>
                           <h4 className="text-2xl font-black text-emerald-700 mt-1">{localDocs.filter(d => d.status === 'Approved').length}</h4>
                         </div>
-                        <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl">
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 uppercase">
-                            Active Drafts
+                        <div className="p-4 bg-rose-50 border border-rose-100 rounded-xl">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-700 uppercase">
+                            Returned / Rejected
                             <span
-                              className="text-slate-400"
-                              title="Documents created but not yet submitted for approval."
-                              aria-label="Documents created but not yet submitted for approval."
+                              className="text-rose-600"
+                              title="Documents returned by the Chairperson for revision."
+                              aria-label="Documents returned by the Chairperson for revision."
                             >
                               <Info className="h-3 w-3" />
                             </span>
                           </span>
-                          <h4 className="text-2xl font-black text-slate-700 mt-1">{localDocs.filter(d => d.status === 'Draft').length}</h4>
+                          <h4 className="text-2xl font-black text-rose-600 mt-1">
+                            {localDocs.filter(d => ['rejected', 'returned'].includes(String(d.status || '').trim().toLowerCase())).length}
+                          </h4>
                         </div>
                       </div>
                     </div>
