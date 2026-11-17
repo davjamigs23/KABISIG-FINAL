@@ -356,21 +356,41 @@ useEffect(() => {
     }
   };
 
-  const renderAllOfficial = (official: any) => (
-    <span key={official.id} className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">
-      {official.avatar_url ? (
-        <img src={official.avatar_url} alt="" className="h-6 w-6 rounded-full object-cover" />
-      ) : (
-        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-[10px] font-black text-[#091d64]">
-          {(official.full_name || '?').trim().charAt(0).toUpperCase()}
+  const getOfficialSetupBadge = (official: {
+    email?: string | null;
+    setup_completed?: boolean | string | null;
+  } | null | undefined) => {
+    if (official?.setup_completed === true) {
+      return { label: 'Assigned', className: 'bg-emerald-100 text-emerald-700' };
+    }
+    if (official?.setup_completed === false || official?.setup_completed === 'false') {
+      return { label: 'Pending', className: 'bg-amber-100 text-amber-800' };
+    }
+    if (!official?.email) {
+      return { label: 'Unassigned', className: 'bg-slate-200 text-slate-600' };
+    }
+    return { label: 'Pending', className: 'bg-amber-100 text-amber-800' };
+  };
+
+  const renderAllOfficial = (official: any) => {
+    const badge = getOfficialSetupBadge(official);
+
+    return (
+      <span key={official.id} className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">
+        {official.avatar_url ? (
+          <img src={official.avatar_url} alt="" className="h-6 w-6 rounded-full object-cover" />
+        ) : (
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-[10px] font-black text-[#091d64]">
+            {(official.full_name || '?').trim().charAt(0).toUpperCase()}
+          </span>
+        )}
+        <span className="break-words">{official.full_name || 'Pending Invitation'}</span>
+        <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${badge.className}`}>
+          {badge.label}
         </span>
-      )}
-      <span className="break-words">{official.full_name || 'Pending Invitation'}</span>
-      <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${official.setup_completed === true ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'}`}>
-        {official.setup_completed === true ? 'Assigned' : 'Pending'}
       </span>
-    </span>
-  );
+    );
+  };
 
   // Data for Charts
   const federationRows = federationAnalytics?.barangay_rankings || [];
@@ -409,7 +429,7 @@ useEffect(() => {
   }));
 
   const hasAssignedChairperson = (barangay: BarangayTenant): boolean => {
-    return Boolean(barangay.chairpersonUser && barangay.chairpersonUser.full_name);
+    return getOfficialSetupBadge(barangay.chairpersonUser).label !== 'Unassigned';
   };
 
   // Filtered Barangays list
@@ -609,7 +629,7 @@ useEffect(() => {
 
       onSyncBarangay(transferringBarangay.id, {
         chairperson: res.data?.incoming?.full_name || 'Pending Invitation',
-        chairpersonUser: { full_name: res.data?.incoming?.full_name || 'Pending Invitation' },
+        chairpersonUser: { full_name: res.data?.incoming?.full_name || 'Pending Invitation', email },
         chairpersonEmail: email,
       });
       await onRefreshAuditLogs();
@@ -621,9 +641,9 @@ useEffect(() => {
       setIsTransferring(false);
     }
   };
-  const handleOpenAssignModal = (_b?: BarangayTenant, returnToConfigure: boolean = false) => {
-    setAssigningBarangay(null);
-    setAssignEmail('');
+  const handleOpenAssignModal = (barangay?: BarangayTenant, returnToConfigure: boolean = false) => {
+    setAssigningBarangay(barangay || null);
+    setAssignEmail(barangay?.chairpersonEmail || '');
     setAssignError(null);
     setAssignNotice(null);
     setChairpersonSetupLink('');
@@ -661,7 +681,7 @@ useEffect(() => {
 
       onSyncBarangay(assigningBarangay.id, {
         chairperson: res.data?.full_name || (assigningBarangay.chairperson && assigningBarangay.chairperson !== 'Unassigned' ? assigningBarangay.chairperson : 'Pending Invitation'),
-        chairpersonUser: { full_name: res.data?.full_name || 'Pending Invitation' },
+        chairpersonUser: { full_name: res.data?.full_name || 'Pending Invitation', email },
         chairpersonEmail: email,
       });
       await onRefreshAuditLogs();
@@ -1038,15 +1058,15 @@ useEffect(() => {
               </div>
 
               {/* CITY-WIDE QUICK ACTIONS BAR */}
-              <div className="bg-white border border-slate-200 p-5 rounded-2xl text-slate-800 shadow-sm flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+              <div className="bg-white border border-slate-200 p-5 rounded-2xl text-slate-800 shadow-sm flex flex-col gap-4">
                 <div>
                   <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Super Admin Tools</span>
                   <h3 className="font-sans font-black text-lg text-slate-900">Super Admin Quick Actions</h3>
                 </div>
-                <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-start lg:justify-end">
+                <div className="flex flex-wrap lg:flex-nowrap items-center justify-end gap-2 w-full">
                   <button 
                     onClick={() => setActiveMenu('barangays')}
-                    className="px-4 py-2.5 bg-white text-[#091d64] hover:bg-blue-50 font-bold rounded-xl text-xs transition-colors flex items-center gap-2 cursor-pointer shadow-xs border border-slate-200"
+                    className="px-3 py-2 bg-white text-[#091d64] hover:bg-blue-50 font-bold rounded-xl text-[11px] transition-colors flex items-center gap-2 cursor-pointer shadow-xs border border-slate-200 whitespace-nowrap"
                   >
                     <Building2 className="w-4 h-4" /> Manage Barangays
                   </button>
@@ -1064,24 +1084,24 @@ useEffect(() => {
     setTypoReason('');
     setShowFixTypoModal(true);
   }}
-                    className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-xs transition-colors flex items-center gap-2 cursor-pointer shadow-xs"
+                    className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-[11px] transition-colors flex items-center gap-2 cursor-pointer shadow-xs whitespace-nowrap"
                   >
                     <span className="font-black text-sm">@</span> Manage Credentials
                   </button>
                   <button
                     onClick={() => handleOpenAssignModal()}
-                    className="px-4 py-2.5 bg-[#091d64] text-white hover:bg-[#102a83] font-bold rounded-xl text-xs transition-colors flex items-center gap-2 cursor-pointer shadow-xs"
+                    className="px-3 py-2 bg-[#091d64] text-white hover:bg-[#102a83] font-bold rounded-xl text-[11px] transition-colors flex items-center gap-2 cursor-pointer shadow-xs whitespace-nowrap"
                   >
                     <ShieldCheck className="w-4 h-4" /> Assign Chairperson
                   </button>
                   <button
                     onClick={() => handleOpenInviteOfficialModal()}
-                    className="px-4 py-2.5 bg-amber-400 text-amber-950 hover:bg-amber-300 font-bold rounded-xl text-xs transition-colors flex items-center gap-2 cursor-pointer shadow-xs"
+                    className="px-3 py-2 bg-amber-400 text-amber-950 hover:bg-amber-300 font-bold rounded-xl text-[11px] transition-colors flex items-center gap-2 cursor-pointer shadow-xs whitespace-nowrap"
                   >
                     <ShieldCheck className="w-4 h-4" /> Invite SK Official
                   </button>
                   <button onClick={() => setShowLydpModal(true)}
-                    className="px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-amber-950 font-extrabold rounded-xl text-xs transition-colors flex items-center gap-2 cursor-pointer shadow-xs"
+                    className="px-3 py-2 bg-amber-400 hover:bg-amber-300 text-amber-950 font-extrabold rounded-xl text-[11px] transition-colors flex items-center gap-2 cursor-pointer shadow-xs whitespace-nowrap"
                   >
                     <FileText className="w-4 h-4" /> Generate LYDP Report
                   </button>
@@ -1192,6 +1212,7 @@ useEffect(() => {
                         const totalBudget = toNumber(liveRow?.budget_allocated ?? b.totalBudget);
                         const spent = toNumber(liveRow?.budget_spent ?? b.spentBudget);
                         const rate = totalBudget > 0 ? Math.round((spent / totalBudget) * 100) : 0;
+                        const chairpersonBadge = getOfficialSetupBadge(b.chairpersonUser);
                         return (
                           <tr key={b.id} className="hover:bg-slate-50/50">
                             <td className="p-3 font-bold text-[#091d64] whitespace-nowrap">
@@ -1207,16 +1228,16 @@ useEffect(() => {
                               </div>
                             </td>
                             <td className="p-3 font-semibold whitespace-nowrap">
-                              {b.chairperson && b.chairperson !== 'Unassigned' ? (
+                              {chairpersonBadge.label !== 'Unassigned' ? (
                                 <div className="flex items-center gap-1.5">
                                   <span>{b.chairperson}</span>
-                                  <span className="px-1.5 py-0.5 text-[9px] font-black uppercase rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                    Assigned
+                                  <span className={`px-1.5 py-0.5 text-[9px] font-black uppercase rounded ${chairpersonBadge.className}`}>
+                                    {chairpersonBadge.label}
                                   </span>
                                 </div>
                               ) : (
-                                <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded bg-amber-50 text-amber-700 border border-amber-200">
-                                  Unassigned
+                                <span className={`px-2 py-0.5 text-[9px] font-black uppercase rounded ${chairpersonBadge.className}`}>
+                                  {chairpersonBadge.label}
                                 </span>
                               )}
                             </td>
@@ -1319,8 +1340,9 @@ useEffect(() => {
                     <tbody className="divide-y divide-slate-100 font-medium">
                       {filteredBarangays.map(b => {
                         const bDistrict = b.skDistrict || BARANGAY_SK_DISTRICTS[b.name] || 'Unassigned';
-                        const isAssigned = hasAssignedChairperson(b);
-                        const setupCompleted = b.chairpersonUser?.setup_completed === true;
+                        const chairpersonBadge = getOfficialSetupBadge(b.chairpersonUser);
+                        const isAssigned = chairpersonBadge.label !== 'Unassigned';
+                        const setupCompleted = chairpersonBadge.label === 'Assigned';
 
                         return (
                           <tr key={b.id} className="hover:bg-slate-50/70 transition-colors">
@@ -1364,13 +1386,6 @@ useEffect(() => {
                                     <span className="font-bold text-slate-900 text-xs">
                                       {b.chairperson === 'Pending Invitation' ? 'Pending Invitation' : b.chairperson}
                                     </span>
-                                    <span className={`px-1.5 py-0.2 rounded text-[9px] font-extrabold uppercase border ${
-                                      setupCompleted
-                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                        : 'bg-amber-50 text-amber-700 border-amber-200'
-                                    }`}>
-                                      {setupCompleted ? 'Assigned' : 'Pending'}
-                                    </span>
                                   </div>
                                   {b.chairpersonEmail ? (
                                     <span className="text-[11px] text-slate-500 font-mono block">
@@ -1406,7 +1421,7 @@ useEffect(() => {
                                 <span className={`w-1.5 h-1.5 rounded-full ${
                                   setupCompleted ? 'bg-emerald-500' : isAssigned ? 'bg-amber-500' : 'bg-slate-400'
                                 }`}></span>
-                                {setupCompleted ? 'Active' : isAssigned ? 'Pending' : 'Inactive'}
+                                {chairpersonBadge.label === 'Assigned' ? 'Active' : chairpersonBadge.label === 'Pending' ? 'Pending' : 'Inactive'}
                               </span>
                             </td>
 
@@ -2037,24 +2052,32 @@ useEffect(() => {
                     </h4>
                     {group.members.length > 0 ? (
                       <div className="grid gap-2 sm:grid-cols-2">
-                        {group.members.map((person: any) => (
-                          <div key={person.id} className="flex min-w-0 items-center gap-3 rounded-xl border border-slate-200 p-3">
-                            {person.avatar_url ? (
-                              <img src={person.avatar_url} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />
-                            ) : (
-                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-black text-[#091d64]">
-                                {(person.full_name || '?').trim().charAt(0).toUpperCase()}
+                        {group.members.map((person: any) => {
+                          const chairpersonBadge = Number(person.role_id) === 2
+                            ? getOfficialSetupBadge(person)
+                            : null;
+
+                          return (
+                            <div key={person.id} className="flex min-w-0 items-center gap-3 rounded-xl border border-slate-200 p-3">
+                              {person.avatar_url ? (
+                                <img src={person.avatar_url} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />
+                              ) : (
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-black text-[#091d64]">
+                                  {(person.full_name || '?').trim().charAt(0).toUpperCase()}
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-bold text-slate-800">{person.full_name || 'Pending Invitation'}</p>
+                                <p className="truncate text-xs text-slate-500">{person.email || 'No email recorded'}</p>
+                                <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold capitalize ${
+                                  chairpersonBadge ? chairpersonBadge.className : 'bg-slate-100 text-slate-600'
+                                }`}>
+                                  {chairpersonBadge?.label || person.status || 'unassigned'}
+                                </span>
                               </div>
-                            )}
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-bold text-slate-800">{person.full_name || 'Pending Invitation'}</p>
-                              <p className="truncate text-xs text-slate-500">{person.email || 'No email recorded'}</p>
-                              <span className="mt-1 inline-block rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold capitalize text-slate-600">
-                                {person.status || 'unassigned'}
-                              </span>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     ) : (
                       <p className="rounded-lg bg-slate-50 px-3 py-4 text-center text-xs text-slate-400">
@@ -2586,7 +2609,7 @@ useEffect(() => {
                           }}
                           className="px-4 py-2 bg-[#091d64] hover:bg-[#102a83] text-white rounded-lg text-xs font-bold whitespace-nowrap w-full sm:w-auto"
                         >
-                          Assign Chairperson
+                          Resend Invitation
                         </button>
                       </>
                     ) : (

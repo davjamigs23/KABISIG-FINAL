@@ -109,16 +109,24 @@ router.get('/all-officials', authenticateUser, requireRoles('SUPER_ADMIN'), asyn
         .join(' ')
         .trim();
       const barangay = Array.isArray(official.barangay) ? official.barangay[0] : official.barangay;
+      const fullName = composedName || official.full_name || 'Pending Invitation';
+      const status = official.status || 'pending';
+      const isInvitationPending = fullName.trim().toLowerCase() === 'pending invitation'
+        || status.trim().toLowerCase() === 'pending';
+      const setupCompleted: boolean = !isInvitationPending && (
+        userMetadata.setup_completed === true
+        || authUser?.app_metadata?.setup_completed === true
+      );
       return {
         id: official.id,
         tenant_id: official.tenant_id,
         barangay_name: barangay?.name || '',
         role_id: Number(official.role_id),
         official_role: userMetadata.official_role || authUser?.app_metadata?.official_role || 'SK Kagawad',
-        full_name: composedName || official.full_name || 'Pending Invitation',
+        full_name: fullName,
         email: official.email || authUser?.email || '',
-        status: official.status || 'pending',
-        setup_completed: userMetadata.setup_completed === true || authUser?.app_metadata?.setup_completed === true,
+        status,
+        setup_completed: setupCompleted,
         avatar_url: await resolveAvatarUrl(official.avatar_url),
       };
     }));
