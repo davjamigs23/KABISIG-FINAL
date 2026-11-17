@@ -97,9 +97,9 @@ router.get('/demographics', async (_req: Request, res: Response): Promise<void> 
     else if (age >= 25 && age <= 30) ageBuckets['25-30']++;
   }
 
-  const { count: attendeeCount } = await supabaseAdmin.from('program_attendance').select('*', { count: 'exact', head: true });
-  const { count: scholarCount } = await supabaseAdmin.from('resident_profile').select('*', { count: 'exact', head: true }).or('scholar_status.eq.Scholar,scholar_status.eq.Yes,is_scholar.eq.true');
-  const { count: resolutionCount } = await supabaseAdmin.from('documents').select('*', { count: 'exact', head: true }).eq('document_type', 'Resolution').eq('status', 'approved');
+  const { count: attendeeCount } = await supabaseAdmin.from('program_attendance').select('user_id', { count: 'exact', head: true });
+  const { count: scholarCount } = await supabaseAdmin.from('resident_profile').select('user_id', { count: 'exact', head: true }).or('scholar_status.eq.Scholar,scholar_status.eq.Yes,is_scholar.eq.true');
+  const { count: resolutionCount } = await supabaseAdmin.from('documents').select('id', { count: 'exact', head: true }).eq('document_type', 'Resolution').eq('status', 'approved');
 
   sendSuccess(
     res,
@@ -148,10 +148,11 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
 
   const { data: officials, error } = await supabaseAdmin
     .from('users')
-    .select('id, tenant_id, full_name, role_id, avatar_url, barangay(name), resident_profile!resident_profile_user_id_fkey(sex)')
+    .select('id, tenant_id, full_name, role_id, avatar_url, resident_profile!resident_profile_user_id_fkey(sex)')
     .in('role_id', [2, 3])
     .eq('status', 'active')
-    .not('tenant_id', 'is', null);
+    .not('tenant_id', 'is', null)
+    .not('full_name', 'ilike', '%Pending Invitation%');
 
   if (error) {
     sendError(res, `Failed to load public officials: ${error.message}`, 500);
@@ -190,32 +191,40 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
     groupedOfficials.set(barangay.id, { barangay_name: barangay.name, officials: [] });
   });
 
-  const resolvedOfficials = await Promise.all((officials || []).map(async (official: any) => {
-    const authUser = authUsers.get(official.id);
-    const residentProfile = Array.isArray(official.resident_profile)
-      ? official.resident_profile[0]
-      : official.resident_profile;
-    const officialRole = String(
-      authUser?.user_metadata?.official_role
-      || authUser?.app_metadata?.official_role
-      || (Number(official.role_id) === 3 ? 'SK Kagawad' : 'SK Chairperson')
-    );
-    return {
-      ...official,
-      official_role: officialRole,
-      position: officialRole,
-      gender_title: residentProfile?.sex === 'Female' ? 'Ms.' : 'Mr.',
-      avatar_url: await resolveAvatarUrl(official.avatar_url),
-    };
-  }));
+  const resolvedOfficials = await Promise.all((officials || [])
+    .filter((official: any) => {
+      const authUser = authUsers.get(official.id);
+      return authUser?.user_metadata?.setup_completed !== false
+        && authUser?.app_metadata?.setup_completed !== false
+        && !String(official.full_name || '').toLowerCase().includes('pending invitation');
+    })
+    .map(async (official: any) => {
+      const authUser = authUsers.get(official.id);
+      const residentProfile = Array.isArray(official.resident_profile)
+        ? official.resident_profile[0]
+        : official.resident_profile;
+      const officialRole = String(
+        authUser?.user_metadata?.official_role
+        || authUser?.app_metadata?.official_role
+        || (Number(official.role_id) === 3 ? 'SK Kagawad' : 'SK Chairperson')
+      );
+      return {
+        id: official.id,
+        tenant_id: official.tenant_id,
+        full_name: official.full_name || '',
+        role_id: Number(official.role_id),
+        official_role: officialRole,
+        position: officialRole,
+        gender_title: residentProfile?.sex === 'Female' ? 'Ms.' : 'Mr.',
+        avatar_url: await resolveAvatarUrl(official.avatar_url),
+      };
+    }));
 
   resolvedOfficials.forEach((official: any) => {
     if (!official.tenant_id) return;
     const group = groupedOfficials.get(official.tenant_id);
     if (!group) return;
 
-    const joinedBarangay = Array.isArray(official.barangay) ? official.barangay[0] : official.barangay;
-    if (joinedBarangay?.name) group.barangay_name = joinedBarangay.name;
     group.officials.push({
       id: official.id,
       full_name: official.full_name || '',

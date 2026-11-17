@@ -186,8 +186,7 @@ export default function YouthPages({
   }, []);
       const currentVerifStatus = (verificationStatus?.verification_status || currentYouth.verificationStatus || (currentYouth as any).verification_status || 'pending').toLowerCase();
   const isVerified = String(currentYouth.status || '').toLowerCase() === 'approved'
-    || String(currentYouth.verificationStatus || (currentYouth as any).verification_status || '').toLowerCase() === 'verified'
-    || String(verificationStatus?.verification_status || '').toLowerCase() === 'verified';
+    || currentVerifStatus === 'verified';
   const isInDemotionCompletion = (currentYouth as any).is_demoted === true && (currentYouth as any).has_edited_profile !== true;
   const isProfileLocked = isVerified && !isInDemotionCompletion;
   const isDemotedChair = verificationStatus?.is_demoted_chair === true;
@@ -322,6 +321,10 @@ export default function YouthPages({
   const [cropImage, setCropImage] = useState<string | null>(null);
 
   const handleProfilePictureChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (isProfileLocked) {
+      event.target.value = '';
+      return;
+    }
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
@@ -340,6 +343,7 @@ export default function YouthPages({
   };
 
   const handleCropConfirm = async (croppedBase64: string, mime: string) => {
+    if (isProfileLocked) return;
     setCropImage(null);
     setIsUploadingProfilePicture(true);
     setProfilePictureNotice(null);
@@ -459,6 +463,7 @@ export default function YouthPages({
     finally { setVerificationLoading(false); }
   };
   const handleVerificationFile = (file: File | null, side: 'front' | 'back' = 'front') => {
+    if (isProfileLocked) return;
     if (!file) {
       setVerificationForm((p) => side === 'back' ? { ...p, backFile: null } : { ...p, file: null });
       return;
@@ -480,6 +485,7 @@ export default function YouthPages({
     }
   };
   const handleVerificationSubmit = async () => {
+    if (isProfileLocked) return;
     const { id_type, id_number, file, backFile } = verificationForm;
     if (!id_number.trim()) {
       setVerificationNotice({ type: 'error', text: 'Please enter your ID number.' });
@@ -558,6 +564,7 @@ export default function YouthPages({
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isProfileLocked) return;
     setIsSavingProfile(true);
 
     // Validation: demoted users get only ONE edit — force completeness
@@ -608,19 +615,21 @@ export default function YouthPages({
         ...updatedProfile,
         scholarship_source: updatedProfile.scholarshipSource || null,
         scholarship_source_detail: updatedProfile.scholarshipSourceDetail || null,
+        ...(isInDemotionCompletion ? { has_edited_profile: true } : {}),
       });
       if (!res.success) {
         throw new Error(res.message || 'The profile could not be saved.');
       }
-      setYouth(updatedProfile);
+      const savedProfile = {
+        ...updatedProfile,
+        ...(isInDemotionCompletion ? { has_edited_profile: true } : {}),
+      };
+      setYouth(savedProfile);
       if (onUpdateYouthProfile) {
-        onUpdateYouthProfile(updatedProfile);
+        onUpdateYouthProfile(savedProfile);
       }
       setIsEditModalOpen(false);
-        setIsEditingProfile(false);
-        if (currentYouth.is_demoted) { await kabisigApi.updateProfile({ ...editForm, has_edited_profile: true }); }
-        setIsEditingProfile(false);
-        onUpdateYouthProfile({ ...currentYouth, ...editForm, has_edited_profile: true } as any);
+      setIsEditingProfile(false);
       setPopupMsg({ title: 'Profile Saved', text: 'Your Katipunan ng Kabataan Profile (DILG Annex 4) has been updated and saved to the database successfully!', type: 'success' });
     } catch (err: any) {
       console.error('Error saving profile changes:', err);
@@ -1474,10 +1483,22 @@ export default function YouthPages({
                         <ShieldCheck className="w-4 h-4" />
                       </div>
                     </div>
-                    <label className="cursor-pointer rounded-lg border border-blue-100 bg-blue-50 px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wide text-[#091d64] transition-colors hover:bg-blue-100">
-                      <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={handleProfilePictureChange} disabled={isUploadingProfilePicture || isProfileLocked} />
+                    <input
+                      id="youth-profile-picture-input"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="sr-only"
+                      onChange={handleProfilePictureChange}
+                      disabled={isUploadingProfilePicture || isProfileLocked}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => document.getElementById('youth-profile-picture-input')?.click()}
+                      disabled={isUploadingProfilePicture || isProfileLocked}
+                      className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wide text-[#091d64] transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
                       {isUploadingProfilePicture ? 'Uploading...' : 'Upload Photo'}
-                    </label>
+                    </button>
                     {profilePictureNotice && (
                       <p className={`max-w-48 text-center text-[10px] font-semibold ${profilePictureNotice.type === 'success' ? 'text-emerald-700' : 'text-rose-700'}`}>
                         {profilePictureNotice.text}
@@ -2307,10 +2328,17 @@ export default function YouthPages({
               )}
               {isEditingProfile && (
               <form onSubmit={handleSaveProfile} className="space-y-6">
-                {isVerified && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-                    <p className="text-xs text-blue-800">
+                {isProfileLocked && !isInDemotionCompletion && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                    <p className="text-xs text-amber-800">
                       <strong>Identity fields are locked</strong> after verification. Contact the SK Chairperson to request name or address corrections.
+                    </p>
+                  </div>
+                )}
+                {isInDemotionCompletion && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                    <p className="text-xs text-amber-800">
+                      As a demoted SK Chairperson, please complete your personal information and upload a valid ID. This is a one-time step.
                     </p>
                   </div>
                 )}
@@ -2476,6 +2504,7 @@ export default function YouthPages({
                           <select
                             value={verificationForm.id_type}
                             onChange={(e) => setVerificationForm({ ...verificationForm, id_type: e.target.value })}
+                            disabled={isProfileLocked}
                             className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                           >
                       <option value="Philippine Passport">Philippine Passport</option>
@@ -2501,7 +2530,8 @@ export default function YouthPages({
                           <input
                             type="text"
                             value={verificationForm.id_number}
-                            disabled={['submitted','verified'].includes(String(verificationStatus?.verification_status || '').toLowerCase())}
+                            disabled={isProfileLocked || ['submitted','verified'].includes(String(verificationStatus?.verification_status || '').toLowerCase())}
+                            readOnly={isProfileLocked}
                             onChange={(e) => setVerificationForm({ ...verificationForm, id_number: e.target.value })}
                             placeholder="e.g. 2024-12345"
                             className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
@@ -2514,7 +2544,8 @@ export default function YouthPages({
                           type="file"
                           accept="image/jpeg,image/png,image/webp"
                           onChange={(e) => handleVerificationFile(e.target.files && e.target.files[0] ? e.target.files[0] : null)}
-                          disabled={['submitted','verified'].includes(String(verificationStatus?.verification_status || '').toLowerCase())}
+                          disabled={isProfileLocked || ['submitted','verified'].includes(String(verificationStatus?.verification_status || '').toLowerCase())}
+                          readOnly={isProfileLocked}
                           className="w-full text-xs file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#091d64] file:text-white hover:file:bg-[#102a83] file:cursor-pointer"
                         />
                         {verificationForm.file && (
@@ -2529,7 +2560,8 @@ export default function YouthPages({
                           type="file"
                           accept="image/jpeg,image/png,image/webp"
                           onChange={(e) => handleVerificationFile(e.target.files && e.target.files[0] ? e.target.files[0] : null, 'back')}
-                          disabled={['submitted','verified'].includes(String(verificationStatus?.verification_status || '').toLowerCase())}
+                          disabled={isProfileLocked || ['submitted','verified'].includes(String(verificationStatus?.verification_status || '').toLowerCase())}
+                          readOnly={isProfileLocked}
                           className="w-full text-xs file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#091d64] file:text-white hover:file:bg-[#102a83] file:cursor-pointer"
                         />
                         {verificationForm.backFile && (
@@ -2572,6 +2604,7 @@ export default function YouthPages({
                       <input 
                         type="text" 
                         disabled={isProfileLocked}
+                        readOnly={isProfileLocked}
                         value={editForm.mobile} 
                         onChange={(e) => setEditForm({ ...editForm, mobile: e.target.value })}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
@@ -2583,6 +2616,7 @@ export default function YouthPages({
                       <input 
                         type="email" 
                         disabled={isProfileLocked}
+                        readOnly={isProfileLocked}
                         value={editForm.email} 
                         onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
@@ -2594,6 +2628,7 @@ export default function YouthPages({
                       <input 
                         type="text" 
                         disabled={isProfileLocked}
+                        readOnly={isProfileLocked}
                         value={editForm.guardianName} 
                         onChange={(e) => setEditForm({ ...editForm, guardianName: e.target.value })}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
@@ -2605,6 +2640,7 @@ export default function YouthPages({
                       <input 
                         type="text" 
                         disabled={isProfileLocked}
+                        readOnly={isProfileLocked}
                         value={editForm.guardianContact} 
                         onChange={(e) => setEditForm({ ...editForm, guardianContact: e.target.value })}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
@@ -2641,6 +2677,7 @@ export default function YouthPages({
                       <input 
                         type="text" 
                         disabled={isProfileLocked}
+                        readOnly={isProfileLocked}
                         value={editForm.school || ''} 
                         onChange={(e) => setEditForm({ ...editForm, school: e.target.value })}
                         placeholder="e.g. Ateneo de Naga University"
@@ -2652,6 +2689,7 @@ export default function YouthPages({
                       <input 
                         type="text" 
                         disabled={isProfileLocked}
+                        readOnly={isProfileLocked}
                         value={editForm.course || ''} 
                         onChange={(e) => setEditForm({ ...editForm, course: e.target.value })}
                         placeholder="e.g. BS Information Technology"
@@ -2733,6 +2771,7 @@ export default function YouthPages({
                             type="text"
                             placeholder="e.g., Barangay-funded sports scholarship"
                             disabled={isProfileLocked}
+                            readOnly={isProfileLocked}
                             value={editForm.scholarshipSourceDetail || ''}
                             onChange={(e) => setEditForm({ ...editForm, scholarshipSourceDetail: e.target.value })}
                             className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64] mt-2"
@@ -2747,6 +2786,7 @@ export default function YouthPages({
                         <input 
                           type="text" 
                           disabled={isProfileLocked}
+                          readOnly={isProfileLocked}
                           value={editForm.scholarshipType || ''} 
                           onChange={(e) => setEditForm({ ...editForm, scholarshipType: e.target.value })}
                           placeholder="e.g. Naga City Educational Assistance Program"
@@ -2779,7 +2819,7 @@ export default function YouthPages({
                     onClick={() => { setIsEditModalOpen(false); setIsEditingProfile(false); }}
                     className="px-5 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold rounded-xl text-xs transition-colors cursor-pointer"
                   >
-                    Cancel
+                    {isProfileLocked ? 'Close' : 'Cancel'}
                   </button>
                   <button 
                     type="submit" 

@@ -217,6 +217,11 @@ useEffect(() => {
   const [isInvitingOfficial, setIsInvitingOfficial] = useState(false);
   const [inviteOfficialNotice, setInviteOfficialNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [officialSetupLink, setOfficialSetupLink] = useState('');
+  const [copiedOfficialSetupLink, setCopiedOfficialSetupLink] = useState(false);
+  const [pendingOfficialToCancel, setPendingOfficialToCancel] = useState<any>(null);
+  const [isCancellingOfficialInvite, setIsCancellingOfficialInvite] = useState(false);
+  const [isResendingOfficialId, setIsResendingOfficialId] = useState<string | null>(null);
+  const [cancelOfficialInviteNotice, setCancelOfficialInviteNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   // Role capacity for the selected barangay
   const [roleCapacity, setRoleCapacity] = useState<any>(null);
   const [isLoadingCapacity, setIsLoadingCapacity] = useState(false);
@@ -230,7 +235,27 @@ useEffect(() => {
   const [allOfficialsLoading, setAllOfficialsLoading] = useState(false);
   const [allOfficialsError, setAllOfficialsError] = useState<string | null>(null);
 
-  
+  const normalizedInviteOfficialEmail = inviteOfficialEmail.trim().toLowerCase();
+  const isInviteOfficialEmailDuplicate = Boolean(normalizedInviteOfficialEmail && (
+    inviteOfficialBarangay?.chairpersonEmail?.trim().toLowerCase() === normalizedInviteOfficialEmail
+    || (Array.isArray(roleCapacity?.chairperson_details) && roleCapacity.chairperson_details.some(
+      (official: any) => String(official.email || '').trim().toLowerCase() === normalizedInviteOfficialEmail
+    ))
+    || (Array.isArray(roleCapacity?.officials) && roleCapacity.officials.some(
+      (official: any) => String(official.email || '').trim().toLowerCase() === normalizedInviteOfficialEmail
+    ))
+  ));
+  const pendingOfficialInvites = Array.isArray(roleCapacity?.officials)
+    ? roleCapacity.officials.filter((official: any) =>
+        official.setup_completed !== true
+        || String(official.status || '').toLowerCase() === 'pending'
+        || String(official.full_name || '').toLowerCase().includes('pending invitation')
+      )
+    : [];
+  const completedOfficialRoster = Array.isArray(roleCapacity?.officials)
+    ? roleCapacity.officials.filter((official: any) => !pendingOfficialInvites.some((pending: any) => pending.id === official.id))
+    : [];
+
   useEffect(() => {
     const handleFocus = () => {
       // Refetch the federation data when the window regains focus
@@ -484,6 +509,14 @@ useEffect(() => {
       setInviteOfficialNotice({ type: 'error', text: 'Please enter a valid official email address.' });
       return;
     }
+    if (isLoadingCapacity) {
+      setInviteOfficialNotice({ type: 'error', text: 'Checking existing officials. Please wait.' });
+      return;
+    }
+    if (isInviteOfficialEmailDuplicate) {
+      setInviteOfficialNotice({ type: 'error', text: 'This email is already assigned in this barangay.' });
+      return;
+    }
     setIsInvitingOfficial(true);
     setInviteOfficialNotice(null);
     try {
@@ -498,10 +531,81 @@ useEffect(() => {
         type: 'success',
         text: `SK Official invitation sent to ${email} for ${inviteOfficialBarangay.name}.`,
       });
+      setCopiedOfficialSetupLink(false);
+      const refreshedCapacity = await kabisigApi.getRoleCapacity(inviteOfficialBarangay.id);
+      if (refreshedCapacity.success) setRoleCapacity(refreshedCapacity.data);
     } catch (err: any) {
       setInviteOfficialNotice({ type: 'error', text: err.message || 'Network connection failed.' });
     } finally {
       setIsInvitingOfficial(false);
+    }
+  };
+
+  const handleResendOfficialInvitation = async (official: any) => {
+    if (!inviteOfficialBarangay || !official?.email || !official?.official_role) {
+      setInviteOfficialNotice({ type: 'error', text: 'This pending invitation is missing its email or role.' });
+      return;
+    }
+
+    setIsResendingOfficialId(official.id);
+    setInviteOfficialNotice(null);
+    setOfficialSetupLink('');
+    setCopiedOfficialSetupLink(false);
+    try {
+      const response = await kabisigApi.inviteSkOfficial(
+        inviteOfficialBarangay.id,
+        String(official.email).trim().toLowerCase(),
+        official.official_role
+      );
+      if (!response.success) {
+        setInviteOfficialNotice({ type: 'error', text: response.message || 'Failed to resend invitation.' });
+        return;
+      }
+      setOfficialSetupLink(response.data?.action_link || response.data?.setup_url || '');
+      setInviteOfficialNotice({
+        type: 'success',
+        text: `A new invitation was sent to ${official.email}.`,
+      });
+      const refreshedCapacity = await kabisigApi.getRoleCapacity(inviteOfficialBarangay.id);
+      if (refreshedCapacity.success) setRoleCapacity(refreshedCapacity.data);
+    } catch (error: any) {
+      setInviteOfficialNotice({ type: 'error', text: error?.message || 'Failed to resend invitation.' });
+    } finally {
+      setIsResendingOfficialId(null);
+    }
+  };
+
+  const handleCancelOfficialInvitation = async () => {
+    if (!pendingOfficialToCancel) return;
+    setIsCancellingOfficialInvite(true);
+    setCancelOfficialInviteNotice(null);
+    try {
+      const response = await kabisigApi.cancelSkOfficialInvitation(pendingOfficialToCancel.id);
+      if (!response.success) {
+        setCancelOfficialInviteNotice({ type: 'error', text: response.message || 'Failed to cancel invitation.' });
+        return;
+      }
+      if (inviteOfficialBarangay) {
+        const refreshedCapacity = await kabisigApi.getRoleCapacity(inviteOfficialBarangay.id);
+        if (refreshedCapacity.success) setRoleCapacity(refreshedCapacity.data);
+      }
+      setCancelOfficialInviteNotice({ type: 'success', text: response.message || 'Invitation cancelled.' });
+    } catch (error: any) {
+      setCancelOfficialInviteNotice({ type: 'error', text: error?.message || 'Failed to cancel invitation.' });
+    } finally {
+      setIsCancellingOfficialInvite(false);
+    }
+  };
+
+  const handleCopyOfficialSetupLink = async () => {
+    try {
+      await navigator.clipboard.writeText(officialSetupLink);
+      setCopiedOfficialSetupLink(true);
+    } catch (error) {
+      setInviteOfficialNotice({
+        type: 'error',
+        text: error instanceof Error ? `Unable to copy the invitation link: ${error.message}` : 'Unable to copy the invitation link.',
+      });
     }
   };
 
@@ -2275,13 +2379,55 @@ useEffect(() => {
                     })}
                   </div>
                 )}
-              {!isLoadingCapacity && roleCapacity?.officials && roleCapacity.officials.length > 0 && (
+              {!isLoadingCapacity && pendingOfficialInvites.length > 0 && (
+                <div className="border-t border-amber-100 pt-3">
+                  <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wider mb-2">
+                    Pending Invites
+                  </p>
+                  <div className="space-y-2 max-h-52 overflow-y-auto">
+                    {pendingOfficialInvites.map((official: any) => (
+                      <div key={official.id} className="rounded-lg border border-amber-100 bg-amber-50 p-2.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <span className="block truncate text-[11px] font-bold text-slate-800">{official.full_name}</span>
+                            <span className="block truncate font-mono text-[10px] text-slate-500">{official.email}</span>
+                            <span className="mt-1 inline-block rounded bg-white px-1.5 py-0.5 text-[9px] font-bold text-[#091d64]">
+                              {official.official_role}
+                            </span>
+                          </div>
+                          <div className="flex shrink-0 gap-1">
+                            <button
+                              type="button"
+                              disabled={isResendingOfficialId === official.id}
+                              onClick={() => void handleResendOfficialInvitation(official)}
+                              className="rounded-md bg-[#091d64] px-2 py-1 text-[9px] font-bold text-white disabled:opacity-50"
+                            >
+                              {isResendingOfficialId === official.id ? 'Sending...' : 'Resend'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPendingOfficialToCancel(official);
+                                setCancelOfficialInviteNotice(null);
+                              }}
+                              className="rounded-md bg-rose-600 px-2 py-1 text-[9px] font-bold text-white"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {!isLoadingCapacity && completedOfficialRoster.length > 0 && (
                 <div className="border-t border-slate-100 pt-3">
                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
                     Existing SK Officials for this Barangay
                   </p>
                   <div className="space-y-1.5 max-h-44 overflow-y-auto">
-                    {roleCapacity.officials.map((o: any) => (
+                    {completedOfficialRoster.map((o: any) => (
                       <div key={o.id} className="flex items-center justify-between text-[11px] p-2 bg-slate-50 rounded-lg">
                         <div className="min-w-0 flex-1">
                           <span className="font-bold text-slate-800 block truncate">{o.full_name}</span>
@@ -2298,12 +2444,45 @@ useEffect(() => {
               <div>
                 <label className="block text-xs font-bold text-slate-800 mb-1">Official Email Address <span className="text-rose-500">*</span></label>
                 <input type="email" value={inviteOfficialEmail} onChange={(e) => setInviteOfficialEmail(e.target.value)}
-                  className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-1 focus:ring-[#091d64] focus:outline-none"
+                  className={`w-full p-2.5 bg-white border ${isInviteOfficialEmailDuplicate ? 'border-rose-500 focus:ring-rose-500' : 'border-slate-200 focus:ring-[#091d64]'} rounded-xl text-xs font-semibold text-slate-800 focus:ring-1 focus:outline-none`}
                   placeholder="official@example.com" required />
+                {isInviteOfficialEmailDuplicate && (
+                  <p role="alert" className="mt-1 text-[10px] font-semibold text-rose-600">
+                    This email is already assigned in this barangay.
+                  </p>
+                )}
               </div>
               {inviteOfficialNotice && (
                 <div className={'p-3 rounded-xl text-xs border ' + (inviteOfficialNotice.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-700')}>
                   {inviteOfficialNotice.text}
+                </div>
+              )}
+              {officialSetupLink && (
+                <div className="space-y-2 rounded-xl border border-blue-200 bg-blue-50 p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[#091d64]">Invitation Link</p>
+                  <input
+                    readOnly
+                    value={officialSetupLink}
+                    className="w-full rounded-lg border border-blue-100 bg-white p-2 font-mono text-[10px] text-slate-700"
+                    aria-label="SK Official invitation link"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleCopyOfficialSetupLink()}
+                      className="flex flex-1 items-center justify-center gap-1 rounded-lg bg-[#091d64] px-2 py-2 text-[10px] font-bold text-white"
+                    >
+                      <Copy className="h-3 w-3" /> {copiedOfficialSetupLink ? 'Copied' : 'Keep Link'}
+                    </button>
+                    <a
+                      href={officialSetupLink}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-blue-200 bg-white px-2 py-2 text-[10px] font-bold text-[#091d64]"
+                    >
+                      <ExternalLink className="h-3 w-3" /> Open Link
+                    </a>
+                  </div>
                 </div>
               )}
 
@@ -2318,10 +2497,14 @@ useEffect(() => {
                         {inviteOfficialRole} slots are full for this barangay. Choose a different role or barangay.
                       </p>
                     )}
-                    <button type="submit" disabled={isInvitingOfficial || !inviteOfficialBarangay || !inviteOfficialRole || _full}
+                    <button type="submit" disabled={isInvitingOfficial || isLoadingCapacity || isInviteOfficialEmailDuplicate || !inviteOfficialBarangay || !inviteOfficialRole || _full}
                       className="w-full py-3 bg-[#091d64] hover:bg-[#102a83] disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer">
                       {isInvitingOfficial
                         ? 'Sending...'
+                        : isInviteOfficialEmailDuplicate
+                          ? 'This email is already assigned in this barangay.'
+                          : isLoadingCapacity
+                            ? 'Checking existing officials...'
                         : !inviteOfficialBarangay || !inviteOfficialRole
                           ? 'Select Barangay and Role'
                           : _full
@@ -2332,6 +2515,84 @@ useEffect(() => {
                 );
               })()}
             </form>
+          </div>
+        </div>
+      )}
+
+      {pendingOfficialToCancel && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4">
+          <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between bg-rose-600 p-5 text-white">
+              <div>
+                <h3 className="flex items-center gap-2 text-base font-black">
+                  <AlertCircle className="h-5 w-5" /> Cancel SK Official Invitation
+                </h3>
+                <p className="text-xs text-rose-50">{pendingOfficialToCancel.official_role}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPendingOfficialToCancel(null)}
+                className="text-white/80 hover:text-white"
+                aria-label="Close cancel invitation dialog"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-4 p-6 text-left text-xs">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-amber-700">Pending Invitation</p>
+                <p className="font-mono text-xs text-amber-900">{pendingOfficialToCancel.email || 'No email recorded'}</p>
+                <p className="mt-2 text-[10px] text-amber-700">
+                  Cancelling removes this uncompleted account and frees its role capacity.
+                </p>
+              </div>
+              {cancelOfficialInviteNotice && (
+                <div
+                  role="status"
+                  className={`rounded-xl border p-3 ${
+                    cancelOfficialInviteNotice.type === 'success'
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                      : 'border-red-200 bg-red-50 text-red-700'
+                  }`}
+                >
+                  {cancelOfficialInviteNotice.text}
+                </div>
+              )}
+              {cancelOfficialInviteNotice?.type === 'success' ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPendingOfficialToCancel(null);
+                    setCancelOfficialInviteNotice(null);
+                  }}
+                  className="w-full rounded-xl bg-emerald-600 py-3 text-xs font-bold text-white"
+                >
+                  Done
+                </button>
+              ) : (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={isCancellingOfficialInvite}
+                    onClick={() => {
+                      setPendingOfficialToCancel(null);
+                      setCancelOfficialInviteNotice(null);
+                    }}
+                    className="flex-1 rounded-xl bg-slate-100 py-3 text-xs font-bold text-slate-700 disabled:opacity-60"
+                  >
+                    Keep Invitation
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isCancellingOfficialInvite}
+                    onClick={() => void handleCancelOfficialInvitation()}
+                    className="flex-1 rounded-xl bg-rose-600 py-3 text-xs font-bold text-white disabled:opacity-60"
+                  >
+                    {isCancellingOfficialInvite ? 'Cancelling...' : 'Cancel Invitation'}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

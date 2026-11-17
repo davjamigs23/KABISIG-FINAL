@@ -849,7 +849,7 @@ export default function ViewerPages({
                       <div className="h-56 w-full min-w-0 overflow-hidden">
                         <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
                           <BarChart data={cityWideBarData} margin={{ bottom: 20 }}>
-                            <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} interval={0} angle={0} textAnchor="middle" height={50} tickFormatter={(value) => { const name = String(value || ''); return name.length > 10 ? `${name.substring(0, 10)}...` : name; }} tick={{ fill: '#475569', fontSize: 10 }} />
+                            <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} interval={0} angle={-45} textAnchor="end" height={70} tickFormatter={(value) => { const name = String(value || ''); return name.length > 12 ? `${name.substring(0, 10)}...` : name; }} tick={{ fill: '#475569', fontSize: 11 }} />
                             <YAxis stroke="#64748b" fontSize={10} tickLine={false} />
                             <Tooltip />
                             <Bar dataKey="budget" name="Annual Budget Allocation" fill="#091d64" radius={[2, 2, 0, 0]} />

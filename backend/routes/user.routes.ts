@@ -12,6 +12,38 @@ import { resolveName, splitFullName } from '../utils/name.js';
 
 const router = express.Router();
 
+function isYouthProfileLocked(profile: {
+  role_id: number;
+  status: string | null;
+  is_demoted: boolean | null;
+  has_edited_profile: boolean | null;
+  verification_status?: string | null;
+}): boolean {
+  const isInDemotionCompletion = profile.is_demoted === true && profile.has_edited_profile !== true;
+  return profile.role_id === 4
+    && (profile.status === 'approved' || profile.status === 'active' || profile.verification_status === 'verified')
+    && !isInDemotionCompletion;
+}
+
+function normalizeAvatarReference(value: unknown): string {
+  const reference = typeof value === 'string' ? value.trim() : '';
+  const marker = '/avatars/';
+  const markerIndex = reference.indexOf(marker);
+  const storagePath = reference.slice(markerIndex + marker.length).split('?')[0] || '';
+  return markerIndex >= 0
+    ? storagePath.replace(/%2F/gi, '/')
+    : reference;
+}
+
+function sendLockedFieldsError(res: Response, blockedFields: string[]): void {
+  res.status(403).json({
+    success: false,
+    message: 'Verified youth profiles are read-only.',
+    blocked_fields: blockedFields,
+    timestamp: new Date().toISOString(),
+  });
+}
+
 router.get(
   '/federation-president',
   authenticateUser,
@@ -291,7 +323,7 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
     const userId = authenticatedUser.id;
     const { data: user, error: userError } = await supabaseAdmin
       .from('users')
-      .select('id, email, tenant_id, role_id, status, full_name, first_name, middle_name, last_name, suffix, suspension_reason, is_demoted, has_edited_profile, phone')
+      .select('id, email, tenant_id, role_id, status, full_name, first_name, middle_name, last_name, suffix, suspension_reason, is_demoted, has_edited_profile, phone, avatar_url')
       .eq('id', userId)
       .maybeSingle();
 
@@ -330,9 +362,19 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
     }
 
     const isInDemotionCompletion = (user as any).is_demoted === true && (user as any).has_edited_profile !== true;
-    const isVerifiedYouth = user.role_id === 4
-      && (user.status === 'active' || existingProfile?.verification_status === 'verified')
-      && !isInDemotionCompletion;
+    const isVerifiedYouth = isYouthProfileLocked({
+      role_id: user.role_id,
+      status: user.status,
+      is_demoted: user.is_demoted,
+      has_edited_profile: user.has_edited_profile,
+      verification_status: existingProfile?.verification_status,
+    });
+    const { data: authData, error: authLookupError } = await supabaseAdmin.auth.admin.getUserById(userId);
+    if (authLookupError) {
+      sendError(res, `Failed to retrieve profile metadata: ${authLookupError.message}`, 500);
+      return;
+    }
+    const currentMeta = authData?.user?.user_metadata || {};
     if (isVerifiedYouth) {
       const storedNameParts = splitFullName(user.full_name || '');
       const lockedFieldChanges: Array<{ field: string; submitted: unknown; stored: unknown }> = [
@@ -354,18 +396,29 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
         { field: 'employment_status', submitted: body.employmentStatus ?? body.employment_status, stored: existingProfile?.employment_status },
         { field: 'school', submitted: body.school, stored: existingProfile?.school },
         { field: 'course', submitted: body.course, stored: existingProfile?.course },
-        { field: 'year_level', submitted: body.yearLevel ?? body.year_level, stored: existingProfile?.year_level },
+        { field: 'year_level', submitted: body.year ?? body.yearLevel ?? body.year_level, stored: existingProfile?.year_level },
         { field: 'guardian_name', submitted: body.guardianName ?? body.guardian_name, stored: existingProfile?.guardian_name },
         { field: 'guardian_contact', submitted: body.guardianContact ?? body.guardian_contact, stored: existingProfile?.guardian_contact },
         { field: 'scholar_status', submitted: body.scholarStatus ?? body.scholar_status, stored: existingProfile?.scholar_status },
         { field: 'scholarship_source', submitted: body.scholarshipSource ?? body.scholarship_source, stored: existingProfile?.scholarship_source },
+        { field: 'scholarship_source_detail', submitted: body.scholarshipSourceDetail ?? body.scholarship_source_detail, stored: currentMeta.scholarshipSourceDetail },
+        { field: 'scholarship_type', submitted: body.scholarshipType ?? body.scholarship_type, stored: currentMeta.scholarshipType },
+        { field: 'email', submitted: body.email, stored: user.email },
+        { field: 'profile_picture', submitted: body.profilePic ?? body.profile_picture, stored: user.avatar_url || currentMeta.profilePic },
       ];
 
-      for (const { field, submitted, stored } of lockedFieldChanges) {
-        if (submitted !== undefined && String(submitted ?? '').trim() !== String(stored ?? '').trim()) {
-          sendError(res, `${field} cannot be changed after verification.`, 403);
-          return;
-        }
+      const blockedFields = lockedFieldChanges
+        .filter(({ field, submitted, stored }) => {
+          if (submitted === undefined) return false;
+          if (field === 'profile_picture') {
+            return normalizeAvatarReference(submitted) !== normalizeAvatarReference(stored);
+          }
+          return String(submitted ?? '').trim() !== String(stored ?? '').trim();
+        })
+        .map(({ field }) => field);
+      if (blockedFields.length > 0) {
+        sendLockedFieldsError(res, blockedFields);
+        return;
       }
     }
 
@@ -393,10 +446,6 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
     if (body.mobile || body.phone) {
       userUpdates.phone = (body.mobile || body.phone).trim();
     }
-    if (body.has_edited_profile === true && user.is_demoted === true) {
-      userUpdates.has_edited_profile = true;
-    }
-
     const { error: userUpdateError } = await supabaseAdmin.from('users').update(userUpdates).eq('id', userId);
     if (userUpdateError) {
       sendError(res, `Failed to update user profile: ${userUpdateError.message}`, 500);
@@ -423,7 +472,7 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
     const residentPayload: Record<string, any> = {
       school: body.school ?? undefined,
       course: body.course ?? undefined,
-      year_level: body.year_level ?? body.yearLevel ?? undefined,
+      year_level: body.year ?? body.yearLevel ?? body.year_level ?? undefined,
       zone: body.zone ?? body.purok ?? undefined,
       user_id: userId,
       tenant_id: tenantId,
@@ -467,26 +516,7 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
     // 3. Update Supabase Auth user_metadata to persist all 20 KK fields
     let updatedMetadata: Record<string, any> = {};
     try {
-      const { data: authData, error: authLookupError } = await supabaseAdmin.auth.admin.getUserById(userId);
-      if (authLookupError) {
-        sendError(res, `Failed to retrieve profile metadata: ${authLookupError.message}`, 500);
-        return;
-      }
-      const prevMeta = authData?.user?.user_metadata || {};
-      if (isVerifiedYouth) {
-        const lockedMetadataChanges: Array<{ field: string; submitted: unknown; stored: unknown }> = [
-          { field: 'scholarshipSourceDetail', submitted: body.scholarshipSourceDetail ?? body.scholarship_source_detail, stored: prevMeta.scholarshipSourceDetail },
-          { field: 'scholarshipType', submitted: body.scholarshipType, stored: prevMeta.scholarshipType },
-          { field: 'email', submitted: body.email, stored: prevMeta.email },
-          { field: 'year', submitted: body.year, stored: prevMeta.year },
-        ];
-        for (const { field, submitted, stored } of lockedMetadataChanges) {
-          if (submitted !== undefined && String(submitted ?? '').trim() !== String(stored ?? '').trim()) {
-            sendError(res, `${field} cannot be changed after verification.`, 403);
-            return;
-          }
-        }
-      }
+      const prevMeta = currentMeta;
       const safePrevMeta = Object.fromEntries(
         Object.entries(prevMeta).filter(([key]) => !['profilePic', 'qrCode', 'picture'].includes(key)),
       );
@@ -534,6 +564,18 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
       const message = metaErr instanceof Error ? metaErr.message : String(metaErr);
       sendError(res, `Failed to save profile metadata: ${message}`, 500);
       return;
+    }
+
+    if (isInDemotionCompletion) {
+      const { error: completionError } = await supabaseAdmin
+        .from('users')
+        .update({ has_edited_profile: true, updated_at: new Date().toISOString() })
+        .eq('id', userId)
+        .eq('is_demoted', true);
+      if (completionError) {
+        sendError(res, `Failed to complete the demoted Chairperson profile: ${completionError.message}`, 500);
+        return;
+      }
     }
 
     // 4. Record Audit Log
@@ -901,6 +943,36 @@ router.post(
       return;
     }
 
+    const { data: lockProfile, error: lockProfileError } = await supabaseAdmin
+      .from('users')
+      .select('role_id, status, is_demoted, has_edited_profile')
+      .eq('id', user.id)
+      .maybeSingle();
+    if (lockProfileError) {
+      sendError(res, `Failed to verify profile status: ${lockProfileError.message}`, 500);
+      return;
+    }
+    if (!lockProfile) {
+      sendError(res, 'User profile not found.', 404);
+      return;
+    }
+    const { data: verificationProfile, error: verificationProfileError } = await supabaseAdmin
+      .from('resident_profile')
+      .select('verification_status')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (verificationProfileError) {
+      sendError(res, `Failed to verify identity status: ${verificationProfileError.message}`, 500);
+      return;
+    }
+    if (isYouthProfileLocked({
+      ...lockProfile,
+      verification_status: verificationProfile?.verification_status,
+    })) {
+      sendLockedFieldsError(res, ['id_type', 'id_number', 'identity_documents']);
+      return;
+    }
+
     // Decode base64
     let buffer: Buffer;
     try {
@@ -1238,11 +1310,22 @@ router.get(
     }
 
     // Fetch each official's metadata to determine sub-role
-    const authList = await supabaseAdmin.auth.admin.listUsers();
-    const metaMap: Record<string, any> = {};
-    (authList.data?.users || []).forEach((u) => {
-      metaMap[u.id] = u.user_metadata || {};
-    });
+    const authMap = new Map<string, { user_metadata: Record<string, any>; app_metadata: Record<string, any> }>();
+    const perPage = 1000;
+    for (let page = 1; ; page += 1) {
+      const { data: authList, error: authListError } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+      if (authListError) {
+        sendError(res, 'Failed to load official setup status: ' + authListError.message, 500);
+        return;
+      }
+      for (const authUser of authList.users) {
+        authMap.set(authUser.id, {
+          user_metadata: authUser.user_metadata || {},
+          app_metadata: authUser.app_metadata || {},
+        });
+      }
+      if (authList.users.length < perPage) break;
+    }
 
     const activeOnly = (officials || []).filter((o: any) => o.status === 'active');
 
@@ -1256,7 +1339,7 @@ router.get(
         chairperson++;
         return;
       }
-      const meta = metaMap[o.id] || {};
+      const meta = authMap.get(o.id)?.user_metadata || {};
       const sub = String(meta.official_role || '').toLowerCase();
       if (sub.includes('secretary')) secretary++;
       else if (sub.includes('treasurer')) treasurer++;
@@ -1280,7 +1363,8 @@ router.get(
     const skRoster = await Promise.all((officials || [])
       .filter((o: any) => o.role_id === 3)
       .map(async (o: any) => {
-        const meta = metaMap[o.id] || {};
+        const authUser = authMap.get(o.id);
+        const meta = authUser?.user_metadata || {};
         const sub = String(meta.official_role || '').toLowerCase();
         const official_role = sub.includes('secretary') ? 'SK Secretary'
           : sub.includes('treasurer') ? 'SK Treasurer'
@@ -1292,6 +1376,7 @@ router.get(
           email: o.email,
           official_role,
           status: o.status,
+          setup_completed: meta.setup_completed === true || authUser?.app_metadata.setup_completed === true,
           full_name: composed || row.full_name || 'Pending Invitation',
           avatar_url: await resolveAvatarUrl(o.avatar_url),
         };
@@ -1327,6 +1412,36 @@ router.post('/upload-avatar', authenticateUser, async (req: Request, res: Respon
       return;
     }
     const user = (req as AuthRequest).user!;
+    const { data: lockProfile, error: lockProfileError } = await supabaseAdmin
+      .from('users')
+      .select('role_id, status, is_demoted, has_edited_profile')
+      .eq('id', user.id)
+      .maybeSingle();
+    if (lockProfileError) {
+      sendError(res, `Failed to verify profile status: ${lockProfileError.message}`, 500);
+      return;
+    }
+    if (!lockProfile) {
+      sendError(res, 'User profile not found.', 404);
+      return;
+    }
+    const { data: verificationProfile, error: verificationProfileError } = await supabaseAdmin
+      .from('resident_profile')
+      .select('verification_status')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (verificationProfileError) {
+      sendError(res, `Failed to verify identity status: ${verificationProfileError.message}`, 500);
+      return;
+    }
+    if (isYouthProfileLocked({
+      ...lockProfile,
+      verification_status: verificationProfile?.verification_status,
+    })) {
+      sendLockedFieldsError(res, ['profile_picture']);
+      return;
+    }
+
     const imageData = base64.replace(/^data:image\/(?:jpeg|png|webp);base64,/i, '');
     if (!/^[A-Za-z0-9+/]+={0,2}$/.test(imageData)) {
       sendError(res, 'The uploaded image data is invalid.', 400);

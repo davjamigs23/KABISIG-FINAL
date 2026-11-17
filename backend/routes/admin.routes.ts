@@ -98,7 +98,8 @@ router.get('/all-officials', authenticateUser, requireRoles('SUPER_ADMIN'), asyn
       .from('users')
       .select('id, tenant_id, role_id, full_name, first_name, middle_name, last_name, suffix, email, status, avatar_url, barangay(name), resident_profile!resident_profile_user_id_fkey(sex)')
       .in('role_id', [2, 3])
-      .not('tenant_id', 'is', null);
+      .not('tenant_id', 'is', null)
+      .not('full_name', 'ilike', '%Pending Invitation%');
 
     if (error) {
       sendError(res, `Failed to load officials: ${error.message}`, 500);
@@ -135,12 +136,11 @@ router.get('/all-officials', authenticateUser, requireRoles('SUPER_ADMIN'), asyn
         || authUser?.app_metadata?.official_role
         || (Number(official.role_id) === 2 ? 'SK Chairperson' : 'SK Kagawad')
       );
-      const isInvitationPending = fullName.trim().toLowerCase() === 'pending invitation'
+      const isInvitationPending = fullName.trim().toLowerCase().includes('pending invitation')
         || status.trim().toLowerCase() === 'pending';
-      const setupCompleted: boolean = !isInvitationPending && (
-        userMetadata.setup_completed === true
-        || authUser?.app_metadata?.setup_completed === true
-      );
+      const setupPending = isInvitationPending
+        || userMetadata.setup_completed === false
+        || authUser?.app_metadata?.setup_completed === false;
       return {
         id: official.id,
         tenant_id: official.tenant_id,
@@ -152,12 +152,12 @@ router.get('/all-officials', authenticateUser, requireRoles('SUPER_ADMIN'), asyn
         full_name: fullName,
         email: official.email || authUser?.email || '',
         status,
-        setup_completed: setupCompleted,
+        setup_completed: !setupPending,
         avatar_url: await resolveAvatarUrl(official.avatar_url),
       };
     }));
 
-    sendSuccess(res, roster, 'Barangay officials retrieved.');
+    sendSuccess(res, roster.filter(official => official.setup_completed), 'Barangay officials retrieved.');
   } catch (error: any) {
     console.error('Failed to retrieve all Barangay officials:', error);
     sendError(res, error?.message || 'Failed to load officials.', 500);
@@ -1694,6 +1694,80 @@ router.post(
       barangay_name: barangay.name,
       cancelled_email: pendingChair.email,
     }, `Chairperson invitation for ${pendingChair.email} cancelled. Barangay ${barangay.name} is now open for a new assignment.`);
+  }
+);
+
+const CancelSkOfficialInvitationSchema = z.object({
+  user_id: z.string().uuid('Valid user ID is required'),
+});
+
+router.post(
+  '/cancel-sk-official-invitation',
+  authenticateUser,
+  requireRoles('SUPER_ADMIN'),
+  async (req: Request, res: Response): Promise<void> => {
+    const parseResult = CancelSkOfficialInvitationSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      sendError(res, 'Validation failed', 400, parseResult.error.flatten().fieldErrors);
+      return;
+    }
+
+    const { user_id } = parseResult.data;
+    const admin = (req as AuthRequest).user!;
+    const { data: official, error: officialError } = await supabaseAdmin
+      .from('users')
+      .select('id, tenant_id, role_id, email')
+      .eq('id', user_id)
+      .maybeSingle();
+
+    if (officialError) {
+      sendError(res, `Failed to verify SK Official invitation: ${officialError.message}`, 500);
+      return;
+    }
+    if (!official || Number(official.role_id) !== 3 || !official.tenant_id) {
+      sendError(res, 'SK Official invitation not found.', 404);
+      return;
+    }
+
+    const { data: authData, error: authLookupError } = await supabaseAdmin.auth.admin.getUserById(user_id);
+    if (authLookupError || !authData.user) {
+      sendError(res, `Failed to verify invitation setup status: ${authLookupError?.message || 'Auth user not found.'}`, 500);
+      return;
+    }
+    if (
+      authData.user.user_metadata?.setup_completed !== false
+      || authData.user.app_metadata?.setup_completed !== false
+    ) {
+      sendError(res, 'This SK Official has completed setup and cannot be cancelled as a pending invitation.', 409);
+      return;
+    }
+
+    const { error: authDeleteError } = await supabaseAdmin.auth.admin.deleteUser(user_id);
+    if (authDeleteError) {
+      sendError(res, `Failed to delete invited Auth user: ${authDeleteError.message}`, 500);
+      return;
+    }
+
+    const { error: userDeleteError } = await supabaseAdmin
+      .from('users')
+      .delete()
+      .eq('id', user_id);
+    if (userDeleteError) {
+      sendError(res, `Failed to remove SK Official invitation record: ${userDeleteError.message}`, 500);
+      return;
+    }
+
+    await recordAuditLog({
+      tenantId: official.tenant_id,
+      userId: admin.id,
+      action: 'CANCEL_SK_OFFICIAL_INVITATION',
+      entityName: 'users',
+      entityId: user_id,
+      details: { cancelled_email: official.email },
+      ipAddress: req.ip || null,
+    });
+
+    sendSuccess(res, { user_id, cancelled_email: official.email }, 'SK Official invitation cancelled.');
   }
 );
 

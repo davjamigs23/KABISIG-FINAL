@@ -272,6 +272,14 @@ class KabisigApiClient {
       body: JSON.stringify({ barangay_id: barangayId }),
     });
   }
+
+  async cancelSkOfficialInvitation(userId: string): Promise<{ success: boolean; message?: string; data?: any }> {
+    return await this.request<any>('/admin/cancel-sk-official-invitation', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: userId }),
+    });
+  }
+
   async getTransferHistory(barangayId: string): Promise<{ success: boolean; data?: any[]; message?: string }> {
     return await this.request<any[]>('/admin/chairperson-transfers/' + barangayId, { method: 'GET' });
   }

@@ -107,23 +107,37 @@ function SetupForm() {
         }
         if (sessionResolved) return;
 
+        const storedAccessToken = sessionStorage.getItem('setup_token');
+        const storedRefreshToken = sessionStorage.getItem('setup_refresh_token');
+        if (storedAccessToken && storedRefreshToken) {
+          const { data: storedSessionData, error: storedSessionError } = await client.auth.setSession({
+            access_token: storedAccessToken,
+            refresh_token: storedRefreshToken,
+          });
+          if (storedSessionError) {
+            console.error('Unable to restore Chairperson session from saved invitation tokens:', storedSessionError);
+          }
+          if (storedSessionData.session) {
+            window.history.replaceState(
+              null,
+              document.title,
+              `${window.location.pathname}${window.location.search}`
+            );
+            acceptSession(storedSessionData.session);
+            return;
+          }
+        }
+
         const hashParams = new URLSearchParams(window.location.hash.substring(1));
         const authError = hashParams.get('error_description') || queryParams.get('error_description') ||
           hashParams.get('error') || queryParams.get('error');
-        if (hashParams.get('error') === 'access_denied' || hashParams.get('error_code') === 'otp_expired') {
-          sessionResolved = true;
-          setError(INVALID_INVITE_MESSAGE);
-          setInviteStatus('invalid');
-          setIsCheckingSession(false);
-          return;
-        }
         const accessToken = hashParams.get('access_token');
         const refreshToken = hashParams.get('refresh_token');
         if (accessToken) sessionStorage.setItem('setup_token', accessToken);
         if (refreshToken) sessionStorage.setItem('setup_refresh_token', refreshToken);
-        const recoveryAccessToken = accessToken || sessionStorage.getItem('setup_token');
-        const recoveryRefreshToken = refreshToken || sessionStorage.getItem('setup_refresh_token');
-        if (recoveryAccessToken && recoveryRefreshToken) {
+        const recoveryAccessToken = accessToken || storedAccessToken;
+        const recoveryRefreshToken = refreshToken || storedRefreshToken;
+        if ((accessToken || refreshToken) && recoveryAccessToken && recoveryRefreshToken) {
           const { data: hashSessionData, error: hashSessionError } = await client.auth.setSession({
             access_token: recoveryAccessToken,
             refresh_token: recoveryRefreshToken,
@@ -147,6 +161,18 @@ function SetupForm() {
           return;
         }
         if (sessionResolved) return;
+        if (hashParams.get('error') === 'access_denied' || hashParams.get('error_code') === 'otp_expired') {
+          sessionResolved = true;
+          const canRecoverSession = Boolean(window.location.hash || sessionStorage.getItem('setup_token'));
+          setError(
+            canRecoverSession
+              ? 'Unable to restore your invitation session. Please reopen the invitation link.'
+              : authError || INVALID_INVITE_MESSAGE
+          );
+          setInviteStatus('invalid');
+          setIsCheckingSession(false);
+          return;
+        }
         retryTimer = window.setTimeout(() => {
           if (!active || sessionResolved) return;
           void (async () => {
@@ -164,7 +190,7 @@ function SetupForm() {
               setError(
                 !hasRecoverableLink
                   ? authError || INVALID_INVITE_MESSAGE
-                  : authError || 'Unable to restore your invitation session. Please reopen the invitation link.'
+                  : 'Unable to restore your invitation session. Please reopen the invitation link.'
               );
               setIsCheckingSession(false);
             } catch (retryError) {
