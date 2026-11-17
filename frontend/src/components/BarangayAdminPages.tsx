@@ -370,8 +370,8 @@ export default function BarangayAdminPages({
           .badge { display: inline-block; padding: 2px 7px; font-size: 9px; font-weight: 800; border-radius: 4px; background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; text-transform: uppercase; }
           .badge-blue { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
           .badge-amber { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
-          .footer { margin-top: 45px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: flex-end; font-size: 11px; color: #475569; page-break-inside: avoid; }
-          .sign-box { text-align: center; min-width: 0; }
+          .footer { margin-top: 45px; display: flex; justify-content: space-between; width: 100%; gap: 12px; align-items: flex-end; font-size: 11px; color: #475569; page-break-inside: avoid; }
+          .sign-box { width: 42%; text-align: center; min-width: 0; }
           .sign-line { border-bottom: 1.5px solid #091d64; margin-bottom: 6px; padding-top: 35px; }
           .sign-title { font-weight: 800; color: #091d64; font-size: 11px; }
           .sign-role { font-size: 10px; color: #64748b; font-weight: 600; }

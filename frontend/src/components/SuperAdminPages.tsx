@@ -253,6 +253,22 @@ useEffect(() => {
         && official.official_role === inviteOfficialRole
     ));
   };
+  const getInviteOfficialFailureMessage = (failure: {
+    message?: string;
+    details?: { code?: string; actual_barangay_name?: string; current_role?: string };
+    error?: { details?: { code?: string; actual_barangay_name?: string; current_role?: string } };
+    response?: { data?: { message?: string; details?: { code?: string; actual_barangay_name?: string; current_role?: string } } };
+  } | null | undefined): string => {
+    if (!failure) return 'Failed to send SK Official invitation.';
+    const details = failure.details || failure.response?.data?.details || failure.error?.details;
+    if (details?.code === 'EMAIL_ALREADY_CHAIRPERSON' && details.actual_barangay_name) {
+      return `This email is already assigned as SK Chairperson in ${details.actual_barangay_name}. Use Transfer Leadership instead of re-inviting.`;
+    }
+    if (details?.code === 'EMAIL_ALREADY_OFFICIAL_OTHER_TENANT' && details.actual_barangay_name) {
+      return `This email is already registered as ${details.current_role || 'an SK Official'} in ${details.actual_barangay_name}. Each email can only hold one SK Official role. To change their role, use a different email address.`;
+    }
+    return failure.response?.data?.message || failure.message || 'Failed to send SK Official invitation.';
+  };
   const isEmailAlreadyAssigned = (email: string): boolean => {
     const normalizedEmail = email.trim().toLowerCase();
     return Boolean(normalizedEmail && (
@@ -558,6 +574,10 @@ useEffect(() => {
       return;
     }
     const isPendingResend = isPendingInviteForEmail(email);
+    if (isPendingResend) {
+      setInviteOfficialNotice({ type: 'error', text: 'Use Resend on the matching Pending Invites card.' });
+      return;
+    }
     if (isEmailAlreadyAssigned(email)) {
       setInviteOfficialNotice({ type: 'error', text: 'This email is already assigned in this barangay.' });
       return;
@@ -568,7 +588,7 @@ useEffect(() => {
         ? 'secretary'
         : 'treasurer';
     const roleCapacityRow = roleCapacity[capacityKey];
-    if (roleCapacityRow && roleCapacityRow.current >= roleCapacityRow.limit && !isPendingResend) {
+    if (roleCapacityRow && roleCapacityRow.current >= roleCapacityRow.limit) {
       setInviteOfficialNotice({
         type: 'error',
         text: `${inviteOfficialRole} slots are full for this barangay.`,
@@ -581,7 +601,7 @@ useEffect(() => {
       const res = await kabisigApi.inviteSkOfficial(inviteOfficialBarangay.id, email, inviteOfficialRole);
       if (!res.success) {
         if (inviteOfficialEmailRef.current.trim().toLowerCase() === email) {
-          setInviteOfficialNotice({ type: 'error', text: res.message || 'Failed to send SK Official invitation.' });
+          setInviteOfficialNotice({ type: 'error', text: getInviteOfficialFailureMessage(res) });
         }
         setIsInvitingOfficial(false);
         return;
@@ -596,7 +616,7 @@ useEffect(() => {
       }
     } catch (err: any) {
       if (inviteOfficialEmailRef.current.trim().toLowerCase() === email) {
-        setInviteOfficialNotice({ type: 'error', text: err.message || 'Network connection failed.' });
+        setInviteOfficialNotice({ type: 'error', text: getInviteOfficialFailureMessage(err) });
       }
     } finally {
       setIsInvitingOfficial(false);
@@ -2523,6 +2543,9 @@ useEffect(() => {
                 const _row = roleCapacity?.[_key];
                 const _full = Boolean(inviteOfficialRole && _row && _row.current >= _row.limit);
                 const _pendingResend = isPendingInviteForEmail(normalizedInviteOfficialEmail);
+                const _emailHasPendingInvite = Boolean(normalizedInviteOfficialEmail && pendingOfficialInvites.some(
+                  (official: any) => String(official.email || '').trim().toLowerCase() === normalizedInviteOfficialEmail
+                ));
                 const _emailBlocked = isInviteOfficialEmailDuplicate || (_full && !_pendingResend);
                 return (
                   <>
@@ -2531,24 +2554,26 @@ useEffect(() => {
                         {inviteOfficialRole} slots are full for this barangay. Choose a different role or barangay.
                       </p>
                     )}
-                    <button type="submit" disabled={isInvitingOfficial || isLoadingCapacity || !roleCapacity || _emailBlocked || !inviteOfficialBarangay || !inviteOfficialRole}
-                      className="w-full py-3 bg-[#091d64] hover:bg-[#102a83] disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer">
-                      {isInvitingOfficial
-                        ? 'Sending...'
-                        : isInviteOfficialEmailDuplicate
-                          ? 'This email is already assigned in this barangay.'
-                          : isLoadingCapacity
-                            ? 'Checking existing officials...'
-                        : !inviteOfficialBarangay || !inviteOfficialRole
-                          ? 'Select Barangay and Role'
-                          : !roleCapacity
-                            ? 'Unable to verify assigned officials'
-                            : _pendingResend
-                              ? 'Resend Invitation'
-                            : _full
-                            ? inviteOfficialRole + ' — At Capacity'
-                            : 'Send ' + inviteOfficialRole + ' Invitation'}
-                    </button>
+                    {!_emailHasPendingInvite && (
+                      <button type="submit" disabled={isInvitingOfficial || isLoadingCapacity || !roleCapacity || _emailBlocked || !inviteOfficialBarangay || !inviteOfficialRole}
+                        className="w-full py-3 bg-[#091d64] hover:bg-[#102a83] disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer">
+                        {isInvitingOfficial
+                          ? 'Sending...'
+                          : isInviteOfficialEmailDuplicate
+                            ? 'This email is already assigned in this barangay.'
+                            : isLoadingCapacity
+                              ? 'Checking existing officials...'
+                          : !inviteOfficialBarangay || !inviteOfficialRole
+                            ? 'Select Barangay and Role'
+                            : !roleCapacity
+                              ? 'Unable to verify assigned officials'
+                              : _pendingResend
+                                ? 'Resend Invitation'
+                              : _full
+                              ? inviteOfficialRole + ' — At Capacity'
+                              : 'Send ' + inviteOfficialRole + ' Invitation'}
+                      </button>
+                    )}
                   </>
                 );
               })()}

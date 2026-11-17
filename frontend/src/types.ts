@@ -18,6 +18,7 @@ export interface BarangayTenant {
   id: string;
   name: string;
   chairperson: string;
+  has_chairperson?: boolean;
   chairpersonUser?: {
     id?: string;
     full_name: string;
@@ -53,7 +54,7 @@ export interface YouthProfile {
   middle_name?: string | null;
   last_name?: string;
   suffix?: string | null;
-  sex: 'Male' | 'Female' | 'Other'; // Sex (Required)
+  sex: 'Male' | 'Female' | 'Other' | 'Prefer not to say'; // Sex (Required)
   birthdate: string; // Birthdate (Required)
   age: number; // Age (Auto-calculated from birthdate)
   civilStatus?: 'Single' | 'Married' | 'Widowed' | 'Separated' | 'Single Parent'; // Civil Status (Required)

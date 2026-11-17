@@ -237,6 +237,7 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
         skDistrict: b.sk_district ?? null,
         chairperson: chairpersonUser?.full_name || (chairpersonUser ? 'Pending Invitation' : 'Unassigned'),
         chairpersonUser: visibleChairpersonUser,
+        has_chairperson: chairpersonUser?.setup_completed === true,
         chairpersonEmail: canViewChairpersonContacts ? (chairpersonUser?.email || '') : '',
         contact: '',
         youthPopulation: youthCountMap.get(b.id) || 0,

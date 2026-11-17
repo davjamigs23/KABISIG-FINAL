@@ -929,8 +929,27 @@ router.post(
     // cannot be invited again (would overwrite the existing role).
     if (existingUser && (existingUser as any).status === 'active') {
       const eu: any = existingUser;
+      let actualBarangayName: string | null = null;
+      if (eu.tenant_id && (eu.role_id === 2 || (eu.role_id === 3 && eu.tenant_id !== barangay_id))) {
+        const { data: actualBarangay, error: actualBarangayError } = await supabaseAdmin
+          .from('barangay')
+          .select('name')
+          .eq('id', eu.tenant_id)
+          .maybeSingle();
+        if (actualBarangayError) {
+          sendError(res, 'Failed to identify the existing user barangay: ' + actualBarangayError.message, 500);
+          return;
+        }
+        actualBarangayName = actualBarangay?.name || null;
+      }
       if (eu.role_id === 2) {
-        sendError(res, 'This email is already assigned as SK Chairperson in ' + barangay.name + '. Use Transfer Leadership instead of re-inviting.', 409, { code: 'EMAIL_ALREADY_CHAIRPERSON' });
+        const existingBarangayName = actualBarangayName || 'another barangay';
+        sendError(
+          res,
+          `This email is already assigned as SK Chairperson in ${existingBarangayName}. Use Transfer Leadership instead of re-inviting.`,
+          409,
+          { code: 'EMAIL_ALREADY_CHAIRPERSON', actual_barangay_name: actualBarangayName }
+        );
         return;
       }
       if (eu.role_id === 3) {
@@ -949,11 +968,12 @@ router.post(
           );
           return;
         } else if (eu.tenant_id !== barangay_id) {
+          const existingBarangayName = actualBarangayName || 'another barangay';
           sendError(
             res,
-            'This email is already registered as ' + euRole + ' in another barangay. Each email can only hold one SK Official role. To change their role, use a different email address.',
+            `This email is already registered as ${euRole} in ${existingBarangayName}. Each email can only hold one SK Official role. To change their role, use a different email address.`,
             409,
-            { code: 'EMAIL_ALREADY_OFFICIAL_OTHER_TENANT', current_role: euRole }
+            { code: 'EMAIL_ALREADY_OFFICIAL_OTHER_TENANT', current_role: euRole, actual_barangay_name: actualBarangayName }
           );
           return;
         }

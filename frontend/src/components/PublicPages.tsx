@@ -165,14 +165,13 @@ export default function PublicPages({
   // Sign up state (Multi-step)
   const [signUpStep, setSignUpStep] = useState(1);
   const [signUpBarangayId, setSignUpBarangayId] = useState('');
-  const [birthdateInput, setBirthdateInput] = useState('');
   const [customError, setCustomError] = useState<string | null>(null);
   const [signUpForm, setSignUpForm] = useState({
     firstName: '',
     middleName: '',
     lastName: '',
     suffix: '',
-    sex: 'Male' as 'Male' | 'Female',
+    sex: '' as '' | 'Male' | 'Female' | 'Prefer not to say',
     birthdate: '',
     age: 0,
     mobile: '',
@@ -219,22 +218,13 @@ export default function PublicPages({
   ].map((p) => (p || '').trim()).filter(Boolean).join(' ').trim();
 
   const handleBirthdateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const digits = e.target.value.replace(/\D/g, '').slice(0, 8);
-    const formatted = digits.length > 4
-      ? `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`
-      : digits.length > 2
-        ? `${digits.slice(0, 2)}/${digits.slice(2)}`
-        : digits;
-    setBirthdateInput(formatted);
-
-    if (digits.length !== 8) {
+    const isoDate = e.target.value;
+    if (!isoDate) {
       setSignUpForm(previous => ({ ...previous, birthdate: '', age: 0 }));
       return;
     }
 
-    const month = Number(digits.slice(0, 2));
-    const day = Number(digits.slice(2, 4));
-    const year = Number(digits.slice(4, 8));
+    const [year, month, day] = isoDate.split('-').map(Number);
     const birthDate = new Date(year, month - 1, day);
     if (
       birthDate.getFullYear() !== year
@@ -250,7 +240,6 @@ export default function PublicPages({
     if (today.getMonth() < month - 1 || (today.getMonth() === month - 1 && today.getDate() < day)) {
       calculatedAge -= 1;
     }
-    const isoDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     setSignUpForm(previous => ({ ...previous, birthdate: isoDate, age: calculatedAge }));
   };
 
@@ -418,6 +407,11 @@ export default function PublicPages({
     const resolvedBarangayId = signUpBarangayId || '';
     if (!resolvedBarangayId) {
       setCustomError('Please select a Barangay first before proceeding.');
+      return;
+    }
+    if (!signUpForm.sex) {
+      showPopup('Please select your gender.');
+      setSignUpStep(1);
       return;
     }
     if (!signUpForm.registeredRole) {
@@ -1089,8 +1083,8 @@ export default function PublicPages({
                           >
                             <option value="">Select a Barangay</option>
                             {barangays.map(b => (
-                              <option key={b.id} value={b.id} disabled={!b.chairperson || b.chairperson === 'Unassigned' || String(b.chairperson).trim() === ''}>
-                                {b.name} {(!b.chairperson || b.chairperson === 'Unassigned') ? '(No Chairperson Yet)' : ''}
+                              <option key={b.id} value={b.id} disabled={!b.has_chairperson}>
+                                {b.name} {!b.has_chairperson ? '(No Chairperson assigned)' : ''}
                               </option>
                             ))}
                           </select>
@@ -1166,9 +1160,11 @@ export default function PublicPages({
                           <div className="relative w-full">
                             <select 
                               value={signUpForm.sex}
-                              onChange={(e) => setSignUpForm({...signUpForm, sex: e.target.value as any})}
+                              onChange={(e) => setSignUpForm({...signUpForm, sex: e.target.value as typeof signUpForm.sex})}
                               className="w-full pl-3.5 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none appearance-none cursor-pointer"
+                              required
                             >
+                              <option value="" disabled>Select Gender</option>
                               <option value="Male">Male</option>
                               <option value="Female">Female</option>
                               <option value="Prefer not to say">Prefer not to say</option>
@@ -1182,14 +1178,13 @@ export default function PublicPages({
                             Birthdate <span className="text-red-500">*</span>
                           </label>
                           <input
-                            type="text"
-                            inputMode="numeric"
+                            type="date"
                             autoComplete="bday"
-                            maxLength={10}
-                            value={birthdateInput}
+                            max={new Date().toISOString().split('T')[0]}
+                            value={signUpForm.birthdate}
                             onChange={handleBirthdateChange}
-                            placeholder=""
-                            aria-label="Birthdate (month, day, year)"
+                            placeholder="YYYY-MM-DD"
+                            aria-label="Birthdate"
                             className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none"
                             required
                           />
@@ -1390,6 +1385,8 @@ export default function PublicPages({
                         <div className="relative w-full">
                           <input
                             type="email"
+                            name="youth-email"
+                            autoComplete="off"
                             value={signUpForm.email}
                             onChange={(e) => setSignUpForm({...signUpForm, email: e.target.value})}
                             className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
@@ -1407,6 +1404,8 @@ export default function PublicPages({
                         <div className="relative w-full">
                           <input
                             type={showPassword ? "text" : "password"}
+                            name="youth-password"
+                            autoComplete="new-password"
                             value={signUpForm.password}
                             onChange={(e) => setSignUpForm({...signUpForm, password: e.target.value})}
                             className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
@@ -1476,6 +1475,8 @@ export default function PublicPages({
                         <div className="relative w-full">
                           <input
                             type={showConfirmPassword ? "text" : "password"}
+                            name="youth-confirm-password"
+                            autoComplete="new-password"
                             value={signUpForm.confirmPassword}
                             onChange={(e) => setSignUpForm({...signUpForm, confirmPassword: e.target.value})}
                             className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
@@ -1607,7 +1608,11 @@ export default function PublicPages({
                           if (!signUpForm.registeredRole) { showPopup('Please select your Desired KABISIG Role.'); return; }
                           if (!signUpForm.firstName.trim() || !signUpForm.lastName.trim()) { showPopup('First Name and Last Name are required.'); return; }
                           if (!signUpForm.birthdate) {
-                            showPopup(birthdateInput ? 'Please enter a valid birthdate in MM/DD/YYYY format.' : 'Birthdate is required.');
+                            showPopup('Birthdate is required.');
+                            return;
+                          }
+                          if (!signUpForm.sex) {
+                            showPopup('Please select your gender.');
                             return;
                           }
                         }

@@ -471,17 +471,17 @@ function SetupForm() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <label className="block text-xs font-bold text-slate-900">First Name <span className="text-rose-500">*</span>
                   <input type="text" required value={firstName} onChange={(e) => setFirstName(e.target.value)}
-                    className="mt-1 w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
+                    className="mt-1 w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 placeholder:font-normal focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
                     placeholder="Enter your first name" />
                 </label>
                 <label className="block text-xs font-bold text-slate-900">Middle Name
                   <input type="text" value={middleName} onChange={(e) => setMiddleName(e.target.value)}
-                    className="mt-1 w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
+                    className="mt-1 w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 placeholder:font-normal focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
                     placeholder="Enter your middle name" />
                 </label>
                 <label className="block text-xs font-bold text-slate-900">Last Name <span className="text-rose-500">*</span>
                   <input type="text" required value={lastName} onChange={(e) => setLastName(e.target.value)}
-                    className="mt-1 w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
+                    className="mt-1 w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 placeholder:font-normal focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
                     placeholder="Enter your last name" />
                 </label>
                 <select value={suffix} onChange={(e) => setSuffix(e.target.value)}
