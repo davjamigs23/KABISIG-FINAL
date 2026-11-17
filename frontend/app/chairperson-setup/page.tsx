@@ -8,7 +8,7 @@ import { kabisigApi } from '../../src/lib/api';
 import { composeFullName } from '../../src/lib/name';
 import { KabisigLogo } from '../../src/components/PublicPages';
 
-const INVALID_INVITE_MESSAGE = 'This invitation link has already been used or has expired. Please log in normally or contact the Super Admin.';
+const INVALID_INVITE_MESSAGE = 'Email link is invalid or has expired. Please request a new invitation.';
 let setupSupabaseClient: SupabaseClient | null = null;
 
 function getSetupSupabaseClient(): SupabaseClient {
@@ -69,6 +69,13 @@ function SetupForm() {
     const verifyInvite = async () => {
       try {
         const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        if (hashParams.get('error') === 'access_denied' || hashParams.get('error_code') === 'otp_expired') {
+          sessionResolved = true;
+          setError(INVALID_INVITE_MESSAGE);
+          setInviteStatus('invalid');
+          setIsCheckingSession(false);
+          return;
+        }
         const queryParams = new URLSearchParams(window.location.search);
         const authError = hashParams.get('error_description') || queryParams.get('error_description') ||
           hashParams.get('error') || queryParams.get('error');
@@ -314,11 +321,26 @@ function SetupForm() {
   const match = password.length > 0 && password === confirmPassword;
   const allPass = checks.minLength && checks.hasUpper && checks.hasLower && checks.hasNumber && checks.hasSymbol && match;
 
-  if (isCheckingSession) {
+  if (isCheckingSession || inviteStatus === 'checking') {
     return (
       <div role="status" className="min-h-screen flex items-center justify-center gap-3 bg-slate-50 text-sm font-semibold text-[#091d64]">
         <Loader2 className="w-5 h-5 animate-spin" />
         <span>Verifying secure link...</span>
+      </div>
+    );
+  }
+
+  if (inviteStatus === 'invalid') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
+        <div className="w-full max-w-md rounded-2xl border border-rose-200 bg-white p-8 text-center shadow-lg">
+          <AlertCircle className="mx-auto mb-4 h-10 w-10 text-rose-600" />
+          <h1 className="mb-2 text-lg font-black text-slate-900">Invitation Link Invalid</h1>
+          <p role="alert" className="mb-6 text-sm text-slate-600">{error || INVALID_INVITE_MESSAGE}</p>
+          <a href="/" className="inline-flex items-center justify-center rounded-lg bg-[#091d64] px-5 py-3 text-sm font-bold text-white hover:bg-[#122878]">
+            Return to Home
+          </a>
+        </div>
       </div>
     );
   }

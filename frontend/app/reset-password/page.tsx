@@ -10,6 +10,7 @@ const SB_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
 export default function ResetPasswordPage() {
   const [status, setStatus] = useState<'checking' | 'ready' | 'invalid' | 'success'>('checking');
+  const [currentPassword, setCurrentPassword] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -63,6 +64,7 @@ export default function ResetPasswordPage() {
     e.preventDefault();
     setError('');
     if (!client) { setError('Client not ready.'); return; }
+    if (!currentPassword) { setError('Please enter your current password.'); return; }
     const checks = {
       len: password.length >= 8,
       up: /[A-Z]/.test(password),
@@ -80,16 +82,33 @@ export default function ResetPasswordPage() {
     }
     setBusy(true);
     try {
+      const { data: sessionData, error: sessionError } = await client.auth.getSession();
+      const email = sessionData.session?.user.email;
+      if (sessionError || !email) {
+        setError('Unable to verify your account session. Please reopen the password reset link.');
+        return;
+      }
+
+      const { error: signInError } = await client.auth.signInWithPassword({
+        email,
+        password: currentPassword,
+      });
+      if (signInError) {
+        setError('Incorrect current password.');
+        return;
+      }
+
       const { data: upData, error: upErr } = await client.auth.updateUser({ password });
       if (!upErr && upData?.user?.email) {
         try { await kabisigApi.notifyPasswordChange(upData.user.email); } catch (e) { console.warn('Password-change notification failed:', e); }
       }
-      if (upErr) { setError(upErr.message); setBusy(false); return; }
+      if (upErr) { setError(upErr.message); return; }
       await client.auth.signOut();
       setStatus('success');
       setTimeout(() => { window.location.href = '/'; }, 2200);
     } catch (err: any) {
       setError(err?.message || 'Failed to update password.');
+    } finally {
       setBusy(false);
     }
   };
@@ -178,6 +197,21 @@ export default function ResetPasswordPage() {
 
             {status === 'ready' && (
               <form onSubmit={handleSubmit} className="w-full space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-900 mb-1.5">Current Password <span className="text-rose-500">*</span></label>
+                  <div className="relative w-full">
+                    <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
+                      placeholder="Enter current password"
+                      required
+                    />
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-xs font-bold text-slate-900 mb-1.5">New Password <span className="text-rose-500">*</span></label>
                   <div className="relative w-full">
