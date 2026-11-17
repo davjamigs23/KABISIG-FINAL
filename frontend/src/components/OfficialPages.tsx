@@ -5518,7 +5518,7 @@ export default function OfficialPages({
                   <option value="All">All Demographic Filters</option>
                   <optgroup label="Scholarship"><option value="Scholar">Scholar</option><option value="Non-Scholar">Non-Scholar</option></optgroup>
                   <optgroup label="Educational Level"><option value="College">College</option><option value="Senior High">Senior High</option><option value="Junior High">Junior High</option><option value="Elementary">Elementary</option><option value="Vocational">Vocational</option></optgroup>
-                  <optgroup label="Employment Status"><option value="Employed">Employed</option><option value="Unemployed">Unemployed</option><option value="Student">Student</option><option value="Working Student">Working Student</option></optgroup>
+                  <optgroup label="Employment Status"><option value="Employed">Employed</option><option value="Unemployed">Unemployed</option><option value="Student">Student</option></optgroup>
                   <optgroup label="Youth Sector"><option value="In-School Youth">In-School Youth</option><option value="Out-of-School Youth">Out-of-School Youth</option><option value="Working Youth">Working Youth</option></optgroup>
                 </select>
               </div>
@@ -5554,9 +5554,7 @@ export default function OfficialPages({
                                 ? y.employmentStatus === 'Employed' || y.employment === 'Employed'
                                 : filterCategory === 'Unemployed'
                                   ? y.employmentStatus === 'Unemployed' || y.employment === 'Unemployed'
-                                  : filterCategory === 'Working Student'
-                                    ? String(y.employmentStatus || (y as any).employment_status || y.employment || '').trim().toLowerCase() === 'working student'
-                                    : filterCategory === 'Student' || filterCategory === 'In School Youth' || filterCategory === 'In-School Youth'
+                                  : filterCategory === 'Student' || filterCategory === 'In School Youth' || filterCategory === 'In-School Youth'
                                     ? /college|high school/i.test(y.educationalLevel || '')
                                     : y.zone === filterCategory || y.scholarStatus === filterCategory;
                         return matchSearch && matchCat;
