@@ -1143,6 +1143,10 @@ router.post('/setup-chairperson-password', authenticateUser, async (req: Request
 
   const parseResult = SetupChairpersonPasswordSchema.safeParse(req.body);
   if (!parseResult.success) {
+    console.error('=== ZOD SETUP VALIDATION FAILED ===');
+    console.error(JSON.stringify(parseResult.error.flatten().fieldErrors, null, 2));
+    console.error('===================================');
+
     res.status(400).json({
       success: false,
       message: 'Validation failed',
@@ -1432,6 +1436,10 @@ const SetupOfficialPasswordSchema = z.object({
 router.post('/setup-official-password', async (req: Request, res: Response): Promise<void> => {
   const parseResult = SetupOfficialPasswordSchema.safeParse(req.body);
   if (!parseResult.success) {
+    console.error('=== ZOD SETUP VALIDATION FAILED ===');
+    console.error(JSON.stringify(parseResult.error.flatten().fieldErrors, null, 2));
+    console.error('===================================');
+
     res.status(400).json({
       success: false,
       message: 'Validation failed',
