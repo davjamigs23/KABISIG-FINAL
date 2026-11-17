@@ -1137,7 +1137,11 @@ router.post('/setup-chairperson-password', authenticateUser, async (req: Request
 
   const parseResult = SetupChairpersonPasswordSchema.safeParse(req.body);
   if (!parseResult.success) {
-    sendError(res, 'Validation failed', 400, parseResult.error.flatten().fieldErrors);
+    res.status(400).json({
+      success: false,
+      message: 'Validation failed',
+      errors: parseResult.error.flatten().fieldErrors,
+    });
     return;
   }
 
@@ -1385,7 +1389,11 @@ const SetupOfficialPasswordSchema = z.object({
 router.post('/setup-official-password', async (req: Request, res: Response): Promise<void> => {
   const parseResult = SetupOfficialPasswordSchema.safeParse(req.body);
   if (!parseResult.success) {
-    sendError(res, 'Validation failed', 400, parseResult.error.flatten().fieldErrors);
+    res.status(400).json({
+      success: false,
+      message: 'Validation failed',
+      errors: parseResult.error.flatten().fieldErrors,
+    });
     return;
   }
 

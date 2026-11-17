@@ -148,7 +148,7 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
 
   const { data: officials, error } = await supabaseAdmin
     .from('users')
-    .select('id, tenant_id, full_name, role_id, avatar_url, barangay(name)')
+    .select('id, tenant_id, full_name, role_id, avatar_url, barangay(name), resident_profile!resident_profile_user_id_fkey(sex)')
     .in('role_id', [2, 3])
     .eq('status', 'active')
     .not('tenant_id', 'is', null);
@@ -181,6 +181,7 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
       role_id: number;
       official_role: string;
       position: string;
+      gender_title: string;
       avatar_url: string | null;
     }>;
   }>();
@@ -191,6 +192,9 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
 
   const resolvedOfficials = await Promise.all((officials || []).map(async (official: any) => {
     const authUser = authUsers.get(official.id);
+    const residentProfile = Array.isArray(official.resident_profile)
+      ? official.resident_profile[0]
+      : official.resident_profile;
     const officialRole = String(
       authUser?.user_metadata?.official_role
       || authUser?.app_metadata?.official_role
@@ -200,6 +204,7 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
       ...official,
       official_role: officialRole,
       position: officialRole,
+      gender_title: residentProfile?.sex === 'Female' ? 'Ms.' : 'Mr.',
       avatar_url: await resolveAvatarUrl(official.avatar_url),
     };
   }));
@@ -217,6 +222,7 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
       role_id: Number(official.role_id),
       official_role: official.official_role,
       position: official.position,
+      gender_title: official.gender_title,
       avatar_url: official.avatar_url,
     });
   });

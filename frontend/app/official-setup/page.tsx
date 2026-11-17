@@ -4,7 +4,7 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient, type Session, type SupabaseClient } from '@supabase/supabase-js';
 import { ShieldCheck, Lock, Eye, EyeOff, User, Loader2, CheckCircle2, AlertCircle, Award } from 'lucide-react';
-import { kabisigApi } from '../../src/lib/api';
+import { getFirstValidationError, kabisigApi } from '../../src/lib/api';
 import { composeFullName } from '../../src/lib/name';
 import { KabisigLogo } from '../../src/components/PublicPages';
 
@@ -308,7 +308,7 @@ function SetupForm() {
           setInviteStatus('invalid');
           setError(INVALID_INVITE_MESSAGE);
         } else {
-          setError(responseMessage);
+          setError(getFirstValidationError(res.errors) || responseMessage);
         }
         return;
       }
@@ -319,7 +319,10 @@ function SetupForm() {
       }
       router.replace('/');
     } catch (err: any) {
-      setError((err && err.message) ? err.message : 'Network error setting up SK Official password.');
+      setError(
+        getFirstValidationError(err)
+        || ((err && err.message) ? err.message : 'Network error setting up SK Official password.')
+      );
     } finally {
       setIsSubmitting(false);
     }

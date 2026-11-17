@@ -53,6 +53,7 @@ export interface PublicOfficialRosterEntry {
   role_id: number;
   official_role: string;
   position: string;
+  gender_title: string;
   avatar_url: string | null;
 }
 
@@ -61,6 +62,35 @@ export interface PublicOfficialsGroup {
   officials: PublicOfficialRosterEntry[];
 }
 
+export function getFirstValidationError(error: unknown): string | null {
+  const firstMessage = (candidate: unknown): string | null => {
+    if (typeof candidate === 'string') return candidate.trim() || null;
+    if (Array.isArray(candidate)) {
+      return candidate.find((message): message is string => typeof message === 'string' && message.trim().length > 0) || null;
+    }
+    if (candidate && typeof candidate === 'object') {
+      for (const value of Object.values(candidate)) {
+        const message = firstMessage(value);
+        if (message) return message;
+      }
+    }
+    return null;
+  };
+
+  if (!error || typeof error !== 'object') return null;
+  const root = error as Record<string, unknown>;
+  const response = root.response && typeof root.response === 'object'
+    ? root.response as Record<string, unknown>
+    : null;
+  const data = response?.data && typeof response.data === 'object'
+    ? response.data as Record<string, unknown>
+    : null;
+
+  return firstMessage(data?.errors)
+    || firstMessage(root.errors)
+    || firstMessage(root.details)
+    || firstMessage(root.error);
+}
 
 function toResolutionRecord(poll: any): ResolutionRecord {
   const description = String(poll.description || '');
@@ -115,7 +145,7 @@ class KabisigApiClient {
     return this.token;
   }
 
-  async request<T>(endpoint: string, options: RequestInit = {}): Promise<{ success: boolean; data?: T; message?: string; error?: any; details?: any }> {
+  async request<T>(endpoint: string, options: RequestInit = {}): Promise<{ success: boolean; data?: T; message?: string; error?: any; details?: any; errors?: unknown }> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(options.headers as Record<string, string>),
@@ -150,6 +180,7 @@ class KabisigApiClient {
           message: json.message || `Request failed with status ${response.status}`,
           error: json.error || json.details || null,
           details: json.details,
+          errors: json.errors ?? json.details,
         };
       }
 
@@ -375,7 +406,7 @@ class KabisigApiClient {
     address: string;
     official_role: string;
     tenant_id: string;
-  }, inviteAccessToken: string): Promise<{ success: boolean; message?: string; data?: any }> {
+  }, inviteAccessToken: string): Promise<{ success: boolean; message?: string; data?: any; errors?: unknown }> {
     return await this.request<any>('/auth/setup-official-password', {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -461,7 +492,7 @@ class KabisigApiClient {
     birthdate?: string;
     sex?: 'Male' | 'Female' | 'Other' | 'Prefer not to say';
     address?: string;
-  }, inviteAccessToken: string): Promise<{ success: boolean; token?: string; user?: any; message?: string }> {
+  }, inviteAccessToken: string): Promise<{ success: boolean; token?: string; user?: any; message?: string; errors?: unknown }> {
     const res = await this.request<{ token: string; user: any }>('/auth/setup-chairperson-password', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -472,7 +503,7 @@ class KabisigApiClient {
       this.setToken(res.data.token);
       return { success: true, token: res.data.token, user: res.data.user, message: res.message };
     }
-    return { success: false, message: res.message || 'Password setup failed' };
+    return { success: false, message: res.message || 'Password setup failed', errors: res.errors };
   }
 
   async registerYouth(payload: {
