@@ -69,21 +69,10 @@ function SetupForm() {
 
     const verifyInvite = async () => {
       try {
-        const hashParams = new URLSearchParams(window.location.hash.substring(1));
-        if (hashParams.get('error') === 'access_denied' || hashParams.get('error_code') === 'otp_expired') {
-          sessionResolved = true;
-          setError(INVALID_INVITE_MESSAGE);
-          setInviteStatus('invalid');
-          setIsCheckingSession(false);
-          return;
-        }
-        const queryParams = new URLSearchParams(window.location.search);
-        const authError = hashParams.get('error_description') || queryParams.get('error_description') ||
-          hashParams.get('error') || queryParams.get('error');
-
         const client = getSetupSupabaseClient();
         if (!active) return;
         setSupabaseClient(client);
+        const queryParams = new URLSearchParams(window.location.search);
         const acceptSession = (session: Session) => {
           if (!active) return;
           sessionResolved = true;
@@ -110,12 +99,34 @@ function SetupForm() {
           else setCachedSession(null);
         });
         subscription = authState.data.subscription;
+        const { data: persistedSessionData, error: persistedSessionError } = await client.auth.getSession();
+        if (persistedSessionError) throw persistedSessionError;
+        if (persistedSessionData.session) {
+          acceptSession(persistedSessionData.session);
+          return;
+        }
+        if (sessionResolved) return;
+
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        const authError = hashParams.get('error_description') || queryParams.get('error_description') ||
+          hashParams.get('error') || queryParams.get('error');
+        if (hashParams.get('error') === 'access_denied' || hashParams.get('error_code') === 'otp_expired') {
+          sessionResolved = true;
+          setError(INVALID_INVITE_MESSAGE);
+          setInviteStatus('invalid');
+          setIsCheckingSession(false);
+          return;
+        }
         const accessToken = hashParams.get('access_token');
         const refreshToken = hashParams.get('refresh_token');
-        if (accessToken && refreshToken) {
+        if (accessToken) sessionStorage.setItem('setup_token', accessToken);
+        if (refreshToken) sessionStorage.setItem('setup_refresh_token', refreshToken);
+        const recoveryAccessToken = accessToken || sessionStorage.getItem('setup_token');
+        const recoveryRefreshToken = refreshToken || sessionStorage.getItem('setup_refresh_token');
+        if (recoveryAccessToken && recoveryRefreshToken) {
           const { data: hashSessionData, error: hashSessionError } = await client.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
+            access_token: recoveryAccessToken,
+            refresh_token: recoveryRefreshToken,
           });
           if (hashSessionError) {
             console.error('Unable to establish Chairperson session from invitation hash:', hashSessionError);
@@ -147,10 +158,14 @@ function SetupForm() {
                 acceptSession(retryData.session);
                 return;
               }
-              if (window.location.hash) return;
               sessionResolved = true;
               setInviteStatus('invalid');
-              setError(authError || INVALID_INVITE_MESSAGE);
+              const hasRecoverableLink = Boolean(window.location.hash || sessionStorage.getItem('setup_token'));
+              setError(
+                !hasRecoverableLink
+                  ? authError || INVALID_INVITE_MESSAGE
+                  : authError || 'Unable to restore your invitation session. Please reopen the invitation link.'
+              );
               setIsCheckingSession(false);
             } catch (retryError) {
               if (!active || sessionResolved) return;
@@ -167,7 +182,7 @@ function SetupForm() {
           sessionResolved = true;
           setInviteStatus('invalid');
           setError(
-            !window.location.hash && verificationError instanceof Error && verificationError.message === INVALID_INVITE_MESSAGE
+            !window.location.hash && !sessionStorage.getItem('setup_token')
               ? INVALID_INVITE_MESSAGE
               : verificationError instanceof Error
                 ? verificationError.message
@@ -303,10 +318,12 @@ function SetupForm() {
           setInviteStatus('invalid');
           setError(INVALID_INVITE_MESSAGE);
         } else {
-          setError(getFirstValidationError(res.errors) || responseMessage);
+          setError(getFirstValidationError({ errors: res.errors }) || responseMessage);
         }
         return;
       }
+      sessionStorage.removeItem('setup_token');
+      sessionStorage.removeItem('setup_refresh_token');
       const loginRes = await kabisigApi.login(sessionEmail, password);
       if (!loginRes.success) {
         setError('Account configured. Please sign in manually with your new password.');
@@ -314,11 +331,12 @@ function SetupForm() {
       }
       router.replace('/');
     } catch (err: any) {
-      const validationError = getFirstValidationError(err?.response?.data?.errors) || getFirstValidationError(err);
-      setError(
-        validationError
-        || ((err && err.message) ? err.message : 'Network error setting up Chairperson password.')
-      );
+      const responseData = err?.response?.data;
+      const backendMessage = getFirstValidationError(err)
+        || (typeof responseData?.message === 'string' ? responseData.message : null)
+        || (typeof responseData?.error === 'string' ? responseData.error : null)
+        || err?.message;
+      setError(backendMessage || 'Setup failed. Please try again.');
     } finally {
       setIsSubmitting(false);
     }

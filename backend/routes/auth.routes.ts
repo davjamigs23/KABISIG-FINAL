@@ -1171,7 +1171,12 @@ router.post('/setup-chairperson-password', authenticateUser, async (req: Request
     || setupAuthUser.id !== authenticatedUser.id
     || setupAuthUser.email?.toLowerCase() !== normalizedEmail
   ) {
-    sendError(res, 'A valid account invitation session is required.', 401);
+    sendError(
+      res,
+      setupAuthError?.message || 'A valid account invitation session is required.',
+      401,
+      setupAuthError
+    );
     return;
   }
   if (setupAuthUser.user_metadata?.setup_completed === true || setupAuthUser.app_metadata?.setup_completed === true) {
@@ -1224,29 +1229,36 @@ router.post('/setup-chairperson-password', authenticateUser, async (req: Request
   const _baseChairName = resolvedName.full_name || 'SK Chairperson';
   const cleanFullName = _baseChairName.startsWith('Hon.') ? _baseChairName : 'Hon. ' + _baseChairName;
 
-  const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(userId, {
-    password,
-    email_confirm: true,
-    user_metadata: {
-      ...setupAuthUser.user_metadata,
-      tenant_id: tenantId,
-      role_id: ROLE_IDS.BARANGAY_ADMIN,
-      role: 'Barangay Admin',
-      full_name: cleanFullName,
-      first_name: resolvedName.first_name,
-      middle_name: resolvedName.middle_name,
-      last_name: resolvedName.last_name,
-      suffix: resolvedName.suffix,
-      must_set_password: false,
-      setup_completed: true,
-    },
-    app_metadata: {
-      ...setupAuthUser.app_metadata,
-      setup_completed: true,
-    },
-  });
+  const setupUserMetadata = {
+    ...setupAuthUser.user_metadata,
+    tenant_id: tenantId,
+    role_id: ROLE_IDS.BARANGAY_ADMIN,
+    role: 'Barangay Admin',
+    full_name: cleanFullName,
+    first_name: resolvedName.first_name,
+    middle_name: resolvedName.middle_name,
+    last_name: resolvedName.last_name,
+    suffix: resolvedName.suffix,
+    must_set_password: false,
+  };
+  let updateErr: Error | null = null;
+  try {
+    const updateResult = await supabaseAdmin.auth.admin.updateUserById(userId, {
+      password,
+      email_confirm: true,
+    });
+    updateErr = updateResult.error;
+  } catch (err: unknown) {
+    console.error('Setup Error:', err);
+    const message = err instanceof Error
+      ? err.message
+      : 'Setup failed. The link may be expired or already used.';
+    sendError(res, message, 400, err);
+    return;
+  }
   if (updateErr) {
-    sendError(res, `Failed to update password credentials: ${updateErr.message}`, 400);
+    console.error('Setup Error:', updateErr);
+    sendError(res, updateErr.message || 'Setup failed. The link may be expired or already used.', 400, updateErr);
     return;
   }
 
@@ -1270,7 +1282,8 @@ router.post('/setup-chairperson-password', authenticateUser, async (req: Request
   );
 
   if (userUpsertErr) {
-    console.warn('Notice updating users table:', userUpsertErr.message);
+    sendError(res, `Failed to update users table: ${userUpsertErr.message}`, 500, userUpsertErr);
+    return;
   }
 
   // Ensure resident_profile exists with valid birthdate so App.tsx routes straight to Chairperson's Dashboard
@@ -1288,7 +1301,8 @@ router.post('/setup-chairperson-password', authenticateUser, async (req: Request
   );
 
   if (profileUpsertErr) {
-    console.warn('Notice updating resident_profile:', profileUpsertErr.message);
+    sendError(res, `Failed to update resident profile: ${profileUpsertErr.message}`, 500, profileUpsertErr);
+    return;
   }
 
   // Record Audit Log
@@ -1309,6 +1323,29 @@ router.post('/setup-chairperson-password', authenticateUser, async (req: Request
     },
     ipAddress: req.ip || null,
   });
+
+  let completionErr: Error | null = null;
+  try {
+    const completionResult = await supabaseAdmin.auth.admin.updateUserById(userId, {
+      user_metadata: { ...setupUserMetadata, setup_completed: true },
+      app_metadata: { ...setupAuthUser.app_metadata, setup_completed: true },
+    });
+    completionErr = completionResult.error;
+  } catch (err: unknown) {
+    console.error('Setup completion error:', err);
+    sendError(
+      res,
+      err instanceof Error ? err.message : 'Failed to mark account setup as complete.',
+      400,
+      err
+    );
+    return;
+  }
+  if (completionErr) {
+    console.error('Setup completion error:', completionErr);
+    sendError(res, completionErr.message || 'Failed to mark account setup as complete.', 400, completionErr);
+    return;
+  }
 
   // Authenticate session to obtain access token
   const { data: sessionData, error: signInErr } = await supabase.auth.signInWithPassword({
@@ -1418,7 +1455,12 @@ router.post('/setup-official-password', async (req: Request, res: Response): Pro
   const { data: setupAuthData, error: setupAuthError } = await supabaseAdmin.auth.getUser(setupAccessToken);
   const setupAuthUser = setupAuthData.user;
   if (setupAuthError || !setupAuthUser || setupAuthUser.email?.toLowerCase() !== normalizedEmail) {
-    sendError(res, 'A valid account invitation session is required.', 401);
+    sendError(
+      res,
+      setupAuthError?.message || 'A valid account invitation session is required.',
+      401,
+      setupAuthError
+    );
     return;
   }
   if (setupAuthUser.user_metadata?.setup_completed === true || setupAuthUser.app_metadata?.setup_completed === true) {
@@ -1487,23 +1529,27 @@ router.post('/setup-official-password', async (req: Request, res: Response): Pro
     last_name: resolvedName.last_name,
     suffix: resolvedName.suffix,
     must_set_password: false,
-    setup_completed: true,
+    setup_completed: false,
   };
 
-  const { error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(userId, {
-    password,
-    email_confirm: true,
-    user_metadata: {
-      ...setupAuthUser.user_metadata,
-      ...userMetadata,
-    },
-    app_metadata: {
-      ...setupAuthUser.app_metadata,
-      setup_completed: true,
-    },
-  });
+  let updateErr: Error | null = null;
+  try {
+    const updateResult = await supabaseAdmin.auth.admin.updateUserById(userId, {
+      password,
+      email_confirm: true,
+    });
+    updateErr = updateResult.error;
+  } catch (err: unknown) {
+    console.error('Setup Error:', err);
+    const message = err instanceof Error
+      ? err.message
+      : 'Setup failed. The link may be expired or already used.';
+    sendError(res, message, 400, err);
+    return;
+  }
   if (updateErr) {
-    sendError(res, 'Failed to update password credentials: ' + updateErr.message, 400);
+    console.error('Setup Error:', updateErr);
+    sendError(res, updateErr.message || 'Setup failed. The link may be expired or already used.', 400, updateErr);
     return;
   }
 
@@ -1526,7 +1572,8 @@ router.post('/setup-official-password', async (req: Request, res: Response): Pro
   );
 
   if (userUpsertErr) {
-    console.warn('Notice updating users table:', userUpsertErr.message);
+    sendError(res, `Failed to update users table: ${userUpsertErr.message}`, 500, userUpsertErr);
+    return;
   }
 
   const { error: profileUpsertErr } = await supabaseAdmin.from('resident_profile').upsert(
@@ -1542,7 +1589,8 @@ router.post('/setup-official-password', async (req: Request, res: Response): Pro
   );
 
   if (profileUpsertErr) {
-    console.warn('Notice updating resident_profile:', profileUpsertErr.message);
+    sendError(res, `Failed to update resident profile: ${profileUpsertErr.message}`, 500, profileUpsertErr);
+    return;
   }
 
   await recordAuditLog({
@@ -1554,6 +1602,30 @@ router.post('/setup-official-password', async (req: Request, res: Response): Pro
     details: { email: normalizedEmail, full_name: displayName, official_role, status: 'active' },
     ipAddress: req.ip || null,
   });
+
+  let completionErr: Error | null = null;
+  try {
+    const completionResult = await supabaseAdmin.auth.admin.updateUserById(userId, {
+      user_metadata: { ...setupAuthUser.user_metadata, ...userMetadata, setup_completed: true },
+      app_metadata: { ...setupAuthUser.app_metadata, setup_completed: true },
+    });
+    completionErr = completionResult.error;
+  } catch (err: unknown) {
+    console.error('Setup completion error:', err);
+    sendError(
+      res,
+      err instanceof Error ? err.message : 'Failed to mark account setup as complete.',
+      400,
+      err
+    );
+    return;
+  }
+  if (completionErr) {
+    console.error('Setup completion error:', completionErr);
+    sendError(res, completionErr.message || 'Failed to mark account setup as complete.', 400, completionErr);
+    return;
+  }
+  userMetadata.setup_completed = true;
 
   const { data: sessionData, error: signInErr } = await supabase.auth.signInWithPassword({
     email: normalizedEmail,

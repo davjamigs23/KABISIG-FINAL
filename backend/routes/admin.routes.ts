@@ -68,6 +68,18 @@ async function inviteWithBrevo(
   }
 }
 
+async function findAuthUserByEmail(email: string): Promise<{ user: any | null; error: any | null }> {
+  const perPage = 1000;
+  for (let page = 1; ; page += 1) {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+    if (error) return { user: null, error };
+
+    const user = data.users.find(authUser => authUser.email?.toLowerCase() === email);
+    if (user) return { user, error: null };
+    if (data.users.length < perPage) return { user: null, error: null };
+  }
+}
+
 
 // Helper to send emails via Brevo API
 
@@ -156,6 +168,7 @@ router.get('/all-officials', authenticateUser, requireRoles('SUPER_ADMIN'), asyn
 // GET /api/admin/users/lookup/:identifier - SA only
 router.get('/users/lookup', authenticateUser, requireRoles('SUPER_ADMIN'), async (req: Request, res: Response): Promise<void> => {
   try {
+    const caller = (req as AuthRequest).user!;
     const identifier = String(req.query.identifier || '').trim();
     if (!identifier) { sendError(res, 'Identifier is required.', 400); return; }
 
@@ -165,6 +178,13 @@ router.get('/users/lookup', authenticateUser, requireRoles('SUPER_ADMIN'), async
 
     // Query user WITHOUT join (avoids FK ambiguity + works for all roles)
     let userQuery = supabaseAdmin.from('users').select('*');
+    if (Number(caller.role_id) === 2 || Number(caller.role_id) === 3) {
+      if (!caller.tenant_id) {
+        sendError(res, 'A barangay tenant is required for this lookup.', 403);
+        return;
+      }
+      userQuery = userQuery.eq('tenant_id', caller.tenant_id);
+    }
     if (isUuid) {
       userQuery = userQuery.eq('id', identifier);
     } else {
@@ -479,14 +499,12 @@ router.post(
     const chairpersonAuthFullName = existingUser?.full_name || 'Pending Invitation';
 
     // 3. Check Supabase Auth users too, since invite/create may fail if the auth user already exists
-    const { data: authUsersData, error: listAuthError } = await supabaseAdmin.auth.admin.listUsers();
+    const { user: existingAuthUser, error: listAuthError } = await findAuthUserByEmail(cleanEmail);
 
     if (listAuthError) {
       sendError(res, `Failed to inspect existing auth users: ${listAuthError.message}`, 500);
       return;
     }
-
-    const existingAuthUser = authUsersData?.users?.find(u => u.email?.toLowerCase() === cleanEmail);
 
     if (existingUser) {
       // === Reused-email guard (single-account-per-email policy) ===
@@ -677,6 +695,9 @@ router.post(
         },
         user_metadata: {
           ...(existingAuthUser.user_metadata || {}),
+          tenant_id: barangay_id,
+          role_id: 2,
+          role: 'Barangay Admin',
           setup_completed: false,
         },
       });
@@ -789,48 +810,6 @@ router.post(
     }
     const { email, barangay_id, official_role, first_name, middle_name, last_name, suffix } = parseResult.data;
 
-    // Role capacity enforcement: 1 Chairperson, 1 Secretary, 1 Treasurer, 7 Kagawad
-    {
-      const ROLE_LIMITS: Record<string, number> = {
-        'SK Kagawad': 7,
-        'SK Secretary': 1,
-        'SK Treasurer': 1,
-      };
-      const limit = ROLE_LIMITS[official_role] || 0;
-
-      const { data: existingOfficials } = await supabaseAdmin
-        .from('users')
-        .select('id, role_id, status')
-        .eq('tenant_id', barangay_id)
-        .eq('role_id', 3)
-        .eq('status', 'active');
-
-      const list = existingOfficials || [];
-      if (list.length > 0) {
-        const authList = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
-        const metaMap: Record<string, any> = {};
-        (authList.data?.users || []).forEach((u) => { metaMap[u.id] = u.user_metadata || {}; });
-
-        let current = 0;
-        for (const o of list) {
-          const sub = String(metaMap[o.id]?.official_role || '').toLowerCase();
-          const normalized = sub.includes('secretary') ? 'SK Secretary'
-            : sub.includes('treasurer') ? 'SK Treasurer'
-            : 'SK Kagawad';
-          if (normalized === official_role) current++;
-        }
-
-        if (current >= limit) {
-          sendError(
-            res,
-            `Barangay capacity reached: only ${limit} ${official_role}${limit > 1 ? 's' : ''} allowed per Barangay. ${current} already registered.`,
-            409,
-            { code: 'ROLE_CAPACITY_REACHED', role: official_role, current, limit }
-          );
-          return;
-        }
-      }
-    }
     const cleanEmail = email.trim().toLowerCase();
     const authReq = req as AuthRequest;
     const admin = authReq.user;
@@ -860,10 +839,62 @@ router.post(
       fallback: { first_name: 'SK', last_name: 'Official' },
     }).full_name;
 
-    const { data: authUsersData, error: listAuthError } = await supabaseAdmin.auth.admin.listUsers();
+    const { user: existingAuthUser, error: listAuthError } = await findAuthUserByEmail(cleanEmail);
     if (listAuthError) { sendError(res, 'Failed to inspect existing auth users: ' + listAuthError.message, 500); return; }
 
-    const existingAuthUser = authUsersData?.users?.find(u => u.email?.toLowerCase() === cleanEmail);
+    const isPendingSetupReinvite = Boolean(
+      existingUser
+      && Number(existingUser.role_id) === 3
+      && existingUser.tenant_id === barangay_id
+      && existingAuthUser?.user_metadata?.setup_completed === false
+      && existingAuthUser?.app_metadata?.setup_completed === false
+    );
+
+    // Exclude the pending account being re-invited from the capacity calculation.
+    {
+      const ROLE_LIMITS: Record<string, number> = {
+        'SK Kagawad': 7,
+        'SK Secretary': 1,
+        'SK Treasurer': 1,
+      };
+      const limit = ROLE_LIMITS[official_role] || 0;
+
+      const { data: existingOfficials } = await supabaseAdmin
+        .from('users')
+        .select('id, role_id, status')
+        .eq('tenant_id', barangay_id)
+        .eq('role_id', 3)
+        .eq('status', 'active');
+
+      const list = (existingOfficials || []).filter(
+        official => !isPendingSetupReinvite || official.id !== existingUser?.id
+      );
+      if (list.length > 0) {
+        const authList = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
+        const metaMap: Record<string, any> = {};
+        (authList.data?.users || []).forEach((u) => { metaMap[u.id] = u.user_metadata || {}; });
+
+        let current = 0;
+        for (const o of list) {
+          const sub = String(metaMap[o.id]?.official_role || '').toLowerCase();
+          const normalized = sub.includes('secretary') ? 'SK Secretary'
+            : sub.includes('treasurer') ? 'SK Treasurer'
+            : 'SK Kagawad';
+          if (normalized === official_role) current++;
+        }
+
+        if (current >= limit) {
+          sendError(
+            res,
+            `Barangay capacity reached: only ${limit} ${official_role}${limit > 1 ? 's' : ''} allowed per Barangay. ${current} already registered.`,
+            409,
+            { code: 'ROLE_CAPACITY_REACHED', role: official_role, current, limit }
+          );
+          return;
+        }
+      }
+    }
+
     // Guard: prevent email reassignment across roles / barangays.
     // An email already bound to an active SK Chairperson or SK Official
     // cannot be invited again (would overwrite the existing role).
@@ -874,28 +905,29 @@ router.post(
         return;
       }
       if (eu.role_id === 3) {
-        const euAuth = authUsersData?.users?.find((u: any) => u.id === eu.id);
+        const euAuth = existingAuthUser?.id === eu.id ? existingAuthUser : null;
         const euMeta: any = euAuth?.user_metadata || {};
         const euRoleRaw = String(euMeta.official_role || '').toLowerCase();
         const euRole = euRoleRaw.includes('secretary') ? 'SK Secretary'
           : euRoleRaw.includes('treasurer') ? 'SK Treasurer'
           : 'SK Kagawad';
-        if (eu.tenant_id === barangay_id) {
+        if (eu.tenant_id === barangay_id && !isPendingSetupReinvite) {
           sendError(
             res,
             'This email is already assigned as ' + euRole + ' in ' + barangay.name + '. Each email can only hold one SK Official role. To change their role, use a different email address.',
             409,
             { code: 'EMAIL_ALREADY_OFFICIAL_SAME_TENANT', current_role: euRole }
           );
-        } else {
+          return;
+        } else if (eu.tenant_id !== barangay_id) {
           sendError(
             res,
             'This email is already registered as ' + euRole + ' in another barangay. Each email can only hold one SK Official role. To change their role, use a different email address.',
             409,
             { code: 'EMAIL_ALREADY_OFFICIAL_OTHER_TENANT', current_role: euRole }
           );
+          return;
         }
-        return;
       }
     }
 
@@ -1078,15 +1110,36 @@ router.post(
     }
 
     let actionLink = '';
+    let actionLinkError: unknown;
     try {
-      const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
+      const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
         type: 'magiclink',
         email: cleanEmail,
         options: { redirectTo: redirectUrl, expiresIn: 18000 } as any,
       });
+      if (linkError) throw linkError;
       if (linkData?.properties?.action_link) actionLink = linkData.properties.action_link;
     } catch (linkErr) {
+      actionLinkError = linkErr;
       console.warn('generateLink warning:', linkErr);
+    }
+
+    if (inviteMethod === 'existing_auth_user') {
+      if (!actionLink) {
+        const errorMessage = actionLinkError instanceof Error
+          ? actionLinkError.message
+          : 'Supabase did not return a setup link.';
+        sendError(res, `Failed to generate SK Official invitation: ${errorMessage}`, 502);
+        return;
+      }
+      try {
+        await sendInvitationEmail(cleanEmail, official_role, actionLink);
+        inviteMethod = 'email_invitation';
+      } catch (emailError) {
+        const errorMessage = emailError instanceof Error ? emailError.message : String(emailError);
+        sendError(res, `Failed to send SK Official invitation: ${errorMessage}`, 502);
+        return;
+      }
     }
 
     await recordAuditLog({
@@ -1123,8 +1176,8 @@ router.post(
       invitation_method: inviteMethod,
       invitation_status: emailDelivered ? 'email_sent' : 'setup_link_only',
       email_delivery: emailDelivered,
-      setup_url: '',
-      action_link: '',
+      setup_url: actionLink || redirectUrl,
+      action_link: actionLink,
     }, responseMessage);
   }
 );

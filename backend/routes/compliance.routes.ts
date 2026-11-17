@@ -26,7 +26,8 @@ router.get('/', authenticateUser, requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 
     .order('due_date', { ascending: true });
 
   if (recErr) {
-    console.warn('[/compliance] compliance_monitoring query error:', recErr.message);
+    sendError(res, `Failed to load compliance records: ${recErr.message}`, 500, recErr);
+    return;
   }
 
   const { data: docs, error: docsErr } = await supabaseAdmin
@@ -47,8 +48,73 @@ router.get('/', authenticateUser, requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 
 
   const completed = list.filter(r => r.status === 'Completed');
   const onTime = completed.filter(r => r.submitted_at && new Date(r.submitted_at) <= new Date(r.due_date));
-  const overdue = list.filter(r => r.status !== 'Completed' && r.due_date && new Date(r.due_date) < now);
+  const isOverdue = (record: any) => {
+    const status = String(record.status || '').toLowerCase();
+    return status === 'overdue'
+      || Boolean(status !== 'completed' && record.due_date && new Date(record.due_date) < now);
+  };
+  const overdue = list.filter(isOverdue);
   const onTimePercent = completed.length > 0 ? Math.round((onTime.length / completed.length) * 100) : null;
+
+  if (overdue.length > 0) {
+    const { data: chairpersons, error: chairpersonError } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('tenant_id', user.tenant_id)
+      .eq('role_id', 2)
+      .eq('status', 'active');
+
+    if (chairpersonError) {
+      sendError(res, `Failed to find the Chairperson for compliance notifications: ${chairpersonError.message}`, 500, chairpersonError);
+      return;
+    }
+
+    const chairpersonIds = (chairpersons || []).map(chairperson => chairperson.id);
+    if (chairpersonIds.length > 0) {
+      const overdueLinks = overdue.map((record: any) => `/compliance?record=${record.id}`);
+      const { data: existingNotifications, error: notificationLookupError } = await supabaseAdmin
+        .from('notifications')
+        .select('user_id, link')
+        .eq('tenant_id', user.tenant_id)
+        .eq('notification_type', 'COMPLIANCE_OVERDUE')
+        .in('user_id', chairpersonIds)
+        .in('link', overdueLinks);
+
+      if (notificationLookupError) {
+        sendError(res, `Failed to check existing compliance notifications: ${notificationLookupError.message}`, 500, notificationLookupError);
+        return;
+      }
+
+      const existingKeys = new Set(
+        (existingNotifications || []).map(notification => `${notification.user_id}:${notification.link}`)
+      );
+      const notifications = overdue.flatMap((record: any) => {
+        const link = `/compliance?record=${record.id}`;
+        return chairpersonIds
+          .filter(userId => !existingKeys.has(`${userId}:${link}`))
+          .map(userId => ({
+            tenant_id: user.tenant_id!,
+            user_id: userId,
+            notification_type: 'COMPLIANCE_OVERDUE',
+            title: 'Compliance Overdue',
+            message: `Compliance requirement "${record.report_type}" for FY ${record.fiscal_year} is overdue. Please review and submit the required documentation.`,
+            link,
+            is_read: false,
+          }));
+      });
+
+      if (notifications.length > 0) {
+        const { error: notificationInsertError } = await supabaseAdmin
+          .from('notifications')
+          .insert(notifications);
+
+        if (notificationInsertError) {
+          sendError(res, `Failed to create compliance notifications: ${notificationInsertError.message}`, 500, notificationInsertError);
+          return;
+        }
+      }
+    }
+  }
 
   // Strictly map by the Category Group selected during upload
   const q2Docs = (docs || []).filter((d: any) => {
@@ -75,7 +141,7 @@ router.get('/', authenticateUser, requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 
       submitted_at: r.submitted_at,
       status: r.status,
       notes: r.notes,
-      is_overdue: r.status !== 'Completed' && r.due_date && new Date(r.due_date) < now,
+      is_overdue: isOverdue(r),
     })),
     stats: {
       total: list.length,
