@@ -552,8 +552,10 @@ export default function YouthPages({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditModalOpen]);
   const calculateAge = (birthdate: string) => {
+    if (!birthdate) return 0;
     const today = new Date();
     const birthDate = new Date(birthdate);
+    if (Number.isNaN(birthDate.getTime())) return 0;
     let age = today.getFullYear() - birthDate.getFullYear();
     const monthDiff = today.getMonth() - birthDate.getMonth();
     if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
@@ -1600,7 +1602,7 @@ export default function YouthPages({
                         {/* 4. Age */}
                         <tr className="hover:bg-slate-50/50 bg-blue-50/20">
                           <td className="py-2.5 px-4 font-bold text-slate-900">4. Age</td>
-                          <td className="py-2.5 px-4 font-black text-slate-900">{youth.age} Years Old</td>
+                          <td className="py-2.5 px-4 font-black text-slate-900">{calculateAge(youth.birthdate)} Years Old</td>
                         </tr>
                         {/* 5. Civil Status */}
                         <tr className="hover:bg-slate-50/50">
