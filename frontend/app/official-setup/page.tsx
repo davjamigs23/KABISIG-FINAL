@@ -17,7 +17,7 @@ function getSetupSupabaseClient(): SupabaseClient {
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!supabaseUrl || !supabaseAnonKey) throw new Error('Supabase authentication is not configured.');
   setupSupabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
   });
   return setupSupabaseClient;
 }
@@ -36,6 +36,7 @@ function SetupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [supabaseClient, setSupabaseClient] = useState<SupabaseClient | null>(null);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [inviteStatus, setInviteStatus] = useState<'checking' | 'ready' | 'invalid'>('checking');
   const [email, setEmail] = useState('');
   const [tenantId, setTenantId] = useState('');
@@ -62,21 +63,24 @@ function SetupForm() {
 
   useEffect(() => {
     let active = true;
+    let sessionResolved = false;
+    let retryTimer: number | undefined;
     let subscription: { unsubscribe: () => void } | undefined;
 
     const verifyInvite = async () => {
       try {
-        const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
         const queryParams = new URLSearchParams(window.location.search);
         const authError = hashParams.get('error_description') || queryParams.get('error_description') ||
           hashParams.get('error') || queryParams.get('error');
-        if (authError) throw new Error(authError);
 
         const client = getSetupSupabaseClient();
         if (!active) return;
         setSupabaseClient(client);
         const acceptSession = (session: Session) => {
           if (!active) return;
+          sessionResolved = true;
+          setIsCheckingSession(false);
           setError(null);
           if (
             session.user.user_metadata?.setup_completed === true ||
@@ -97,16 +101,62 @@ function SetupForm() {
           if (session) acceptSession(session);
         });
         subscription = authState.data.subscription;
+        const accessToken = hashParams.get('access_token');
+        const refreshToken = hashParams.get('refresh_token');
+        if (accessToken && refreshToken) {
+          const { data: hashSessionData, error: hashSessionError } = await client.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (hashSessionError) {
+            console.error('Unable to establish SK Official session from invitation hash:', hashSessionError);
+          }
+          if (hashSessionData.session) {
+            window.history.replaceState(
+              null,
+              document.title,
+              `${window.location.pathname}${window.location.search}`
+            );
+            acceptSession(hashSessionData.session);
+            return;
+          }
+        }
         const { data, error: sessionError } = await client.auth.getSession();
         if (sessionError) throw sessionError;
-        if (!data.session) {
-          if (!window.location.hash) throw new Error(INVALID_INVITE_MESSAGE);
-          throw new Error('Unable to establish a session from this invitation. Please reopen the invitation link.');
+        if (data.session) {
+          acceptSession(data.session);
+          return;
         }
-        acceptSession(data.session);
+        if (sessionResolved) return;
+        retryTimer = window.setTimeout(() => {
+          if (!active || sessionResolved) return;
+          void (async () => {
+            try {
+              const { data: retryData, error: retryError } = await client.auth.getSession();
+              if (!active || sessionResolved) return;
+              if (retryError) throw retryError;
+              if (retryData.session) {
+                acceptSession(retryData.session);
+                return;
+              }
+              if (window.location.hash) return;
+              sessionResolved = true;
+              setInviteStatus('invalid');
+              setError(authError || INVALID_INVITE_MESSAGE);
+              setIsCheckingSession(false);
+            } catch (retryError) {
+              if (!active || sessionResolved) return;
+              sessionResolved = true;
+              setInviteStatus('invalid');
+              setError(retryError instanceof Error ? retryError.message : 'Unable to verify this invitation.');
+              setIsCheckingSession(false);
+            }
+          })();
+        }, 2000);
       } catch (verificationError) {
         console.error('SK Official invitation verification failed:', verificationError);
-        if (active) {
+        if (active && !sessionResolved) {
+          sessionResolved = true;
           setInviteStatus('invalid');
           setError(
             !window.location.hash && verificationError instanceof Error && verificationError.message === INVALID_INVITE_MESSAGE
@@ -115,6 +165,7 @@ function SetupForm() {
                 ? verificationError.message
                 : 'Unable to verify this invitation. Please reopen the invitation link.'
           );
+          setIsCheckingSession(false);
         }
       }
     };
@@ -122,6 +173,7 @@ function SetupForm() {
     void verifyInvite();
     return () => {
       active = false;
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
       subscription?.unsubscribe();
     };
   }, []);
@@ -270,6 +322,15 @@ function SetupForm() {
   const match = password.length > 0 && password === confirmPassword;
   const allPass = checks.minLength && checks.hasUpper && checks.hasLower && checks.hasNumber && checks.hasSymbol && match;
   const invalidMobileMessage = 'Mobile number must start with 09 and be exactly 11 digits.';
+
+  if (isCheckingSession) {
+    return (
+      <div role="status" className="min-h-screen flex items-center justify-center gap-3 bg-slate-50 text-sm font-semibold text-[#091d64]">
+        <Loader2 className="w-5 h-5 animate-spin" />
+        <span>Verifying secure link...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 grid lg:grid-cols-[2fr_3fr]">
@@ -476,7 +537,12 @@ function SetupForm() {
 
 export default function OfficialSetupPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-sm text-slate-500">Loading...</div>}>
+    <Suspense fallback={
+      <div role="status" className="min-h-screen flex items-center justify-center gap-3 bg-slate-50 text-sm font-semibold text-[#091d64]">
+        <Loader2 className="w-5 h-5 animate-spin" />
+        <span>Verifying secure link...</span>
+      </div>
+    }>
       <SetupForm />
     </Suspense>
   );
