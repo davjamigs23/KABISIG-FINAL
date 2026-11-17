@@ -485,7 +485,7 @@ function SetupForm() {
                   </div>
                 </label>
                 <select value={suffix} onChange={(e) => setSuffix(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600 cursor-pointer">
+                  className="w-full h-[42px] px-3.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600 cursor-pointer">
                   <option value="">Suffix — None</option>
                   <option value="Jr.">Jr.</option>
                   <option value="Sr.">Sr.</option>

@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 
 export interface ProgramTrendPoint {
   label: string;
-  programs: number;
   participants: number;
 }
 
@@ -74,7 +73,7 @@ export default function ProgramTrendD3({ data }: ProgramTrendD3Props) {
       <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
         <div>
           <CardTitle className="text-[#091d64]">Participation Trend</CardTitle>
-          <p className="mt-1 text-[10px] font-medium text-slate-400">Custom program analytics</p>
+          <p className="mt-1 text-[10px] font-medium text-slate-400">Recorded event attendance by day over the last 30 days</p>
         </div>
         <span className="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700">D3</span>
       </CardHeader>

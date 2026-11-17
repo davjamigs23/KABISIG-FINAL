@@ -233,6 +233,7 @@ useEffect(() => {
   const [allOfficialsRoster, setAllOfficialsRoster] = useState<any[]>([]);
   const [allOfficialsLoading, setAllOfficialsLoading] = useState(false);
   const [allOfficialsError, setAllOfficialsError] = useState<string | null>(null);
+  const [allOfficialsSearch, setAllOfficialsSearch] = useState('');
 
   const normalizedInviteOfficialEmail = inviteOfficialEmail.trim().toLowerCase();
   const pendingOfficialInvites = Array.isArray(roleCapacity?.officials)
@@ -427,6 +428,7 @@ useEffect(() => {
     setShowAllOfficialsModal(true);
     setAllOfficialsRoster([]);
     setAllOfficialsError(null);
+    setAllOfficialsSearch('');
     setAllOfficialsLoading(true);
     try {
       if (!kabisigApi.getToken()) {
@@ -485,8 +487,8 @@ useEffect(() => {
   const chartBarangayData = sortedBarangays.map(b => {
     const liveRow = federationRows.find((row: any) => row.id === b.id);
     const registeredYouth = toNumber(liveRow?.registered_youth ?? b.youthPopulation);
-    const totalBudget = toNumber(liveRow?.budget_allocated ?? b.totalBudget);
-    const spentBudget = toNumber(liveRow?.budget_spent ?? b.spentBudget);
+    const totalBudget = toNumber(liveRow?.aip_budget ?? liveRow?.budget_allocated ?? b.totalBudget);
+    const spentBudget = toNumber(liveRow?.actual_spent ?? liveRow?.budget_spent ?? b.spentBudget);
 
     return {
       id: b.id,
@@ -500,14 +502,10 @@ useEffect(() => {
     };
   });
 
-  const programTrendData = chartBarangayData.map((item) => {
-    const brgyPrograms = programs.filter(p => (p as any).tenant_id === item.id || (p as any).barangayId === item.id);
-    return {
-      label: item.name,
-      programs: federationRows.find((row: any) => row.id === item.id)?.active_programs ?? (brgyPrograms.length || item.activePrograms),
-      participants: item.registeredYouth,
-    };
-  });
+  const participationTrendData = (federationAnalytics?.participation_trend || []).map((point: any) => ({
+    label: String(point.date),
+    participants: toNumber(point.attendees),
+  }));
 
   const budgetColors = ['#091d64', '#2563eb', '#059669', '#d97706', '#7c3aed', '#db2777'];
   const pieBudgetData = (federationAnalytics?.budget_by_category || []).map((item: any, index: number) => ({
@@ -1739,7 +1737,7 @@ useEffect(() => {
 
               </div>
 
-              <ProgramTrendD3 data={programTrendData} />
+              <ProgramTrendD3 data={participationTrendData} />
 
               {/* DETAILED BARANGAYS COMPARISON TABLE */}
               <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-2xs space-y-4">
@@ -2289,6 +2287,17 @@ useEffect(() => {
               </button>
             </div>
             <div className="space-y-3 overflow-y-auto p-5">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="search"
+                  value={allOfficialsSearch}
+                  onChange={(event) => setAllOfficialsSearch(event.target.value)}
+                  placeholder="Search barangays or officials..."
+                  aria-label="Search barangays or officials"
+                  className="w-full rounded-lg border border-slate-200 py-2.5 pl-9 pr-3 text-xs focus:border-[#091d64] focus:outline-none focus:ring-1 focus:ring-[#091d64]"
+                />
+              </div>
               {allOfficialsLoading && (
                 <div className="flex items-center justify-center gap-2 py-12 text-sm text-slate-500">
                   <Loader2 className="h-4 w-4 animate-spin" /> Loading all Barangay officials…
@@ -2299,8 +2308,22 @@ useEffect(() => {
                   {allOfficialsError}
                 </div>
               )}
-              {!allOfficialsLoading && !allOfficialsError && sortedBarangays.map((barangay) => {
-                const members = allOfficialsRoster.filter((official) => official.tenant_id === barangay.id);
+              {!allOfficialsLoading && !allOfficialsError && sortedBarangays.filter((barangay) => {
+                const search = allOfficialsSearch.trim().toLowerCase();
+                if (!search || barangay.name.toLowerCase().includes(search)) return true;
+                return allOfficialsRoster.some((official) =>
+                  official.tenant_id === barangay.id
+                  && [official.full_name, official.email, official.official_role, official.position]
+                    .some((value) => String(value || '').toLowerCase().includes(search))
+                );
+              }).map((barangay) => {
+                const search = allOfficialsSearch.trim().toLowerCase();
+                const barangayMatches = !search || barangay.name.toLowerCase().includes(search);
+                const members = allOfficialsRoster.filter((official) =>
+                  official.tenant_id === barangay.id
+                  && (barangayMatches || [official.full_name, official.email, official.official_role, official.position]
+                    .some((value) => String(value || '').toLowerCase().includes(search)))
+                );
                 const chairpersons = members.filter((official) => Number(official.role_id) === 2);
                 const skOfficials = members.filter((official) => Number(official.role_id) === 3);
                 const kagawad = skOfficials.filter((official) => String(official.official_role || '').toLowerCase().includes('kagawad'));
@@ -2312,24 +2335,24 @@ useEffect(() => {
                       Barangay {barangay.name}
                     </h4>
                     <div className="space-y-3 text-xs">
-                      <div>
+                      {(!search || barangayMatches || chairpersons.length > 0) && <div>
                         <p className="mb-1 font-bold text-slate-600">SK Chairperson</p>
                         <div className="flex flex-wrap gap-2">
-                          {chairpersons.length ? chairpersons.map(renderAllOfficial) : (
+                          {chairpersons.length ? chairpersons.map(renderAllOfficial) : !search ? (
                             <span className="text-slate-400">Pending / Unassigned</span>
-                          )}
+                          ) : null}
                         </div>
-                      </div>
+                      </div>}
                       {[
                         { label: 'SK Kagawad', people: kagawad },
                         { label: 'SK Secretary', people: secretaries },
                         { label: 'SK Treasurer', people: treasurers },
-                      ].map((group) => (
+                      ].filter((group) => !search || barangayMatches || group.people.length > 0).map((group) => (
                         <div key={group.label}>
                           <p className="mb-1 font-bold text-slate-600">{group.label}</p>
                           <div className="flex flex-wrap gap-2">
                             {group.people.length ? group.people.map(renderAllOfficial) : (
-                              <span className="text-slate-400">None assigned</span>
+                              !search ? <span className="text-slate-400">None assigned</span> : null
                             )}
                           </div>
                         </div>

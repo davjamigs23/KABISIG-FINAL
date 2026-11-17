@@ -116,6 +116,19 @@ function getStandardCategory(cat: string): string {
   return cat;
 }
 
+function calculateAgeFromBirthdate(birthdate: string): number {
+  const birthDate = new Date(birthdate);
+  if (!birthdate || Number.isNaN(birthDate.getTime())) return 0;
+
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const monthDifference = today.getMonth() - birthDate.getMonth();
+  if (monthDifference < 0 || (monthDifference === 0 && today.getDate() < birthDate.getDate())) {
+    age -= 1;
+  }
+  return age;
+}
+
 function normalizeDocType(type: string): 'Resolutions' | 'Minutes' | 'Vouchers' | 'Reports' {
   const category = String(type || '').toLowerCase();
   if (category.includes('resolution') || category.includes('ordinance')) return 'Resolutions';
@@ -222,7 +235,7 @@ export default function OfficialPages({
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
   const [lightboxImg, setLightboxImg] = useState<string | null>(null);
   const [popupMsg, setPopupMsg] = useState<{ title: string; text: string; type: 'success' | 'error' } | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<{ id: string; type: 'budget' | 'expense' | 'program' } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; type: 'budget' | 'expense' | 'program' | 'inventory' } | null>(null);
   const barangayLogo = currentTenant?.logo || DEFAULT_BARANGAY_LOGOS[currentTenant?.name || ''] || '';
 
   // --- Local UI state mirrors backend-backed shared records ---
@@ -483,6 +496,7 @@ export default function OfficialPages({
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [showResModal, setShowResModal] = useState(false);
   const [showInvModal, setShowInvModal] = useState(false);
+  const [editingInventoryId, setEditingInventoryId] = useState<string | null>(null);
   const [previewDoc, setPreviewDoc] = useState<DocumentRecord | null>(null);
 
   // Form states
@@ -1412,6 +1426,14 @@ export default function OfficialPages({
       await handleDeleteBudget(pendingDelete.id);
     } else if (pendingDelete.type === 'expense') {
       await handleDeleteExpense(pendingDelete.id);
+    } else if (pendingDelete.type === 'inventory') {
+      try {
+        const result = await kabisigApi.deleteInventoryItem(pendingDelete.id);
+        if (!result.success) throw new Error(result.message || 'Inventory item could not be deleted.');
+        setInventory(previous => previous.filter(item => item.id !== pendingDelete.id));
+      } catch (error: any) {
+        setPopupMsg({ title: 'Delete Failed', text: error.message || 'Inventory item could not be deleted.', type: 'error' });
+      }
     } else {
       const program = programs.find(item => item.id === pendingDelete.id);
       if (!program) {
@@ -1426,12 +1448,16 @@ export default function OfficialPages({
     ? {
         title: confirmDelete.type === 'budget'
           ? 'Delete Budget Allocation?'
-          : confirmDelete.type === 'expense' ? 'Delete Expense?' : 'Delete Program?',
+          : confirmDelete.type === 'expense'
+            ? 'Delete Expense?'
+            : confirmDelete.type === 'inventory' ? 'Delete Inventory Item?' : 'Delete Program?',
         message: confirmDelete.type === 'budget'
           ? `Delete the ${budgetOptions.find(budget => budget.id === confirmDelete.id)?.category || 'selected'} allocation? Allocations with expenses cannot be deleted.`
           : confirmDelete.type === 'expense'
             ? `Delete the expense for ${expenses.find(expense => expense.id === confirmDelete.id)?.supplier || expenses.find(expense => expense.id === confirmDelete.id)?.programTitle || 'selected record'}?`
-            : `Delete "${programs.find(program => program.id === confirmDelete.id)?.title || 'selected program'}"? This action cannot be undone.`,
+            : confirmDelete.type === 'inventory'
+              ? `Delete "${inventory.find(item => item.id === confirmDelete.id)?.item || 'selected asset'}"? This action cannot be undone.`
+              : `Delete "${programs.find(program => program.id === confirmDelete.id)?.title || 'selected program'}"? This action cannot be undone.`,
         type: 'info',
         confirmLabel: 'OK',
         cancelLabel: 'Cancel',
@@ -1474,23 +1500,53 @@ export default function OfficialPages({
     if (!invForm.category) return setPopupMsg({ title: 'Category Required', text: 'Asset category is required.', type: 'error' });
     if (!invForm.condition) return setPopupMsg({ title: 'Condition Required', text: 'Asset condition is required.', type: 'error' });
     try {
-      const res = await kabisigApi.addInventoryItem({
+      const payload = {
         item_name: invForm.item,
         category: invForm.category,
-        condition: invForm.condition === 'Needs Repair' ? 'Fair' : invForm.condition,
+        condition: invForm.condition,
         quantity: invForm.quantity,
         unit: 'pcs',
         unit_cost: invForm.cost,
         location: invForm.location,
         photo_url: invForm.photo_url,
-      });
+      };
+      const res = editingInventoryId
+        ? await kabisigApi.updateInventoryItem(editingInventoryId, payload)
+        : await kabisigApi.addInventoryItem(payload);
       if (!res.success || !res.data) throw new Error(res.message || 'Could not save asset.');
       const row = res.data;
-      setInventory(prev => [{ id: row.id, item: row.item_name, category: row.category, condition: row.condition, quantity: Number(row.quantity) || 0, cost: Number(row.unit_cost) || 0, location: row.location || "" }, ...prev]);
+      const savedItem = {
+        id: row.id,
+        item: row.item_name,
+        category: row.category,
+        condition: row.condition,
+        quantity: Number(row.quantity) || 0,
+        cost: Number(row.unit_cost) || 0,
+        location: row.location || '',
+        photo_url: row.photo_url || '',
+      };
+      setInventory(previous => editingInventoryId
+        ? previous.map(item => item.id === editingInventoryId ? savedItem : item)
+        : [savedItem, ...previous]);
       setShowInvModal(false);
+      setEditingInventoryId(null);
     } catch (error: any) {
-      setPopupMsg({ title: 'Save Failed', text: error.message || 'Could not save asset.', type: 'error' });
+      setPopupMsg({ title: editingInventoryId ? 'Update Failed' : 'Save Failed', text: error.message || 'Could not save asset.', type: 'error' });
     }
+  };
+
+  const openInventoryEditor = (item: any) => {
+    setEditingInventoryId(item.id);
+    setInvForm({
+      item: item.item,
+      category: item.category,
+      quantity: item.quantity,
+      condition: item.condition,
+      cost: item.cost,
+      location: item.location,
+      photo_url: item.photo_url || '',
+    });
+    setShowInvModal(true);
   };
 
   const handleOpenFeedbackResponse = (fb: FeedbackRecord) => {
@@ -5097,7 +5153,16 @@ export default function OfficialPages({
                           <h4 className="text-2xl font-black text-emerald-700 mt-1">{localDocs.filter(d => d.status === 'Approved').length}</h4>
                         </div>
                         <div className="p-4 bg-slate-50 border border-slate-100 rounded-xl">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase">Active Drafts</span>
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-400 uppercase">
+                            Active Drafts
+                            <span
+                              className="text-slate-400"
+                              title="Documents created but not yet submitted for approval."
+                              aria-label="Documents created but not yet submitted for approval."
+                            >
+                              <Info className="h-3 w-3" />
+                            </span>
+                          </span>
                           <h4 className="text-2xl font-black text-slate-700 mt-1">{localDocs.filter(d => d.status === 'Draft').length}</h4>
                         </div>
                       </div>
@@ -5824,7 +5889,7 @@ export default function OfficialPages({
                   <p className="text-xs text-slate-400 mt-1">Track physical goods, condition statuses, and storage locations.</p>
                 </div>
                 <button 
-                  onClick={() => { setInvForm({ item: '', category: '', quantity: 0, condition: '', cost: 0, location: '', photo_url: '' }); setShowInvModal(true); }}
+                  onClick={() => { setEditingInventoryId(null); setInvForm({ item: '', category: '', quantity: 0, condition: '', cost: 0, location: '', photo_url: '' }); setShowInvModal(true); }}
                   className="px-4 py-2 bg-[#091d64] hover:bg-opacity-95 text-white font-bold rounded-lg transition-all text-xs flex items-center gap-1.5 cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
@@ -5844,6 +5909,7 @@ export default function OfficialPages({
                       <th className="px-6 py-4 text-center whitespace-nowrap">Condition</th>
                       <th className="px-6 py-4 text-right whitespace-nowrap">Unit cost</th>
                       <th className="px-6 py-4 whitespace-nowrap">Storage Location</th>
+                      <th className="px-6 py-4 whitespace-nowrap">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs font-medium bg-white">
@@ -5868,6 +5934,16 @@ export default function OfficialPages({
                         </td>
                         <td className="px-6 py-4 text-right font-mono text-slate-800 font-bold whitespace-nowrap">₱{item.cost.toLocaleString()}</td>
                         <td className="px-6 py-4 text-slate-600 font-bold whitespace-nowrap">{item.location}</td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center gap-1">
+                            <button type="button" onClick={() => openInventoryEditor(item)} className="rounded p-2 text-blue-700 hover:bg-blue-50" aria-label={`Edit ${item.item}`} title="Edit asset">
+                              <Edit className="h-4 w-4" />
+                            </button>
+                            <button type="button" onClick={() => setConfirmDelete({ id: item.id, type: 'inventory' })} className="rounded p-2 text-rose-700 hover:bg-rose-50" aria-label={`Delete ${item.item}`} title="Delete asset">
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -6348,7 +6424,7 @@ export default function OfficialPages({
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl w-full max-w-[95vw] md:max-w-2xl mx-4 my-8 max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-100 animate-in fade-in zoom-in duration-200 text-left text-xs font-semibold">
             <div className="bg-[#091d64] text-white p-6 border-b border-slate-100">
-              <h3 className="font-sans font-bold text-lg">Register Council Property Asset</h3>
+              <h3 className="font-sans font-bold text-lg">{editingInventoryId ? 'Edit Council Property Asset' : 'Register Council Property Asset'}</h3>
               <p className="text-xs text-slate-300 mt-1">Input unit cost, quantity levels, and storage details of SK assets.</p>
             </div>
             <div className="p-6 space-y-4">
@@ -6359,21 +6435,17 @@ export default function OfficialPages({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Category Group</label>
-                  <select required value={invForm.category} onChange={(e)=>setInvForm({...invForm, category: e.target.value})} className="w-full p-2 border rounded text-xs">
-                    <option value="" disabled>Select a Category</option>
-                    <option value="Sports Equipment">Sports Equipment</option>
-                    <option value="Office IT Equipment">Office IT Equipment</option>
-                    <option value="Event Furniture">Event Furniture</option>
-                    <option value="Audio-Visual">Audio-Visual</option>
-                  </select>
+                  <input required value={invForm.category} onChange={(e)=>setInvForm({...invForm, category: e.target.value})} className="w-full p-2 border rounded text-xs" placeholder="e.g. Sports Equipment" />
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Condition Status</label>
                   <select required value={invForm.condition} onChange={(e)=>setInvForm({...invForm, condition: e.target.value})} className="w-full p-2 border rounded text-xs">
                     <option value="" disabled>Select a Status</option>
+                    <option value="New">New</option>
                     <option value="Good">Good Condition</option>
-                    <option value="Needs Repair">Needs Repair</option>
+                    <option value="Fair">Fair</option>
                     <option value="Damaged">Damaged</option>
+                    <option value="Disposed">Disposed</option>
                   </select>
                 </div>
               </div>
@@ -6410,8 +6482,8 @@ export default function OfficialPages({
                 <input type="text" value={invForm.location} onChange={(e)=>setInvForm({...invForm, location: e.target.value})} className="w-full p-2 border rounded text-xs" required />
               </div>
               <div className="flex justify-end gap-2 border-t pt-4">
-                <button onClick={()=>setShowInvModal(false)} className="px-4 py-2 border rounded text-xs">Close</button>
-                <button onClick={handleRegisterInventorySubmit} className="px-5 py-2 bg-[#091d64] text-white rounded font-bold text-xs">Register Asset</button>
+                <button onClick={()=>{ setShowInvModal(false); setEditingInventoryId(null); }} className="px-4 py-2 border rounded text-xs">Close</button>
+                <button onClick={handleRegisterInventorySubmit} className="px-5 py-2 bg-[#091d64] text-white rounded font-bold text-xs">{editingInventoryId ? 'Save Changes' : 'Register Asset'}</button>
               </div>
             </div>
           </div>
@@ -6839,11 +6911,16 @@ export default function OfficialPages({
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Birthdate</label>
-                  <input readOnly type="text" value={(selectedYouthProfile as any).birthdate ? new Date((selectedYouthProfile as any).birthdate).toLocaleDateString() : 'Not specified'} className="w-full p-2 border border-slate-200 rounded text-xs" />
+                  <input
+                    readOnly
+                    type="date"
+                    value={String((selectedYouthProfile as any).birthdate || '').slice(0, 10)}
+                    className="w-full p-2 border border-slate-200 rounded text-xs"
+                  />
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Age</label>
-                  <input readOnly type="text" value={(selectedYouthProfile as any).birthdate ? String(Math.floor((Date.now() - new Date((selectedYouthProfile as any).birthdate).getTime()) / 31557600000)) : (selectedYouthProfile as any).age || 'Not specified'} className="w-full p-2 border border-slate-200 rounded text-xs" />
+                  <input readOnly type="text" value={(selectedYouthProfile as any).birthdate ? String(calculateAgeFromBirthdate(String((selectedYouthProfile as any).birthdate))) : (selectedYouthProfile as any).age || 'Not specified'} className="w-full p-2 border border-slate-200 rounded text-xs" />
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Complete Address</label>

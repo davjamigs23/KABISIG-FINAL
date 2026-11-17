@@ -49,7 +49,7 @@ router.get('/expenses', async (_req: Request, res: Response): Promise<void> => {
 router.get('/demographics', async (_req: Request, res: Response): Promise<void> => {
   const { data: profiles, error } = await supabaseAdmin
     .from('resident_profile')
-    .select('sex, birthdate, educational_status, employment_status, users!resident_profile_user_id_fkey!inner(role_id, status)')
+    .select('sex, birthdate, educational_status, employment_status, is_pwd, is_solo_parent, youth_sector, scholar_status, users!resident_profile_user_id_fkey!inner(role_id, status)')
     .eq('users.role_id', 4)
     .eq('users.status', 'active');
 
@@ -72,16 +72,14 @@ router.get('/demographics', async (_req: Request, res: Response): Promise<void> 
 
   let pwdCount = 0;
   let soloParentCount = 0;
-  let profileScholarCount = 0;
   const sexCounts: Record<string, number> = {};
   const eduCounts: Record<string, number> = {};
   const empCounts: Record<string, number> = {};
   const ageBuckets = { '15-17': 0, '18-24': 0, '25-30': 0 };
 
   for (const p of list as any[]) {
-    if ((p as any).is_pwd || (p as any).youth_sector === 'PWD') pwdCount++;
-    if ((p as any).is_solo_parent || (p as any).youth_sector === 'Solo Parent') soloParentCount++;
-    if ((p as any).scholar_status === 'Scholar') profileScholarCount++;
+    if (p.is_pwd || p.youth_sector === 'PWD') pwdCount++;
+    if (p.is_solo_parent || p.youth_sector === 'Solo Parent') soloParentCount++;
     const s = p.sex || 'Unspecified';
     sexCounts[s] = (sexCounts[s] || 0) + 1;
 
@@ -97,9 +95,36 @@ router.get('/demographics', async (_req: Request, res: Response): Promise<void> 
     else if (age >= 25 && age <= 30) ageBuckets['25-30']++;
   }
 
-  const { count: attendeeCount } = await supabaseAdmin.from('program_attendance').select('user_id', { count: 'exact', head: true });
-  const { count: scholarCount } = await supabaseAdmin.from('resident_profile').select('user_id', { count: 'exact', head: true }).or('scholar_status.eq.Scholar,scholar_status.eq.Yes,is_scholar.eq.true');
-  const { count: resolutionCount } = await supabaseAdmin.from('documents').select('id', { count: 'exact', head: true }).eq('document_type', 'Resolution').eq('status', 'approved');
+  const [
+    { count: attendeeCount, error: attendanceError },
+    { count: scholarCount, error: scholarError },
+    { count: resolutionCount, error: resolutionError },
+  ] = await Promise.all([
+    supabaseAdmin.from('program_attendance').select('user_id', { count: 'exact', head: true }),
+    supabaseAdmin
+      .from('resident_profile')
+      .select('user_id, users!resident_profile_user_id_fkey!inner(role_id, status)', { count: 'exact', head: true })
+      .eq('scholar_status', 'Scholar')
+      .eq('users.role_id', 4)
+      .eq('users.status', 'active'),
+    supabaseAdmin
+      .from('documents')
+      .select('id', { count: 'exact', head: true })
+      .eq('document_type', 'Resolution')
+      .eq('status', 'approved'),
+  ]);
+  if (attendanceError) {
+    sendError(res, `Failed to count program attendees: ${attendanceError.message}`, 500);
+    return;
+  }
+  if (scholarError) {
+    sendError(res, `Failed to count registered youth scholars: ${scholarError.message}`, 500);
+    return;
+  }
+  if (resolutionError) {
+    sendError(res, `Failed to count approved resolutions: ${resolutionError.message}`, 500);
+    return;
+  }
 
   sendSuccess(
     res,

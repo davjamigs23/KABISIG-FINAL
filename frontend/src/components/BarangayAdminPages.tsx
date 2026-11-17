@@ -235,7 +235,25 @@ export default function BarangayAdminPages({
   const [inventory, setInventory] = useState<any[]>([]);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [lightboxImg, setLightboxImg] = useState<string | null>(null);
-  useEffect(() => { if (activeMenu === 'budget' && inventory.length === 0) { kabisigApi.getInventory().then((rows: any[]) => setInventory(Array.isArray(rows) ? rows : [])).catch(() => {}); } }, [activeMenu, inventory.length]);
+  useEffect(() => {
+    if (activeMenu !== 'budget') return;
+    let isMounted = true;
+    const refreshInventory = () => {
+      kabisigApi.getInventory()
+        .then((rows: any[]) => {
+          if (isMounted) setInventory(Array.isArray(rows) ? rows : []);
+        })
+        .catch((error: unknown) => {
+          console.error('Failed to refresh the Barangay inventory:', error);
+        });
+    };
+    refreshInventory();
+    const intervalId = window.setInterval(refreshInventory, 30000);
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, [activeMenu]);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [reportSubTab, setReportSubTab] = useState<'executive'|'attendance'|'accomplishments'|'beneficiaries'|'demographics'|'financial'|'compliance'>('attendance');

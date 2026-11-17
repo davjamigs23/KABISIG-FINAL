@@ -98,6 +98,7 @@ export default function ViewerPages({
   const [publicOfficials, setPublicOfficials] = useState<PublicOfficialsGroup[] | null>(null);
   const [publicOfficialsLoading, setPublicOfficialsLoading] = useState(false);
   const [publicOfficialsError, setPublicOfficialsError] = useState<string | null>(null);
+  const [expandedOfficialBarangay, setExpandedOfficialBarangay] = useState<string | null>(null);
 
   // P13: Program budget transparency state
   const [expandedBudget, setExpandedBudget] = useState<string | null>(null);
@@ -758,44 +759,59 @@ export default function ViewerPages({
                     </div>
                   )}
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-                    {publicOfficials?.map((group) => (
-                      <section key={group.barangay_name} className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-                        <h4 className="px-5 py-4 bg-slate-50 border-b border-slate-100 text-sm font-extrabold text-[#091d64]">
-                          Barangay {group.barangay_name}
-                        </h4>
-                        <div className="p-4 space-y-3">
-                          {group.officials.length === 0 ? (
-                            <p className="text-xs text-slate-500 py-2">No active officials listed.</p>
-                          ) : [...group.officials]
-                            .sort((a, b) => getOfficialHierarchyRank(a) - getOfficialHierarchyRank(b))
-                            .map((official) => (
-                            <div key={official.id} className="flex items-center gap-3 rounded-xl border border-slate-100 p-3">
-                              <div className="h-11 w-11 rounded-full bg-blue-50 text-[#091d64] flex items-center justify-center overflow-hidden shrink-0">
-                                {official.avatar_url ? (
-                                  <img
-                                    src={official.avatar_url}
-                                    alt={`${official.full_name || 'Official'} avatar`}
-                                    loading="lazy"
-                                    className="h-full w-full object-cover"
-                                  />
-                                ) : (
-                                  <UserRound className="h-5 w-5" aria-hidden="true" />
-                                )}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-sm font-bold text-slate-800 break-words">
-                                  {formatOfficialName(official)}
-                                </p>
-                                <p className="text-xs font-semibold text-slate-500">
-                                  {official.role_id === 2 ? 'SK Chairperson' : official.official_role || official.position || 'SK Official'}
-                                </p>
-                              </div>
+                  <div className="space-y-3">
+                    {publicOfficials?.map((group) => {
+                      const isExpanded = expandedOfficialBarangay === group.barangay_name;
+                      return (
+                        <section key={group.barangay_name} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
+                          <div className="flex items-center justify-between gap-3 px-5 py-4">
+                            <h4 className="text-sm font-extrabold text-[#091d64]">Barangay {group.barangay_name}</h4>
+                            <button
+                              type="button"
+                              onClick={() => setExpandedOfficialBarangay(isExpanded ? null : group.barangay_name)}
+                              aria-expanded={isExpanded}
+                              className="shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-[11px] font-bold text-[#091d64] hover:bg-blue-50"
+                            >
+                              {isExpanded ? 'Hide Officials' : 'View Officials'}
+                            </button>
+                          </div>
+                          {isExpanded && (
+                            <div className="border-t border-slate-100 bg-slate-50/50 p-4">
+                              {group.officials.length === 0 ? (
+                                <p className="py-2 text-xs text-slate-500">No active officials listed.</p>
+                              ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  {[...group.officials]
+                                    .sort((a, b) => getOfficialHierarchyRank(a) - getOfficialHierarchyRank(b))
+                                    .map((official) => (
+                                      <div key={official.id} className="flex items-center gap-3 rounded-xl border border-slate-100 bg-white p-3">
+                                        <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-50 text-[#091d64]">
+                                          {official.avatar_url ? (
+                                            <img
+                                              src={official.avatar_url}
+                                              alt={`${official.full_name || 'Official'} avatar`}
+                                              loading="lazy"
+                                              className="h-full w-full object-cover"
+                                            />
+                                          ) : (
+                                            <UserRound className="h-5 w-5" aria-hidden="true" />
+                                          )}
+                                        </div>
+                                        <div className="min-w-0">
+                                          <p className="break-words text-sm font-bold text-slate-800">{formatOfficialName(official)}</p>
+                                          <p className="text-xs font-semibold text-slate-500">
+                                            {official.role_id === 2 ? 'SK Chairperson' : official.official_role || official.position || 'SK Official'}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    ))}
+                                </div>
+                              )}
                             </div>
-                          ))}
-                        </div>
-                      </section>
-                    ))}
+                          )}
+                        </section>
+                      );
+                    })}
                   </div>
                 </div>
               )}

@@ -1380,7 +1380,7 @@ export default function PublicPages({
                     <div className="space-y-4">
                       <div>
                         <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans">
-                          KABISIG Email
+                          Email
                         </label>
                         <div className="relative w-full">
                           <input
@@ -1389,8 +1389,8 @@ export default function PublicPages({
                             autoComplete="off"
                             value={signUpForm.email}
                             onChange={(e) => setSignUpForm({...signUpForm, email: e.target.value})}
-                            className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
-                            placeholder=""
+                            className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder:text-slate-400 placeholder:font-normal focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
+                            placeholder="Enter Email"
                             required
                           />
                           <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
@@ -1408,8 +1408,8 @@ export default function PublicPages({
                             autoComplete="new-password"
                             value={signUpForm.password}
                             onChange={(e) => setSignUpForm({...signUpForm, password: e.target.value})}
-                            className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
-                            placeholder=""
+                            className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder:text-slate-400 placeholder:font-normal focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
+                            placeholder="Enter Password"
                             required
                           />
                           <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />

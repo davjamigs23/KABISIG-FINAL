@@ -453,7 +453,17 @@ class KabisigApiClient {
     });
   }
 
-    
+  async updateInventoryItem(id: string, payload: any): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request(`/inventory/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async deleteInventoryItem(id: string): Promise<{ success: boolean; message?: string }> {
+    return await this.request(`/inventory/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
   async notifyPasswordChange(email: string): Promise<{ success: boolean; message?: string }> {
     return this.request<any>('/auth/password-changed-notification', { method: 'POST', body: JSON.stringify({ email }) });
   }

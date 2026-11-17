@@ -74,4 +74,84 @@ router.post(
   }
 );
 
+router.put(
+  '/:id',
+  authenticateUser,
+  requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'),
+  async (req: Request, res: Response): Promise<void> => {
+    const user = (req as AuthRequest).user!;
+    const idResult = z.string().uuid().safeParse(req.params.id);
+    if (!idResult.success) {
+      sendError(res, 'A valid inventory item ID is required.', 400);
+      return;
+    }
+
+    if (user.role !== 'SUPER_ADMIN' && !user.tenant_id) {
+      sendError(res, 'User has no assigned Barangay tenant.', 400);
+      return;
+    }
+
+    const parsed = InventoryItemSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendError(res, 'Validation failed', 400, parsed.error.flatten().fieldErrors);
+      return;
+    }
+
+    let query = supabaseAdmin
+      .from('inventory')
+      .update({ ...parsed.data, updated_at: new Date().toISOString() })
+      .eq('id', idResult.data);
+    if (user.role !== 'SUPER_ADMIN') query = query.eq('tenant_id', user.tenant_id!);
+
+    const { data, error } = await query.select().maybeSingle();
+    if (error) {
+      sendError(res, `Failed to update inventory item: ${error.message}`, 500);
+      return;
+    }
+    if (!data) {
+      sendError(res, 'Inventory item not found in your Barangay.', 404);
+      return;
+    }
+
+    sendSuccess(res, data, 'Inventory item updated successfully.');
+  }
+);
+
+router.delete(
+  '/:id',
+  authenticateUser,
+  requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'),
+  async (req: Request, res: Response): Promise<void> => {
+    const user = (req as AuthRequest).user!;
+    const idResult = z.string().uuid().safeParse(req.params.id);
+    if (!idResult.success) {
+      sendError(res, 'A valid inventory item ID is required.', 400);
+      return;
+    }
+
+    if (user.role !== 'SUPER_ADMIN' && !user.tenant_id) {
+      sendError(res, 'User has no assigned Barangay tenant.', 400);
+      return;
+    }
+
+    let query = supabaseAdmin
+      .from('inventory')
+      .delete()
+      .eq('id', idResult.data);
+    if (user.role !== 'SUPER_ADMIN') query = query.eq('tenant_id', user.tenant_id!);
+
+    const { data, error } = await query.select('id').maybeSingle();
+    if (error) {
+      sendError(res, `Failed to delete inventory item: ${error.message}`, 500);
+      return;
+    }
+    if (!data) {
+      sendError(res, 'Inventory item not found in your Barangay.', 404);
+      return;
+    }
+
+    sendSuccess(res, data, 'Inventory item deleted successfully.');
+  }
+);
+
 export default router;

@@ -301,10 +301,14 @@ router.get(
     });
 
     const currentYear = new Date().getFullYear();
-    const { data: allBudgets } = await supabaseAdmin
+    const { data: allBudgets, error: budgetError } = await supabaseAdmin
       .from('budget')
-      .select('tenant_id, category, allocated_amount, remaining_amount')
+      .select('tenant_id, category, allocated_amount')
       .eq('fiscal_year', currentYear);
+    if (budgetError) {
+      sendError(res, `Failed to load federation AIP budgets: ${budgetError.message}`, 500);
+      return;
+    }
 
     const budgetPerBarangay: Record<string, { allocated: number; spent: number }> = {};
     const budgetByCategory: Record<string, number> = {};
@@ -312,18 +316,41 @@ router.get(
     let cityTotalSpent = 0;
 
     allBudgets?.forEach((b) => {
-      const allocated = Number(b.allocated_amount);
-      const spent = allocated - Number(b.remaining_amount);
+      const allocated = Number(b.allocated_amount) || 0;
       cityTotalAllocated += allocated;
-      cityTotalSpent += spent;
       budgetByCategory[b.category] = (budgetByCategory[b.category] || 0) + allocated;
 
       const current = budgetPerBarangay[b.tenant_id] || { allocated: 0, spent: 0 };
       budgetPerBarangay[b.tenant_id] = {
         allocated: current.allocated + allocated,
-        spent: current.spent + spent,
+        spent: current.spent,
       };
     });
+
+    const expensePageSize = 1000;
+    for (let offset = 0; ; offset += expensePageSize) {
+      const { data: expenseRows, error: expenseError } = await supabaseAdmin
+        .from('expense')
+        .select('id, tenant_id, gross_amount, expense_date')
+        .eq('status', 'approved')
+        .gte('expense_date', `${currentYear}-01-01`)
+        .lt('expense_date', `${currentYear + 1}-01-01`)
+        .order('expense_date', { ascending: true })
+        .order('id', { ascending: true })
+        .range(offset, offset + expensePageSize - 1);
+      if (expenseError) {
+        sendError(res, `Failed to load federation actual expenditures: ${expenseError.message}`, 500);
+        return;
+      }
+
+      for (const expense of expenseRows || []) {
+        const current = budgetPerBarangay[expense.tenant_id] || { allocated: 0, spent: 0 };
+        const spent = Number(expense.gross_amount) || 0;
+        budgetPerBarangay[expense.tenant_id] = { ...current, spent: current.spent + spent };
+        cityTotalSpent += spent;
+      }
+      if (!expenseRows || expenseRows.length < expensePageSize) break;
+    }
 
     const { data: cityPrograms } = await supabaseAdmin
       .from('program')
@@ -337,9 +364,43 @@ router.get(
       }
     });
 
-    const { count: cityAttendanceCount } = await supabaseAdmin
+    const { count: cityAttendanceCount, error: attendanceCountError } = await supabaseAdmin
       .from('program_attendance')
       .select('*', { count: 'exact', head: true });
+    if (attendanceCountError) {
+      sendError(res, `Failed to count federation program attendance: ${attendanceCountError.message}`, 500);
+      return;
+    }
+
+    const participationStart = new Date();
+    participationStart.setUTCHours(0, 0, 0, 0);
+    participationStart.setUTCDate(participationStart.getUTCDate() - 29);
+    const attendanceByDate: Record<string, number> = {};
+    for (let dayOffset = 0; dayOffset < 30; dayOffset += 1) {
+      const date = new Date(participationStart);
+      date.setUTCDate(date.getUTCDate() + dayOffset);
+      attendanceByDate[date.toISOString().slice(0, 10)] = 0;
+    }
+    const attendancePageSize = 1000;
+    for (let offset = 0; ; offset += attendancePageSize) {
+      const { data: attendanceRows, error: attendanceError } = await supabaseAdmin
+        .from('program_attendance')
+        .select('id, checked_in_at')
+        .gte('checked_in_at', participationStart.toISOString())
+        .order('checked_in_at', { ascending: true })
+        .order('id', { ascending: true })
+        .range(offset, offset + attendancePageSize - 1);
+      if (attendanceError) {
+        sendError(res, `Failed to load daily federation attendance: ${attendanceError.message}`, 500);
+        return;
+      }
+
+      for (const attendance of attendanceRows || []) {
+        const attendanceDate = attendance.checked_in_at.slice(0, 10);
+        attendanceByDate[attendanceDate] = (attendanceByDate[attendanceDate] || 0) + 1;
+      }
+      if (!attendanceRows || attendanceRows.length < attendancePageSize) break;
+    }
 
     const { data: allFeedbacks } = await supabaseAdmin
       .from('feedback')
@@ -362,8 +423,10 @@ router.get(
         sk_district: b.sk_district ?? null,
         registered_youth: youthPerBarangay[b.id] || 0,
         active_programs: programPerBarangay[b.id] || 0,
-        budget_allocated: (Number(b.allocated_budget) > 0 ? Number(b.allocated_budget) : bgyBudget.allocated),
+        budget_allocated: bgyBudget.allocated,
         budget_spent: bgyBudget.spent,
+        aip_budget: bgyBudget.allocated,
+        actual_spent: bgyBudget.spent,
         budget_utilization_pct: utilization,
       };
     });
@@ -378,12 +441,15 @@ router.get(
         citywide_totals: {
           total_barangays: loadedBarangays.length,
           total_registered_youth: youthCounts?.length || 0,
-          total_budget_allocated: loadedBarangays.reduce((sum, b) => sum + (Number(b.allocated_budget) > 0 ? Number(b.allocated_budget) : 0), 0) || cityTotalAllocated,
+          total_budget_allocated: cityTotalAllocated,
           total_budget_spent: cityTotalSpent,
           total_active_programs: Object.values(programPerBarangay).reduce((sum, count) => sum + count, 0),
           total_program_attendees: cityAttendanceCount || 0,
         },
         budget_by_category: Object.entries(budgetByCategory).map(([category, allocated]) => ({ category, allocated })),
+        participation_trend: Object.entries(attendanceByDate)
+          .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+          .map(([date, attendees]) => ({ date, attendees })),
         sentiment_overview: sentimentOverview,
         barangay_rankings: barangayMatrix,
       },
