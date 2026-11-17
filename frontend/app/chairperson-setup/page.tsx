@@ -459,11 +459,11 @@ function SetupForm() {
             </div>
 
             <div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-4">
                 <label className="block text-xs font-bold text-slate-900">First Name <span className="text-rose-500">*</span>
                   <div className="relative mt-1">
                     <input type="text" required value={firstName} onChange={(e) => setFirstName(e.target.value)}
-                      className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 placeholder:font-normal focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
+                      className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 font-normal placeholder-slate-400 placeholder:font-normal focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
                       placeholder="Enter your first name" />
                     <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   </div>
@@ -471,7 +471,7 @@ function SetupForm() {
                 <label className="block text-xs font-bold text-slate-900">Middle Name
                   <div className="relative mt-1">
                     <input type="text" value={middleName} onChange={(e) => setMiddleName(e.target.value)}
-                      className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 placeholder:font-normal focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
+                      className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 font-normal placeholder-slate-400 placeholder:font-normal focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
                       placeholder="Enter your middle name" />
                     <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   </div>
@@ -479,21 +479,23 @@ function SetupForm() {
                 <label className="block text-xs font-bold text-slate-900">Last Name <span className="text-rose-500">*</span>
                   <div className="relative mt-1">
                     <input type="text" required value={lastName} onChange={(e) => setLastName(e.target.value)}
-                      className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 placeholder:font-normal focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
+                      className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 font-normal placeholder-slate-400 placeholder:font-normal focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600"
                       placeholder="Enter your last name" />
                     <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   </div>
                 </label>
-                <select value={suffix} onChange={(e) => setSuffix(e.target.value)}
-                  className="w-full h-[42px] px-3.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600 cursor-pointer">
-                  <option value="">Suffix — None</option>
-                  <option value="Jr.">Jr.</option>
-                  <option value="Sr.">Sr.</option>
-                  <option value="II">II</option>
-                  <option value="III">III</option>
-                  <option value="IV">IV</option>
-                  <option value="V">V</option>
-                </select>
+                <label className="block text-xs font-bold text-slate-900">Suffix
+                  <select value={suffix} onChange={(e) => setSuffix(e.target.value)}
+                    className="mt-1 w-full h-[42px] px-3.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 font-normal focus:outline-none focus:ring-1 focus:ring-blue-600 focus:border-blue-600 cursor-pointer">
+                    <option value="">Suffix — None</option>
+                    <option value="Jr.">Jr.</option>
+                    <option value="Sr.">Sr.</option>
+                    <option value="II">II</option>
+                    <option value="III">III</option>
+                    <option value="IV">IV</option>
+                    <option value="V">V</option>
+                  </select>
+                </label>
               </div>
             </div>
 

@@ -1,10 +1,56 @@
 import express from 'express';
 import type { Request, Response } from 'express';
+import { z } from 'zod';
 import { supabaseAdmin } from '../services/supabase.service.js';
 import { resolveAvatarUrl } from '../services/avatar.service.js';
 import { sendSuccess, sendError } from '../utils/response.js';
+import { sendEmail } from '../utils/email.js';
 
 const router = express.Router();
+const requestCopySchema = z.object({
+  requester_name: z.string().trim().min(2).max(100),
+  requester_email: z.string().trim().email().max(254),
+  message: z.string().trim().max(1000).optional().default(''),
+}).strict();
+const requestCopyLimit = 5;
+const requestCopyWindowMs = 15 * 60 * 1000;
+const requestCopyAttempts = new Map<string, { count: number; resetAt: number }>();
+
+function consumeRequestCopyLimit(ipAddress: string, now: number): number {
+  for (const [key, bucket] of requestCopyAttempts) {
+    if (bucket.resetAt <= now) requestCopyAttempts.delete(key);
+  }
+
+  let bucket = requestCopyAttempts.get(ipAddress);
+  if (!bucket) {
+    if (requestCopyAttempts.size >= 1000) {
+      const oldestKey = requestCopyAttempts.keys().next().value;
+      if (oldestKey) requestCopyAttempts.delete(oldestKey);
+    }
+    bucket = { count: 0, resetAt: now + requestCopyWindowMs };
+    requestCopyAttempts.set(ipAddress, bucket);
+  }
+
+  if (bucket.count >= requestCopyLimit) {
+    return Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
+  }
+
+  bucket.count += 1;
+  return 0;
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, character => {
+    switch (character) {
+      case '&': return '&amp;';
+      case '<': return '&lt;';
+      case '>': return '&gt;';
+      case '"': return '&quot;';
+      case "'": return '&#39;';
+      default: return character;
+    }
+  });
+}
 
 // GET /api/public/announcements — published only, all barangays
 router.get('/announcements', async (_req: Request, res: Response): Promise<void> => {
@@ -352,6 +398,87 @@ router.get('/documents', async (_req: Request, res: Response): Promise<void> => 
   }));
 
   sendSuccess(res, publicDocuments, 'Public FPD documents retrieved.');
+});
+
+// POST /api/public/documents/:id/request-copy — send a public copy request privately
+router.post('/documents/:id/request-copy', async (req: Request, res: Response): Promise<void> => {
+  const retryAfterSeconds = consumeRequestCopyLimit(req.ip || 'unknown', Date.now());
+  if (retryAfterSeconds > 0) {
+    res.setHeader('Retry-After', String(retryAfterSeconds));
+    sendError(res, 'Too many document copy requests. Please try again later.', 429);
+    return;
+  }
+
+  const documentId = z.string().uuid().safeParse(req.params.id);
+  if (!documentId.success) {
+    sendError(res, 'A valid document ID is required.', 400);
+    return;
+  }
+
+  const request = requestCopySchema.safeParse(req.body);
+  if (!request.success) {
+    sendError(res, 'Please provide a valid name, email, and message.', 400, request.error.flatten());
+    return;
+  }
+
+  const { data: document, error: documentError } = await supabaseAdmin
+    .from('documents')
+    .select('id, title, tenant_id')
+    .eq('id', documentId.data)
+    .eq('status', 'approved')
+    .maybeSingle();
+
+  if (documentError) {
+    sendError(res, `Failed to load the requested document: ${documentError.message}`, 500);
+    return;
+  }
+  if (!document) {
+    sendError(res, 'The requested document is not available.', 404);
+    return;
+  }
+
+  const { data: chairperson, error: chairpersonError } = await supabaseAdmin
+    .from('users')
+    .select('email')
+    .eq('tenant_id', document.tenant_id)
+    .eq('role_id', 2)
+    .eq('status', 'active')
+    .limit(1)
+    .maybeSingle();
+
+  if (chairpersonError) {
+    sendError(res, `Failed to resolve the assigned Chairperson: ${chairpersonError.message}`, 500);
+    return;
+  }
+  if (!chairperson?.email) {
+    sendError(res, 'A Chairperson is not currently assigned to this barangay.', 409);
+    return;
+  }
+
+  const title = String(document.title || 'Untitled document');
+  const safeSubjectTitle = title.replace(/[\r\n]/g, ' ');
+  const { requester_name: requesterName, requester_email: requesterEmail, message } = request.data;
+  const html = [
+    '<h2>Public document copy request</h2>',
+    `<p><strong>Document:</strong> ${escapeHtml(title)}</p>`,
+    `<p><strong>Requested by:</strong> ${escapeHtml(requesterName)}</p>`,
+    `<p><strong>Contact email:</strong> ${escapeHtml(requesterEmail)}</p>`,
+    `<p><strong>Message:</strong><br>${escapeHtml(message || 'No additional message.').replace(/\n/g, '<br>')}</p>`,
+  ].join('');
+
+  try {
+    await sendEmail(chairperson.email, `Request for Copy: ${safeSubjectTitle}`, html);
+  } catch (error) {
+    console.error('[PUBLIC DOCUMENT COPY REQUEST] Email delivery failed:', error);
+    sendError(res, 'The request could not be sent right now. Please try again later.', 502);
+    return;
+  }
+
+  sendSuccess(
+    res,
+    { document_id: document.id },
+    'Your request was sent to the assigned SK Chairperson.'
+  );
 });
 
 // GET /api/public/polls — public resolution and civic poll summaries

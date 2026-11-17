@@ -114,6 +114,7 @@ function toResolutionRecord(poll: any): ResolutionRecord {
     votesOppose: Number(votes.oppose) || 0,
     votesAbstain: 0,
     votedUsers: Array.isArray(poll.voted_users) ? poll.voted_users : [],
+    userVote: typeof poll.my_vote === 'string' ? poll.my_vote : null,
     dateCreated: poll.created_at || poll.start_date,
   };
 }
@@ -426,6 +427,16 @@ class KabisigApiClient {
     const res = await this.request<any>('/public/documents', { method: 'GET' });
     const data = (res as any)?.data ?? res;
     return Array.isArray(data) ? data : [];
+  }
+
+  async requestPublicDocumentCopy(
+    documentId: string,
+    payload: { requester_name: string; requester_email: string; message?: string }
+  ): Promise<{ success: boolean; data?: { document_id: string }; message?: string }> {
+    return this.request<{ document_id: string }>(
+      `/public/documents/${encodeURIComponent(documentId)}/request-copy`,
+      { method: 'POST', body: JSON.stringify(payload) }
+    );
   }
 
   async getPublicOfficials(): Promise<PublicOfficialsGroup[]> {

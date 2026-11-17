@@ -584,10 +584,30 @@ export default function OfficialPages({
     programTitle?: string;
     timestamp: string;
   } | null>(null);
+  const [scanFeedback, setScanFeedback] = useState<{ status: 'success' | 'error'; message: string } | null>(null);
+  const scanFeedbackTimerRef = useRef<number | null>(null);
   const [isRecordingAttendance, setIsRecordingAttendance] = useState(false);
+
+  const showScanFeedback = (status: 'success' | 'error', message: string) => {
+    if (scanFeedbackTimerRef.current !== null) window.clearTimeout(scanFeedbackTimerRef.current);
+    setScanFeedback({ status, message });
+    scanFeedbackTimerRef.current = window.setTimeout(() => {
+      setScanFeedback(null);
+      setLastScanDetail(null);
+      setQrMessage('');
+      scanFeedbackTimerRef.current = null;
+    }, 10000);
+  };
+
+  useEffect(() => () => {
+    if (scanFeedbackTimerRef.current !== null) window.clearTimeout(scanFeedbackTimerRef.current);
+  }, []);
 
   useEffect(() => {
     // Clear stale scan result whenever program selection changes
+    if (scanFeedbackTimerRef.current !== null) window.clearTimeout(scanFeedbackTimerRef.current);
+    scanFeedbackTimerRef.current = null;
+    setScanFeedback(null);
     if (typeof setLastScanDetail === 'function') setLastScanDetail(null);
     if (typeof setQrMessage === 'function') setQrMessage('');
     if (!selectedProgId) {
@@ -1603,6 +1623,7 @@ export default function OfficialPages({
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
       });
       setQrMessage('Cannot check in: this program has already ended.');
+      showScanFeedback('error', 'Cannot check in: this program has already ended.');
       return;
     }
     if (!activeProgId) {
@@ -1614,6 +1635,7 @@ export default function OfficialPages({
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
       });
       setQrMessage('Select an active program first.');
+      showScanFeedback('error', 'Select an active program first.');
       return;
     }
     const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -1635,6 +1657,7 @@ export default function OfficialPages({
         timestamp: timeStr
       });
       setQrMessage(` Venue QR Code Detected for "${matchedTitle}". Please scan a Youth Constituent ID or Ticket.`);
+      showScanFeedback('error', `Venue QR code detected for "${matchedTitle}". Scan a Youth Constituent ID or event ticket.`);
       return;
     }
 
@@ -1681,6 +1704,7 @@ export default function OfficialPages({
         timestamp: timeStr
       });
       setQrMessage(`Event Mismatch: Ticket is for "${wrongTitle}". Switch active program above.`);
+      showScanFeedback('error', `This ticket is for "${wrongTitle}", not "${progTitle}".`);
       return;
     }
 
@@ -1800,6 +1824,7 @@ export default function OfficialPages({
             timestamp: timeStr
           });
           setQrMessage(`Rejected: Not registered for "${progTitle}".`);
+          showScanFeedback('error', `Not registered for "${progTitle}".`);
           setIsRecordingAttendance(false);
           return;
         }
@@ -1817,6 +1842,7 @@ export default function OfficialPages({
         timestamp: new Date(savedRecord.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
       });
       setQrMessage(`SUCCESS: ${savedRecord.participantName} verified and logged Present!`);
+      showScanFeedback('success', `Marked present: ${savedRecord.participantName || youthName}`);
     } catch (error: any) {
       const message = error.message || 'Attendance could not be recorded.';
       const isDuplicate = /duplicate check-in|already checked in/i.test(message);
@@ -1832,6 +1858,7 @@ export default function OfficialPages({
         timestamp: timeStr
       });
       setQrMessage(message);
+      showScanFeedback('error', message);
     } finally {
       setIsRecordingAttendance(false);
     }
@@ -3663,11 +3690,44 @@ export default function OfficialPages({
                   
                   {/* Left Column: Live Camera Scanner */}
                   <div className="lg:col-span-7 space-y-4">
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (scanFeedbackTimerRef.current !== null) window.clearTimeout(scanFeedbackTimerRef.current);
+                          scanFeedbackTimerRef.current = null;
+                          setScanFeedback(null);
+                          setLastScanDetail(null);
+                          setQrMessage('');
+                          setManualQrInput('');
+                        }}
+                        title="Clear scanner results without deleting recorded attendance"
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                      >
+                        Clear Scans
+                      </button>
+                    </div>
                     <LiveCameraScanner 
                       selectedProgId={selectedProgId}
                       disabled={isProgramEnded}
                       onScan={(decodedText) => handleActualScan(decodedText)}
                     />
+
+                    {scanFeedback && (
+                      <div
+                        role={scanFeedback.status === 'error' ? 'alert' : 'status'}
+                        className={`flex items-center gap-3 rounded-xl border p-5 text-lg font-black shadow-sm ${
+                          scanFeedback.status === 'success'
+                            ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
+                            : 'border-rose-300 bg-rose-50 text-rose-900'
+                        }`}
+                      >
+                        {scanFeedback.status === 'success'
+                          ? <CheckCircle2 className="h-7 w-7 shrink-0 text-emerald-600" />
+                          : <XCircle className="h-7 w-7 shrink-0 text-rose-600" />}
+                        <span>{scanFeedback.message}</span>
+                      </div>
+                    )}
 
                     {/* Detailed Scanned Verification Card */}
                     {lastScanDetail ? (
@@ -3775,6 +3835,9 @@ export default function OfficialPages({
 
                       <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                         {selectedProgramRegistrations.map(r => {
+                          const participantName = r.participantName
+                            || (r as Registration & { fullName?: string }).fullName
+                            || 'Unknown Participant';
                           const isPresent = localAttendance.some(a => a.programId === selectedProgId && a.participantId === r.participantId);
                           return (
                             <div 
@@ -3783,10 +3846,10 @@ export default function OfficialPages({
                             >
                               <div className="flex items-center gap-2.5">
                                 <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${isPresent ? 'bg-emerald-600 text-white' : 'bg-[#091d64] text-white'}`}>
-                                  {r.participantName.charAt(0)}
+                                  {participantName.charAt(0)}
                                 </div>
                                 <div className="text-left">
-                                  <p className="text-xs font-bold text-slate-800">{r.participantName}</p>
+                                  <p className="text-xs font-bold text-slate-800">{participantName}</p>
                                   <p className="text-[10px] font-mono text-slate-400">ID: {r.participantId}</p>
                                 </div>
                               </div>
@@ -3815,11 +3878,14 @@ export default function OfficialPages({
                     </thead>
                     <tbody className="divide-y divide-slate-50 text-xs font-medium">
                       {selectedProgramRegistrations.map(r => {
+                        const participantName = r.participantName
+                          || (r as Registration & { fullName?: string }).fullName
+                          || 'Unknown Participant';
                         const attendanceRecord = localAttendance.find(a => a.programId === selectedProgId && a.participantId === r.participantId);
                         const isPresent = !!attendanceRecord;
                         return (
                           <tr key={r.id} className="hover:bg-slate-50/60 transition-colors">
-                            <td className="px-6 py-3.5 font-bold text-slate-800 whitespace-nowrap">{r.participantName}</td>
+                            <td className="px-6 py-3.5 font-bold text-slate-800 whitespace-nowrap">{participantName}</td>
                             <td className="px-6 py-3.5 text-center font-mono text-slate-500 whitespace-nowrap">{r.participantId}</td>
                             <td className="px-6 py-3.5 text-center whitespace-nowrap">
                               <span className={`px-2.5 py-1 rounded-full text-[9px] font-extrabold uppercase tracking-wide ${isPresent ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>

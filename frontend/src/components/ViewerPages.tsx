@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { 
   Building2, 
   Search, 
@@ -158,7 +158,7 @@ export default function ViewerPages({
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Public COA Ledger Audit Report - ${targetBgy}</title>
+        <title>Public Financial Audit Report - ${targetBgy}</title>
         <style>
           @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap');
           body { font-family: 'Poppins', ui-sans-serif, system-ui, sans-serif; color: #1e293b; margin: 0; padding: 40px; background: #ffffff; }
@@ -183,7 +183,7 @@ export default function ViewerPages({
         <div class="header">
           <h1>Republic of the Philippines &bull; City of Naga</h1>
           <h2>Sangguniang Kabataan Federation Public Disclosure</h2>
-          <p>Official Public COA Financial & Expenditure Audit Report &bull; ${targetBgy} &bull; Date: ${new Date().toLocaleDateString()}</p>
+          <p>Official Public Financial & Expenditure Audit Report &bull; ${targetBgy} &bull; Date: ${new Date().toLocaleDateString()}</p>
         </div>
 
         <div class="section-title">I. Audited Disbursement Vouchers & Statutory Tax Ledger</div>
@@ -196,7 +196,7 @@ export default function ViewerPages({
               <th>AIP Reference</th>
               <th class="text-right">Gross Amount</th>
               <th class="text-right">5% VAT / 1% EWT</th>
-              <th class="text-center">COA Audit Status</th>
+              <th class="text-center">Verification Status</th>
             </tr>
           </thead>
           <tbody>
@@ -208,7 +208,7 @@ export default function ViewerPages({
                 <td>${e.aipCode || 'AIP-2026-SPT-01'}</td>
                 <td class="text-right">₱${e.amount.toLocaleString()}</td>
                 <td class="text-right">₱${e.isVat ? Math.round(e.amount * 0.05).toLocaleString() : '0'}</td>
-                <td class="text-center"><span class="badge">COA Audited</span></td>
+                <td class="text-center"><span class="badge">Verified</span></td>
               </tr>
             `).join('')}
           </tbody>
@@ -229,6 +229,12 @@ export default function ViewerPages({
   const [readAnnounce, setReadAnnounce] = useState<AnnouncementRecord | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [popupMsg, setPopupMsg] = useState<PopupMessage | null>(null);
+  const [requestCopyDocument, setRequestCopyDocument] = useState<{ id: string; title: string; barangay: string } | null>(null);
+  const [requestCopyName, setRequestCopyName] = useState('');
+  const [requestCopyEmail, setRequestCopyEmail] = useState('');
+  const [requestCopyMessage, setRequestCopyMessage] = useState('');
+  const [requestCopyNotice, setRequestCopyNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [isRequestCopySubmitting, setIsRequestCopySubmitting] = useState(false);
 
   // Derived arrays
   const filteredAnnouncements = announcements.filter(a => {
@@ -321,13 +327,55 @@ export default function ViewerPages({
 
   // FPD Compliance Documents list from live documents
   const fpdDocuments = documents.length > 0 ? documents.filter(d => d.status?.toLowerCase() === "approved").map(d => ({
+    id: d.id,
     title: d.title,
     category: (d as any).document_type || (d as any).category || 'Compliance',
     barangay: tenants.find(t => t.id === d.barangayId)?.name || 'Naga City',
     date: d.uploadedDate || d.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
     status: d.status || 'Compliant',
-    chairpersonEmail: (d as any).chairpersonEmail
   })) : [];
+
+  const closeRequestCopyModal = () => {
+    if (isRequestCopySubmitting) return;
+    setRequestCopyDocument(null);
+    setRequestCopyName('');
+    setRequestCopyEmail('');
+    setRequestCopyMessage('');
+    setRequestCopyNotice(null);
+  };
+
+  const handleRequestCopySubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!requestCopyDocument) return;
+
+    setIsRequestCopySubmitting(true);
+    setRequestCopyNotice(null);
+    try {
+      const response = await kabisigApi.requestPublicDocumentCopy(requestCopyDocument.id, {
+        requester_name: requestCopyName.trim(),
+        requester_email: requestCopyEmail.trim(),
+        message: requestCopyMessage.trim(),
+      });
+      if (!response.success) {
+        setRequestCopyNotice({
+          type: 'error',
+          message: response.message || 'The request could not be sent. Please try again.',
+        });
+        return;
+      }
+      setRequestCopyNotice({
+        type: 'success',
+        message: response.message || 'Your request was sent to the assigned SK Chairperson.',
+      });
+    } catch (error) {
+      setRequestCopyNotice({
+        type: 'error',
+        message: error instanceof Error ? error.message : 'The request could not be sent. Please try again.',
+      });
+    } finally {
+      setIsRequestCopySubmitting(false);
+    }
+  };
 
   return (
     <div className="flex flex-col lg:flex-row h-screen bg-[#f8fafc] overflow-hidden font-sans">
@@ -1013,12 +1061,16 @@ export default function ViewerPages({
                                 </span>
                               </td>
                               <td className="px-5 py-3.5 text-right">
-                                <a
-                                  href={`mailto:${(doc as any).chairpersonEmail || 'skchairperson@nagacity.gov.ph'}?subject=Document Request - ${encodeURIComponent(doc.title)}`}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRequestCopyDocument({ id: doc.id, title: doc.title, barangay: doc.barangay });
+                                    setRequestCopyNotice(null);
+                                  }}
                                   className="text-[#091d64] hover:text-[#122878] font-bold flex items-center gap-1 ml-auto cursor-pointer"
                                 >
                                   <Download className="w-3.5 h-3.5 text-amber-500" /> Request Copy
-                                </a>
+                                </button>
                               </td>
                             </tr>
                           ))}
@@ -1043,7 +1095,7 @@ export default function ViewerPages({
                       className="px-4 py-2 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-xl shadow-xs text-xs flex items-center gap-1.5 cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5 text-amber-400" />
-                      Download COA Audit Report
+                      Download Financial Audit Report
                     </button>
                   </div>
 
@@ -1451,6 +1503,87 @@ export default function ViewerPages({
           </button>
         )}
       </div>
+      {requestCopyDocument && (
+        <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-slate-950/60 p-4">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="request-copy-title"
+            className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl"
+          >
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <h2 id="request-copy-title" className="text-lg font-bold text-slate-900">Request a document copy</h2>
+                <p className="mt-1 text-sm text-slate-500">{requestCopyDocument.title} · {requestCopyDocument.barangay}</p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close request form"
+                onClick={closeRequestCopyModal}
+                disabled={isRequestCopySubmitting}
+                className="rounded-full p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            {requestCopyNotice?.type === 'success' ? (
+              <div className="space-y-4">
+                <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{requestCopyNotice.message}</p>
+                <button type="button" onClick={closeRequestCopyModal} className="rounded-lg bg-[#091d64] px-4 py-2 text-sm font-semibold text-white">
+                  Done
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleRequestCopySubmit} className="space-y-4">
+                {requestCopyNotice?.type === 'error' && (
+                  <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{requestCopyNotice.message}</p>
+                )}
+                <label className="block text-sm font-semibold text-slate-700">
+                  Your name
+                  <input
+                    required
+                    maxLength={100}
+                    value={requestCopyName}
+                    onChange={event => setRequestCopyName(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal"
+                  />
+                </label>
+                <label className="block text-sm font-semibold text-slate-700">
+                  Your email
+                  <input
+                    required
+                    type="email"
+                    maxLength={254}
+                    value={requestCopyEmail}
+                    onChange={event => setRequestCopyEmail(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal"
+                  />
+                </label>
+                <label className="block text-sm font-semibold text-slate-700">
+                  Message <span className="font-normal text-slate-400">(optional)</span>
+                  <textarea
+                    maxLength={1000}
+                    rows={4}
+                    value={requestCopyMessage}
+                    onChange={event => setRequestCopyMessage(event.target.value)}
+                    className="mt-1 w-full resize-y rounded-lg border border-slate-300 px-3 py-2 font-normal"
+                  />
+                </label>
+                <p className="text-xs text-slate-500">
+                  Your name, email, and message will be shared only with the assigned SK Chairperson to fulfill this request.
+                </p>
+                <button
+                  type="submit"
+                  disabled={isRequestCopySubmitting}
+                  className="w-full rounded-lg bg-[#091d64] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#122878] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isRequestCopySubmitting ? 'Sending request…' : 'Send request'}
+                </button>
+              </form>
+            )}
+          </section>
+        </div>
+      )}
       {lightboxImg && (
         <div
           className="fixed inset-0 z-[99999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 cursor-zoom-out"

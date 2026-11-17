@@ -229,6 +229,7 @@ export interface ResolutionRecord {
   votesOppose: number;
   votesAbstain: number;
   votedUsers: string[]; // List of participantIds
+  userVote?: string | null;
   dateCreated: string;
 }
 

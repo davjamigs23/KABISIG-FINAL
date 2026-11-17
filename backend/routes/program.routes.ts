@@ -466,28 +466,31 @@ router.post('/:id/attendance', authenticateUser, requireActiveUser, requireRoles
   try {
     const programId = String(req.params.id);
     const user = (req as AuthRequest).user!;
-    const { qr_payload } = req.body;
+    const qrPayload = typeof req.body?.qr_payload === 'string' ? req.body.qr_payload.trim() : '';
+    const directUserId = typeof req.body?.userId === 'string'
+      ? req.body.userId.trim()
+      : typeof req.body?.user_id === 'string'
+        ? req.body.user_id.trim()
+        : '';
+    const scanValue = qrPayload || directUserId;
+    if (!scanValue) { sendError(res, 'A QR payload or user ID is required.', 400); return; }
 
-    console.log('[KABISIG DEBUG] Route hit. qr_payload:', qr_payload);
-
-    if (!qr_payload) { sendError(res, 'QR payload is required.', 400); return; }
-
-    let attendeeUserId = '';
+    let attendeeUserId = directUserId;
     let digitalYouthId = '';
 
     try {
-      const parsedJson = JSON.parse(qr_payload);
-      attendeeUserId = parsedJson.user_id || parsedJson.id || '';
-      digitalYouthId = parsedJson.digital_youth_id || '';
+      const parsedJson = JSON.parse(scanValue);
+      attendeeUserId = parsedJson.user_id || parsedJson.userId || parsedJson.id || attendeeUserId;
+      digitalYouthId = parsedJson.digital_youth_id || parsedJson.digitalYouthId || '';
     } catch {
-      if (String(qr_payload).startsWith('KABISIG-QR-')) {
-        const kabIndex = qr_payload.indexOf('KAB-NAGA-');
-        if (kabIndex !== -1) digitalYouthId = qr_payload.substring(kabIndex);
-        else attendeeUserId = qr_payload;
-      } else if (String(qr_payload).startsWith('KAB-NAGA-')) {
-        digitalYouthId = qr_payload;
+      if (scanValue.startsWith('KABISIG-QR-')) {
+        const kabIndex = scanValue.indexOf('KAB-NAGA-');
+        if (kabIndex !== -1) digitalYouthId = scanValue.substring(kabIndex);
+        else attendeeUserId = scanValue;
+      } else if (scanValue.startsWith('KAB-NAGA-')) {
+        digitalYouthId = scanValue;
       } else {
-        attendeeUserId = qr_payload;
+        attendeeUserId = scanValue;
       }
     }
 
@@ -499,7 +502,7 @@ router.post('/:id/attendance', authenticateUser, requireActiveUser, requireRoles
     }
 
     if (!resolvedUserId) {
-      sendError(res, `Invalid QR code: Could not find user. (Payload: ${qr_payload})`, 404);
+      sendError(res, 'Invalid QR code: Could not find user.', 404);
       return;
     }
 

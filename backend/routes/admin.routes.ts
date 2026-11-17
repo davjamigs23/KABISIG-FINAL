@@ -377,15 +377,13 @@ router.get(
       .order('created_at', { ascending: false })
       .limit(limit);
 
-    // Tenant scoping: Only Super Admin sees all tenants (RLS handles the rest)
-    // The DB enforces tenant isolation automatically for non-SA roles.
-    const authReq = req as unknown as { user?: { role?: string; tenant_id?: string } };
-    if (authReq.user?.role !== 'SUPER_ADMIN') {
-      if (!authReq.user?.tenant_id) {
+    const user = (req as AuthRequest).user!;
+    if (user.role_id !== 1) {
+      if (!user.tenant_id) {
         sendError(res, 'Tenant scope missing from session.', 403);
         return;
       }
-      query = query.eq('tenant_id', authReq.user.tenant_id);
+      query = query.eq('tenant_id', user.tenant_id);
     }
 
     const { data, error } = await query;

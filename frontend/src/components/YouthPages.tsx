@@ -2144,9 +2144,9 @@ export default function YouthPages({
                         <h4 className="font-bold text-slate-800 text-sm mt-2 leading-snug">{res.title}</h4>
                         <p className="text-xs text-slate-500 leading-relaxed font-medium">{res.content}</p>
                         <div className="flex flex-wrap gap-2 justify-end pt-3">
-                          {Boolean(currentYouth.userId && res.votedUsers.includes(currentYouth.userId)) ? (
+                          {Boolean(res.userVote || (currentYouth.userId && res.votedUsers.includes(currentYouth.userId))) ? (
                             <span role="status" className="rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-600">
-                              You have already voted on this resolution.
+                              {res.userVote ? `You voted: ${res.userVote}` : 'You have already voted on this resolution.'}
                             </span>
                           ) : (
                             (Array.isArray(res.options) && res.options.length > 0 ? res.options : ['Support', 'Oppose']).map(option => (

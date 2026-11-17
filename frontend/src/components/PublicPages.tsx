@@ -109,6 +109,25 @@ interface PublicPagesProps {
   setActiveTab: (tab: string) => void;
 }
 
+function calculateAgeFromISODate(value: string): number {
+  const [year, month, day] = value.split('-').map(Number);
+  if (!year || !month || !day) return 0;
+
+  const birthDate = new Date(year, month - 1, day);
+  if (
+    birthDate.getFullYear() !== year
+    || birthDate.getMonth() !== month - 1
+    || birthDate.getDate() !== day
+  ) return 0;
+
+  const today = new Date();
+  let age = today.getFullYear() - year;
+  if (today.getMonth() < month - 1 || (today.getMonth() === month - 1 && today.getDate() < day)) {
+    age -= 1;
+  }
+  return age;
+}
+
 export default function PublicPages({
   onLogin,
   onSignUp,
@@ -173,7 +192,6 @@ export default function PublicPages({
     suffix: '',
     sex: '' as '' | 'Male' | 'Female' | 'Prefer not to say',
     birthdate: '',
-    age: 0,
     mobile: '',
     guardianName: '',
     guardianContact: '',
@@ -216,32 +234,6 @@ export default function PublicPages({
     signUpForm.lastName,
     signUpForm.suffix,
   ].map((p) => (p || '').trim()).filter(Boolean).join(' ').trim();
-
-  const handleBirthdateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const isoDate = e.target.value;
-    if (!isoDate) {
-      setSignUpForm(previous => ({ ...previous, birthdate: '', age: 0 }));
-      return;
-    }
-
-    const [year, month, day] = isoDate.split('-').map(Number);
-    const birthDate = new Date(year, month - 1, day);
-    if (
-      birthDate.getFullYear() !== year
-      || birthDate.getMonth() !== month - 1
-      || birthDate.getDate() !== day
-    ) {
-      setSignUpForm(previous => ({ ...previous, birthdate: '', age: 0 }));
-      return;
-    }
-
-    const today = new Date();
-    let calculatedAge = today.getFullYear() - year;
-    if (today.getMonth() < month - 1 || (today.getMonth() === month - 1 && today.getDate() < day)) {
-      calculatedAge -= 1;
-    }
-    setSignUpForm(previous => ({ ...previous, birthdate: isoDate, age: calculatedAge }));
-  };
 
   const handleSignIn = async () => {
     setLoginError(null);
@@ -453,7 +445,7 @@ export default function PublicPages({
             }
             return raw;
           })(),
-      age: signUpForm.age,
+      age: calculateAgeFromISODate(signUpForm.birthdate),
       mobile: signUpForm.mobile,
       guardianName: signUpForm.guardianName.trim(),
       guardianContact: signUpForm.guardianContact.trim(),
@@ -838,8 +830,8 @@ export default function PublicPages({
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             onKeyDown={(e) => { if (e.key === 'Enter' && !isLoggingIn) { e.preventDefault(); handleSignIn(); } }}
-                            className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
-                            placeholder=""
+                            className="w-full pl-10 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder:text-slate-400 placeholder:font-normal focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
+                            placeholder="Enter Email"
                             required
                           />
                           <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -860,8 +852,8 @@ export default function PublicPages({
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             onKeyDown={(e) => { if (e.key === 'Enter' && !isLoggingIn) { e.preventDefault(); handleSignIn(); } }}
-                            className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
-                            placeholder=""
+                            className="w-full pl-10 pr-10 py-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-800 placeholder:text-slate-400 placeholder:font-normal focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors"
+                            placeholder="Enter Password"
                             required
                           />
                           <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -1182,7 +1174,7 @@ export default function PublicPages({
                             autoComplete="bday"
                             max={new Date().toISOString().split('T')[0]}
                             value={signUpForm.birthdate}
-                            onChange={handleBirthdateChange}
+                            onChange={(event) => setSignUpForm(previous => ({ ...previous, birthdate: event.target.value }))}
                             placeholder="YYYY-MM-DD"
                             aria-label="Birthdate"
                             className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none"
