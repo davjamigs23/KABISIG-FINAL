@@ -51,6 +51,8 @@ export interface PublicOfficialRosterEntry {
   id: string;
   full_name: string;
   role_id: number;
+  official_role: string;
+  position: string;
   avatar_url: string | null;
 }
 

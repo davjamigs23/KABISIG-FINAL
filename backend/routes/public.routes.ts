@@ -158,12 +158,29 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
     return;
   }
 
+  const officialIds = new Set((officials || []).map((official: any) => official.id));
+  const authUsers = new Map<string, any>();
+  const perPage = 1000;
+  for (let page = 1; ; page += 1) {
+    const { data, error: authError } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+    if (authError) {
+      sendError(res, `Failed to load public official positions: ${authError.message}`, 500);
+      return;
+    }
+    for (const authUser of data.users) {
+      if (officialIds.has(authUser.id)) authUsers.set(authUser.id, authUser);
+    }
+    if (data.users.length < perPage) break;
+  }
+
   const groupedOfficials = new Map<string, {
     barangay_name: string;
     officials: Array<{
       id: string;
       full_name: string;
       role_id: number;
+      official_role: string;
+      position: string;
       avatar_url: string | null;
     }>;
   }>();
@@ -172,10 +189,20 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
     groupedOfficials.set(barangay.id, { barangay_name: barangay.name, officials: [] });
   });
 
-  const resolvedOfficials = await Promise.all((officials || []).map(async (official: any) => ({
-    ...official,
-    avatar_url: await resolveAvatarUrl(official.avatar_url),
-  })));
+  const resolvedOfficials = await Promise.all((officials || []).map(async (official: any) => {
+    const authUser = authUsers.get(official.id);
+    const officialRole = String(
+      authUser?.user_metadata?.official_role
+      || authUser?.app_metadata?.official_role
+      || (Number(official.role_id) === 3 ? 'SK Kagawad' : 'SK Chairperson')
+    );
+    return {
+      ...official,
+      official_role: officialRole,
+      position: officialRole,
+      avatar_url: await resolveAvatarUrl(official.avatar_url),
+    };
+  }));
 
   resolvedOfficials.forEach((official: any) => {
     if (!official.tenant_id) return;
@@ -188,6 +215,8 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
       id: official.id,
       full_name: official.full_name || '',
       role_id: Number(official.role_id),
+      official_role: official.official_role,
+      position: official.position,
       avatar_url: official.avatar_url,
     });
   });

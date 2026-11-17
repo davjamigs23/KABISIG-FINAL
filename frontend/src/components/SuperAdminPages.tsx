@@ -3,6 +3,7 @@ import NotificationMenu from './NotificationMenu';
 import { useEffect, useState } from 'react';
 import ProfileSettings from './ProfileSettings';
 import { formatAuditDetails } from '../lib/auditFormatter';
+import { formatOfficialName } from '../lib/officialFormatting';
 import { 
   LayoutDashboard, Building2, BarChart3, History, 
   Plus, Edit2, Search, Filter, Download, FileSpreadsheet,
@@ -390,7 +391,7 @@ useEffect(() => {
             {(official.full_name || '?').trim().charAt(0).toUpperCase()}
           </span>
         )}
-        <span className="break-words">{official.full_name || 'Pending Invitation'}</span>
+        <span className="break-words">{formatOfficialName(official, 'Pending Invitation')}</span>
         <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${badge.className}`}>
           {badge.label}
         </span>
@@ -2073,7 +2074,7 @@ useEffect(() => {
                                 </div>
                               )}
                               <div className="min-w-0">
-                                <p className="truncate text-sm font-bold text-slate-800">{person.full_name || 'Pending Invitation'}</p>
+                                <p className="truncate text-sm font-bold text-slate-800">{formatOfficialName(person, 'Pending Invitation')}</p>
                                 <p className="truncate text-xs text-slate-500">{person.email || 'No email recorded'}</p>
                                 <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold capitalize ${
                                   chairpersonBadge ? chairpersonBadge.className : 'bg-slate-100 text-slate-600'

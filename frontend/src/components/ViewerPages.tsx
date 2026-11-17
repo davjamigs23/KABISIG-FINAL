@@ -46,7 +46,8 @@ import {
   YouthProfile
 } from '../types';
 import { KabisigLogo } from './PublicPages';
-import { kabisigApi, type PublicOfficialsGroup } from '../lib/api';
+import { kabisigApi, type PublicOfficialRosterEntry, type PublicOfficialsGroup } from '../lib/api';
+import { formatOfficialName } from '../lib/officialFormatting';
 import PopupDialog, { PopupMessage } from './PopupDialog';
 
 interface ViewerPagesProps {
@@ -59,6 +60,16 @@ interface ViewerPagesProps {
   announcements: AnnouncementRecord[] | undefined;
   onLogout: () => void;
   onNavigateSignUp?: () => void;
+}
+
+function getOfficialHierarchyRank(official: PublicOfficialRosterEntry): number {
+  const roleId = Number(official.role_id);
+  if (roleId === 2) return 0;
+  const position = String(official.position || official.official_role || '').toLowerCase();
+  if (roleId === 3 && position.includes('kagawad')) return 1;
+  if (roleId === 3 && position.includes('secretary')) return 2;
+  if (roleId === 3 && position.includes('treasurer')) return 3;
+  return 4;
 }
 
 export default function ViewerPages({
@@ -756,7 +767,9 @@ export default function ViewerPages({
                         <div className="p-4 space-y-3">
                           {group.officials.length === 0 ? (
                             <p className="text-xs text-slate-500 py-2">No active officials listed.</p>
-                          ) : group.officials.map((official) => (
+                          ) : [...group.officials]
+                            .sort((a, b) => getOfficialHierarchyRank(a) - getOfficialHierarchyRank(b))
+                            .map((official) => (
                             <div key={official.id} className="flex items-center gap-3 rounded-xl border border-slate-100 p-3">
                               <div className="h-11 w-11 rounded-full bg-blue-50 text-[#091d64] flex items-center justify-center overflow-hidden shrink-0">
                                 {official.avatar_url ? (
@@ -772,10 +785,10 @@ export default function ViewerPages({
                               </div>
                               <div className="min-w-0">
                                 <p className="text-sm font-bold text-slate-800 break-words">
-                                  {official.full_name || 'Name not listed'}
+                                  {formatOfficialName(official)}
                                 </p>
                                 <p className="text-xs font-semibold text-slate-500">
-                                  {official.role_id === 2 ? 'SK Chairperson' : 'SK Official'}
+                                  {official.role_id === 2 ? 'SK Chairperson' : official.official_role || official.position || 'SK Official'}
                                 </p>
                               </div>
                             </div>

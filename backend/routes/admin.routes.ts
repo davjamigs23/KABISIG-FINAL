@@ -84,7 +84,7 @@ router.get('/all-officials', authenticateUser, requireRoles('SUPER_ADMIN'), asyn
   try {
     const { data: officials, error } = await supabaseAdmin
       .from('users')
-      .select('id, tenant_id, role_id, full_name, first_name, middle_name, last_name, suffix, email, status, avatar_url, barangay(name)')
+      .select('id, tenant_id, role_id, full_name, first_name, middle_name, last_name, suffix, email, status, avatar_url, barangay(name), resident_profile!resident_profile_user_id_fkey(sex)')
       .in('role_id', [2, 3])
       .not('tenant_id', 'is', null);
 
@@ -113,8 +113,16 @@ router.get('/all-officials', authenticateUser, requireRoles('SUPER_ADMIN'), asyn
         .join(' ')
         .trim();
       const barangay = Array.isArray(official.barangay) ? official.barangay[0] : official.barangay;
+      const residentProfile = Array.isArray(official.resident_profile)
+        ? official.resident_profile[0]
+        : official.resident_profile;
       const fullName = composedName || official.full_name || 'Pending Invitation';
       const status = official.status || 'pending';
+      const officialRole = String(
+        userMetadata.official_role
+        || authUser?.app_metadata?.official_role
+        || (Number(official.role_id) === 2 ? 'SK Chairperson' : 'SK Kagawad')
+      );
       const isInvitationPending = fullName.trim().toLowerCase() === 'pending invitation'
         || status.trim().toLowerCase() === 'pending';
       const setupCompleted: boolean = !isInvitationPending && (
@@ -126,7 +134,9 @@ router.get('/all-officials', authenticateUser, requireRoles('SUPER_ADMIN'), asyn
         tenant_id: official.tenant_id,
         barangay_name: barangay?.name || '',
         role_id: Number(official.role_id),
-        official_role: userMetadata.official_role || authUser?.app_metadata?.official_role || 'SK Kagawad',
+        official_role: officialRole,
+        position: officialRole,
+        sex: residentProfile?.sex || userMetadata.sex || authUser?.user_metadata?.sex || null,
         full_name: fullName,
         email: official.email || authUser?.email || '',
         status,
