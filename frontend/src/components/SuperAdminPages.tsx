@@ -92,7 +92,7 @@ useEffect(() => {
 
   const handleLookupUser = async () => {
     if (!typoUserId.trim()) return;
-    setIsFixingTypo(true);
+    setIsSearching(true);
     try {
       const res = await kabisigApi.lookupUser(typoUserId.trim());
       if (res.success && res.data) {
@@ -140,7 +140,7 @@ useEffect(() => {
     } catch (err: any) {
       showPopup(err.message || 'Lookup failed.');
     } finally {
-      setIsFixingTypo(false);
+      setIsSearching(false);
     }
   };
   const [typoFirstName, setTypoFirstName] = useState('');
@@ -152,7 +152,8 @@ useEffect(() => {
   const [typoPhone, setTypoPhone] = useState('');
   const [typoBirthdate, setTypoBirthdate] = useState('');
   const [typoReason, setTypoReason] = useState('');
-  const [isFixingTypo, setIsFixingTypo] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
   const [emailForm, setEmailForm] = useState({ current_email: '', new_email: '', reason: '' });
   const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
   const [emailModalTab, setEmailModalTab] = useState<'update' | 'history'>('update');
@@ -162,6 +163,13 @@ useEffect(() => {
   // Dedicated Assign SK Chairperson Modal State (Email-only)
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [assigningBarangay, setAssigningBarangay] = useState<BarangayTenant | null>(null);
+  const assigningChairpersonName = assigningBarangay?.chairpersonUser?.full_name?.trim() || '';
+  const assigningChairpersonStatus = assigningBarangay?.chairpersonUser?.status?.trim().toLowerCase();
+  const assigningBarangayHasActiveChairperson = Boolean(
+    assigningChairpersonName &&
+    !['pending invitation', 'unassigned'].includes(assigningChairpersonName.toLowerCase()) &&
+    (!assigningChairpersonStatus || assigningChairpersonStatus === 'active')
+  );
   const [assignEmail, setAssignEmail] = useState('');
   const [isAssigning, setIsAssigning] = useState(false);
   const [assignError, setAssignError] = useState<string | null>(null);
@@ -191,7 +199,7 @@ useEffect(() => {
   const [assignReturnToConfigure, setAssignReturnToConfigure] = useState(false);
   const [transferCurrentChair, setTransferCurrentChair] = useState<{ email: string; name: string } | null>(null);
   const [transferSuccessorEmail, setTransferSuccessorEmail] = useState('');
-  const [transferReason, setTransferReason] = useState<'Resigned' | 'End of Term' | 'Succession' | 'Other'>('Resigned');
+  const [transferReason, setTransferReason] = useState<'Resigned' | 'End of Term' | 'Succession' | 'Other' | ''>('');
   const [transferNotes, setTransferNotes] = useState('');
   const [isTransferring, setIsTransferring] = useState(false);
   const [transferNotice, setTransferNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -760,7 +768,7 @@ useEffect(() => {
   const handleOpenTransferModal = async (b: BarangayTenant, returnToConfigure: boolean = false) => {
     setTransferringBarangay(b);
     setTransferSuccessorEmail('');
-    setTransferReason('Resigned');
+    setTransferReason('');
     setTransferNotes('');
     setTransferNotice(null);
     setTransferSetupLink('');
@@ -780,6 +788,11 @@ useEffect(() => {
   const handleTransferSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!transferringBarangay) return;
+
+    if (!transferReason) {
+      setTransferNotice({ type: 'error', text: 'Please select a reason for the transfer.' });
+      return;
+    }
 
     const email = transferSuccessorEmail.trim().toLowerCase();
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -833,6 +846,10 @@ useEffect(() => {
     e.preventDefault();
     if (!assigningBarangay) {
       setAssignError('Please select a Barangay.');
+      return;
+    }
+    if (assigningBarangayHasActiveChairperson) {
+      setAssignError('This Barangay already has an active Chairperson. Use Transfer Leadership instead.');
       return;
     }
 
@@ -2150,7 +2167,9 @@ useEffect(() => {
                   value={transferReason}
                   onChange={(e) => setTransferReason(e.target.value as any)}
                   className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-1 focus:ring-amber-500 focus:outline-none cursor-pointer"
+                  required
                 >
+                  <option value="" disabled>Select reason</option>
                   <option value="Resigned">Resigned</option>
                   <option value="End of Term">End of Term</option>
                   <option value="Succession">Succession</option>
@@ -2764,6 +2783,11 @@ useEffect(() => {
                   <label className="block text-xs font-bold text-slate-800 mb-1">
                     Chairperson Official Email Address <span className="text-rose-500">*</span>
                   </label>
+                  {assigningBarangayHasActiveChairperson && (
+                    <p role="alert" className="mb-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800">
+                      This Barangay already has an active Chairperson. Use Transfer Leadership instead.
+                    </p>
+                  )}
                   <div className="relative">
                     <input 
                       type="email"
@@ -2771,6 +2795,7 @@ useEffect(() => {
                       onChange={(e) => setAssignEmail(e.target.value)}
                       placeholder="chairperson.example@naga.gov.ph"
                       className="w-full pl-9 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#091d64] focus:border-[#091d64] font-mono"
+                      disabled={assigningBarangayHasActiveChairperson}
                       required
                     />
                     <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
@@ -2801,7 +2826,7 @@ useEffect(() => {
                   </button>
                   <button 
                     type="submit"
-                    disabled={isAssigning || !assigningBarangay || !assignEmail.trim()}
+                    disabled={isAssigning || !assigningBarangay || !assignEmail.trim() || assigningBarangayHasActiveChairperson}
                     className="px-5 py-2 bg-[#091d64] hover:bg-[#112d75] text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs disabled:opacity-50 flex items-center gap-2"
                   >
                     {isAssigning ? (
@@ -3280,10 +3305,10 @@ useEffect(() => {
               e.preventDefault();
               if (!typoUserId || !typoFullName) { showPopup('Both fields are required.'); return; }
               if (typoPhone && !/^09\d{9}$/.test(typoPhone)) { showPopup('Phone number must be exactly 11 digits and start with 09 (e.g., 09171234567).'); return; }
-              setIsFixingTypo(true);
+              setIsUpdating(true);
               try {
                 const combinedName = [typoFirstName.trim(), typoMiddleName.trim(), typoLastName.trim(), typoSuffix.trim()].filter(Boolean).join(' ');
-                if (!combinedName) { showPopup('Please enter at least a First or Last name.'); setIsFixingTypo(false); return; }
+                if (!combinedName) { showPopup('Please enter at least a First or Last name.'); setIsUpdating(false); return; }
                 
                 const res = await kabisigApi.updateUserName(typoUserId, { 
                   full_name: combinedName,
@@ -3317,7 +3342,7 @@ useEffect(() => {
               } catch (err: any) {
                 showPopup(err.message || 'Error updating name.');
               } finally {
-                setIsFixingTypo(false);
+                setIsUpdating(false);
               }
             }} className="space-y-4">
               
@@ -3325,8 +3350,8 @@ useEffect(() => {
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Email</label>
                 <div className="flex gap-2">
                   <input required type="text" value={typoUserId} onChange={e => setTypoUserId(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); handleLookupUser(); } }} className="flex-1 border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="user@example.com" />
-                  <button type="button" onClick={(e) => { e.preventDefault(); handleLookupUser(); }} disabled={isFixingTypo} className="px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-lg border border-slate-200 transition-colors disabled:opacity-50">
-                    {isFixingTypo ? '...' : 'Search'}
+                  <button type="button" onClick={(e) => { e.preventDefault(); handleLookupUser(); }} disabled={isSearching} className="px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-lg border border-slate-200 transition-colors disabled:opacity-50">
+                    {isSearching ? '...' : 'Search'}
                   </button>
                 </div>
               </div>
@@ -3376,8 +3401,8 @@ useEffect(() => {
                 </button>
                 <div className="flex gap-2">
                   <button type="button" onClick={() => setShowFixTypoModal(false)} className="px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-50 rounded-lg">Cancel</button>
-                  <button type="submit" disabled={isFixingTypo} className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg disabled:opacity-50">
-                    {isFixingTypo ? 'Saving...' : 'Update Credentials'}
+                  <button type="submit" disabled={isUpdating} className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg disabled:opacity-50">
+                    {isUpdating ? 'Saving...' : 'Update Credentials'}
                   </button>
                 </div>
               </div>

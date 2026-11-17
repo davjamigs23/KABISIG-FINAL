@@ -68,7 +68,7 @@ export interface YouthProfile {
   school: string; // School (Required if applicable)
   course?: string; // Course (Optional)
   year?: string; // Year Level (Optional)
-  employmentStatus?: 'Student' | 'Employed' | 'Unemployed' | 'Self-employed' | 'Out-of-School Youth'; // Employment Status (Required)
+  employmentStatus?: 'Student' | 'Employed' | 'Unemployed' | 'Self-employed' | 'Out-of-School Youth' | 'Working Student'; // Employment Status (Required)
   scholarStatus: 'Scholar' | 'Non-Scholar' | 'Yes' | 'No'; // Scholar Status (Required)
   scholarshipSource?: string;
   scholarshipSourceDetail?: string;

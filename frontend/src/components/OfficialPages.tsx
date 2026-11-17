@@ -239,7 +239,7 @@ export default function OfficialPages({
   const barangayLogo = currentTenant?.logo || DEFAULT_BARANGAY_LOGOS[currentTenant?.name || ''] || '';
 
   // --- Local UI state mirrors backend-backed shared records ---
-  const [localAttendance, setLocalAttendance] = useState<AttendanceRecord[]>([]);
+  const [localAttendance, setLocalAttendance] = useState<(AttendanceRecord & { userId?: string })[]>([]);
   const [localResolutions, setLocalResolutions] = useState<any[]>(resolutions);
   const archivedResolutions = localResolutions.filter(
     resolution => resolution.end_date && new Date(resolution.end_date).getTime() < Date.now()
@@ -569,6 +569,7 @@ export default function OfficialPages({
   // Per-program registration cache (avoids re-fetch per scan)
   const regCacheRef = useRef<Record<string, any[]>>({});
   const regFetchingRef = useRef<Record<string, Promise<any[]>>>({});
+  const pendingAttendanceScansRef = useRef<Set<string>>(new Set());
   const [attendanceMode, setAttendanceMode] = useState<'qr' | 'manual'>('qr');
   const [qrScanning, setQrScanning] = useState(false);
   const [qrMessage, setQrMessage] = useState('');
@@ -1609,7 +1610,10 @@ export default function OfficialPages({
 
   const handleActualScan = async (scannedText: string) => {
     const activeProgId = selectedProgIdRef.current;
-    if (isRecordingAttendance) return;
+    if (isRecordingAttendance) {
+      showScanFeedback('error', 'A check-in is already being processed. Please wait before scanning again.');
+      return;
+    }
     const _activeProg = programs.find(p => p.id === activeProgId);
     const activeProgramEnded = String(_activeProg?.status || '').toLowerCase() === 'completed'
       || String(_activeProg?.status || '').toLowerCase() === 'cancelled'
@@ -1772,26 +1776,44 @@ export default function OfficialPages({
       r.participantId === partId ||
       r.qrCode === scannedText
     );
-    const resolvedName = (reg?.participantName || youthProf?.name || regAny?.participantName || regGlobal?.participantName || "").trim();
-    // Fallback: try harder to find a real name before defaulting to placeholder
-    let youthName = resolvedName && resolvedName !== partId ? resolvedName : '';
-    if (!youthName && partId) {
-      const lookedUp = youthProfiles.find((y: any) => y.userId === partId || y.id === partId);
-      youthName = lookedUp?.name || '';
-    }
-    if (!youthName && partId) {
-      const fromReg = registrations.find((r: any) => r.participantId === partId || r.userId === partId);
-      youthName = fromReg?.participantName || '';
-    }
-    if (!youthName) { // @ts-ignore
-        const _scannedVal = typeof scannedData !== 'undefined' ? scannedData : (typeof decodedText !== 'undefined' ? decodedText : (typeof qrCodeResult !== 'undefined' ? qrCodeResult : ""));
-        // @ts-ignore
-        const _matchedYouth: any = localYouthProfiles?.find((y: any) => y.userId === _scannedVal || y.id === _scannedVal || y.email === _scannedVal);
-        // @ts-ignore
-        youthName = _matchedYouth ? (_matchedYouth.name || _matchedYouth.full_name || "Registered Youth") : "Unknown / Unregistered Youth";
-    }
     const finalPartId = scannedUserId || reg?.participantId || youthProf?.id || regAny?.participantId || regGlobal?.participantId || partId;
+    const finalUserId = String(
+      scannedUserId || reg?.userId || reg?.user_id || youthProf?.userId ||
+      regAny?.userId || regAny?.user_id || regGlobal?.userId || regGlobal?.user_id || ''
+    ).trim();
+    const profileMatch = youthProfiles.find((y: any) => y.userId === partId || y.id === partId) as
+      (YouthProfile & { fullName?: string; full_name?: string }) | undefined;
+    const registrationMatch = registrations.find((r: any) => r.participantId === partId || r.userId === partId || r.user_id === partId) as
+      (Registration & { fullName?: string; full_name?: string }) | undefined;
+    const nameCandidates = [
+      reg?.participantName, reg?.fullName, reg?.full_name,
+      (youthProf as any)?.name, (youthProf as any)?.fullName, (youthProf as any)?.full_name,
+      regAny?.participantName, regAny?.fullName, regAny?.full_name,
+      regGlobal?.participantName, regGlobal?.fullName, regGlobal?.full_name,
+      profileMatch?.name, profileMatch?.fullName, profileMatch?.full_name,
+      registrationMatch?.participantName, registrationMatch?.fullName, registrationMatch?.full_name,
+    ];
+    const youthName = nameCandidates
+      .map(value => typeof value === 'string' ? value.trim() : '')
+      .find(value => value && value !== partId && !/^(unknown(?: participant| \/ unregistered youth)?|registered youth|youth constituent)$/i.test(value)) || '';
     const purokVal = youthProf?.zone || regAny?.zone || "Naga Youth Constituent";
+    if (!youthName) {
+      const message = 'Could not identify this participant. Scan a registered youth Digital ID.';
+      setLastScanDetail({
+        rawCode: scannedText,
+        status: 'NOT_REGISTERED',
+        title: 'Participant Not Identified',
+        message,
+        participantId: finalPartId || partId,
+        programTitle: progTitle,
+        timestamp: timeStr,
+      });
+      setQrMessage(message);
+      showScanFeedback('error', message);
+      return;
+    }
+
+    const scanKey = `${activeProgId}:${finalUserId || finalPartId}`;
     // The backend is authoritative for identity, registration, and duplicate check-in validation.
     const record: AttendanceRecord = {
       id: '',
@@ -1804,13 +1826,6 @@ export default function OfficialPages({
 
     setIsRecordingAttendance(true);
     try {
-      // Force the record to use the real UUID from the scan, not the custom KAB-NAGA ID
-        if (record) {
-          // @ts-ignore
-          record.participantId = scannedUserId || (record as any).participantId;
-          // @ts-ignore
-          record.participantName = youthProf?.name || (record as any).participantName;
-        }
         // Guard: reject if youth is NOT registered for the selected program
         if (!reg) {
           setLastScanDetail({
@@ -1828,24 +1843,63 @@ export default function OfficialPages({
           setIsRecordingAttendance(false);
           return;
         }
+        const participantIds = new Set(
+          [finalPartId, youthProf?.id, reg?.participantId, regAny?.participantId, regGlobal?.participantId]
+            .filter((id): id is string => typeof id === 'string' && id.length > 0)
+        );
+        const alreadyPresent = localAttendance.some(attendance =>
+          attendance.programId === activeProgId &&
+          ((finalUserId && attendance.userId === finalUserId) || participantIds.has(attendance.participantId))
+        );
+        if (alreadyPresent || pendingAttendanceScansRef.current.has(scanKey)) {
+          const message = `${youthName} is already marked present for "${progTitle}".`;
+          setLastScanDetail({
+            rawCode: scannedText,
+            status: 'ALREADY_PRESENT',
+            title: 'Already Present',
+            message,
+            participantName: youthName,
+            participantId: finalPartId,
+            purok: purokVal,
+            programTitle: progTitle,
+            timestamp: timeStr,
+          });
+          setQrMessage(message);
+          showScanFeedback('error', message);
+          return;
+        }
+        pendingAttendanceScansRef.current.add(scanKey);
         const savedRecord = await onRegisterAttendance(record, scannedText);
-      setLocalAttendance(prev => [savedRecord, ...prev.filter(item => item.id !== savedRecord.id)]);
+        const savedRecordWithIdentity = {
+          ...savedRecord,
+          programId: savedRecord.programId || activeProgId,
+          participantId: savedRecord.participantId || finalPartId,
+          participantName: youthName,
+          userId: finalUserId,
+        };
+        setLocalAttendance(prev => {
+          const isDuplicate = prev.some(attendance =>
+            attendance.programId === activeProgId &&
+            ((finalUserId && attendance.userId === finalUserId) || participantIds.has(attendance.participantId))
+          );
+          return isDuplicate ? prev : [savedRecordWithIdentity, ...prev];
+        });
       setLastScanDetail({
         rawCode: scannedText,
         status: 'SUCCESS',
         title: 'Check-In Verified & Logged',
-        message: `Verified! ${savedRecord.participantName} has been marked Present for "${progTitle}".`,
-        participantName: savedRecord.participantName,
-        participantId: savedRecord.participantId,
+        message: `Verified! ${youthName} has been marked Present for "${progTitle}".`,
+        participantName: youthName,
+        participantId: savedRecordWithIdentity.participantId,
         purok: purokVal,
         programTitle: progTitle,
         timestamp: new Date(savedRecord.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
       });
-      setQrMessage(`SUCCESS: ${savedRecord.participantName} verified and logged Present!`);
-      showScanFeedback('success', `Marked present: ${savedRecord.participantName || youthName}`);
+      setQrMessage(`SUCCESS: ${youthName} verified and logged Present!`);
+      showScanFeedback('success', `Marked present: ${youthName}`);
     } catch (error: any) {
       const message = error.message || 'Attendance could not be recorded.';
-      const isDuplicate = /duplicate check-in|already checked in/i.test(message);
+      const isDuplicate = /duplicate check-in|already checked in|already (?:marked )?present/i.test(message);
       setLastScanDetail({
         rawCode: scannedText,
         status: isDuplicate ? 'ALREADY_PRESENT' : 'NOT_REGISTERED',
@@ -1860,6 +1914,7 @@ export default function OfficialPages({
       setQrMessage(message);
       showScanFeedback('error', message);
     } finally {
+      pendingAttendanceScansRef.current.delete(scanKey);
       setIsRecordingAttendance(false);
     }
   };
@@ -3838,7 +3893,11 @@ export default function OfficialPages({
                           const participantName = r.participantName
                             || (r as Registration & { fullName?: string }).fullName
                             || 'Unknown Participant';
-                          const isPresent = localAttendance.some(a => a.programId === selectedProgId && a.participantId === r.participantId);
+                          const registrationUserId = r.userId || (r as any).user_id;
+                          const isPresent = localAttendance.some(a =>
+                            a.programId === selectedProgId &&
+                            ((registrationUserId && a.userId === registrationUserId) || a.participantId === r.participantId)
+                          );
                           return (
                             <div 
                               key={r.id} 
@@ -3881,7 +3940,11 @@ export default function OfficialPages({
                         const participantName = r.participantName
                           || (r as Registration & { fullName?: string }).fullName
                           || 'Unknown Participant';
-                        const attendanceRecord = localAttendance.find(a => a.programId === selectedProgId && a.participantId === r.participantId);
+                        const registrationUserId = r.userId || (r as any).user_id;
+                        const attendanceRecord = localAttendance.find(a =>
+                          a.programId === selectedProgId &&
+                          ((registrationUserId && a.userId === registrationUserId) || a.participantId === r.participantId)
+                        );
                         const isPresent = !!attendanceRecord;
                         return (
                           <tr key={r.id} className="hover:bg-slate-50/60 transition-colors">
@@ -5455,7 +5518,7 @@ export default function OfficialPages({
                   <option value="All">All Demographic Filters</option>
                   <optgroup label="Scholarship"><option value="Scholar">Scholar</option><option value="Non-Scholar">Non-Scholar</option></optgroup>
                   <optgroup label="Educational Level"><option value="College">College</option><option value="Senior High">Senior High</option><option value="Junior High">Junior High</option><option value="Elementary">Elementary</option><option value="Vocational">Vocational</option></optgroup>
-                  <optgroup label="Employment Status"><option value="Employed">Employed</option><option value="Unemployed">Unemployed</option><option value="Student">Student</option></optgroup>
+                  <optgroup label="Employment Status"><option value="Employed">Employed</option><option value="Unemployed">Unemployed</option><option value="Student">Student</option><option value="Working Student">Working Student</option></optgroup>
                   <optgroup label="Youth Sector"><option value="In-School Youth">In-School Youth</option><option value="Out-of-School Youth">Out-of-School Youth</option><option value="Working Youth">Working Youth</option></optgroup>
                 </select>
               </div>
@@ -5491,7 +5554,9 @@ export default function OfficialPages({
                                 ? y.employmentStatus === 'Employed' || y.employment === 'Employed'
                                 : filterCategory === 'Unemployed'
                                   ? y.employmentStatus === 'Unemployed' || y.employment === 'Unemployed'
-                                  : filterCategory === 'Student' || filterCategory === 'In School Youth' || filterCategory === 'In-School Youth'
+                                  : filterCategory === 'Working Student'
+                                    ? String(y.employmentStatus || (y as any).employment_status || y.employment || '').trim().toLowerCase() === 'working student'
+                                    : filterCategory === 'Student' || filterCategory === 'In School Youth' || filterCategory === 'In-School Youth'
                                     ? /college|high school/i.test(y.educationalLevel || '')
                                     : y.zone === filterCategory || y.scholarStatus === filterCategory;
                         return matchSearch && matchCat;

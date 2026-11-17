@@ -2090,10 +2090,10 @@ return (
                         </div>
                       ) : (
                         dashboardAlerts.map((alert, i) => (
-                          <div key={i} role="button" tabIndex={0} onClick={() => navigateFromAlert(alert.code || '')} onKeyDown={(event) => {
+                          <div key={i} role="button" tabIndex={0} onClick={() => navigateFromAlert('COMPLIANCE')} onKeyDown={(event) => {
                             if (event.key === 'Enter' || event.key === ' ') {
                               event.preventDefault();
-                              navigateFromAlert(alert.code || '');
+                              navigateFromAlert('COMPLIANCE');
                             }
                           }} className="flex items-start gap-2.5 p-3 rounded-lg bg-white border border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors group">
                             <span className="text-sm mt-0.5">{alert.level === 'Critical' ? '🚨' : '⚠️'}</span>
