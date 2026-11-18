@@ -252,7 +252,7 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
 
   const { data: officials, error } = await supabaseAdmin
     .from('users')
-    .select('id, tenant_id, full_name, role_id, avatar_url, resident_profile!resident_profile_user_id_fkey(sex)')
+    .select('id, tenant_id, full_name, role_id, avatar_url, official_role, setup_completed, resident_profile!resident_profile_user_id_fkey(sex)')
     .in('role_id', [2, 3])
     .eq('status', 'active')
     .not('tenant_id', 'is', null)
@@ -261,21 +261,6 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
   if (error) {
     sendError(res, `Failed to load public officials: ${error.message}`, 500);
     return;
-  }
-
-  const officialIds = new Set((officials || []).map((official: any) => official.id));
-  const authUsers = new Map<string, any>();
-  const perPage = 1000;
-  for (let page = 1; ; page += 1) {
-    const { data, error: authError } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
-    if (authError) {
-      sendError(res, `Failed to load public official positions: ${authError.message}`, 500);
-      return;
-    }
-    for (const authUser of data.users) {
-      if (officialIds.has(authUser.id)) authUsers.set(authUser.id, authUser);
-    }
-    if (data.users.length < perPage) break;
   }
 
   const groupedOfficials = new Map<string, {
@@ -297,19 +282,15 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
 
   const resolvedOfficials = await Promise.all((officials || [])
     .filter((official: any) => {
-      const authUser = authUsers.get(official.id);
-      return authUser?.user_metadata?.setup_completed !== false
-        && authUser?.app_metadata?.setup_completed !== false
+      return official.setup_completed !== false
         && !String(official.full_name || '').toLowerCase().includes('pending invitation');
     })
     .map(async (official: any) => {
-      const authUser = authUsers.get(official.id);
       const residentProfile = Array.isArray(official.resident_profile)
         ? official.resident_profile[0]
         : official.resident_profile;
       const officialRole = String(
-        authUser?.user_metadata?.official_role
-        || authUser?.app_metadata?.official_role
+        official.official_role
         || (Number(official.role_id) === 3 ? 'SK Kagawad' : 'SK Chairperson')
       );
       return {

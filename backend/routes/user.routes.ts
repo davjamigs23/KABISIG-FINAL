@@ -1305,31 +1305,13 @@ router.get(
     // Fetch all SK Officials for this barangay (role_id 2 or 3)
     const { data: officials, error } = await supabaseAdmin
       .from('users')
-      .select('id, email, role_id, status, full_name, first_name, middle_name, last_name, suffix, suspension_reason, avatar_url')
+      .select('id, email, role_id, status, full_name, first_name, middle_name, last_name, suffix, suspension_reason, avatar_url, official_role, setup_completed')
       .eq('tenant_id', barangayId)
       .in('role_id', [2, 3]);
 
     if (error) {
       sendError(res, 'Failed to load officials: ' + error.message, 500);
       return;
-    }
-
-    // Fetch each official's metadata to determine sub-role
-    const authMap = new Map<string, { user_metadata: Record<string, any>; app_metadata: Record<string, any> }>();
-    const perPage = 1000;
-    for (let page = 1; ; page += 1) {
-      const { data: authList, error: authListError } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
-      if (authListError) {
-        sendError(res, 'Failed to load official setup status: ' + authListError.message, 500);
-        return;
-      }
-      for (const authUser of authList.users) {
-        authMap.set(authUser.id, {
-          user_metadata: authUser.user_metadata || {},
-          app_metadata: authUser.app_metadata || {},
-        });
-      }
-      if (authList.users.length < perPage) break;
     }
 
     const activeOnly = (officials || []).filter((o: any) => o.status === 'active');
@@ -1344,8 +1326,7 @@ router.get(
         chairperson++;
         return;
       }
-      const meta = authMap.get(o.id)?.user_metadata || {};
-      const sub = String(meta.official_role || '').toLowerCase();
+      const sub = String(o.official_role || '').toLowerCase();
       if (sub.includes('secretary')) secretary++;
       else if (sub.includes('treasurer')) treasurer++;
       else kagawad++;
@@ -1360,6 +1341,7 @@ router.get(
           id: o.id,
           email: o.email,
           status: o.status,
+          setup_completed: typeof o.setup_completed === 'boolean' ? o.setup_completed : null,
           full_name: composed || row.full_name || 'Pending Invitation',
           avatar_url: await resolveAvatarUrl(o.avatar_url),
         };
@@ -1368,12 +1350,10 @@ router.get(
     const skRoster = await Promise.all((officials || [])
       .filter((o: any) => o.role_id === 3)
       .map(async (o: any) => {
-        const authUser = authMap.get(o.id);
-        const meta = authUser?.user_metadata || {};
-        const sub = String(meta.official_role || '').toLowerCase();
+        const sub = String(o.official_role || '').toLowerCase();
         const official_role = sub.includes('secretary') ? 'SK Secretary'
           : sub.includes('treasurer') ? 'SK Treasurer'
-          : 'SK Kagawad';
+          : o.official_role || 'SK Kagawad';
         const row: any = o;
         const composed = [row.first_name, row.middle_name, row.last_name, row.suffix].filter(Boolean).join(' ').trim();
         return {
@@ -1381,7 +1361,7 @@ router.get(
           email: o.email,
           official_role,
           status: o.status,
-          setup_completed: meta.setup_completed === true || authUser?.app_metadata.setup_completed === true,
+          setup_completed: typeof o.setup_completed === 'boolean' ? o.setup_completed : null,
           full_name: composed || row.full_name || 'Pending Invitation',
           avatar_url: await resolveAvatarUrl(o.avatar_url),
         };

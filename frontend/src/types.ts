@@ -25,7 +25,7 @@ export interface BarangayTenant {
     email?: string | null;
     status?: string | null;
     sex?: string | null;
-    setup_completed?: boolean;
+    setup_completed?: boolean | null;
   } | null;
   youthPopulation: number;
   youthPopulationAvailable?: boolean;

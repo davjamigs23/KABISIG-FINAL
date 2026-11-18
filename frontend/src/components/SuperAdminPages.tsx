@@ -270,7 +270,8 @@ useEffect(() => {
   const normalizedInviteOfficialEmail = inviteOfficialEmail.trim().toLowerCase();
   const pendingOfficialInvites = Array.isArray(roleCapacity?.officials)
     ? roleCapacity.officials.filter((official: any) =>
-        official.setup_completed !== true
+        official.setup_completed === false
+        || official.setup_completed === 'false'
         || String(official.status || '').toLowerCase() === 'pending'
         || String(official.full_name || '').toLowerCase().includes('pending invitation')
       )
@@ -485,17 +486,24 @@ useEffect(() => {
   const getOfficialSetupBadge = (official: {
     email?: string | null;
     setup_completed?: boolean | string | null;
+    status?: string | null;
+    full_name?: string | null;
   } | null | undefined) => {
+    if (
+      official?.setup_completed === false
+      || official?.setup_completed === 'false'
+      || String(official?.status || '').toLowerCase() === 'pending'
+      || String(official?.full_name || '').toLowerCase().includes('pending invitation')
+    ) {
+      return { label: 'Pending', className: 'bg-amber-100 text-amber-800' };
+    }
     if (official?.setup_completed === true) {
       return { label: 'Assigned', className: 'bg-emerald-100 text-emerald-700' };
-    }
-    if (official?.setup_completed === false || official?.setup_completed === 'false') {
-      return { label: 'Pending', className: 'bg-amber-100 text-amber-800' };
     }
     if (!official?.email) {
       return { label: 'Unassigned', className: 'bg-slate-200 text-slate-600' };
     }
-    return { label: 'Pending', className: 'bg-amber-100 text-amber-800' };
+    return { label: 'Unknown', className: 'bg-slate-100 text-slate-600' };
   };
 
   const renderAllOfficial = (official: any) => {
@@ -2636,17 +2644,25 @@ useEffect(() => {
                     Existing SK Officials for this Barangay
                   </p>
                   <div className="space-y-1.5 max-h-44 overflow-y-auto">
-                    {completedOfficialRoster.map((o: any) => (
-                      <div key={o.id} className="flex items-center justify-between text-[11px] p-2 bg-slate-50 rounded-lg">
-                        <div className="min-w-0 flex-1">
-                          <span className="font-bold text-slate-800 block truncate">{formatOfficialName(o.full_name, o.sex, o.role_id, o.position || o.official_role)}</span>
-                          <span className="text-[10px] text-slate-500 font-mono block truncate">{o.email}</span>
+                    {completedOfficialRoster.map((o: any) => {
+                      const setupBadge = getOfficialSetupBadge(o);
+                      return (
+                        <div key={o.id} className="flex items-center justify-between text-[11px] p-2 bg-slate-50 rounded-lg">
+                          <div className="min-w-0 flex-1">
+                            <span className="font-bold text-slate-800 block truncate">{formatOfficialName(o.full_name, o.sex, o.role_id, o.position || o.official_role)}</span>
+                            <span className="text-[10px] text-slate-500 font-mono block truncate">{o.email}</span>
+                          </div>
+                          <div className="ml-2 flex shrink-0 items-center gap-1">
+                            <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-blue-50 text-[#091d64]">
+                              {o.official_role}
+                            </span>
+                            <span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded ${setupBadge.className}`}>
+                              {setupBadge.label}
+                            </span>
+                          </div>
                         </div>
-                        <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-blue-50 text-[#091d64] ml-2 shrink-0">
-                          {o.official_role}
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -3056,6 +3072,9 @@ useEffect(() => {
                           : 'Unassigned'}
                     </span>
                     <span className="block break-all text-[10px] text-slate-500">{editingBarangay?.chairpersonEmail || 'No email recorded'}</span>
+                    <span className={`mt-1 inline-block rounded px-1.5 py-0.5 text-[9px] font-bold ${getOfficialSetupBadge(editingBarangay?.chairpersonUser).className}`}>
+                      {getOfficialSetupBadge(editingBarangay?.chairpersonUser).label}
+                    </span>
                   </div>
                   <div className="flex flex-wrap shrink-0 gap-2">
                     {!editingBarangay?.chairpersonUser ? (
@@ -3070,7 +3089,7 @@ useEffect(() => {
                       >
                         Assign Chairperson
                       </button>
-                    ) : editingBarangay.chairpersonUser.setup_completed !== true ? (
+                    ) : editingBarangay.chairpersonUser.setup_completed === false || editingChairpersonIsPending ? (
                       <>
                         <button
                           type="button"

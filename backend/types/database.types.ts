@@ -59,6 +59,8 @@ export interface User {
   phone: string | null;
   avatar_url: string | null;
   status: UserStatus;
+  official_role?: string | null;
+  setup_completed?: boolean | null;
   approved_by: string | null;
   created_at?: string;
   updated_at?: string;

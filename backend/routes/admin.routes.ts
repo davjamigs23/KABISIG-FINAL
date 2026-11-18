@@ -96,7 +96,7 @@ router.get('/all-officials', authenticateUser, requireRoles('SUPER_ADMIN'), asyn
   try {
     const { data: users, error: userErr } = await supabaseAdmin
       .from('users')
-      .select('id, tenant_id, email, full_name, role_id, status, phone, avatar_url')
+      .select('id, tenant_id, email, full_name, role_id, status, phone, avatar_url, setup_completed')
       .in('role_id', [2, 3])
       .in('status', ['active', 'pending'])
       .not('tenant_id', 'is', null)
@@ -157,7 +157,7 @@ router.get('/all-officials', authenticateUser, requireRoles('SUPER_ADMIN'), asyn
         phone: official.phone,
         status,
         is_pending: isPending,
-        setup_completed: true /* real setup signal to be provided by caller */,
+        setup_completed: official.setup_completed ?? false,
         avatar_url: await resolveAvatarUrl(official.avatar_url),
       };
     }));
@@ -814,6 +814,15 @@ router.post(
       }
     }
 
+    const { error: chairpersonSetupStateError } = await supabaseAdmin
+      .from('users')
+      .update({ setup_completed: false })
+      .eq('id', targetUserId);
+    if (chairpersonSetupStateError) {
+      sendError(res, `Failed to reset Chairperson setup state: ${chairpersonSetupStateError.message}`, 500);
+      return;
+    }
+
     // 6. Generate direct Action / Setup link
     let actionLinkError: unknown;
     if (!actionLink) {
@@ -931,7 +940,7 @@ router.post(
     const redirectUrl = FRONTEND_URL + '/official-setup?invite_email=' + encodeURIComponent(cleanEmail) + '&role=official&tenant_id=' + barangay_id + '&official_role=' + encodeURIComponent(official_role);
 
     const { data: existingUser, error: existingUserError } = await supabaseAdmin
-      .from('users').select('id, email, tenant_id, role_id, full_name, first_name, middle_name, last_name, suffix, status')
+      .from('users').select('id, email, tenant_id, role_id, full_name, first_name, middle_name, last_name, suffix, status, official_role, setup_completed')
       .eq('email', cleanEmail).maybeSingle();
     if (existingUserError) {
       sendError(res, 'Failed to inspect existing user record: ' + existingUserError.message, 500);
@@ -953,16 +962,14 @@ router.post(
     const { user: existingAuthUser, error: listAuthError } = await findAuthUserByEmail(cleanEmail);
     if (listAuthError) { sendError(res, 'Failed to inspect existing auth users: ' + listAuthError.message, 500); return; }
 
-    const existingOfficialRoleMetadata = String(existingAuthUser?.user_metadata?.official_role || '').toLowerCase();
+    const existingOfficialRoleMetadata = String(existingUser?.official_role || '').toLowerCase();
     const existingOfficialRole = existingOfficialRoleMetadata.includes('secretary') ? 'SK Secretary'
       : existingOfficialRoleMetadata.includes('treasurer') ? 'SK Treasurer'
       : 'SK Kagawad';
-    const setupMarkedIncomplete = Boolean(existingAuthUser && (
-      existingAuthUser.user_metadata?.setup_completed === false
-      || existingAuthUser.app_metadata?.setup_completed === false
+    const setupMarkedIncomplete = Boolean(existingUser && (
+      existingUser.setup_completed === false
       || String(existingUser?.full_name || '').toLowerCase().includes('pending invitation')
-    ) && existingAuthUser.user_metadata?.setup_completed !== true
-      && existingAuthUser.app_metadata?.setup_completed !== true);
+    ) && existingUser.setup_completed !== true);
     const isPendingSetupReinvite = Boolean(
       existingUser
       && Number(existingUser.role_id) === 3
@@ -982,7 +989,7 @@ router.post(
 
       const { data: existingOfficials, error: existingOfficialsError } = await supabaseAdmin
         .from('users')
-        .select('id, role_id, status')
+        .select('id, role_id, status, official_role')
         .eq('tenant_id', barangay_id)
         .eq('role_id', 3)
         .eq('status', 'active');
@@ -995,24 +1002,9 @@ router.post(
         official => !isPendingSetupReinvite || official.id !== existingUser?.id
       );
       if (list.length > 0) {
-        const officialIds = new Set(list.map(official => official.id));
-        const metaMap = new Map<string, Record<string, any>>();
-        const perPage = 1000;
-        for (let page = 1; ; page += 1) {
-          const { data: authList, error: authListError } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
-          if (authListError) {
-            sendError(res, 'Failed to verify official roles for capacity: ' + authListError.message, 500);
-            return;
-          }
-          for (const authUser of authList.users) {
-            if (officialIds.has(authUser.id)) metaMap.set(authUser.id, authUser.user_metadata || {});
-          }
-          if (authList.users.length < perPage) break;
-        }
-
         let current = 0;
         for (const o of list) {
-          const sub = String(metaMap.get(o.id)?.official_role || '').toLowerCase();
+          const sub = String(o.official_role || '').toLowerCase();
           const normalized = sub.includes('secretary') ? 'SK Secretary'
             : sub.includes('treasurer') ? 'SK Treasurer'
             : 'SK Kagawad';
@@ -1060,9 +1052,7 @@ router.post(
         return;
       }
       if (eu.role_id === 3) {
-        const euAuth = existingAuthUser?.id === eu.id ? existingAuthUser : null;
-        const euMeta: any = euAuth?.user_metadata || {};
-        const euRoleRaw = String(euMeta.official_role || '').toLowerCase();
+        const euRoleRaw = String(eu.official_role || '').toLowerCase();
         const euRole = euRoleRaw.includes('secretary') ? 'SK Secretary'
           : euRoleRaw.includes('treasurer') ? 'SK Treasurer'
           : 'SK Kagawad';
@@ -1263,6 +1253,15 @@ router.post(
     });
     if (metadataUpdateError) {
       sendError(res, 'Failed to save SK Official setup metadata: ' + metadataUpdateError.message, 500);
+      return;
+    }
+
+    const { error: officialSetupStateError } = await supabaseAdmin
+      .from('users')
+      .update({ official_role, setup_completed: false })
+      .eq('id', targetUserId);
+    if (officialSetupStateError) {
+      sendError(res, 'Failed to save SK Official setup state: ' + officialSetupStateError.message, 500);
       return;
     }
 
@@ -1523,6 +1522,7 @@ router.post(
     let successorInviteMethod: 'existing_user' | 'email_invitation' | 'temp_credentials' | 'resignation' = 'resignation';
     let successorLink = '';
     let successor: any = null;
+    let successorNeedsPublicRecord = false;
     const redirectUrl = FRONTEND_URL + '/chairperson-setup?invite_email=' + encodeURIComponent(cleanSuccessorEmail || '') + '&role=chairperson&tenant_id=' + barangay_id;
 
     if (cleanSuccessorEmail) {
@@ -1540,66 +1540,35 @@ router.post(
         successorUserId = successor.id;
         successorLink = redirectUrl;
       } else {
-        // New user - invite
-        const { data: authList } = await supabaseAdmin.auth.admin.listUsers();
-        const existingAuthUser = authList?.users?.find(u => u.email?.toLowerCase() === cleanSuccessorEmail);
+        successorNeedsPublicRecord = true;
+        const { data: inviteData, error: inviteErr } = await inviteWithBrevo(
+          cleanSuccessorEmail,
+          {
+            data: { tenant_id: barangay_id, role_id: 2 },
+            redirectTo: redirectUrl,
+          } as any
+        );
 
-        if (existingAuthUser) {
-          successorUserId = existingAuthUser.id;
+        if (!inviteErr && inviteData?.user) {
+          successorUserId = inviteData.user.id;
           successorInviteMethod = 'email_invitation';
         } else {
-          const { data: inviteData, error: inviteErr } = await inviteWithBrevo(
-            cleanSuccessorEmail,
-            {
-              data: { tenant_id: barangay_id, role_id: 2 },
-              redirectTo: redirectUrl,
-            } as any
-          );
+          const tempPassword = 'Kb' + Math.random().toString(36).slice(-6) + 'A!1';
+          const { data: createData, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+            email: cleanSuccessorEmail,
+            password: tempPassword,
+            email_confirm: true,
+            app_metadata: { setup_completed: false },
+            user_metadata: { tenant_id: barangay_id, role_id: 2, setup_completed: false },
+            redirectTo: redirectUrl,
+          } as any);
 
-          if (!inviteErr && inviteData?.user) {
-            successorUserId = inviteData.user.id;
-            successorInviteMethod = 'email_invitation';
-          } else {
-            const tempPassword = 'Kb' + Math.random().toString(36).slice(-6) + 'A!1';
-            const { data: createData, error: createErr } = await supabaseAdmin.auth.admin.createUser({
-              email: cleanSuccessorEmail,
-              password: tempPassword,
-              email_confirm: true,
-              app_metadata: { setup_completed: false },
-              user_metadata: { tenant_id: barangay_id, role_id: 2, setup_completed: false },
-              redirectTo: redirectUrl,
-            } as any);
-
-            if (createErr || !createData?.user) {
-              sendError(res, 'Failed to initialize successor account: ' + (createErr?.message || 'unknown'), 500);
-              return;
-            }
-            successorUserId = createData.user.id;
-            successorInviteMethod = 'temp_credentials';
+          if (createErr || !createData?.user) {
+            sendError(res, 'Failed to initialize successor account: ' + (createErr?.message || 'unknown'), 500);
+            return;
           }
-        }
-
-        // Insert into public.users
-        const { error: insertErr } = await supabaseAdmin.from('users').upsert({
-          id: successorUserId,
-          tenant_id: barangay_id,
-          role_id: 4,
-          full_name: 'Pending Invitation',
-          first_name: null,
-          middle_name: null,
-          last_name: null,
-          suffix: null,
-          email: cleanSuccessorEmail,
-          phone: null,
-          status: 'pending',
-          approved_by: admin.id,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'id' });
-
-        if (insertErr) {
-          sendError(res, 'Failed to pre-set successor record: ' + insertErr.message, 500);
-          return;
+          successorUserId = createData.user.id;
+          successorInviteMethod = 'temp_credentials';
         }
 
         // Generate setup link
@@ -1619,65 +1588,23 @@ router.post(
       }
     }
 
-    // 4. Record the transfer before changing either user's role.
-    const { error: transferInsertErr } = await supabaseAdmin.from('chairperson_transfers').insert({
-      barangay_id,
-      outgoing_user_id: outgoing.id,
-      outgoing_email: outgoing.email,
-      outgoing_full_name: outgoing.full_name,
-      incoming_user_id: successorUserId,
-      incoming_email: cleanSuccessorEmail,
-      incoming_full_name: successor?.full_name || 'Pending Invitation',
-      reason,
-      notes: 'Succession Notes: ' + (notes || 'None') + '. Reason: ' + reason,
-      previous_role_action: 'DEMOTED_TO_YOUTH_CONSTITUENT',
-      performed_by: admin.id,
-      performed_by_email: admin.email || null,
+    // The database function commits the public user changes and transfer record atomically.
+    const { error: transferError } = await supabaseAdmin.rpc('transfer_chairperson', {
+      p_barangay_id: barangay_id,
+      p_outgoing_user_id: outgoing.id,
+      p_successor_user_id: successorUserId,
+      p_successor_email: cleanSuccessorEmail,
+      p_successor_full_name: successor?.full_name || 'Pending Invitation',
+      p_create_successor_record: successorNeedsPublicRecord,
+      p_admin_id: admin.id,
+      p_admin_email: admin.email || null,
+      p_reason: reason,
+      p_notes: notes || null,
     });
 
-    if (transferInsertErr) {
-      sendError(res, 'Failed to record chairperson transfer: ' + transferInsertErr.message, 500);
+    if (transferError) {
+      sendError(res, 'Failed to complete chairperson transfer: ' + transferError.message, 500);
       return;
-    }
-
-    if (successorUserId) {
-      const { error: promoteErr } = await supabaseAdmin
-        .from('users')
-        .update({
-          tenant_id: barangay_id,
-          role_id: 2,
-          status: 'active',
-          approved_by: admin.id,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', successorUserId);
-
-      if (promoteErr) {
-        sendError(res, 'Failed to promote successor: ' + promoteErr.message, 500);
-        return;
-      }
-    }
-
-    // Demote outgoing Chairperson only after the transfer record is persisted.
-    const { data: outUser } = await supabaseAdmin.from('users').select('full_name').eq('id', outgoing.id).single();
-    const cleanName = outUser?.full_name?.replace(/^Hon\.\s+/i, '') || outUser?.full_name;
-    const { error: demoteErr } = await supabaseAdmin
-      .from('users')
-      .update({ role_id: 4, status: 'active', full_name: cleanName, is_demoted: true, has_edited_profile: false })
-      .eq('id', outgoing.id);
-
-    if (demoteErr) {
-      sendError(res, 'Failed to demote outgoing Chairperson: ' + demoteErr.message, 500);
-      return;
-    }
-
-    const { error: verifyResetErr } = await supabaseAdmin
-      .from('resident_profile')
-      .update({ verification_status: 'pending' })
-      .eq('user_id', outgoing.id);
-
-    if (verifyResetErr) {
-      console.warn('[transfer-chairmanship] verification reset failed for outgoing chairperson:', verifyResetErr);
     }
 
     // 5. Audit log

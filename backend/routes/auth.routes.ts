@@ -1265,6 +1265,8 @@ router.post('/setup-chairperson-password', authenticateUser, async (req: Request
       email: normalizedEmail,
       phone: phone || null,
       status: 'active',
+      official_role: 'SK Chairperson',
+      setup_completed: false,
       updated_at: new Date().toISOString(),
     },
     { onConflict: 'id' }
@@ -1333,6 +1335,15 @@ router.post('/setup-chairperson-password', authenticateUser, async (req: Request
   if (completionErr) {
     console.error('Setup completion error:', completionErr);
     sendError(res, completionErr.message || 'Failed to mark account setup as complete.', 400, completionErr);
+    return;
+  }
+
+  const { error: publicSetupError } = await supabaseAdmin
+    .from('users')
+    .update({ official_role: 'SK Chairperson', setup_completed: true })
+    .eq('id', userId);
+  if (publicSetupError) {
+    sendError(res, `Failed to save Chairperson setup state: ${publicSetupError.message}`, 500);
     return;
   }
 
@@ -1559,6 +1570,8 @@ router.post('/setup-official-password', async (req: Request, res: Response): Pro
       email: normalizedEmail,
       phone,
       status: 'active',
+      official_role,
+      setup_completed: false,
       updated_at: new Date().toISOString(),
     },
     { onConflict: 'id' }
@@ -1619,6 +1632,15 @@ router.post('/setup-official-password', async (req: Request, res: Response): Pro
     return;
   }
   userMetadata.setup_completed = true;
+
+  const { error: publicSetupError } = await supabaseAdmin
+    .from('users')
+    .update({ official_role, setup_completed: true })
+    .eq('id', userId);
+  if (publicSetupError) {
+    sendError(res, `Failed to save SK Official setup state: ${publicSetupError.message}`, 500);
+    return;
+  }
 
   const { data: sessionData, error: signInErr } = await supabase.auth.signInWithPassword({
     email: normalizedEmail,
