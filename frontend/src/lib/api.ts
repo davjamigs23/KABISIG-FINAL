@@ -248,6 +248,13 @@ class KabisigApiClient {
     });
   }
 
+  async resendChairpersonInvitation(barangayId: string): Promise<{ success: boolean; data?: any; message?: string; error?: any }> {
+    return await this.request('/admin/resend-chairperson-invitation', {
+      method: 'POST',
+      body: JSON.stringify({ barangay_id: barangayId }),
+    });
+  }
+
   async transferChairmanship(barangayId: string, successorEmail: string, reason: string, notes?: string): Promise<{ success: boolean; message?: string; data?: any }> {
     return await this.request<any>('/admin/transfer-chairmanship', {
       method: 'POST',

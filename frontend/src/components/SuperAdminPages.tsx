@@ -127,8 +127,9 @@ useEffect(() => {
         }
 
         setTypoEmail(user.email || '');
-        setTypoPhone(user.phone || '');
-        setTypoBirthdate(user.resident_profile?.birthdate || '');
+        setTypoPhone(String(user.phone || ''));
+        const birthdate = user.birthdate || user.resident_profile?.birthdate;
+        setTypoBirthdate(typeof birthdate === 'string' ? birthdate.slice(0, 10) : '');
         setTypoFullName(_fullName);
 
         // Notify user if profile is missing (SK Officials, Chairpersons)
@@ -164,6 +165,7 @@ useEffect(() => {
   // Dedicated Assign SK Chairperson Modal State (Email-only)
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [assigningBarangay, setAssigningBarangay] = useState<BarangayTenant | null>(null);
+  const [resendingChairpersonBarangayId, setResendingChairpersonBarangayId] = useState<string | null>(null);
   const assigningChairpersonName = assigningBarangay?.chairpersonUser?.full_name?.trim() || '';
   const assigningChairpersonStatus = assigningBarangay?.chairpersonUser?.status?.trim().toLowerCase();
   const assigningBarangayHasActiveChairperson = Boolean(
@@ -373,6 +375,10 @@ useEffect(() => {
   const [showModal, setShowModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [editingBarangay, setEditingBarangay] = useState<BarangayTenant | null>(null);
+  const editingChairpersonName = editingBarangay?.chairpersonUser?.full_name?.trim() || '';
+  const normalizedEditingChairpersonName = editingChairpersonName.toLowerCase();
+  const editingChairpersonIsPending = editingBarangay?.chairpersonUser?.status?.trim().toLowerCase() === 'pending'
+    || ['pending invitation', 'sk chairperson', 'hon. sk chairperson'].includes(normalizedEditingChairpersonName);
   const [modalNotice, setModalNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [modalForm, setModalForm] = useState({
     name: '',
@@ -504,7 +510,7 @@ useEffect(() => {
             {(official.full_name || '?').trim().charAt(0).toUpperCase()}
           </span>
         )}
-        <span className="break-words">{formatOfficialName(official, 'Pending Invitation')}</span>
+        <span className="break-words">{formatOfficialName(official.full_name || 'Pending Invitation', official.sex, official.role_id, official.position || official.official_role)}</span>
         <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${badge.className}`}>
           {badge.label}
         </span>
@@ -547,7 +553,7 @@ useEffect(() => {
     .filter((item: { name: string; value: number }) => Boolean(item.name) && item.value > 0);
 
   const hasAssignedChairperson = (barangay: BarangayTenant): boolean => {
-    return getOfficialSetupBadge(barangay.chairpersonUser).label !== 'Unassigned';
+    return Boolean(barangay.chairpersonUser);
   };
 
   // Filtered Barangays list
@@ -866,6 +872,23 @@ useEffect(() => {
     setCopiedLink(false);
     setAssignReturnToConfigure(returnToConfigure);
     setShowAssignModal(true);
+  };
+
+  const handleResendChairpersonInvitation = async (barangay: BarangayTenant) => {
+    setResendingChairpersonBarangayId(barangay.id);
+    try {
+      const response = await kabisigApi.resendChairpersonInvitation(barangay.id);
+      if (!response.success) {
+        showPopup(response.message || 'Failed to resend the Chairperson sign-in link.');
+        return;
+      }
+      showPopup(response.message || 'A secure sign-in link was sent to the Chairperson.', 'success');
+      await onRefreshAuditLogs();
+    } catch (error: unknown) {
+      showPopup(error instanceof Error ? error.message : 'Failed to resend the Chairperson sign-in link.');
+    } finally {
+      setResendingChairpersonBarangayId(null);
+    }
   };
 
   const handleAssignChairpersonSubmit = async (e: React.FormEvent) => {
@@ -1219,7 +1242,7 @@ useEffect(() => {
             <div className="space-y-6 animate-in fade-in duration-200 text-left">
               
               {/* TOP METRIC CARDS */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
                 <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-2xs space-y-2">
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Barangays</span>
@@ -1464,11 +1487,11 @@ useEffect(() => {
                               {chairpersonBadge.label !== 'Unassigned' ? (
                                 isPendingChairperson ? (
                                   <span className="text-slate-500">
-                                    {isPlaceholderChairpersonName ? 'Pending Invitation' : chairpersonName}
+                                    {isPlaceholderChairpersonName ? 'Pending Invitation' : formatOfficialName(chairpersonName, b.chairpersonUser?.sex, 2, 'SK Chairperson')}
                                   </span>
                                 ) : (
                                   <div className="flex items-center gap-1.5">
-                                    <span>{chairpersonName}</span>
+                                    <span>{formatOfficialName(chairpersonName, b.chairpersonUser?.sex, 2, 'SK Chairperson')}</span>
                                     <span className={`px-1.5 py-0.5 text-[9px] font-black uppercase rounded ${chairpersonBadge.className}`}>
                                       {chairpersonBadge.label}
                                     </span>
@@ -1580,7 +1603,7 @@ useEffect(() => {
                       {filteredBarangays.map(b => {
                         const bDistrict = b.skDistrict || BARANGAY_SK_DISTRICTS[b.name] || 'Unassigned';
                         const chairpersonBadge = getOfficialSetupBadge(b.chairpersonUser);
-                        const isAssigned = chairpersonBadge.label !== 'Unassigned';
+                        const isAssigned = Boolean(b.chairpersonUser);
                         const setupCompleted = chairpersonBadge.label === 'Assigned';
                         const chairpersonName = b.chairpersonUser?.full_name || b.chairperson || '';
                         const normalizedChairpersonName = chairpersonName.trim().toLowerCase();
@@ -1630,7 +1653,7 @@ useEffect(() => {
                                 <div className="space-y-0.5">
                                   <div className="flex items-center gap-2">
                                     <span className="font-bold text-slate-900 text-xs">
-                                      {isPendingName ? 'Pending Invitation' : chairpersonName}
+                                      {isPendingName ? 'Pending Invitation' : formatOfficialName(chairpersonName, b.chairpersonUser?.sex, 2, 'SK Chairperson')}
                                     </span>
                                     <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-200">
                                       ASSIGNED
@@ -1670,7 +1693,7 @@ useEffect(() => {
                                 <span className={`w-1.5 h-1.5 rounded-full ${
                                   setupCompleted ? 'bg-emerald-500' : isAssigned ? 'bg-amber-500' : 'bg-slate-400'
                                 }`}></span>
-                                {chairpersonBadge.label === 'Assigned' ? 'Active' : chairpersonBadge.label === 'Pending' ? 'Pending' : 'Inactive'}
+                                {chairpersonBadge.label === 'Assigned' ? 'Active' : isAssigned ? 'Pending' : 'Inactive'}
                               </span>
                             </td>
 
@@ -1854,10 +1877,18 @@ useEffect(() => {
                         const spentBudget = toNumber(liveRow?.budget_spent ?? b.spentBudget);
                         const activePrograms = toNumber(liveRow?.active_programs ?? b.activePrograms);
                         const rate = totalBudget > 0 ? Math.round((spentBudget / totalBudget) * 100) : 0;
+                        const chairpersonName = b.chairpersonUser?.full_name || b.chairperson || '';
+                        const normalizedChairpersonName = chairpersonName.trim().toLowerCase();
+                        const chairpersonIsPending = b.chairpersonUser?.status?.trim().toLowerCase() === 'pending'
+                          || ['pending invitation', 'sk chairperson', 'hon. sk chairperson'].includes(normalizedChairpersonName);
                         return (
                           <tr key={b.id} className="hover:bg-slate-50/50">
                             <td className="p-3 font-bold text-[#091d64] whitespace-nowrap">Brgy. {displayBarangayName(b.name)}</td>
-                            <td className="p-3 font-semibold whitespace-nowrap">{b.chairperson}</td>
+                            <td className="p-3 font-semibold whitespace-nowrap">
+                              {chairpersonIsPending
+                                ? 'Unassigned / Pending'
+                                : formatOfficialName(chairpersonName, b.chairpersonUser?.sex, 2, 'SK Chairperson')}
+                            </td>
                             <td className="p-3 font-mono whitespace-nowrap">{registeredYouth.toLocaleString()}</td>
                             <td className="p-3 font-mono font-bold text-slate-800 whitespace-nowrap">₱{totalBudget.toLocaleString()}</td>
                             <td className="p-3 font-mono text-emerald-700 whitespace-nowrap">₱{spentBudget.toLocaleString()}</td>
@@ -1906,7 +1937,7 @@ useEffect(() => {
                   </div>
                 </div>
 
-                <div className="w-full overflow-hidden rounded-xl border border-slate-100">
+                <div className="w-full overflow-x-auto rounded-xl border border-slate-100">
                   <table className="w-full table-fixed text-left text-xs">
                     <thead className="bg-slate-50 text-[10px] text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100">
                       <tr>
@@ -2330,7 +2361,7 @@ useEffect(() => {
                                 </div>
                               )}
                               <div className="min-w-0">
-                                <p className="truncate text-sm font-bold text-slate-800">{formatOfficialName(person, 'Pending Invitation')}</p>
+                                <p className="truncate text-sm font-bold text-slate-800">{formatOfficialName(person.full_name || 'Pending Invitation', person.sex, person.role_id, person.position || person.official_role)}</p>
                                 <p className="truncate text-xs text-slate-500">{person.email || 'No email recorded'}</p>
                                 <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold capitalize ${
                                   chairpersonBadge ? chairpersonBadge.className : 'bg-slate-100 text-slate-600'
@@ -2567,7 +2598,7 @@ useEffect(() => {
                       <div key={official.id} className="rounded-lg border border-amber-100 bg-amber-50 p-2.5">
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
-                            <span className="block truncate text-[11px] font-bold text-slate-800">{official.full_name}</span>
+                            <span className="block truncate text-[11px] font-bold text-slate-800">{formatOfficialName(official.full_name, official.sex, official.role_id, official.position || official.official_role)}</span>
                             <span className="block truncate font-mono text-[10px] text-slate-500">{official.email}</span>
                             <span className="mt-1 inline-block rounded bg-white px-1.5 py-0.5 text-[9px] font-bold text-[#091d64]">
                               {official.official_role}
@@ -2608,7 +2639,7 @@ useEffect(() => {
                     {completedOfficialRoster.map((o: any) => (
                       <div key={o.id} className="flex items-center justify-between text-[11px] p-2 bg-slate-50 rounded-lg">
                         <div className="min-w-0 flex-1">
-                          <span className="font-bold text-slate-800 block truncate">{o.full_name}</span>
+                          <span className="font-bold text-slate-800 block truncate">{formatOfficialName(o.full_name, o.sex, o.role_id, o.position || o.official_role)}</span>
                           <span className="text-[10px] text-slate-500 font-mono block truncate">{o.email}</span>
                         </div>
                         <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-blue-50 text-[#091d64] ml-2 shrink-0">
@@ -2839,7 +2870,7 @@ useEffect(() => {
                     <option value="" disabled>Select Barangay...</option>
                     {sortedBarangays.map(b => (
                       <option key={b.id} value={b.id}>
-                        Barangay {b.name} ({b.chairperson && b.chairperson !== 'Unassigned' ? `Assigned: ${b.chairperson}` : 'Unassigned'})
+                        Barangay {b.name} ({b.chairperson && b.chairperson !== 'Unassigned' ? `Assigned: ${formatOfficialName(b.chairpersonUser?.full_name || b.chairperson, b.chairpersonUser?.sex, 2, 'SK Chairperson')}` : 'Unassigned'})
                       </option>
                     ))}
                   </select>
@@ -3017,10 +3048,16 @@ useEffect(() => {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 w-full mt-3">
                   <div className="min-w-0 flex-1">
                     <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">SK Chairperson</span>
-                    <span className="block mt-1 text-xs font-bold text-slate-800">{editingBarangay?.chairpersonUser?.full_name || 'Unassigned'}</span>
+                    <span className="block mt-1 text-xs font-bold text-slate-800">
+                      {editingChairpersonIsPending
+                        ? 'Unassigned / Pending'
+                        : editingBarangay?.chairpersonUser
+                          ? formatOfficialName(editingChairpersonName, editingBarangay.chairpersonUser.sex, 2, 'SK Chairperson')
+                          : 'Unassigned'}
+                    </span>
                     <span className="block break-all text-[10px] text-slate-500">{editingBarangay?.chairpersonEmail || 'No email recorded'}</span>
                   </div>
-                  <div className="flex flex-wrap shrink-0 gap-2 w-full sm:w-auto">
+                  <div className="flex flex-wrap shrink-0 gap-2">
                     {!editingBarangay?.chairpersonUser ? (
                       <button
                         type="button"
@@ -3029,7 +3066,7 @@ useEffect(() => {
                           setShowModal(false);
                           if (barangay) handleOpenAssignModal(barangay, true);
                         }}
-                        className="px-4 py-2 bg-[#091d64] hover:bg-[#102a83] text-white rounded-lg text-xs font-bold whitespace-nowrap w-full sm:w-auto"
+                        className="px-4 py-2 bg-[#091d64] hover:bg-[#102a83] text-white rounded-lg text-xs font-bold whitespace-nowrap"
                       >
                         Assign Chairperson
                       </button>
@@ -3042,24 +3079,29 @@ useEffect(() => {
                             setShowModal(false);
                             if (barangay) handleOpenCancelInviteModal(barangay, true);
                           }}
-                          className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold whitespace-nowrap w-full sm:w-auto"
+                          className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold whitespace-nowrap"
                         >
                           Cancel Invitation
                         </button>
                         <button
                           type="button"
-                          onClick={() => {
-                            const barangay = editingBarangay;
-                            setShowModal(false);
-                            if (barangay) handleOpenAssignModal(barangay, true);
-                          }}
-                          className="px-4 py-2 bg-[#091d64] hover:bg-[#102a83] text-white rounded-lg text-xs font-bold whitespace-nowrap w-full sm:w-auto"
+                          disabled={resendingChairpersonBarangayId === editingBarangay.id}
+                          onClick={() => void handleResendChairpersonInvitation(editingBarangay)}
+                          className="px-4 py-2 bg-[#091d64] hover:bg-[#102a83] text-white rounded-lg text-xs font-bold whitespace-nowrap disabled:opacity-50"
                         >
-                          Resend Invitation
+                          {resendingChairpersonBarangayId === editingBarangay.id ? 'Sending...' : 'Resend Invitation'}
                         </button>
                       </>
                     ) : (
                       <>
+                        <button
+                          type="button"
+                          disabled={resendingChairpersonBarangayId === editingBarangay.id}
+                          onClick={() => void handleResendChairpersonInvitation(editingBarangay)}
+                          className="px-4 py-2 bg-[#091d64] hover:bg-[#102a83] text-white rounded-lg text-xs font-bold whitespace-nowrap disabled:opacity-50"
+                        >
+                          {resendingChairpersonBarangayId === editingBarangay.id ? 'Sending...' : 'Resend Invitation'}
+                        </button>
                         <button
                           type="button"
                           onClick={() => {
@@ -3067,7 +3109,7 @@ useEffect(() => {
                             setShowModal(false);
                             if (barangay) handleOpenTransferModal(barangay, true);
                           }}
-                          className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold whitespace-nowrap w-full sm:w-auto"
+                          className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold whitespace-nowrap"
                         >
                           Transfer Leadership
                         </button>
@@ -3078,7 +3120,7 @@ useEffect(() => {
                             setShowModal(false);
                             if (barangay) handleOpenInviteOfficialModal(barangay, true);
                           }}
-                          className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-amber-950 rounded-lg text-xs font-bold whitespace-nowrap w-full sm:w-auto"
+                          className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-amber-950 rounded-lg text-xs font-bold whitespace-nowrap"
                         >
                           Invite Official
                         </button>

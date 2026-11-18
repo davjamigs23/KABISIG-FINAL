@@ -319,7 +319,13 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
         role_id: Number(official.role_id),
         official_role: officialRole,
         position: officialRole,
-        gender_title: residentProfile?.sex === 'Female' ? 'Ms.' : 'Mr.',
+        gender_title: residentProfile?.sex === 'Male'
+          ? 'Mr.'
+          : residentProfile?.sex === 'Female'
+            ? 'Ms.'
+            : residentProfile?.sex === 'Other'
+              ? 'Mr./Ms.'
+              : '',
         avatar_url: await resolveAvatarUrl(official.avatar_url),
       };
     }));

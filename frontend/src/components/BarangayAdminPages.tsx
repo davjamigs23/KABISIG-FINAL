@@ -1,4 +1,5 @@
 import { formatCurrencyInput } from '../lib/utils';
+import { formatOfficialName } from '../lib/officialFormatting';
 import { formatPhilippineDate, formatPhilippineDateTime, getPhilippineDateString } from '../lib/dateUtils';
 import { generateBudgetUtilizationReport } from '../lib/pdfReports';
 import ProfileSettings from './ProfileSettings';
@@ -317,7 +318,7 @@ export default function BarangayAdminPages({
         ]),
         {
           barangay: currentBarangay?.name,
-          preparedByName: currentUser?.full_name || 'SK Chairperson',
+          preparedByName: formatOfficialName(currentUser?.full_name || 'SK Chairperson', currentUser?.sex, 2, 'SK Chairperson'),
           preparedByTitle: 'SK Chairperson',
           approvedByName: federationPresidentName || 'SK Federation President',
           approvedByTitle: 'SK Federation President'
@@ -461,7 +462,7 @@ export default function BarangayAdminPages({
 
         <div class="footer">
           <div class="sign-box">
-            <div class="sign-line"><strong>${escapeHtml(currentUser?.full_name || currentBarangay?.chairperson || 'SK Chairperson')}</strong></div>
+            <div class="sign-line"><strong>${escapeHtml(formatOfficialName(currentUser?.full_name || currentBarangay?.chairperson || 'SK Chairperson', currentUser?.sex, 2, 'SK Chairperson'))}</strong></div>
             <div class="sign-title">Prepared by · SK Chairperson</div>
           </div>
           <div class="sign-box">
@@ -1103,7 +1104,12 @@ export default function BarangayAdminPages({
     hashtags: announcement.hashtags || '',
     imageUrl: announcement.image_url || '',
     imagePath: announcement.image_path || '',
-    author: announcement.author?.full_name || currentUser?.full_name || 'SK Official',
+    author: formatOfficialName(
+      announcement.author?.full_name || currentUser?.full_name || 'SK Official',
+      announcement.author?.sex || currentUser?.sex,
+      announcement.author?.role_id || currentUser?.role_id || 2,
+      announcement.author?.position || announcement.author?.official_role || currentUser?.position || 'SK Chairperson'
+    ),
     barangay: currentBarangay?.name || 'Barangay',
     datePosted: getPhilippineDateString(announcement.published_at || announcement.created_at || new Date()),
     category: announcement.category === 'Advisory' ? 'Notice' : announcement.category,
@@ -2013,7 +2019,7 @@ return (
             />
 
             <UserMenu avatarUrl={currentUser?.avatar_url} 
-              userName={currentUser?.full_name || (currentBarangay?.chairperson && currentBarangay.chairperson !== 'Unassigned' ? currentBarangay.chairperson : 'SK Chairperson')}
+              userName={formatOfficialName(currentUser?.full_name || (currentBarangay?.chairperson && currentBarangay.chairperson !== 'Unassigned' ? currentBarangay.chairperson : 'SK Chairperson'), currentUser?.sex, 2, 'SK Chairperson')}
               role="SK Chairperson"
               onLogout={onLogout}
               onNavigateProfile={() => setActiveMenu('profile')}
@@ -2035,7 +2041,7 @@ return (
             <div className="space-y-6 animate-in fade-in duration-200 text-left">
               
               {/* 1. TOP 4 METRIC CARDS (Matching Kagawad Layout) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-xs flex justify-between items-center">
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Youth Population</span>
@@ -2478,7 +2484,7 @@ return (
                       </div>
                     </div>
                   ) : (
-                    <div className="overflow-x-auto rounded-xl border border-slate-100 bg-white shadow-2xs">
+                    <div className="overflow-x-auto w-full rounded-xl border border-slate-100 bg-white shadow-2xs">
                       <table className="w-full min-w-[900px] text-left text-xs text-slate-600">
                         <thead className="border-b border-slate-100 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
                           <tr>
@@ -3194,7 +3200,7 @@ return (
                   <button onClick={handleExportMasterPDF} className="px-4 py-2.5 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-xl text-xs flex items-center gap-2 shrink-0"><Printer className="w-4 h-4" /> Export Master PDF</button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="p-5 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1"><div className="flex justify-between items-center text-slate-400"><span className="text-[10px] font-bold uppercase tracking-wider">Registered Youth</span><Users className="w-4 h-4 text-[#091d64]" /></div><h4 className="text-xl font-black text-[#091d64]">{youthProfiles.length.toLocaleString()}</h4><p className="text-[10px] text-slate-500">KK roster</p></div>
                   <div className="p-5 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1"><div className="flex justify-between items-center text-slate-400"><span className="text-[10px] font-bold uppercase tracking-wider">Active Programs</span><ClipboardList className="w-4 h-4 text-blue-600" /></div><h4 className="text-xl font-black text-blue-600">{programs.filter(p => p.status === 'Upcoming' || p.status === 'Ongoing').length}</h4><p className="text-[10px] text-slate-500">Upcoming & ongoing</p></div>
                   <div className="p-5 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1"><div className="flex justify-between items-center text-slate-400"><span className="text-[10px] font-bold uppercase tracking-wider">Total Allocated</span><Coins className="w-4 h-4 text-emerald-600" /></div><h4 className="text-xl font-black text-emerald-600">₱{programs.reduce((s, p) => s + (Number(p.budgetAllocation) || 0), 0).toLocaleString()}</h4><p className="text-[10px] text-slate-500">Program budget</p></div>
@@ -3212,7 +3218,7 @@ return (
                 {reportSubTab === 'compliance' && (
                   <div className="space-y-3">
                     <h4 className="text-sm font-bold text-slate-800">Compliance documents</h4>
-                    <div className="overflow-x-auto rounded-xl border border-slate-100">
+                    <div className="overflow-x-auto w-full rounded-xl border border-slate-100">
                       <table className="w-full min-w-[600px] text-left text-xs">
                         <thead className="bg-[#091d64] text-[10px] font-bold uppercase text-white">
                           <tr><th className="px-4 py-3">Document</th><th className="px-4 py-3">Category</th><th className="px-4 py-3">Status</th></tr>
@@ -3589,7 +3595,7 @@ return (
             <div className="space-y-6">
               <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-xs space-y-4">
                 <h3 className="text-lg font-extrabold text-[#091d64]">Barangay Official Activity & Audit Log</h3>
-                <div className="w-full overflow-hidden rounded-xl border border-slate-100">
+                <div className="w-full overflow-x-auto rounded-xl border border-slate-100">
                   <table className="w-full table-fixed text-left text-xs font-semibold text-slate-600">
                     <thead className="bg-slate-50 text-[10px] text-slate-500 font-extrabold uppercase border-b border-slate-100">
                       <tr>

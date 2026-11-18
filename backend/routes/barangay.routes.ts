@@ -121,35 +121,48 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
       return;
     }
 
-    // Include chairperson records regardless of email or status so pending invitations remain visible.
+    // Include pending officials, but exclude rejected records from the roster.
     const { data: allUsers, error: usersError } = await supabaseAdmin
       .from('users')
       .select('id, tenant_id, role_id, full_name, email, status')
-      .eq('role_id', 2);
+      .in('role_id', [2, 3])
+      .neq('status', 'rejected');
     if (usersError) {
       sendError(res, `Failed to load chairpersons: ${usersError.message}`, 500);
       return;
     }
 
-    const chairpersonIds = new Set((allUsers || []).filter((user) => user.tenant_id).map((user) => user.id));
+    const chairpersonIds = new Set(
+      (allUsers || [])
+        .filter((user) => Number(user.role_id) === 2 && user.tenant_id)
+        .map((user) => user.id)
+    );
     const authUsers = new Map<string, { user_metadata: Record<string, unknown>; app_metadata: Record<string, unknown> }>();
     const perPage = 1000;
     for (let page = 1; chairpersonIds.size > authUsers.size; page += 1) {
-      const { data, error: authError } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
-      if (authError) {
-        sendError(res, `Failed to load chairperson setup status: ${authError.message}`, 500);
-        return;
-      }
-
-      for (const authUser of data.users) {
-        if (chairpersonIds.has(authUser.id)) {
-          authUsers.set(authUser.id, {
-            user_metadata: authUser.user_metadata || {},
-            app_metadata: authUser.app_metadata || {},
-          });
+      try {
+        const { data, error: authError } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+        if (authError) {
+          console.warn('Chairperson setup metadata unavailable:', authError.message);
+          break;
         }
+
+        for (const authUser of data.users) {
+          if (chairpersonIds.has(authUser.id)) {
+            authUsers.set(authUser.id, {
+              user_metadata: authUser.user_metadata || {},
+              app_metadata: authUser.app_metadata || {},
+            });
+          }
+        }
+        if (data.users.length < perPage) break;
+      } catch (authError: unknown) {
+        console.warn(
+          'Chairperson setup metadata unavailable:',
+          authError instanceof Error ? authError.message : String(authError)
+        );
+        break;
       }
-      if (data.users.length < perPage) break;
     }
 
     const chairMap = new Map<string, {
@@ -160,7 +173,7 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
       setup_completed: boolean;
     }>();
     allUsers?.forEach((c) => {
-      if (c.tenant_id && !chairMap.has(c.tenant_id)) {
+      if (Number(c.role_id) === 2 && c.tenant_id && !chairMap.has(c.tenant_id)) {
         const authUser = authUsers.get(c.id);
         const isPending = c.full_name?.trim().toLowerCase() === 'pending invitation'
           || c.status?.trim().toLowerCase() === 'pending';
@@ -275,9 +288,9 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
         city: b.city,
         district: b.district,
         skDistrict: b.sk_district ?? null,
-        chairperson: chairpersonUser?.full_name || (chairpersonUser ? 'Pending Invitation' : 'Unassigned'),
+        chairperson: chairpersonUser?.full_name || 'Unassigned',
         chairpersonUser: visibleChairpersonUser,
-        has_chairperson: chairpersonUser?.setup_completed === true,
+        has_chairperson: Boolean(chairpersonUser),
         chairpersonEmail: canViewChairpersonContacts ? (chairpersonUser?.email || '') : '',
         contact: '',
         youthPopulation: youthCountMap.get(b.id) || 0,

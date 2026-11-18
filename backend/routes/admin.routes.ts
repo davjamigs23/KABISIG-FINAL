@@ -10,7 +10,7 @@ import type { AuthRequest } from '../types/database.types.js';
 import { resolveName } from '../utils/name.js';
 
 async function sendInvitationEmail(email: string, role: string, setupLink: string): Promise<void> {
-  const htmlMsg = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;"><h1 style="color: #091d64; margin: 0 0 8px 0;">KABISIG</h1><p style="color: #64748b; font-size: 12px; margin: 0 0 24px 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p><h2 style="color: #091d64;">You are Invited to be ' + role + '!</h2><p style="color: #334155; line-height: 1.6;">You have been invited to join the KABISIG System as ' + role + '. Click the button below to set up your account password:</p><div style="text-align: center; margin: 24px 0;"><a href="' + setupLink + '" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Set Up Account</a></div><p style="color: #94a3b8; font-size: 11px;">If the button does not work, copy this link: <a href="' + setupLink + '">' + setupLink + '</a></p></div>';
+  const htmlMsg = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;"><h1 style="color: #091d64; margin: 0 0 8px 0;">KABISIG</h1><p style="color: #64748b; font-size: 12px; margin: 0 0 24px 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p><h2 style="color: #091d64;">KABISIG secure access link</h2><p style="color: #334155; line-height: 1.6;">Use the secure link below to access KABISIG as ' + role + '. New invitees can complete account setup, and existing officials can sign in:</p><div style="text-align: center; margin: 24px 0;"><a href="' + setupLink + '" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Access KABISIG</a></div><p style="color: #94a3b8; font-size: 11px;">If the button does not work, copy this link: <a href="' + setupLink + '">' + setupLink + '</a></p></div>';
   await sendEmail(email, 'KABISIG Account Invitation', htmlMsg);
 }
 
@@ -96,51 +96,48 @@ router.get('/all-officials', authenticateUser, requireRoles('SUPER_ADMIN'), asyn
   try {
     const { data: officials, error } = await supabaseAdmin
       .from('users')
-      .select('id, tenant_id, role_id, full_name, first_name, middle_name, last_name, suffix, email, status, avatar_url, barangay(name), resident_profile!resident_profile_user_id_fkey(sex)')
+      .select(`
+        id,
+        full_name,
+        first_name,
+        middle_name,
+        last_name,
+        suffix,
+        email,
+        role_id,
+        phone,
+        status,
+        tenant_id,
+        avatar_url,
+        barangay:barangay(name),
+        resident_profile(sex, birthdate)
+      `)
       .in('role_id', [2, 3])
       .in('status', ['active', 'pending'])
-      .not('tenant_id', 'is', null);
+      .not('tenant_id', 'is', null)
+      .order('full_name', { ascending: true });
 
     if (error) {
-      sendError(res, `Failed to load officials: ${error.message}`, 500);
+      console.error('Error fetching officials:', error);
+      sendError(res, 'Failed to load official account details.', 500);
       return;
     }
 
-    const authUsers = new Map<string, any>();
-    const perPage = 1000;
-    for (let page = 1; ; page += 1) {
-      const { data, error: authError } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
-      if (authError) {
-        sendError(res, `Failed to load official account details: ${authError.message}`, 500);
-        return;
-      }
-      for (const authUser of data.users) authUsers.set(authUser.id, authUser);
-      if (data.users.length < perPage) break;
-    }
-
     const roster = await Promise.all((officials || []).map(async (official: any) => {
-      const authUser = authUsers.get(official.id);
-      const userMetadata = authUser?.user_metadata || {};
       const composedName = [official.first_name, official.middle_name, official.last_name, official.suffix]
         .filter(Boolean)
         .join(' ')
         .trim();
-      const barangay = Array.isArray(official.barangay) ? official.barangay[0] : official.barangay;
       const residentProfile = Array.isArray(official.resident_profile)
         ? official.resident_profile[0]
         : official.resident_profile;
+      const barangay = Array.isArray(official.barangay) ? official.barangay[0] : official.barangay;
       const fullName = composedName || official.full_name || 'Pending Invitation';
       const status = official.status || 'pending';
-      const officialRole = String(
-        userMetadata.official_role
-        || authUser?.app_metadata?.official_role
-        || (Number(official.role_id) === 2 ? 'SK Chairperson' : 'SK Kagawad')
-      );
-      const isInvitationPending = fullName.trim().toLowerCase().includes('pending invitation')
+      const isPending = fullName.trim().toLowerCase().includes('pending invitation')
         || status.trim().toLowerCase() === 'pending';
-      const setupPending = isInvitationPending
-        || userMetadata.setup_completed === false
-        || authUser?.app_metadata?.setup_completed === false;
+      const sex = residentProfile?.sex || null;
+      const officialRole = Number(official.role_id) === 2 ? 'SK Chairperson' : 'SK Kagawad';
       return {
         id: official.id,
         tenant_id: official.tenant_id,
@@ -148,21 +145,121 @@ router.get('/all-officials', authenticateUser, requireRoles('SUPER_ADMIN'), asyn
         role_id: Number(official.role_id),
         official_role: officialRole,
         position: officialRole,
-        sex: residentProfile?.sex || userMetadata.sex || authUser?.user_metadata?.sex || null,
+        sex,
+        birthdate: residentProfile?.birthdate || null,
+        gender_title: sex === 'Male' ? 'Mr.' : sex === 'Female' ? 'Ms.' : sex === 'Other' ? 'Mr./Ms.' : '',
         full_name: fullName,
-        email: official.email || authUser?.email || '',
+        email: official.email || '',
+        phone: official.phone,
         status,
-        setup_completed: !setupPending,
+        is_pending: isPending,
+        setup_completed: !isPending,
         avatar_url: await resolveAvatarUrl(official.avatar_url),
       };
     }));
 
-    sendSuccess(res, roster, 'Barangay officials retrieved.');
+    sendSuccess(res, roster, 'Officials retrieved.');
   } catch (error: any) {
     console.error('Failed to retrieve all Barangay officials:', error);
     sendError(res, error?.message || 'Failed to load officials.', 500);
   }
 });
+
+const ResendChairpersonInvitationSchema = z.object({
+  barangay_id: z.string().uuid('Valid Barangay ID is required'),
+});
+
+router.post(
+  '/resend-chairperson-invitation',
+  authenticateUser,
+  requireRoles('SUPER_ADMIN'),
+  async (req: Request, res: Response): Promise<void> => {
+    const parseResult = ResendChairpersonInvitationSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      sendError(res, 'Validation failed', 400, parseResult.error.flatten().fieldErrors);
+      return;
+    }
+
+    const { barangay_id } = parseResult.data;
+    const admin = (req as AuthRequest).user!;
+    const { data: barangay, error: barangayError } = await supabaseAdmin
+      .from('barangay')
+      .select('id, name')
+      .eq('id', barangay_id)
+      .maybeSingle();
+    if (barangayError) {
+      sendError(res, `Failed to load Barangay: ${barangayError.message}`, 500);
+      return;
+    }
+    if (!barangay) {
+      sendError(res, 'Target Barangay does not exist.', 404);
+      return;
+    }
+
+    const { data: chairperson, error: chairpersonError } = await supabaseAdmin
+      .from('users')
+      .select('id, email, full_name, status')
+      .eq('tenant_id', barangay_id)
+      .eq('role_id', 2)
+      .in('status', ['active', 'pending'])
+      .maybeSingle();
+    if (chairpersonError) {
+      sendError(res, `Failed to load the Barangay Chairperson: ${chairpersonError.message}`, 500);
+      return;
+    }
+    if (!chairperson?.email) {
+      sendError(res, 'No Chairperson with a registered email was found for this Barangay.', 404);
+      return;
+    }
+
+    const { data: authUserData, error: authUserError } = await supabaseAdmin.auth.admin.getUserById(chairperson.id);
+    if (authUserError || !authUserData.user) {
+      sendError(res, `Failed to load the Chairperson account: ${authUserError?.message || 'Auth account not found.'}`, 500);
+      return;
+    }
+
+    const cleanEmail = chairperson.email.trim().toLowerCase();
+    if (authUserData.user.email?.trim().toLowerCase() !== cleanEmail) {
+      sendError(res, 'The Chairperson email does not match the linked authentication account.', 409);
+      return;
+    }
+    const setupUrl = `${FRONTEND_URL}/chairperson-setup?invite_email=${encodeURIComponent(cleanEmail)}&role=chairperson&tenant_id=${barangay_id}`;
+    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+      type: 'magiclink',
+      email: cleanEmail,
+      options: { redirectTo: setupUrl, expiresIn: 18000 } as any,
+    });
+    const actionLink = linkData?.properties?.action_link;
+    if (linkError || !actionLink) {
+      sendError(res, `Failed to generate Chairperson sign-in link: ${linkError?.message || 'No action link was returned.'}`, 502);
+      return;
+    }
+
+    try {
+      await sendInvitationEmail(cleanEmail, 'SK Chairperson', actionLink);
+    } catch (emailError) {
+      const message = emailError instanceof Error ? emailError.message : String(emailError);
+      sendError(res, `Failed to send Chairperson sign-in link: ${message}`, 502);
+      return;
+    }
+
+    await recordAuditLog({
+      tenantId: barangay_id,
+      userId: admin.id,
+      action: 'RESEND_SK_CHAIRPERSON_INVITATION',
+      entityName: 'users',
+      entityId: chairperson.id,
+      details: {
+        chairperson_email: cleanEmail,
+        barangay_name: barangay.name,
+        account_status: chairperson.status,
+      },
+      ipAddress: req.ip || null,
+    });
+
+    sendSuccess(res, { email: cleanEmail, barangay_id }, `A secure sign-in link was sent to ${cleanEmail}.`);
+  }
+);
 
 // PUT /api/admin/users/:userId/update-name - SA only
 // GET /api/admin/users/lookup/:identifier - SA only
@@ -176,8 +273,10 @@ router.get('/users/lookup', authenticateUser, requireRoles('SUPER_ADMIN'), async
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const isUuid = uuidRegex.test(identifier);
 
-    // Query user WITHOUT join (avoids FK ambiguity + works for all roles)
-    let userQuery = supabaseAdmin.from('users').select('*');
+    // Use public.users as the source of truth; Auth records may be absent or incomplete.
+    let userQuery = supabaseAdmin
+      .from('users')
+      .select('id, email, full_name, first_name, middle_name, last_name, suffix, phone, role_id, tenant_id, status');
     if (Number(caller.role_id) === 2 || Number(caller.role_id) === 3) {
       if (!caller.tenant_id) {
         sendError(res, 'A barangay tenant is required for this lookup.', 403);
@@ -195,15 +294,21 @@ router.get('/users/lookup', authenticateUser, requireRoles('SUPER_ADMIN'), async
     if (userErr) { sendError(res, 'Lookup failed: ' + userErr.message, 500); return; }
     if (!user) { sendError(res, 'User not found.', 404); return; }
 
-    // Profile is optional — only youth constituents have it
-    const { data: profile } = await supabaseAdmin
+    // Profile is optional — only youth constituents have it.
+    const { data: profile, error: profileErr } = await supabaseAdmin
       .from('resident_profile')
-      .select('birthdate')
+      .select('birthdate, sex')
       .eq('user_id', user.id)
       .maybeSingle();
+    if (profileErr) {
+      sendError(res, 'Failed to load user profile: ' + profileErr.message, 500);
+      return;
+    }
 
     sendSuccess(res, {
       ...user,
+      birthdate: profile?.birthdate || null,
+      sex: profile?.sex || null,
       resident_profile: profile || null,
       has_profile: !!profile
     }, 'User found.');

@@ -100,6 +100,20 @@ export default function ViewerPages({
   const [publicOfficialsLoading, setPublicOfficialsLoading] = useState(false);
   const [publicOfficialsError, setPublicOfficialsError] = useState<string | null>(null);
   const [expandedOfficialBarangay, setExpandedOfficialBarangay] = useState<string | null>(null);
+  const [directorySearch, setDirectorySearch] = useState('');
+  const normalizedDirectorySearch = directorySearch.trim().toLowerCase();
+  const filteredPublicOfficials = (publicOfficials || []).flatMap((group) => {
+    const barangayMatches = group.barangay_name.toLowerCase().includes(normalizedDirectorySearch);
+    const matchingOfficials = group.officials.filter((official) =>
+      [official.full_name, official.official_role, official.position]
+        .some((value) => String(value || '').toLowerCase().includes(normalizedDirectorySearch))
+    );
+    if (normalizedDirectorySearch && !barangayMatches && matchingOfficials.length === 0) return [];
+    return [{
+      ...group,
+      officials: barangayMatches || !normalizedDirectorySearch ? group.officials : matchingOfficials,
+    }];
+  });
 
   // P13: Program budget transparency state
   const [expandedBudget, setExpandedBudget] = useState<string | null>(null);
@@ -637,7 +651,7 @@ export default function ViewerPages({
               </div>
 
               {/* STATS OVERVIEW */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Barangay Councils</span>
@@ -795,6 +809,17 @@ export default function ViewerPages({
                   <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
                     <h3 className="font-bold text-slate-800 text-base">Barangay Officials Roster</h3>
                     <p className="text-xs text-slate-500 mt-1">Public names, positions, and official avatars only. No contact details or addresses are displayed.</p>
+                    <label className="mt-4 block text-xs font-semibold text-slate-600" htmlFor="directory-search">
+                      Search barangays or officials
+                    </label>
+                    <input
+                      id="directory-search"
+                      type="search"
+                      value={directorySearch}
+                      onChange={(event) => setDirectorySearch(event.target.value)}
+                      placeholder="Enter a barangay, name, or position"
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                    />
                   </div>
 
                   {publicOfficialsLoading && (
@@ -815,8 +840,14 @@ export default function ViewerPages({
                     </div>
                   )}
 
+                  {!publicOfficialsLoading && !publicOfficialsError && Boolean(publicOfficials?.length) && filteredPublicOfficials.length === 0 && (
+                    <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-500">
+                      No barangays or officials match your search.
+                    </div>
+                  )}
+
                   <div className="space-y-3">
-                    {publicOfficials?.map((group) => {
+                    {filteredPublicOfficials.map((group) => {
                       const isExpanded = expandedOfficialBarangay === group.barangay_name;
                       return (
                         <section key={group.barangay_name} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
@@ -854,7 +885,7 @@ export default function ViewerPages({
                                           )}
                                         </div>
                                         <div className="min-w-0">
-                                          <p className="break-words text-sm font-bold text-slate-800">{formatOfficialName(official)}</p>
+                                          <p className="break-words text-sm font-bold text-slate-800">{formatOfficialName(official.full_name, official.gender_title, official.role_id, official.position || official.official_role)}</p>
                                           <p className="text-xs font-semibold text-slate-500">
                                             {official.role_id === 2 ? 'SK Chairperson' : official.official_role || official.position || 'SK Official'}
                                           </p>
@@ -1067,7 +1098,7 @@ export default function ViewerPages({
                       </div>
                     </div>
 
-                    <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                    <div className="overflow-x-auto w-full border border-slate-200 rounded-xl">
                       <table className="w-full text-left text-xs text-slate-600">
                         <thead className="bg-slate-50 text-[10px] text-slate-500 font-bold uppercase border-b border-slate-200">
                           <tr>
@@ -1163,7 +1194,7 @@ export default function ViewerPages({
                   </div>
 
                   {/* Table */}
-                  <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                  <div className="overflow-x-auto w-full border border-slate-200 rounded-xl">
                     <table className="w-full text-left text-xs text-slate-600">
                       <thead className="bg-slate-50 text-[10px] text-slate-500 font-bold uppercase border-b border-slate-200">
                         <tr>
@@ -1296,7 +1327,8 @@ export default function ViewerPages({
                         </button>
                         {expandedBudget === prog.id && budgetCache[prog.id] && (
                           <div className="bg-white rounded-lg border border-slate-200 p-3 space-y-2 text-[10px]">
-                            <table className="w-full">
+                            <div className="w-full overflow-x-auto">
+                              <table className="w-full min-w-[400px]">
                               <tbody>
                                 {(Array.isArray(budgetCache[prog.id]?.expenses) ? budgetCache[prog.id].expenses : []).map((e: any) => (
                                   <tr key={e.id} className="border-b border-slate-100 last:border-0">
@@ -1308,7 +1340,8 @@ export default function ViewerPages({
                                   </tr>
                                 ))}
                               </tbody>
-                            </table>
+                              </table>
+                            </div>
                             <div className="pt-2 border-t border-slate-200 space-y-1">
                               <div className="flex justify-between font-semibold text-slate-700">
                                 <span>Total Allocation</span>
