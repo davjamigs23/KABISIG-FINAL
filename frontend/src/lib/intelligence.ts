@@ -83,35 +83,17 @@ export function classifyDemographics(profile: YouthProfile): string[] {
 
 /**
  * 2. Youth Engagement Score (Rule-Based)
- * Computes a score from 1-100 based on participation criteria.
+ * Computes the attended-program share from actual attendance metrics.
  */
 export function calculateEngagementScore(
-  profile: YouthProfile, 
-  registrations: Registration[], 
-  feedbacks: FeedbackRecord[], 
-  resolutions: ResolutionRecord[]
+  attendanceCount: number,
+  activeProgramCount: number
 ): { score: number; classification: 'Highly Active' | 'Active' | 'Moderately Active' | 'Needs Engagement' } {
-  let score = 0;
-
-  // Criteria A: Program registrations (+20 per approved/completed registration, max 40)
-  const profileRegs = registrations.filter(r => r.participantId === profile.id);
-  const approvedRegs = profileRegs.filter(r => r.status === 'Approved' || r.status === 'Completed');
-  score += Math.min(approvedRegs.length * 20, 40);
-
-  // Criteria B: Attendance check-ins (+25 per completed attendance, max 30)
-  const completedRegs = profileRegs.filter(r => r.status === 'Completed');
-  score += Math.min(completedRegs.length * 25, 30);
-
-  // Criteria C: Direct Civic Feedback Submission (+15 per feedback, max 15)
-  const profileFeedbacks = feedbacks.filter(f => f.submittedBy === profile.name || (!f.anonymous && f.submittedBy === profile.name));
-  score += Math.min(profileFeedbacks.length * 15, 15);
-
-  // Criteria D: Democratic Policy voting (+10 per resolution voted, max 15)
-  const votedResolutionsCount = resolutions.filter(r => r.votedUsers && r.votedUsers.includes(profile.id)).length;
-  score += Math.min(votedResolutionsCount * 10, 15);
-
-  // Ensure minimum is 10 for registered users
-  score = Math.max(10, Math.min(score, 100));
+  const validAttendanceCount = Number.isFinite(attendanceCount) ? Math.max(0, Math.floor(attendanceCount)) : 0;
+  const validActiveProgramCount = Number.isFinite(activeProgramCount) ? Math.max(0, Math.floor(activeProgramCount)) : 0;
+  const score = validActiveProgramCount > 0
+    ? Math.min(100, Math.round((validAttendanceCount / validActiveProgramCount) * 100))
+    : 0;
 
   let classification: 'Highly Active' | 'Active' | 'Moderately Active' | 'Needs Engagement' = 'Needs Engagement';
   if (score >= 90) {
@@ -123,6 +105,16 @@ export function calculateEngagementScore(
   }
 
   return { score, classification };
+}
+
+export interface YouthAttendanceMetric {
+  user_id: string;
+  attendance_count: number;
+}
+
+export interface EngagementAnalytics {
+  active_program_count: number;
+  youth_scores: YouthAttendanceMetric[];
 }
 
 /**
@@ -208,25 +200,22 @@ export function recommendPrograms(
  */
 export function detectLowEngagement(
   profiles: YouthProfile[],
-  registrations: Registration[]
+  youthScores: YouthAttendanceMetric[],
+  activeProgramCount: number
 ): Array<{ profile: YouthProfile; score: number; recommendedOutreach: string[] }> {
+  if (!Number.isFinite(activeProgramCount) || activeProgramCount <= 0) return [];
+  const attendanceByUser = new Map(youthScores.map(metric => [metric.user_id, metric.attendance_count]));
+
   return profiles
     .filter(p => p.status === 'Approved')
     .map(p => {
-      const _pAny: any = p as any;
-      const _pUserId = _pAny.userId || _pAny.user_id || _pAny.id;
-      const pRegs = registrations.filter((r: any) => {
-        const _rAny: any = r as any;
-        const _regUser = _rAny.userId || _rAny.user_id || _rAny.participantId || _rAny.participant_id;
-        return _regUser === _pUserId;
-      });
-      const attendanceCount = pRegs.filter(r => r.status === 'Completed').length;
-      
-      // Compute proxy score if engagementScore is undefined
-      const score = p.engagementScore !== undefined ? p.engagementScore : (pRegs.length * 20);
+      const userId = p.userId || p.id;
+      const attendanceCount = attendanceByUser.get(userId);
+      if (attendanceCount === undefined) return null;
+      const score = calculateEngagementScore(attendanceCount, activeProgramCount).score;
 
       const outreach: string[] = [];
-      if (score < 50) {
+      if (score < 20) {
         if (p.employmentStatus === 'Out-of-School Youth' || p.youthSector === 'Out-of-School Youth') {
           outreach.push('Invite to free SK Skills/Vocational training programs');
           outreach.push('Conduct Purok-level educational counseling visitation');
@@ -240,7 +229,7 @@ export function detectLowEngagement(
 
       return { profile: p, score, recommendedOutreach: outreach };
     })
-    .filter(item => item.score < 50)
+    .filter((item): item is NonNullable<typeof item> => item !== null && item.score < 20)
     .sort((a, b) => a.score - b.score);
 }
 

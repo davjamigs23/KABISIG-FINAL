@@ -3,7 +3,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { supabaseAdmin, canAccessTenant } from '../services/supabase.service.js';
 import { sendSuccess, sendError } from '../utils/response.js';
-import { authenticateUser, requireRoles } from '../middleware/auth.js';
+import { authenticateUser, requireActiveUser, requireRoles } from '../middleware/auth.js';
 import type { AuthRequest } from '../types/database.types.js';
 
 const router = express.Router();
@@ -172,11 +172,15 @@ router.get('/barangay', authenticateUser, requireRoles('BARANGAY_ADMIN', 'SK_OFF
     .eq('id', tenantId)
     .single();
 
-  const { data: profiles } = await supabaseAdmin
+  const { data: profiles, error: profilesError } = await supabaseAdmin
     .from('resident_profile')
-    .select('birthdate, sex, educational_status, employment_status, is_registered_voter, users!resident_profile_user_id_fkey!inner(role_id)')
+    .select('user_id, birthdate, sex, educational_status, employment_status, is_registered_voter, users!resident_profile_user_id_fkey!inner(role_id, status)')
     .eq('tenant_id', tenantId)
     .eq('users.role_id', 4);
+  if (profilesError) {
+    sendError(res, `Failed to load registered youth profiles: ${profilesError.message}`, 500);
+    return;
+  }
 
   const totalRegisteredYouth = profiles?.length || 0;
   let votersCount = 0;
@@ -228,6 +232,64 @@ router.get('/barangay', authenticateUser, requireRoles('BARANGAY_ADMIN', 'SK_OFF
     .select('*', { count: 'exact', head: true })
     .eq('tenant_id', tenantId);
 
+  const activeProgramStatuses = ['upcoming', 'ongoing'];
+  const { data: activePrograms, error: activeProgramError } = await supabaseAdmin
+    .from('program')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .in('status', activeProgramStatuses);
+
+  if (activeProgramError) {
+    sendError(res, `Failed to load active programs: ${activeProgramError.message}`, 500);
+    return;
+  }
+
+  const activeProgramIds = (activePrograms || []).map(program => program.id);
+  const attendanceByYouth: Record<string, Set<string>> = {};
+  const attendancePageSize = 1000;
+  if (activeProgramIds.length > 0) {
+    for (let offset = 0; ; offset += attendancePageSize) {
+      const { data: attendanceRows, error: attendanceError } = await supabaseAdmin
+        .from('program_attendance')
+        .select('id, user_id, program_id')
+        .eq('tenant_id', tenantId)
+        .in('program_id', activeProgramIds)
+        .order('id', { ascending: true })
+        .range(offset, offset + attendancePageSize - 1);
+
+      if (attendanceError) {
+        sendError(res, `Failed to load youth program attendance: ${attendanceError.message}`, 500);
+        return;
+      }
+
+      for (const attendance of attendanceRows || []) {
+        const youthAttendance = attendanceByYouth[attendance.user_id] || new Set<string>();
+        youthAttendance.add(attendance.program_id);
+        attendanceByYouth[attendance.user_id] = youthAttendance;
+      }
+      if (!attendanceRows || attendanceRows.length < attendancePageSize) break;
+    }
+  }
+
+  const activeProgramsTotal = activeProgramIds.length;
+  const youthEngagement = (profiles || [])
+    .filter((profile: any) => {
+      const profileUser = Array.isArray(profile.users) ? profile.users[0] : profile.users;
+      return profileUser?.status === 'active';
+    })
+    .map((profile: any) => {
+      const attendanceCount = attendanceByYouth[profile.user_id]?.size || 0;
+      const score = activeProgramsTotal > 0
+        ? Math.min(100, Math.round((attendanceCount / activeProgramsTotal) * 100))
+        : 0;
+      return {
+        user_id: profile.user_id,
+        attendance_count: attendanceCount,
+        engagement_score: score,
+        is_low_engagement: score < 20,
+      };
+    });
+
   const { data: feedbacks } = await supabaseAdmin
     .from('feedback')
     .select('sentiment, status, category')
@@ -266,11 +328,64 @@ router.get('/barangay', authenticateUser, requireRoles('BARANGAY_ADMIN', 'SK_OFF
         total_programs: programCount || 0,
         total_check_ins: totalAttendees || 0,
       },
+      engagement: {
+        active_program_count: activeProgramsTotal,
+        youth_scores: youthEngagement,
+        low_engagement_youth: youthEngagement.filter(youth => youth.is_low_engagement),
+      },
       feedback: feedbackSummary,
     },
     'Barangay dashboard analytics retrieved.'
   );
 });
+
+router.get(
+  '/my-engagement',
+  authenticateUser,
+  requireActiveUser,
+  requireRoles('YOUTH_CONSTITUENT'),
+  async (req: Request, res: Response): Promise<void> => {
+    const user = (req as AuthRequest).user!;
+    if (!user.tenant_id) {
+      sendError(res, 'User is not assigned to a Barangay.', 403);
+      return;
+    }
+
+    const { data: activePrograms, error: programsError } = await supabaseAdmin
+      .from('program')
+      .select('id')
+      .eq('tenant_id', user.tenant_id)
+      .in('status', ['upcoming', 'ongoing']);
+
+    if (programsError) {
+      sendError(res, `Failed to load active programs: ${programsError.message}`, 500);
+      return;
+    }
+
+    const activeProgramIds = (activePrograms || []).map(program => program.id);
+    let attendanceCount = 0;
+    if (activeProgramIds.length > 0) {
+      const { data: attendanceRows, error: attendanceError } = await supabaseAdmin
+        .from('program_attendance')
+        .select('program_id')
+        .eq('tenant_id', user.tenant_id)
+        .eq('user_id', user.id)
+        .in('program_id', activeProgramIds);
+
+      if (attendanceError) {
+        sendError(res, `Failed to load your program attendance: ${attendanceError.message}`, 500);
+        return;
+      }
+
+      attendanceCount = new Set((attendanceRows || []).map(row => row.program_id)).size;
+    }
+
+    sendSuccess(res, {
+      attendance_count: attendanceCount,
+      active_program_count: activeProgramIds.length,
+    }, 'Youth engagement metrics retrieved.');
+  }
+);
 
 router.get(
   '/federation',

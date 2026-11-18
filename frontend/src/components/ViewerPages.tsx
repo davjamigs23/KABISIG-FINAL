@@ -301,6 +301,8 @@ export default function ViewerPages({
   const educationDemographicData = Object.entries(_educationMap)
     .map(([name, count]) => ({ name, value: Number(count) }))
     .filter(entry => Number.isFinite(entry.value) && entry.value >= 0);
+  const hasGenderDemographicData = genderDemographicData.some(entry => entry.value > 0);
+  const hasEducationDemographicData = educationDemographicData.some(entry => entry.value > 0);
 
   // Consistently sort barangays alphabetically
   const sortedTenants = [...tenants].sort((a, b) => a.name.localeCompare(b.name));
@@ -311,6 +313,7 @@ export default function ViewerPages({
     budget: t.totalBudget,
     spent: t.spentBudget
   }));
+  const hasCityWideBudgetData = cityWideBarData.some(entry => entry.budget > 0 || entry.spent > 0);
 
   // Recharts Pie Chart F2: Category expense allocations
   const expenseCategoryTotals = expenses.reduce<Record<string, number>>((totals, exp) => {
@@ -323,7 +326,7 @@ export default function ViewerPages({
     name,
     value,
     color: expenseChartColors[index % expenseChartColors.length],
-  }));
+  })).filter(entry => entry.value > 0);
 
   // FPD Compliance Documents list from live documents
   const fpdDocuments = documents.length > 0 ? documents.filter(d => d.status?.toLowerCase() === "approved").map(d => ({
@@ -910,17 +913,23 @@ export default function ViewerPages({
                         <TrendingUp className="w-4 h-4 text-[#091d64]" />
                         Barangay Budget Utilization (Top 7 Tenants)
                       </h4>
-                      <div className="h-56 w-full min-w-0 overflow-hidden">
-                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
-                          <BarChart data={cityWideBarData} margin={{ bottom: 20 }}>
-                            <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} interval={0} angle={-45} textAnchor="end" height={70} tickFormatter={(value) => { const name = String(value || ''); return name.length > 12 ? `${name.substring(0, 10)}...` : name; }} tick={{ fill: '#475569', fontSize: 11 }} />
-                            <YAxis stroke="#64748b" fontSize={10} tickLine={false} />
-                            <Tooltip />
-                            <Bar dataKey="budget" name="Annual Budget Allocation" fill="#091d64" radius={[2, 2, 0, 0]} />
-                            <Bar dataKey="spent" name="Actual Expenditures Logged" fill="#e11d48" radius={[2, 2, 0, 0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
+                      {hasCityWideBudgetData ? (
+                        <div className="h-56 w-full min-w-0 overflow-hidden">
+                          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
+                            <BarChart data={cityWideBarData} margin={{ bottom: 20 }}>
+                              <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} interval={0} angle={-45} textAnchor="end" height={70} tickFormatter={(value) => { const name = String(value || ''); return name.length > 12 ? `${name.substring(0, 10)}...` : name; }} tick={{ fill: '#475569', fontSize: 11 }} />
+                              <YAxis stroke="#64748b" fontSize={10} tickLine={false} />
+                              <Tooltip />
+                              <Bar dataKey="budget" name="Annual Budget Allocation" fill="#091d64" radius={[2, 2, 0, 0]} />
+                              <Bar dataKey="spent" name="Actual Expenditures Logged" fill="#e11d48" radius={[2, 2, 0, 0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      ) : (
+                        <div className="h-56 flex items-center justify-center text-sm text-slate-500">
+                          No budget utilization data available.
+                        </div>
+                      )}
                     </div>
 
                     <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs min-w-0">
@@ -928,24 +937,30 @@ export default function ViewerPages({
                         <PieChartIcon className="w-4 h-4 text-rose-600" />
                         Federation Expense Categories Distribution
                       </h4>
-                      <div className="h-56 w-full min-w-0 flex justify-center overflow-hidden">
-                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
-                          <PieChart>
-                            <Pie
-                              data={expenseCategoriesData}
-                              innerRadius={0}
-                              outerRadius={70}
-                              dataKey="value"
-                            >
-                              {expenseCategoriesData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={entry.color} />
-                              ))}
-                            </Pie>
-                            <Tooltip />
-                            <Legend wrapperStyle={{ fontSize: 11 }} />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </div>
+                      {expenseCategoriesData.length > 0 ? (
+                        <div className="h-56 w-full min-w-0 flex justify-center overflow-hidden">
+                          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
+                            <PieChart>
+                              <Pie
+                                data={expenseCategoriesData}
+                                innerRadius={0}
+                                outerRadius={70}
+                                dataKey="value"
+                              >
+                                {expenseCategoriesData.map((entry, index) => (
+                                  <Cell key={`cell-${index}`} fill={entry.color} />
+                                ))}
+                              </Pie>
+                              <Tooltip />
+                              <Legend wrapperStyle={{ fontSize: 11 }} />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                      ) : (
+                        <div className="h-56 flex items-center justify-center text-sm text-slate-500">
+                          No expense category data available.
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -966,19 +981,25 @@ export default function ViewerPages({
                         <h4 className="text-xs font-bold text-slate-700 mb-3 flex items-center gap-2">
                           <Users className="w-4 h-4 text-[#091d64]" /> Gender Census Split
                         </h4>
-                        <div className="h-48 w-full min-w-0 overflow-hidden">
-                          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
-                            <PieChart>
-                              <Pie data={genderDemographicData} outerRadius={60} dataKey="value">
-                                {genderDemographicData.map((entry, i) => (
-                                  <Cell key={i} fill={entry.color} />
-                                ))}
-                              </Pie>
-                              <Tooltip />
-                              <Legend wrapperStyle={{ fontSize: 11 }} />
-                            </PieChart>
-                          </ResponsiveContainer>
-                        </div>
+                        {hasGenderDemographicData ? (
+                          <div className="h-48 w-full min-w-0 overflow-hidden">
+                            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
+                              <PieChart>
+                                <Pie data={genderDemographicData} outerRadius={60} dataKey="value">
+                                  {genderDemographicData.map((entry, i) => (
+                                    <Cell key={i} fill={entry.color} />
+                                  ))}
+                                </Pie>
+                                <Tooltip />
+                                <Legend wrapperStyle={{ fontSize: 11 }} />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          </div>
+                        ) : (
+                          <div className="h-48 flex items-center justify-center text-sm text-slate-500">
+                            No gender census data available.
+                          </div>
+                        )}
                       </div>
 
                       {/* Educational Attainment */}
@@ -986,16 +1007,22 @@ export default function ViewerPages({
                         <h4 className="text-xs font-bold text-slate-700 mb-3 flex items-center gap-2">
                           <BookOpen className="w-4 h-4 text-emerald-600" /> Educational Level Breakdown
                         </h4>
-                        <div className="h-48 w-full min-w-0 overflow-hidden">
-                          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
-                            <BarChart data={educationDemographicData} margin={{ bottom: 20 }}>
-                              <XAxis dataKey="name" fontSize={10} interval={0} angle={0} textAnchor="middle" height={50} tickFormatter={(value) => { const name = String(value || ''); return name.length > 10 ? `${name.substring(0, 10)}...` : name; }} tick={{ fill: '#475569', fontSize: 10 }} />
-                              <YAxis fontSize={10} />
-                              <Tooltip />
-                              <Bar dataKey="value" fill="#10b981" radius={[4, 4, 0, 0]} />
-                            </BarChart>
-                          </ResponsiveContainer>
-                        </div>
+                        {hasEducationDemographicData ? (
+                          <div className="h-48 w-full min-w-0 overflow-hidden">
+                            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
+                              <BarChart data={educationDemographicData} margin={{ bottom: 20 }}>
+                                <XAxis dataKey="name" fontSize={10} interval={0} angle={0} textAnchor="middle" height={50} tickFormatter={(value) => { const name = String(value || ''); return name.length > 10 ? `${name.substring(0, 10)}...` : name; }} tick={{ fill: '#475569', fontSize: 10 }} />
+                                <YAxis fontSize={10} />
+                                <Tooltip />
+                                <Bar dataKey="value" fill="#10b981" radius={[4, 4, 0, 0]} />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        ) : (
+                          <div className="h-48 flex items-center justify-center text-sm text-slate-500">
+                            No education data available.
+                          </div>
+                        )}
                       </div>
                     </div>
 

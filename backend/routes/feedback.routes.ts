@@ -9,6 +9,15 @@ import { detectSpam, applyRestriction } from '../services/spam-detection.service
 
 const router = express.Router();
 
+const tagalogPositive = ['maganda', 'ayos', 'maayos', 'salamat', 'tulong', 'galing', 'solid', 'astig'];
+const tagalogNegative = [
+  // Standard negative
+  'pangit', 'panget', 'bwisit', 'hindi maganda', 'bulok', 'basura', 'corrupt', 'walang kwenta',
+  // Profanity / toxic
+  'pakyu', 'ulol', 'tanga', 'gago', 'gunggong', 'tangina', 'putangina', 'bobo', 'lintik', 'hayop'
+];
+const tagalogNegativePhrases = new Set(tagalogNegative.filter(keyword => keyword.includes(' ')));
+
 const POSITIVE_LEXICON = new Set([
   'good', 'great', 'awesome', 'excellent', 'helpful', 'impressive', 'love', 'satisfying',
   'support', 'clean', 'friendly', 'commend', 'thank', 'thanks', 'safe', 'success',
@@ -16,7 +25,8 @@ const POSITIVE_LEXICON = new Set([
   'salamat', 'maganda', 'mahusay', 'ayos', 'galing', 'masaya', 'mabilis', 'malinis',
   'asenso', 'tulong', 'hanga', 'nagpapasalamat', 'payapa', 'tapat', 'maasahan',
   'maray', 'marhay', 'mabalos', 'magayon', 'ayus', 'tabang', 'nauugma', 'orag', 'maorag',
-  'salud', 'padaba', 'mabinat', 'mauswag'
+  'salud', 'padaba', 'mabinat', 'mauswag',
+  ...tagalogPositive
 ]);
 
 const NEGATIVE_LEXICON = new Set([
@@ -26,7 +36,8 @@ const NEGATIVE_LEXICON = new Set([
   'pangit', 'reklamo', 'bulok', 'bagal', 'kurakot', 'dumi', 'basura', 'delikado',
   'sayang', 'dismayado', 'hirap', 'galit', 'abala', 'pabaya', 'huli', 'tamad',
   'maraot', 'wara', 'maluya', 'baha', 'anggot', 'kulang', 'palso', 'rara', 'supog',
-  'supug', 'ungod'
+  'supug', 'ungod',
+  ...tagalogNegative.filter(keyword => !keyword.includes(' '))
 ]);
 
 const NEGATORS = new Set(['not', 'no', 'never', 'hindi', 'di', 'wala', 'dae', 'bako']);
@@ -79,6 +90,13 @@ export function analyzeSentiment(text: string): {
     const word = words[i]!;
     const prevWord = i > 0 ? words[i - 1] : null;
     const isNegated = prevWord && NEGATORS.has(prevWord);
+    const previousPhrase = i > 0 ? `${words[i - 1]} ${word}` : '';
+
+    if (tagalogNegativePhrases.has(previousPhrase)) {
+      score -= 1;
+      negativeMatches.push(previousPhrase);
+      continue;
+    }
 
     if (POSITIVE_LEXICON.has(word)) {
       if (isNegated) {

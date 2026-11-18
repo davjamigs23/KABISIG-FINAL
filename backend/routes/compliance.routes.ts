@@ -43,6 +43,32 @@ router.get('/', authenticateUser, requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 
     return;
   }
 
+  const expensePageSize = 1000;
+  const cashAdvanceExpenses: Array<{ id: string; created_at: string; status: string }> = [];
+  for (let offset = 0; ; offset += expensePageSize) {
+    const { data: expenseRows, error: expenseError } = await supabaseAdmin
+      .from('expense')
+      .select('id, status, created_at, budget:budget_id(category)')
+      .eq('tenant_id', user.tenant_id)
+      .eq('status', 'approved')
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: true })
+      .range(offset, offset + expensePageSize - 1);
+
+    if (expenseError) {
+      sendError(res, `Failed to load approved cash advance expenses: ${expenseError.message}`, 500, expenseError);
+      return;
+    }
+
+    for (const expense of expenseRows || []) {
+      const budget = Array.isArray(expense.budget) ? expense.budget[0] : expense.budget;
+      if (String(budget?.category || '').toLowerCase().includes('cash advance')) {
+        cashAdvanceExpenses.push(expense);
+      }
+    }
+    if (!expenseRows || expenseRows.length < expensePageSize) break;
+  }
+
   const now = new Date();
   const list = (records || []) as any[];
 
@@ -116,21 +142,12 @@ router.get('/', authenticateUser, requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 
     }
   }
 
-  // Strictly map by the Category Group selected during upload
+  // Match only the named Q2 financial-performance report, not unrelated reports.
   const q2Docs = (docs || []).filter((d: any) => {
-    const type = String(d.document_type || '').toLowerCase();
-    const title = String(d.title || '').toLowerCase();
-    return type.includes('report') || type.includes('budget') || type.includes('financial') || title.includes('q2') || title.includes('quarter');
+    const type = String(d.document_type || '').trim().toLowerCase();
+    const title = String(d.title || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    return type === 'financial report' && /(?:^|\s)q2 financial performance report(?:$|\s)/.test(title);
   });
-
-  const liqDocs = (docs || []).filter((d: any) => {
-    const type = String(d.document_type || '').toLowerCase();
-    const title = String(d.title || '').toLowerCase();
-    return type.includes('voucher') || type.includes('liquidation') || title.includes('liquidation');
-  });
-
-  console.log('[COMPLIANCE DEBUG] Approved docs found:', (docs || []).length);
-  console.log('[COMPLIANCE DEBUG] Q2 Docs matched:', q2Docs.length, '| Liquidation Docs matched:', liqDocs.length);
 
   sendSuccess(res, {
     records: list.map((r: any) => ({
@@ -150,10 +167,11 @@ router.get('/', authenticateUser, requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 
       on_time_percent: onTimePercent,
     },
     auto_detected: {
+      q2_report_status: q2Docs.length > 0 ? 'Submitted' : 'Not Yet Submitted',
       q2_report_count: q2Docs.length,
       q2_latest_upload: q2Docs[0]?.created_at || null,
-      liquidation_count: liqDocs.length,
-      liquidation_latest_upload: liqDocs[0]?.created_at || null,
+      liquidation_count: cashAdvanceExpenses.length,
+      liquidation_latest_upload: cashAdvanceExpenses[0]?.created_at || null,
     },
   }, 'Compliance records retrieved.');
 });

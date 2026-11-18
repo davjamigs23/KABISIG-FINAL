@@ -516,11 +516,13 @@ useEffect(() => {
   }));
 
   const budgetColors = ['#091d64', '#2563eb', '#059669', '#d97706', '#7c3aed', '#db2777'];
-  const pieBudgetData = (federationAnalytics?.budget_by_category || []).map((item: any, index: number) => ({
-    name: item.category,
-    value: toNumber(item.allocated),
-    color: budgetColors[index % budgetColors.length],
-  }));
+  const pieBudgetData = (federationAnalytics?.budget_by_category || [])
+    .map((item: any, index: number) => ({
+      name: item.category,
+      value: toNumber(item.allocated),
+      color: budgetColors[index % budgetColors.length],
+    }))
+    .filter((item: { name: string; value: number }) => Boolean(item.name) && item.value > 0);
 
   const hasAssignedChairperson = (barangay: BarangayTenant): boolean => {
     return getOfficialSetupBadge(barangay.chairpersonUser).label !== 'Unassigned';
@@ -543,6 +545,8 @@ useEffect(() => {
   const analyticsChartData = filteredBarangays.length === sortedBarangays.length
     ? chartBarangayData
     : chartBarangayData.filter((item: any) => filteredBarangays.some(b => b.id === item.id));
+  const hasRegisteredYouthAnalytics = analyticsChartData.some((item: any) => item.registeredYouth > 0);
+  const hasFinancialAnalytics = analyticsChartData.some((item: any) => item.budget > 0 || item.spent > 0);
 
   const handleOpenInviteOfficialModal = (barangay?: BarangayTenant, returnToConfigure: boolean = false) => {
     setInviteOfficialBarangay(barangay || null);
@@ -1313,17 +1317,23 @@ useEffect(() => {
                       <p className="text-xs text-slate-400">Active youth constituent accounts in the current federation registry</p>
                     </div>
                   </div>
-                  <div className="h-64 w-full min-w-0 overflow-hidden">
-                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
-                      <BarChart data={analyticsChartData}>
-                        <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} />
-                        <YAxis stroke="#94a3b8" fontSize={10} />
-                        <Tooltip />
-                        <Legend />
-                        <Bar dataKey="registeredYouth" fill="#2563eb" name="Registered KK Members" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
+                  {hasRegisteredYouthAnalytics ? (
+                    <div className="h-64 w-full min-w-0 overflow-hidden">
+                      <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
+                        <BarChart data={analyticsChartData}>
+                          <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} />
+                          <YAxis stroke="#94a3b8" fontSize={10} />
+                          <Tooltip />
+                          <Legend />
+                          <Bar dataKey="registeredYouth" fill="#2563eb" name="Registered KK Members" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="h-64 flex items-center justify-center text-sm text-slate-500">
+                      No youth registration data available.
+                    </div>
+                  )}
                 </div>
 
                 {/* PIE CHART: BUDGET ALLOCATION BREAKDOWN */}
@@ -1337,8 +1347,8 @@ useEffect(() => {
                       <div className="w-12 h-12 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-400 mb-2 font-bold text-lg">
                         ₱0
                       </div>
-                      <p className="text-xs font-bold text-slate-700">No Budget Categories Found</p>
-                      <p className="text-[11px] text-slate-400 mt-0.5">No current-year budget records were returned by the API</p>
+                      <p className="text-xs font-bold text-slate-700">No Budget Allocation Data</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">No positive current-year allocations are available.</p>
                     </div>
                   ) : (
                     <div className="h-52 w-full min-w-0 overflow-hidden">
@@ -1719,17 +1729,23 @@ useEffect(() => {
                     <h4 className="font-sans font-bold text-slate-800 text-sm">Registered Youth by Barangay</h4>
                     <p className="text-xs text-slate-400">Active youth constituent accounts in the current federation registry</p>
                   </div>
-                  <div className="h-64 w-full min-w-0 overflow-hidden">
-                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
-                      <BarChart data={analyticsChartData}>
-                        <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} />
-                        <YAxis stroke="#94a3b8" fontSize={10} />
-                        <Tooltip />
-                        <Legend />
-                        <Bar dataKey="registeredYouth" fill="#3b82f6" name="KK Registered" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
+                  {hasRegisteredYouthAnalytics ? (
+                    <div className="h-64 w-full min-w-0 overflow-hidden">
+                      <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
+                        <BarChart data={analyticsChartData}>
+                          <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} />
+                          <YAxis stroke="#94a3b8" fontSize={10} />
+                          <Tooltip />
+                          <Legend />
+                          <Bar dataKey="registeredYouth" fill="#3b82f6" name="KK Registered" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="h-64 flex items-center justify-center text-sm text-slate-500">
+                      No youth registration data available.
+                    </div>
+                  )}
                 </div>
 
                 {/* CHART 2: BUDGET VS SPENT COMPARISON */}
@@ -1738,18 +1754,24 @@ useEffect(() => {
                     <h4 className="font-sans font-bold text-slate-800 text-sm">AIP Budget Allocation vs. Actual Expenditure</h4>
                     <p className="text-xs text-slate-400">Financial execution tracking across component barangays</p>
                   </div>
-                  <div className="h-64 w-full min-w-0 overflow-hidden">
-                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
-                      <BarChart data={analyticsChartData}>
-                        <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} />
-                        <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(value: number) => `₱${Number(value).toLocaleString('en-US')}`} />
-                        <Tooltip formatter={(value: number) => `₱${Number(value).toLocaleString('en-US')}`} />
-                        <Legend />
-                        <Bar dataKey="budget" fill="#059669" name="Total AIP Budget" radius={[4, 4, 0, 0]} />
-                        <Bar dataKey="spent" fill="#10b981" name="Actual Spent" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
+                  {hasFinancialAnalytics ? (
+                    <div className="h-64 w-full min-w-0 overflow-hidden">
+                      <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
+                        <BarChart data={analyticsChartData}>
+                          <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} />
+                          <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(value: number) => `₱${Number(value).toLocaleString('en-US')}`} />
+                          <Tooltip formatter={(value: number) => `₱${Number(value).toLocaleString('en-US')}`} />
+                          <Legend />
+                          <Bar dataKey="budget" fill="#059669" name="Total AIP Budget" radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="spent" fill="#10b981" name="Actual Spent" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="h-64 flex items-center justify-center text-sm text-slate-500">
+                      No budget or expenditure data available.
+                    </div>
+                  )}
                 </div>
 
               </div>

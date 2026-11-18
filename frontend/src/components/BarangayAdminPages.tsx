@@ -88,7 +88,8 @@ import {
   getBudgetAnalytics, 
   monitorBudgets, 
   getComplianceIssues, 
-  analyzeFeedbackSentiment 
+  analyzeFeedbackSentiment,
+  type EngagementAnalytics
 } from '../lib/intelligence';
 import { KabisigLogo } from './PublicPages';
 import { UserMenu } from './UserMenu';
@@ -235,6 +236,42 @@ export default function BarangayAdminPages({
   const [inventory, setInventory] = useState<any[]>([]);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [lightboxImg, setLightboxImg] = useState<string | null>(null);
+  const [engagementAnalytics, setEngagementAnalytics] = useState<EngagementAnalytics | null>(null);
+  useEffect(() => {
+    let isMounted = true;
+    setEngagementAnalytics(null);
+
+    const refreshEngagementAnalytics = async () => {
+      if (!currentBarangay?.id) {
+        return;
+      }
+
+      try {
+        const analytics = await kabisigApi.getBarangayAnalytics(currentBarangay.id);
+        if (!isMounted) return;
+        const engagement = analytics?.engagement;
+        if (
+          engagement
+          && typeof engagement.active_program_count === 'number'
+          && Array.isArray(engagement.youth_scores)
+        ) {
+          setEngagementAnalytics(engagement as EngagementAnalytics);
+        } else {
+          setEngagementAnalytics(null);
+        }
+      } catch (error) {
+        console.error('Failed to fetch engagement analytics:', error);
+        if (isMounted) setEngagementAnalytics(null);
+      }
+    };
+
+    refreshEngagementAnalytics();
+    const intervalId = window.setInterval(refreshEngagementAnalytics, 30000);
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, [currentBarangay?.id]);
   useEffect(() => {
     if (activeMenu !== 'budget') return;
     let isMounted = true;
@@ -855,12 +892,18 @@ export default function BarangayAdminPages({
     const recommendations = profilesWithRegistrations.flatMap(({ profile, profileRegistrations }) =>
       recommendPrograms(profile, programs, profileRegistrations)
     );
-    const averageEngagementScore = profilesWithRegistrations.length > 0
-      ? Math.round(profilesWithRegistrations.reduce(
-        (total, { profile, profileRegistrations }) =>
-          total + calculateEngagementScore(profile, profileRegistrations, feedback, resolutions).score,
-        0
-      ) / profilesWithRegistrations.length)
+    const activeProgramCount = engagementAnalytics?.active_program_count || 0;
+    const attendanceByUser = new Map(
+      (engagementAnalytics?.youth_scores || []).map(metric => [metric.user_id, metric.attendance_count])
+    );
+    const engagementScores = profilesWithRegistrations.flatMap(({ profile }) => {
+      const attendanceCount = attendanceByUser.get(profile.userId || profile.id);
+      return engagementAnalytics && activeProgramCount > 0 && attendanceCount !== undefined
+        ? [calculateEngagementScore(attendanceCount, activeProgramCount).score]
+        : [];
+    });
+    const averageEngagementScore = engagementScores.length > 0
+      ? Math.round(engagementScores.reduce((total, score) => total + score, 0) / engagementScores.length)
       : null;
 
     return {
@@ -868,8 +911,10 @@ export default function BarangayAdminPages({
       topRecommendation: recommendations[0] || null,
       averageEngagementScore,
     };
-  }, [currentBarangay?.id, youthProfiles, registrations, programs, feedback, resolutions]);
-  const lowEngagementItems = detectLowEngagement(_filterYouth, _filterRegs);
+  }, [currentBarangay?.id, youthProfiles, registrations, programs, feedback, resolutions, engagementAnalytics]);
+  const lowEngagementItems = engagementAnalytics
+    ? detectLowEngagement(_filterYouth, engagementAnalytics.youth_scores, engagementAnalytics.active_program_count)
+    : [];
   const complianceIssueSignature = complianceIssues
     .map(issue => `${issue.code}:${issue.level}:${issue.message}`)
     .join('|');
@@ -2058,19 +2103,25 @@ return (
                       <p className="text-xs text-slate-400 mt-0.5">Real-time registration counts against maximum target participant limits.</p>
                     </div>
                   </div>
-                  <div className="h-72 w-full min-w-0">
-                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                      <BarChart data={_filterPrograms.slice(0, 10).map(p => ({ name: p.title.substring(0, 15) + '...', registered: p.registeredCount || 0, capacity: p.maxParticipants || 10 }))} margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                        <XAxis dataKey="name" interval={0} angle={0} textAnchor="middle" height={60} tickFormatter={(value) => { const name = String(value || ''); return name.length > 12 ? `${name.substring(0, 12)}...` : name; }} tick={{ fontSize: 10, fill: '#475569' }} axisLine={false} tickLine={false} />
-                        <YAxis tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                        <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ fontSize: '12px', borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                        <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                        <Bar dataKey="capacity" name="Target Capacity" fill="#93c5fd" radius={[4, 4, 0, 0]} />
-                        <Bar dataKey="registered" name="Registered Youth" fill="#091d64" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
+                  {_filterPrograms.length > 0 ? (
+                    <div className="h-72 w-full min-w-0">
+                      <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                        <BarChart data={_filterPrograms.slice(0, 10).map(p => ({ name: p.title.substring(0, 15) + '...', registered: p.registeredCount || 0, capacity: p.maxParticipants || 10 }))} margin={{ top: 20, right: 30, left: 20, bottom: 80 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="name" interval={0} angle={0} textAnchor="middle" height={60} tickFormatter={(value) => { const name = String(value || ''); return name.length > 12 ? `${name.substring(0, 12)}...` : name; }} tick={{ fontSize: 10, fill: '#475569' }} axisLine={false} tickLine={false} />
+                          <YAxis tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                          <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ fontSize: '12px', borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                          <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
+                          <Bar dataKey="capacity" name="Target Capacity" fill="#93c5fd" radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="registered" name="Registered Youth" fill="#091d64" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="h-72 flex items-center justify-center text-sm text-slate-500">
+                      No programs available to chart.
+                    </div>
+                  )}
                 </div>
 
                 {/* RIGHT COLUMN: ALERTS & QUICK ACTIONS */}

@@ -15,9 +15,10 @@ interface ProgramTrendD3Props {
 
 export default function ProgramTrendD3({ data }: ProgramTrendD3Props) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const hasParticipationData = data.some((point) => point.participants > 0);
 
   useEffect(() => {
-    if (!svgRef.current || data.length === 0) return;
+    if (!svgRef.current || !hasParticipationData) return;
 
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
@@ -66,7 +67,7 @@ export default function ProgramTrendD3({ data }: ProgramTrendD3Props) {
       .attr('fill', '#091d64')
       .attr('stroke', '#fff')
       .attr('stroke-width', 2);
-  }, [data]);
+  }, [data, hasParticipationData]);
 
   return (
     <Card className="overflow-hidden border-slate-200 shadow-xs">
@@ -78,9 +79,15 @@ export default function ProgramTrendD3({ data }: ProgramTrendD3Props) {
         <span className="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700">D3</span>
       </CardHeader>
       <CardContent>
-        <div className="w-full overflow-x-auto">
-          <svg ref={svgRef} className="min-w-[560px] w-full" />
-        </div>
+        {hasParticipationData ? (
+          <div className="w-full overflow-x-auto">
+            <svg ref={svgRef} className="min-w-[560px] w-full" />
+          </div>
+        ) : (
+          <div className="h-[260px] flex items-center justify-center text-sm text-slate-500">
+            No attendance data available for the last 30 days.
+          </div>
+        )}
       </CardContent>
     </Card>
   );

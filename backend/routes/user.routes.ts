@@ -1662,6 +1662,7 @@ router.get(
   '/youth-directory',
   authenticateUser,
   requireActiveUser,
+  requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'),
   async (req: Request, res: Response): Promise<void> => {
     const user = (req as AuthRequest).user!;
     if (!user.tenant_id) {

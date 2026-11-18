@@ -1003,6 +1003,11 @@ class KabisigApiClient {
     return res.success && res.data ? res.data : null;
   }
 
+  async getMyEngagementMetrics(): Promise<{ attendance_count: number; active_program_count: number } | null> {
+    const res = await this.request<{ attendance_count: number; active_program_count: number }>('/analytics/my-engagement', { method: 'GET' });
+    return res.success && res.data ? res.data : null;
+  }
+
   async getFederationAnalytics(): Promise<any | null> {
     const res = await this.request<any>('/analytics/federation', { method: 'GET' });
     return res.success && res.data ? res.data : null;

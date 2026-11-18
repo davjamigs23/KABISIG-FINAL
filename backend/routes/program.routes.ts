@@ -28,6 +28,29 @@ const AttendanceScanSchema = z.object({
   qr_payload: z.string().min(1, 'QR payload or digital ID is required'),
 });
 
+const ACTIVE_PROGRAM_STATUSES = ['upcoming', 'ongoing'];
+
+async function findOverlappingProgram(
+  tenantId: string,
+  startDate: string,
+  endDate: string,
+  excludeProgramId?: string
+) {
+  let query = supabaseAdmin
+    .from('program')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .in('status', ACTIVE_PROGRAM_STATUSES)
+    .lte('start_date', endDate)
+    .gte('end_date', startDate);
+
+  if (excludeProgramId) {
+    query = query.neq('id', excludeProgramId);
+  }
+
+  return query.limit(1).maybeSingle();
+}
+
 router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): Promise<void> => {
   const user = (req as AuthRequest).user;
   const { category, status, tenant_id } = req.query;
@@ -217,6 +240,22 @@ router.post(
       return;
     }
 
+    if (ACTIVE_PROGRAM_STATUSES.includes(programData.status)) {
+      const { data: overlappingProgram, error: overlapError } = await findOverlappingProgram(
+        tenantId,
+        programData.start_date,
+        programData.end_date
+      );
+      if (overlapError) {
+        sendError(res, `Failed to check for overlapping programs: ${overlapError.message}`, 500);
+        return;
+      }
+      if (overlappingProgram) {
+        sendError(res, 'Program dates overlap with another active program in this Barangay.', 409);
+        return;
+      }
+    }
+
     const { data: newProgram, error } = await supabaseAdmin
       .from('program')
       .insert([
@@ -266,7 +305,7 @@ router.put(
 
     const { data: existing, error: fetchError } = await supabaseAdmin
       .from('program')
-      .select('id, tenant_id')
+      .select('id, tenant_id, start_date, end_date, status')
       .eq('id', id)
       .single();
 
@@ -278,6 +317,31 @@ router.put(
     if (!canAccessTenant(user, existing.tenant_id)) {
       sendError(res, 'Forbidden: You cannot modify programs from another Barangay.', 403);
       return;
+    }
+
+    const updatedStartDate = parseResult.data.start_date || existing.start_date;
+    const updatedEndDate = parseResult.data.end_date || existing.end_date;
+    const updatedStatus = parseResult.data.status || existing.status;
+    if (new Date(updatedEndDate) < new Date(updatedStartDate)) {
+      sendError(res, 'End date cannot be prior to start date.', 400);
+      return;
+    }
+
+    if (ACTIVE_PROGRAM_STATUSES.includes(updatedStatus)) {
+      const { data: overlappingProgram, error: overlapError } = await findOverlappingProgram(
+        existing.tenant_id,
+        updatedStartDate,
+        updatedEndDate,
+        id
+      );
+      if (overlapError) {
+        sendError(res, `Failed to check for overlapping programs: ${overlapError.message}`, 500);
+        return;
+      }
+      if (overlappingProgram) {
+        sendError(res, 'Program dates overlap with another active program in this Barangay.', 409);
+        return;
+      }
     }
 
     const { data: updated, error: updateError } = await supabaseAdmin

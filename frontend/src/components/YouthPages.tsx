@@ -123,6 +123,32 @@ export default function YouthPages({
   const [activeMenu, setActiveMenu] = useState<
     'dashboard' | 'programs' | 'registrations' | 'feedback' | 'profile' | 'resolutions' | 'announcements' | 'settings'
    | 'directory' | 'directory'>('dashboard');
+  const [myEngagementMetrics, setMyEngagementMetrics] = useState<{
+    attendance_count: number;
+    active_program_count: number;
+  } | null>(null);
+  const [myEngagementMetricsLoaded, setMyEngagementMetricsLoaded] = useState(false);
+  useEffect(() => {
+    let isMounted = true;
+    const refreshEngagementMetrics = async () => {
+      try {
+        const metrics = await kabisigApi.getMyEngagementMetrics();
+        if (isMounted) setMyEngagementMetrics(metrics);
+      } catch (error) {
+        console.error('Failed to fetch personal engagement metrics:', error);
+        if (isMounted) setMyEngagementMetrics(null);
+      } finally {
+        if (isMounted) setMyEngagementMetricsLoaded(true);
+      }
+    };
+
+    refreshEngagementMetrics();
+    const intervalId = window.setInterval(refreshEngagementMetrics, 30000);
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, [currentYouth.id]);
   useEffect(() => {
     if (activeMenu === 'directory' && youthProfiles.length === 0) {
       kabisigApi.getYouthDirectory()
@@ -369,7 +395,9 @@ export default function YouthPages({
   };
   // --- RULE-BASED INTELLIGENCE ENGINE COMPUTATIONS ---
   const myDemographics = classifyDemographics(youth);
-  const myEngagement = calculateEngagementScore(youth, localRegs, feedback, resolutions);
+  const myEngagement = myEngagementMetrics
+    ? calculateEngagementScore(myEngagementMetrics.attendance_count, myEngagementMetrics.active_program_count)
+    : null;
   const myRecommendations = recommendPrograms(youth, programs, localRegs);
   // Search & Filters
   const [programSearch, setProgramSearch] = useState('');
@@ -1277,19 +1305,20 @@ export default function YouthPages({
                   <div className="flex items-start gap-3">
                     <div className="flex flex-col gap-1">
                       <span className="text-xs font-bold text-slate-600">
-                        Engagement Score: <span className="text-[#091d64] font-black">{myEngagement.score}</span>/100
+                        Engagement Score: <span className="text-[#091d64] font-black">{myEngagement?.score ?? '—'}</span>/100
                       </span>
                       <span className="text-[10px] text-slate-400 font-medium">
                         How to increase: Join programs, attend events, and participate in surveys.
                       </span>
                     </div>
                     <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase ${
+                      !myEngagement ? 'bg-slate-100 text-slate-500' :
                       myEngagement.classification === 'Highly Active' ? 'bg-emerald-100 text-emerald-800' :
                       myEngagement.classification === 'Active' ? 'bg-blue-100 text-blue-800' :
                       myEngagement.classification === 'Moderately Active' ? 'bg-amber-100 text-amber-800' :
                       'bg-red-100 text-red-800'
                     }`}>
-                      {myEngagement.classification}
+                      {myEngagement?.classification || (myEngagementMetricsLoaded ? 'Unavailable' : 'Loading')}
                     </span>
                   </div>
                 </div>

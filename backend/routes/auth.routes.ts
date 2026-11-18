@@ -369,16 +369,42 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
 
   if (existingUser) {
     if (existingUser.status === 'rejected') {
+      if (existingUser.tenant_id !== barangay.id) {
+        sendError(res, 'This email is already registered. Please sign in or use a different email address.', 409, {
+          code: 'EMAIL_ALREADY_REGISTERED',
+        });
+        return;
+      }
+
       // 1. Reset user status to pending
-      await supabaseAdmin.from('users').update({ 
-        status: 'pending',
-        full_name: full_name || resolvedName.full_name,
-        first_name: first_name || null,
-        middle_name: middle_name || null,
-        last_name: last_name || null,
-        suffix: suffix || null,
-        phone: phone || null
-      }).eq('id', existingUser!.id);
+      const { data: updatedUser, error: rejectedUserError } = await supabaseAdmin
+        .from('users')
+        .update({
+          status: 'pending',
+          full_name: full_name || resolvedName.full_name,
+          first_name: first_name || null,
+          middle_name: middle_name || null,
+          last_name: last_name || null,
+          suffix: suffix || null,
+          phone: phone || null
+        })
+        .eq('id', existingUser.id)
+        .eq('tenant_id', barangay.id)
+        .select('id')
+        .maybeSingle();
+
+      if (rejectedUserError) {
+        console.error('Failed to update rejected registration:', rejectedUserError);
+        sendError(res, 'Failed to update rejected registration. Please try again.', 500);
+        return;
+      }
+
+      if (!updatedUser) {
+        sendError(res, 'This email is already registered. Please sign in or use a different email address.', 409, {
+          code: 'EMAIL_ALREADY_REGISTERED',
+        });
+        return;
+      }
 
       // 2. Upload new images to Supabase Storage
       let frontPath = null;
@@ -1047,65 +1073,18 @@ router.post('/register-official', async (_req: Request, res: Response): Promise<
   );
 });
 
-// GET /api/auth/check-chairperson-invite - Check if an email is an invited Chairperson
+// GET /api/auth/check-chairperson-invite - Return invitation guidance without exposing account status
 router.get('/check-chairperson-invite', async (req: Request, res: Response): Promise<void> => {
   const emailParam = req.query.email as string | undefined;
   if (!emailParam) {
     sendError(res, 'Email query parameter is required.', 400);
     return;
   }
-  const normalizedEmail = emailParam.trim().toLowerCase();
-
-  // Check users table
-  const { data: user } = await supabaseAdmin
-    .from('users')
-    .select('id, email, tenant_id, role_id, full_name, status, barangay(name, city, district)')
-    .eq('email', normalizedEmail)
-    .maybeSingle();
-
-  if (user && user.role_id === ROLE_IDS.BARANGAY_ADMIN) {
-    const barangayInfo = (user as any).barangay || {};
-    sendSuccess(
-      res,
-      {
-        isInvitedChairperson: true,
-        email: normalizedEmail,
-        tenant_id: user.tenant_id,
-        barangay_name: barangayInfo.name || 'Unknown Barangay',
-        full_name: user.full_name,
-        status: user.status,
-      },
-      'Chairperson invitation verified.'
-    );
-    return;
-  }
-
-  // Also check auth metadata
-  const { data: authList } = await supabaseAdmin.auth.admin.listUsers();
-  const authUser = authList?.users?.find((u) => u.email?.toLowerCase() === normalizedEmail);
-  if (authUser && (authUser.user_metadata?.role_id === 2 || authUser.user_metadata?.role === 'Barangay Admin')) {
-    const tenantId = authUser.user_metadata?.tenant_id;
-    let bgyName = 'Unknown Barangay';
-    if (tenantId) {
-      const { data: bgy } = await supabaseAdmin.from('barangay').select('name').eq('id', tenantId).maybeSingle();
-      if (bgy) bgyName = bgy.name;
-    }
-    sendSuccess(
-      res,
-      {
-        isInvitedChairperson: true,
-        email: normalizedEmail,
-        tenant_id: tenantId,
-        barangay_name: bgyName,
-        full_name: authUser.user_metadata?.full_name || '',
-        status: 'active',
-      },
-      'Chairperson invitation verified.'
-    );
-    return;
-  }
-
-  sendSuccess(res, { isInvitedChairperson: false }, 'No pending invitation found for this email.');
+  sendSuccess(
+    res,
+    null,
+    'If a Chairperson invitation exists for this email, use the link sent to the invited email address to complete setup.'
+  );
 });
 
 // POST /api/auth/setup-chairperson-password - Chairperson creates password and confirm password

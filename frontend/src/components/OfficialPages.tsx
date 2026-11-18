@@ -94,7 +94,8 @@ import { analyzeFeedbackSentiment,
   extractFeedbackKeywords, 
   getMostRequestedProgramTrends,
   recommendPrograms,
-  calculateEngagementScore, detectLowEngagement, detectScheduleConflicts, getComplianceIssues } from '../lib/intelligence';
+  calculateEngagementScore, detectLowEngagement, detectScheduleConflicts, getComplianceIssues,
+  type EngagementAnalytics } from '../lib/intelligence';
 import { KabisigLogo } from './PublicPages';
 import { UserMenu } from './UserMenu';
 import NotificationMenu from './NotificationMenu';
@@ -251,6 +252,8 @@ export default function OfficialPages({
   const [complianceRecords, setComplianceRecords] = useState<any[]>([]);
   const [complianceStats, setComplianceStats] = useState<any>({ total: 0, completed_count: 0, overdue_count: 0, on_time_percent: null });
   const [complianceAutoDetected, setComplianceAutoDetected] = useState<any>({ q2_report_count: 0, liquidation_count: 0 });
+  const [engagementAnalytics, setEngagementAnalytics] = useState<EngagementAnalytics | null>(null);
+  const [engagementAnalyticsLoaded, setEngagementAnalyticsLoaded] = useState(false);
   useEffect(() => {
     let isMounted = true;
     const fetchCompliance = () => {
@@ -272,6 +275,45 @@ export default function OfficialPages({
     const interval = setInterval(fetchCompliance, 30000); // 30 seconds
     return () => { isMounted = false; clearInterval(interval); };
   }, []);
+  useEffect(() => {
+    let isMounted = true;
+    setEngagementAnalytics(null);
+    setEngagementAnalyticsLoaded(false);
+
+    const refreshEngagementAnalytics = async () => {
+      if (!currentTenant?.id) {
+        if (isMounted) setEngagementAnalyticsLoaded(true);
+        return;
+      }
+
+      try {
+        const analytics = await kabisigApi.getBarangayAnalytics(currentTenant.id);
+        if (!isMounted) return;
+        const engagement = analytics?.engagement;
+        if (
+          engagement
+          && typeof engagement.active_program_count === 'number'
+          && Array.isArray(engagement.youth_scores)
+        ) {
+          setEngagementAnalytics(engagement as EngagementAnalytics);
+        } else {
+          setEngagementAnalytics(null);
+        }
+      } catch (error) {
+        console.error('Failed to fetch engagement analytics:', error);
+        if (isMounted) setEngagementAnalytics(null);
+      } finally {
+        if (isMounted) setEngagementAnalyticsLoaded(true);
+      }
+    };
+
+    refreshEngagementAnalytics();
+    const intervalId = window.setInterval(refreshEngagementAnalytics, 30000);
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, [currentTenant?.id]);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -571,7 +613,6 @@ export default function OfficialPages({
   const regFetchingRef = useRef<Record<string, Promise<any[]>>>({});
   const pendingAttendanceScansRef = useRef<Set<string>>(new Set());
   const [attendanceMode, setAttendanceMode] = useState<'qr' | 'manual'>('qr');
-  const [qrScanning, setQrScanning] = useState(false);
   const [qrMessage, setQrMessage] = useState('');
   const [manualQrInput, setManualQrInput] = useState('');
   const [lastScanDetail, setLastScanDetail] = useState<{
@@ -1919,29 +1960,6 @@ export default function OfficialPages({
     }
   };
 
-  // Live QR Attendance Action
-  const handleQrScanTrigger = () => {
-    setQrScanning(true);
-    setQrMessage('Aligning camera framework...');
-    setTimeout(async () => {
-      const activeRegs = registrations.filter(r => r.programId === selectedProgId && r.status === 'Approved');
-      if (activeRegs.length === 0) {
-        setQrMessage('Error: No approved registrations to scan.');
-        setQrScanning(false);
-        return;
-      }
-      const rand = activeRegs[Math.floor(Math.random() * activeRegs.length)];
-      const resident = youthProfiles.find(profile => profile.id === rand.participantId);
-      if (!resident?.userId) {
-        setQrMessage(`Cannot simulate check-in: ${rand.participantName}'s authenticated ID is unavailable.`);
-        setQrScanning(false);
-        return;
-      }
-      await handleActualScan(JSON.stringify({ user_id: resident.userId }));
-      setQrScanning(false);
-    }, 1200);
-  };
-
   const handleManualCheckIn = async (r: Registration) => {
     if (isProgramEnded) {
       setQrMessage('Cannot check in: this program has already ended.');
@@ -2055,8 +2073,19 @@ export default function OfficialPages({
         : y.zone === filterCategory || y.scholarStatus === filterCategory;
     return matchSearch && matchCat;
   });
+  const lowEngagementYouth = engagementAnalytics
+    ? detectLowEngagement(
+      filteredYouth,
+      engagementAnalytics.youth_scores,
+      engagementAnalytics.active_program_count
+    )
+    : [];
   const youthEngagementInsights = useMemo(() => {
     const approvedProfiles = youthProfiles.filter(profile => profile.status === 'Approved');
+    const activeProgramCount = engagementAnalytics?.active_program_count || 0;
+    const attendanceByUser = new Map(
+      (engagementAnalytics?.youth_scores || []).map(metric => [metric.user_id, metric.attendance_count])
+    );
     const profileInsights = approvedProfiles.map(profile => {
       const profileIds = new Set(
         [profile.id, profile.userId].filter((id): id is string => Boolean(id))
@@ -2069,20 +2098,28 @@ export default function OfficialPages({
         .map(registration => ({ ...registration, participantId: profile.id }));
 
       return {
-        engagementScore: calculateEngagementScore(profile, profileRegistrations, feedback, resolutions).score,
+        engagementScore: attendanceByUser.has(profile.userId || profile.id)
+          ? calculateEngagementScore(
+            attendanceByUser.get(profile.userId || profile.id) || 0,
+            activeProgramCount
+          ).score
+          : null,
         recommendations: recommendPrograms(profile, programs, profileRegistrations),
       };
     });
     const recommendations = profileInsights.flatMap(insight => insight.recommendations);
+    const scoredProfiles = profileInsights.filter(
+      (insight): insight is typeof insight & { engagementScore: number } => insight.engagementScore !== null
+    );
 
     return {
       approvedYouthCount: profileInsights.length,
-      averageEngagementScore: profileInsights.length > 0
-        ? Math.round(profileInsights.reduce((total, insight) => total + insight.engagementScore, 0) / profileInsights.length)
+      averageEngagementScore: scoredProfiles.length > 0
+        ? Math.round(scoredProfiles.reduce((total, insight) => total + insight.engagementScore, 0) / scoredProfiles.length)
         : null,
       topRecommendation: recommendations[0] || null,
     };
-  }, [youthProfiles, registrations, feedback, resolutions, programs]);
+  }, [youthProfiles, registrations, programs, engagementAnalytics]);
   const complianceIssues = getComplianceIssues(currentRole || 'SK Secretary', filteredYouth, filteredPrograms, localDocs, filteredExpenses);
 
   return (
@@ -2707,35 +2744,39 @@ export default function OfficialPages({
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
                         {/* Interactive Donut with Center Data Callout */}
                         <div className="relative h-60 w-full flex items-center justify-center">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <PieChart margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
-                              <Pie 
-                                data={[
-                                  { name: 'Resolutions & Ordinances', value: localDocs.filter(d => getNormalizedDocumentType(d) === 'Resolutions').length, color: '#091d64' },
-                                  { name: 'Meeting Minutes', value: localDocs.filter(d => getNormalizedDocumentType(d) === 'Minutes').length, color: '#2563eb' },
-                                  { name: 'Financial & Accomplishment Reports', value: localDocs.filter(d => getNormalizedDocumentType(d) === 'Reports').length, color: '#10b981' },
-                                  { name: 'Vouchers & Transmittals', value: localDocs.filter(d => getNormalizedDocumentType(d) === 'Vouchers').length, color: '#f59e0b' }
-                                ]}
-                                dataKey="value"
-                                cx="50%"
-                                cy="50%"
-                                innerRadius={55}
-                                outerRadius={85}
-                                paddingAngle={4}
-                              >
-                                <Cell fill="#091d64" />
-                                <Cell fill="#2563eb" />
-                                <Cell fill="#10b981" />
-                                <Cell fill="#f59e0b" />
-                              </Pie>
-                              <Tooltip 
-                                formatter={(value: any, name: any) => [`${value} Records (${((Number(value) / localDocs.length) * 100).toFixed(0)}%)`, name]}
-                                contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '12px' }}
-                                itemStyle={{ color: '#ffffff' }}
-                                labelStyle={{ color: '#cbd5e1' }}
-                              />
-                            </PieChart>
-                          </ResponsiveContainer>
+                          {localDocs.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                              <PieChart margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                                <Pie
+                                  data={[
+                                    { name: 'Resolutions & Ordinances', value: localDocs.filter(d => getNormalizedDocumentType(d) === 'Resolutions').length, color: '#091d64' },
+                                    { name: 'Meeting Minutes', value: localDocs.filter(d => getNormalizedDocumentType(d) === 'Minutes').length, color: '#2563eb' },
+                                    { name: 'Financial & Accomplishment Reports', value: localDocs.filter(d => getNormalizedDocumentType(d) === 'Reports').length, color: '#10b981' },
+                                    { name: 'Vouchers & Transmittals', value: localDocs.filter(d => getNormalizedDocumentType(d) === 'Vouchers').length, color: '#f59e0b' }
+                                  ]}
+                                  dataKey="value"
+                                  cx="50%"
+                                  cy="50%"
+                                  innerRadius={55}
+                                  outerRadius={85}
+                                  paddingAngle={4}
+                                >
+                                  <Cell fill="#091d64" />
+                                  <Cell fill="#2563eb" />
+                                  <Cell fill="#10b981" />
+                                  <Cell fill="#f59e0b" />
+                                </Pie>
+                                <Tooltip
+                                  formatter={(value: any, name: any) => [`${value} Records (${((Number(value) / localDocs.length) * 100).toFixed(0)}%)`, name]}
+                                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '12px' }}
+                                  itemStyle={{ color: '#ffffff' }}
+                                  labelStyle={{ color: '#cbd5e1' }}
+                                />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          ) : (
+                            <p className="text-sm text-slate-500">No documents available to chart.</p>
+                          )}
                           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                             <span className="text-2xl font-black">{localDocs.length}</span>
                             <span className="text-xs text-slate-500">ARCHIVED</span>
@@ -3052,26 +3093,32 @@ export default function OfficialPages({
                         </span>
                       </div>
 
-                      <div className="h-64 w-full min-w-0">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={programs.slice(0, 10).map(p => ({
-                            name: p.title.length > 18 ? p.title.slice(0, 18) + '...' : p.title,
-                            registered: p.registeredCount || filteredRegistrations.filter(r => r.programId === p.id).length,
-                            capacity: p.maxParticipants || 0
-                          }))} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-                              <XAxis dataKey="name" stroke="#64748b" interval={0} angle={0} textAnchor="middle" height={60} tickFormatter={(value) => { const s = String(value || ''); return s.length > 12 ? `${s.substring(0, 12)}...` : s; }} tick={{ fontSize: 10, fill: '#475569' }} tickLine={false} />
-                            <YAxis stroke="#64748b" tick={{ fontSize: 12, fill: '#64748b' }} tickLine={false} />
-                            <Tooltip 
-                              contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '12px' }}
-                              itemStyle={{ color: '#ffffff' }}
-                              labelStyle={{ color: '#cbd5e1' }}
-                            />
-                            <Legend verticalAlign="top" height={30} />
-                            <Bar dataKey="capacity" name="Target Capacity" fill="#93c5fd" radius={[3, 3, 0, 0]} />
-                            <Bar dataKey="registered" name="Registered Youth" fill="#091d64" radius={[3, 3, 0, 0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
+                      {programs.length > 0 ? (
+                        <div className="h-64 w-full min-w-0">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={programs.slice(0, 10).map(p => ({
+                              name: p.title.length > 18 ? p.title.slice(0, 18) + '...' : p.title,
+                              registered: p.registeredCount || filteredRegistrations.filter(r => r.programId === p.id).length,
+                              capacity: p.maxParticipants || 0
+                            }))} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                                <XAxis dataKey="name" stroke="#64748b" interval={0} angle={0} textAnchor="middle" height={60} tickFormatter={(value) => { const s = String(value || ''); return s.length > 12 ? `${s.substring(0, 12)}...` : s; }} tick={{ fontSize: 10, fill: '#475569' }} tickLine={false} />
+                              <YAxis stroke="#64748b" tick={{ fontSize: 12, fill: '#64748b' }} tickLine={false} />
+                              <Tooltip
+                                contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '12px' }}
+                                itemStyle={{ color: '#ffffff' }}
+                                labelStyle={{ color: '#cbd5e1' }}
+                              />
+                              <Legend verticalAlign="top" height={30} />
+                              <Bar dataKey="capacity" name="Target Capacity" fill="#93c5fd" radius={[3, 3, 0, 0]} />
+                              <Bar dataKey="registered" name="Registered Youth" fill="#091d64" radius={[3, 3, 0, 0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      ) : (
+                        <div className="h-64 flex items-center justify-center text-sm text-slate-500">
+                          No programs available to chart.
+                        </div>
+                      )}
 
                       <div className="pt-2 border-t border-slate-100 text-xs text-slate-400"></div>
                     </div>
@@ -3179,15 +3226,26 @@ export default function OfficialPages({
                             <Sparkles className="w-4 h-4 text-amber-500" />
                             Low Engagement Detection
                           </h4>
-                          <span className="text-[9px] font-bold bg-amber-50 text-amber-700 px-2 py-0.5 rounded">{detectLowEngagement(filteredYouth, filteredRegistrations).length} Profiles</span>
+                          <span className="text-[9px] font-bold bg-amber-50 text-amber-700 px-2 py-0.5 rounded">
+                            {engagementAnalyticsLoaded && engagementAnalytics ? lowEngagementYouth.length : '—'} Profiles
+                          </span>
                         </div>
 
                         {(() => {
-                          const low = detectLowEngagement(filteredYouth, filteredRegistrations);
+                          const low = lowEngagementYouth;
+                          if (!engagementAnalyticsLoaded) {
+                            return <p className="text-xs text-slate-500 italic py-4 text-center">Loading attendance-based engagement data...</p>;
+                          }
+                          if (!engagementAnalytics) {
+                            return <p className="text-xs text-slate-500 italic py-4 text-center">Engagement data is unavailable.</p>;
+                          }
+                          if (engagementAnalytics.active_program_count === 0) {
+                            return <p className="text-xs text-slate-500 italic py-4 text-center">No active programs to evaluate.</p>;
+                          }
                           if (low.length === 0) {
                             return (
                               <p className="text-xs text-slate-500 italic py-4 text-center">
-                                No low-engagement youth detected. All constituents are actively participating.
+                                No youth are below the 20% active-program attendance threshold.
                               </p>
                             );
                           }
@@ -3402,7 +3460,11 @@ export default function OfficialPages({
                             <RefreshCw className="w-3.5 h-3.5 text-blue-600 mt-0.5 flex-shrink-0" />
                             <div>
                               <p className="font-bold text-slate-800">Cash Advances Liquidation</p>
-                              <p className="text-[10px] text-slate-500">{complianceStats.overdue_count > 0 ? `${complianceStats.overdue_count} Overdue` : (complianceAutoDetected.liquidation_count > 0 ? `${complianceAutoDetected.liquidation_count} Submitted` : "No Liquidations Uploaded")}</p>
+                              <p className="text-[10px] text-slate-500">
+                                {complianceAutoDetected.liquidation_count > 0
+                                  ? `${complianceAutoDetected.liquidation_count} Approved Expenses Recorded`
+                                  : 'No Liquidation Expenses Recorded'}
+                              </p>
                             </div>
                           </div>
                         </div>
@@ -3456,16 +3518,22 @@ export default function OfficialPages({
                       Program Participation & Budget Allocation Trends
                     </h4>
 
-                    <div className="h-64 w-full min-w-0">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={programs.slice(0, 10).map(p=>({ name: p.title.slice(0, 15)+'...', registered: p.registeredCount }))} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-                          <XAxis dataKey="name" stroke="#64748b" tick={{ fontSize: 10, fill: '#475569' }} tickLine={false} interval={0} angle={0} textAnchor="middle" height={60} tickFormatter={(value) => { const s = String(value || ''); return s.length > 12 ? `${s.substring(0, 12)}...` : s; }} />
-                          <YAxis stroke="#64748b" tick={{ fontSize: 12, fill: '#64748b' }} tickLine={false} />
-                          <Tooltip />
-                          <Bar dataKey="registered" fill="#091d64" radius={[3, 3, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
+                    {programs.length > 0 ? (
+                      <div className="h-64 w-full min-w-0">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={programs.slice(0, 10).map(p=>({ name: p.title.slice(0, 15)+'...', registered: p.registeredCount }))} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
+                            <XAxis dataKey="name" stroke="#64748b" tick={{ fontSize: 10, fill: '#475569' }} tickLine={false} interval={0} angle={0} textAnchor="middle" height={60} tickFormatter={(value) => { const s = String(value || ''); return s.length > 12 ? `${s.substring(0, 12)}...` : s; }} />
+                            <YAxis stroke="#64748b" tick={{ fontSize: 12, fill: '#64748b' }} tickLine={false} />
+                            <Tooltip />
+                            <Bar dataKey="registered" fill="#091d64" radius={[3, 3, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    ) : (
+                      <div className="h-64 flex items-center justify-center text-sm text-slate-500">
+                        No programs available to chart.
+                      </div>
+                    )}
                   </div>
 
                   {/* Recent Activities side widget */}
