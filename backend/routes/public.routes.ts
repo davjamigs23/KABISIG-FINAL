@@ -77,18 +77,31 @@ router.get('/announcements', async (_req: Request, res: Response): Promise<void>
 
 // GET /api/public/expenses — approved only, no payee/receipt fields
 router.get('/expenses', async (_req: Request, res: Response): Promise<void> => {
-  const { data, error } = await supabaseAdmin
-    .from('expense')
-    .select('id, tenant_id, program_id, title, description, gross_amount, tax_type, tax_rate, tax_amount, net_amount, expense_date, status, budget:budget_id(category, fiscal_year), program:program_id(title)')
-    .eq('status', 'approved')
-    .order('expense_date', { ascending: false })
-    .limit(500);
+  const currentYear = new Date().getFullYear();
+  const pageSize = 1000;
+  const allExpenses: any[] = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabaseAdmin
+      .from('expense')
+      .select('id, tenant_id, program_id, title, description, gross_amount, tax_type, tax_rate, tax_amount, net_amount, expense_date, status, budget:budget_id!inner(tenant_id, category, fiscal_year), program:program_id(title)')
+      .eq('status', 'approved')
+      .eq('budget.fiscal_year', currentYear)
+      .order('expense_date', { ascending: false })
+      .order('id', { ascending: true })
+      .range(offset, offset + pageSize - 1);
 
-  if (error) {
-    sendError(res, `Failed to load public expenses: ${error.message}`, 500);
-    return;
+    if (error) {
+      sendError(res, `Failed to load public expenses: ${error.message}`, 500);
+      return;
+    }
+    if ((data || []).some((expense) => expense.tenant_id !== expense.budget[0]?.tenant_id)) {
+      sendError(res, 'An approved expense is linked to a budget from a different Barangay.', 500);
+      return;
+    }
+    allExpenses.push(...(data || []));
+    if (!data || data.length < pageSize) break;
   }
-  sendSuccess(res, data || [], 'Public expenses retrieved.');
+  sendSuccess(res, allExpenses, 'Public expenses retrieved.');
 });
 
 // GET /api/public/demographics — anonymized aggregate only, no PII

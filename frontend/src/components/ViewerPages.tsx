@@ -267,8 +267,8 @@ export default function ViewerPages({
   });
 
   // Calculate city wide transparency aggregate statistics
-  const totalCityBudget = tenants.reduce((acc, curr) => acc + curr.totalBudget, 0);
-  const totalCitySpent = tenants.reduce((acc, curr) => acc + curr.spentBudget, 0);
+  const totalBudget = tenants.reduce((acc, curr) => acc + curr.totalBudget, 0);
+  const totalDisbursed = tenants.reduce((acc, curr) => acc + curr.spentBudget, 0);
   const totalCityYouth = tenants.reduce((acc, curr) => acc + curr.youthPopulation, 0);
 
   // Demographics aggregation
@@ -309,17 +309,21 @@ export default function ViewerPages({
   const sortedTenants = [...tenants].sort((a, b) => a.name.localeCompare(b.name));
 
   // Recharts Chart F1: City-Wide budget comparison
-  const cityWideBarData = sortedTenants.map(t => ({
-    name: t.name,
-    budget: t.totalBudget,
-    spent: t.spentBudget
-  }));
+  const cityWideBarData = [...tenants]
+    .filter(tenant => tenant.totalBudget > 0)
+    .sort((a, b) => b.totalBudget - a.totalBudget)
+    .slice(0, 7)
+    .map(t => ({
+      name: t.name,
+      budget: t.totalBudget,
+      spent: t.spentBudget
+    }));
   const hasCityWideBudgetData = cityWideBarData.some(entry => entry.budget > 0 || entry.spent > 0);
 
   // Recharts Pie Chart F2: Category expense allocations
   const expenseCategoryTotals = expenses.reduce<Record<string, number>>((totals, exp) => {
     const category = String(exp.category || (exp as any).tax_type || 'Uncategorized');
-    totals[category] = (totals[category] || 0) + (Number(exp.amount) || 0);
+    totals[category] = (totals[category] || 0) + (Number(exp.netAmount ?? exp.amount) || 0);
     return totals;
   }, {});
   const expenseChartColors = ['#1a237e', '#d32f2f', '#fdd835', '#78909c', '#00897b', '#6a1b9a'];
@@ -659,7 +663,7 @@ export default function ViewerPages({
                 <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Federation Budget</span>
-                    <h4 className="text-2xl font-black text-slate-800 mt-1">₱{totalCityBudget.toLocaleString()}</h4>
+                    <h4 className="text-2xl font-black text-slate-800 mt-1">₱{totalBudget.toLocaleString()}</h4>
                     <span className="text-[10px] text-amber-600 font-bold block mt-0.5">Allocated Annual Fund</span>
                   </div>
                   <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
@@ -887,7 +891,7 @@ export default function ViewerPages({
                     <div className="bg-white rounded-xl shadow-xs border-l-4 border-amber-500 p-5 flex items-center justify-between">
                       <div>
                         <span className="text-[10px] font-bold text-slate-400 uppercase block tracking-wider">Total Federation Budget</span>
-                        <h3 className="text-2xl font-black text-slate-800 mt-1">₱{totalCityBudget.toLocaleString()}</h3>
+                        <h3 className="text-2xl font-black text-slate-800 mt-1">₱{totalBudget.toLocaleString()}</h3>
                         <span className="text-[10px] text-emerald-600 font-bold block mt-1">Shared municipal funding</span>
                       </div>
                       <div className="p-3 bg-amber-50 text-amber-600 rounded-lg">
@@ -898,8 +902,8 @@ export default function ViewerPages({
                     <div className="bg-white rounded-xl shadow-xs border-l-4 border-rose-500 p-5 flex items-center justify-between">
                       <div>
                         <span className="text-[10px] font-bold text-slate-400 uppercase block tracking-wider">Total Disbursed Funds</span>
-                        <h3 className="text-2xl font-black text-slate-800 mt-1">₱{totalCitySpent.toLocaleString()}</h3>
-                        <span className="text-[10px] text-rose-600 font-bold block mt-1">Utilization: {totalCityBudget > 0 ? ((totalCitySpent/totalCityBudget)*100).toFixed(1) : "0.0"}%</span>
+                        <h3 className="text-2xl font-black text-slate-800 mt-1">₱{totalDisbursed.toLocaleString()}</h3>
+                        <span className="text-[10px] text-rose-600 font-bold block mt-1">Utilization: {totalBudget > 0 ? ((totalDisbursed / totalBudget) * 100).toFixed(1) : "0.0"}%</span>
                       </div>
                       <div className="p-3 bg-rose-50 text-rose-600 rounded-lg">
                         <TrendingUp className="w-6 h-6" />
@@ -912,7 +916,7 @@ export default function ViewerPages({
                     <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs min-w-0">
                       <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-4 flex items-center gap-1.5">
                         <TrendingUp className="w-4 h-4 text-[#091d64]" />
-                        Barangay Budget Utilization (Top 7 Tenants)
+                        Barangay Budget Utilization
                       </h4>
                       {hasCityWideBudgetData ? (
                         <div className="h-56 w-full min-w-0 overflow-hidden">

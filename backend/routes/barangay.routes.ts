@@ -200,19 +200,52 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
     });
 
     const currentYear = new Date().getFullYear();
-    const { data: budgets } = await supabaseAdmin
+    const { data: budgets, error: budgetsError } = await supabaseAdmin
       .from('budget')
-      .select('*')
+      .select('tenant_id, allocated_amount')
       .eq('fiscal_year', currentYear);
+    if (budgetsError) {
+      sendError(res, `Failed to load barangay budgets: ${budgetsError.message}`, 500);
+      return;
+    }
 
     const budgetMap = new Map<string, { allocated: number; spent: number }>();
     budgets?.forEach((b) => {
       if (b.tenant_id) {
         const allocated = Number(b.allocated_amount) || 0;
-        const remaining = Number(b.remaining_amount) || 0;
-        budgetMap.set(b.tenant_id, { allocated, spent: allocated - remaining });
+        const current = budgetMap.get(b.tenant_id) || { allocated: 0, spent: 0 };
+        budgetMap.set(b.tenant_id, { ...current, allocated: current.allocated + allocated });
       }
     });
+
+    const expensePageSize = 1000;
+    for (let offset = 0; ; offset += expensePageSize) {
+      const { data: expenses, error: expensesError } = await supabaseAdmin
+        .from('expense')
+        .select('tenant_id, net_amount, budget:budget_id!inner(tenant_id, fiscal_year)')
+        .eq('status', 'approved')
+        .eq('budget.fiscal_year', currentYear)
+        .order('id', { ascending: true })
+        .range(offset, offset + expensePageSize - 1);
+      if (expensesError) {
+        sendError(res, `Failed to load barangay expenditures: ${expensesError.message}`, 500);
+        return;
+      }
+
+      for (const expense of expenses || []) {
+        const linkedTenantId = expense.budget[0]?.tenant_id;
+        if (!linkedTenantId || expense.tenant_id !== linkedTenantId) {
+          sendError(res, 'An approved expense is linked to a budget from a different Barangay.', 500);
+          return;
+        }
+        const current = budgetMap.get(linkedTenantId) || { allocated: 0, spent: 0 };
+        budgetMap.set(linkedTenantId, {
+          ...current,
+          spent: current.spent + (Number(expense.net_amount) || 0),
+        });
+      }
+      if (!expenses || expenses.length < expensePageSize) break;
+    }
 
     const enrichedBarangays = barangays.map((b: any) => {
       const chairpersonUser = chairMap.get(b.id) || null;
@@ -243,7 +276,7 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
         youthPopulation: youthCountMap.get(b.id) || 0,
         youthPopulationAvailable: !youthUsersError,
         activePrograms: progCountMap.get(b.id) || 0,
-        totalBudget: (b.allocated_budget && Number(b.allocated_budget) > 0) ? Number(b.allocated_budget) : budget.allocated,
+        totalBudget: budget.allocated,
         allocated_budget: Number(b.allocated_budget) || 0,
         allocatedBudget: budget.allocated,
         spentBudget: budget.spent,

@@ -1570,9 +1570,12 @@ useEffect(() => {
                         const isAssigned = chairpersonBadge.label !== 'Unassigned';
                         const setupCompleted = chairpersonBadge.label === 'Assigned';
                         const chairpersonName = b.chairpersonUser?.full_name || b.chairperson || '';
-                        const isPendingName = ['pending invitation', 'unassigned', 'hon. sk chairperson', 'hon. sk kagawad']
-                          .includes(chairpersonName.trim().toLowerCase())
+                        const normalizedChairpersonName = chairpersonName.trim().toLowerCase();
+                        const isPendingName = ['pending invitation', 'hon. sk chairperson', 'hon. sk kagawad']
+                          .includes(normalizedChairpersonName)
                           || b.chairpersonUser?.status?.trim().toLowerCase() === 'pending';
+                        const hasChairperson = isAssigned || isPendingName;
+                        const chairpersonEmail = b.chairpersonEmail || b.chairpersonUser?.email;
 
                         return (
                           <tr key={b.id} className="hover:bg-slate-50/70 transition-colors">
@@ -1610,33 +1613,32 @@ useEffect(() => {
 
                             {/* Assigned Chairperson (Name & Email) */}
                             <td className="py-3.5 px-4 whitespace-nowrap">
-                              {isPendingName ? (
-                                <span className="inline-flex rounded-full border border-amber-200 bg-amber-100 px-2.5 py-1 text-[9px] font-extrabold uppercase text-amber-800">
-                                  Pending Invitation
-                                </span>
-                              ) : isAssigned ? (
+                              {hasChairperson ? (
                                 <div className="space-y-0.5">
                                   <div className="flex items-center gap-2">
                                     <span className="font-bold text-slate-900 text-xs">
-                                      {chairpersonName}
+                                      {isPendingName ? 'Pending Invitation' : chairpersonName}
+                                    </span>
+                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-200">
+                                      ASSIGNED
                                     </span>
                                   </div>
-                                  {b.chairpersonEmail ? (
-                                    <span className="text-[11px] text-slate-500 font-mono block">
-                                      {b.chairpersonEmail}
+                                  {chairpersonEmail ? (
+                                    <span className="block text-xs text-slate-500">
+                                      {chairpersonEmail}
                                     </span>
                                   ) : (
-                                    <span className="text-[10px] text-slate-400 italic block">No email recorded</span>
+                                    <span className="block text-xs text-slate-400 italic">No email recorded</span>
                                   )}
                                 </div>
                               ) : (
                                 <div className="space-y-0.5">
                                   <div className="flex items-center gap-2">
-                                    <span className="px-2 py-0.5 rounded text-[9px] font-extrabold uppercase bg-slate-100 text-slate-600 border border-slate-200">
-                                      Unassigned
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-600 border border-amber-200">
+                                      UNASSIGNED
                                     </span>
                                   </div>
-                                  <span className="text-[11px] text-slate-400 italic block">
+                                  <span className="block text-xs text-slate-400 italic mt-1">
                                     No chairperson assigned yet
                                   </span>
                                 </div>

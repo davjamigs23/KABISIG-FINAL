@@ -447,10 +447,9 @@ router.get(
     for (let offset = 0; ; offset += expensePageSize) {
       const { data: expenseRows, error: expenseError } = await supabaseAdmin
         .from('expense')
-        .select('id, tenant_id, gross_amount, expense_date')
+        .select('id, tenant_id, net_amount, budget:budget_id!inner(tenant_id, fiscal_year)')
         .eq('status', 'approved')
-        .gte('expense_date', `${currentYear}-01-01`)
-        .lt('expense_date', `${currentYear + 1}-01-01`)
+        .eq('budget.fiscal_year', currentYear)
         .order('expense_date', { ascending: true })
         .order('id', { ascending: true })
         .range(offset, offset + expensePageSize - 1);
@@ -460,9 +459,14 @@ router.get(
       }
 
       for (const expense of expenseRows || []) {
-        const current = budgetPerBarangay[expense.tenant_id] || { allocated: 0, spent: 0 };
-        const spent = Number(expense.gross_amount) || 0;
-        budgetPerBarangay[expense.tenant_id] = { ...current, spent: current.spent + spent };
+        const linkedTenantId = expense.budget[0]?.tenant_id;
+        if (!linkedTenantId || expense.tenant_id !== linkedTenantId) {
+          sendError(res, 'An approved expense is linked to a budget from a different Barangay.', 500);
+          return;
+        }
+        const current = budgetPerBarangay[linkedTenantId] || { allocated: 0, spent: 0 };
+        const spent = Number(expense.net_amount) || 0;
+        budgetPerBarangay[linkedTenantId] = { ...current, spent: current.spent + spent };
         cityTotalSpent += spent;
       }
       if (!expenseRows || expenseRows.length < expensePageSize) break;
