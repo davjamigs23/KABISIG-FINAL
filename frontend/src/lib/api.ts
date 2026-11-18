@@ -211,7 +211,7 @@ class KabisigApiClient {
       method: 'GET',
       ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
     });
-    if (res.success && res.data && res.data.length > 0) {
+    if (res.success && Array.isArray(res.data) && res.data.length > 0) {
       return res.data;
     }
     return [...NAGA_BARANGAYS];
@@ -803,7 +803,9 @@ class KabisigApiClient {
   async getDocuments(tenantId?: string): Promise<any[]> {
     const url = tenantId ? `/documents?tenant_id=${tenantId}` : '/documents';
     const res = await this.request<any[]>(url, { method: 'GET' });
-    return res.success && res.data ? res.data : [];
+    if (!res.success || res.data == null) return [];
+    if (!Array.isArray(res.data)) throw new Error('The documents endpoint returned an invalid response.');
+    return res.data;
   }
 
   async persistComplianceIssue(payload: {
@@ -945,7 +947,9 @@ class KabisigApiClient {
   async getExpenses(tenantId?: string): Promise<any[]> {
     const url = tenantId ? `/budget/expenses?tenant_id=${tenantId}` : '/budget/expenses';
     const res = await this.request<any[]>(url, { method: 'GET' });
-    return res.success && res.data ? res.data : [];
+    if (!res.success || res.data == null) return [];
+    if (!Array.isArray(res.data)) throw new Error('The expenses endpoint returned an invalid response.');
+    return res.data;
   }
 
   async updateBudget(id: string, payload: { allocated_amount: number }): Promise<{ success: boolean; data?: any; message?: string }> {
@@ -1100,7 +1104,7 @@ class KabisigApiClient {
 
   async getSuspendedUsers(): Promise<any[]> {
     const res = await this.request<any[]>('/users/suspended', { method: 'GET' });
-    return res.success ? (res.data || []) : [];
+    return res.success && Array.isArray(res.data) ? res.data : [];
   }
 
   async getEmailHistory(): Promise<{ success: boolean; data?: any[]; message?: string }> {

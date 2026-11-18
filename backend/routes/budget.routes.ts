@@ -173,6 +173,23 @@ router.post(
       return;
     }
 
+    if (program_id) {
+      const { data: program, error: programError } = await supabaseAdmin
+        .from('program')
+        .select('id')
+        .eq('id', program_id)
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+      if (programError) {
+        sendError(res, `Failed to verify target program: ${programError.message}`, 500);
+        return;
+      }
+      if (!program) {
+        sendError(res, 'The selected program does not belong to this Barangay.', 422);
+        return;
+      }
+    }
+
     if (category.trim().toLowerCase() === 'general youth development fund') {
       sendError(res, 'The General Youth Development Fund total must be set by the Barangay Admin.', 400);
       return;
@@ -492,6 +509,23 @@ router.post(
     if (!canAccessTenant(user, budget.tenant_id)) {
       sendError(res, 'Forbidden: You cannot charge expenses to another Barangay budget.', 403);
       return;
+    }
+
+    if (program_id) {
+      const { data: program, error: programError } = await supabaseAdmin
+        .from('program')
+        .select('id')
+        .eq('id', program_id)
+        .eq('tenant_id', budget.tenant_id)
+        .maybeSingle();
+      if (programError) {
+        sendError(res, `Failed to verify target program: ${programError.message}`, 500);
+        return;
+      }
+      if (!program) {
+        sendError(res, 'The selected program does not belong to this Barangay.', 422);
+        return;
+      }
     }
 
     const remainingAmount = Number(budget.remaining_amount);

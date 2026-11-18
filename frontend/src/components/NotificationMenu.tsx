@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Bell } from 'lucide-react';
 import kabisigApi, { SystemNotification } from '../lib/api';
+import { formatPhilippineDateTime } from '../lib/dateUtils';
 
 export interface NotificationMenuItem {
   id: string;
@@ -173,7 +174,7 @@ export default function NotificationMenu({
                   <span className="min-w-0 flex-1">
                     <span className={`block text-xs leading-snug ${isRead ? 'font-semibold text-slate-600' : 'font-bold text-slate-800'}`}>{item.title}</span>
                     <span className="mt-1 block text-xs leading-relaxed text-slate-500">{item.message}</span>
-                    <span className="mt-1 block text-[10px] text-slate-400">{item.created_at ? new Date(item.created_at).toLocaleString() : 'Just now'}</span>
+                    <span className="mt-1 block text-[10px] text-slate-400">{item.created_at ? formatPhilippineDateTime(item.created_at) : 'Just now'}</span>
                   </span>
                   {item.actionLabel && <span className="shrink-0 pt-0.5 text-[10px] font-semibold text-blue-700">{item.actionLabel}</span>}
                   {!isRead && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-blue-600" aria-label="Unread" />}

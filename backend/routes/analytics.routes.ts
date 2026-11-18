@@ -286,7 +286,7 @@ router.get('/barangay', authenticateUser, requireRoles('BARANGAY_ADMIN', 'SK_OFF
         user_id: profile.user_id,
         attendance_count: attendanceCount,
         engagement_score: score,
-        is_low_engagement: score < 20,
+        is_low_engagement: activeProgramsTotal > 0 && score < 20,
       };
     });
 

@@ -15,6 +15,7 @@ import {
   EyeOff
 } from 'lucide-react';
 import { composeFullName, splitFullName } from '../lib/name';
+import { getPhilippineDateString } from '../lib/dateUtils';
 import { BarangayTenant } from '../types';
 import { DEFAULT_BARANGAY_LOGOS } from '../data';
 import { KabisigLogo, DecorativeBackground, validatePassword } from './PublicPages';
@@ -332,7 +333,7 @@ export default function ChairpersonOnboarding({
                     type="date"
                     value={birthdate}
                     onChange={(e) => setBirthdate(e.target.value)}
-                    max={new Date().toISOString().split('T')[0]}
+                    max={getPhilippineDateString()}
                     className="w-full pl-9 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-[#091d64] focus:border-[#091d64] transition-colors"
                     required
                   />

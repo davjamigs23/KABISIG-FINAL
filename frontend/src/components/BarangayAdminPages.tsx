@@ -1,4 +1,5 @@
 import { formatCurrencyInput } from '../lib/utils';
+import { formatPhilippineDate, formatPhilippineDateTime, getPhilippineDateString } from '../lib/dateUtils';
 import { generateBudgetUtilizationReport } from '../lib/pdfReports';
 import ProfileSettings from './ProfileSettings';
 import RestrictedUsersPanel from './RestrictedUsersPanel';
@@ -441,7 +442,7 @@ export default function BarangayAdminPages({
           <p class="city">SANGGUNIANG KABATAAN EXECUTIVE COUNCIL &bull; BARANGAY ${escapeHtml(currentBarangay?.name?.toUpperCase() || 'BARANGAY')}</p>
           <h2>${escapeHtml(title)}</h2>
           <p class="meta">${escapeHtml(subtitle)}</p>
-          <p class="meta">Statutory Document Ref: <strong>${escapeHtml(refCode)}</strong> &bull; Generated: ${new Date().toLocaleDateString()} &bull; DILG RA 10742 Compliant System Record</p>
+          <p class="meta">Statutory Document Ref: <strong>${escapeHtml(refCode)}</strong> &bull; Generated: ${formatPhilippineDate(new Date())} &bull; DILG RA 10742 Compliant System Record</p>
         </div>
 
         ${summaryStatsHTML}
@@ -565,7 +566,7 @@ export default function BarangayAdminPages({
     `;
     openDynamicPrintPDF(
       title,
-      `${title} for Barangay ${currentBarangay?.name || 'Barangay'} — ${new Date().toLocaleDateString()}`,
+      `${title} for Barangay ${currentBarangay?.name || 'Barangay'} — ${formatPhilippineDate(new Date())}`,
       `SK-${reportSubTab.toUpperCase()}-${new Date().getFullYear()}`,
       headers,
       rowsHTML,
@@ -661,7 +662,7 @@ export default function BarangayAdminPages({
     amount: '',
     budgetId: '',
     programId: '',
-    expenseDate: new Date().toISOString().slice(0, 10),
+    expenseDate: getPhilippineDateString(),
     taxType: 'Exempt' as 'VAT' | 'Non-VAT' | 'Exempt',
   });
   const [expenseFormError, setExpenseFormError] = useState('');
@@ -1104,7 +1105,7 @@ export default function BarangayAdminPages({
     imagePath: announcement.image_path || '',
     author: announcement.author?.full_name || currentUser?.full_name || 'SK Official',
     barangay: currentBarangay?.name || 'Barangay',
-    datePosted: (announcement.published_at || announcement.created_at || new Date().toISOString()).split('T')[0],
+    datePosted: getPhilippineDateString(announcement.published_at || announcement.created_at || new Date()),
     category: announcement.category === 'Advisory' ? 'Notice' : announcement.category,
     status: announcement.status,
     attachments: [],
@@ -2447,7 +2448,7 @@ return (
                         <div className="flex items-center gap-2">
                           <button type="button" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1))} className="px-2 py-1 border rounded text-xs font-bold">‹</button>
                           <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-700 text-xs font-black">
-                            {calendarMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+                            {formatPhilippineDate(calendarMonth, undefined, { month: 'long', year: 'numeric' })}
                           </span>
                           <button type="button" onClick={() => setCalendarMonth(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1))} className="px-2 py-1 border rounded text-xs font-bold">&gt;</button>
                         </div>
@@ -3175,7 +3176,7 @@ return (
                                   <span className="rounded-lg bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">Support <span className="ml-1 tabular-nums">{Number(res.votesSupport) || 0}</span></span>
                                   <span className="rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700">Oppose <span className="ml-1 tabular-nums">{Number(res.votesOppose) || 0}</span></span>
                                 </div>
-                                {(res.end_date || res.validityPeriod) && <p className="mt-2 text-[10px] text-slate-400">{res.end_date ? `Closes ${new Date(res.end_date).toLocaleDateString()}` : `Valid: ${res.validityPeriod}`}</p>}
+                                {(res.end_date || res.validityPeriod) && <p className="mt-2 text-[10px] text-slate-400">{res.end_date ? `Closes ${formatPhilippineDate(res.end_date)}` : `Valid: ${res.validityPeriod}`}</p>}
                             </div>
                           ))}
                           {(showClosedPolls ? closedPolls : openPolls).length === 0 && (
@@ -3601,7 +3602,7 @@ return (
                     <tbody className="divide-y divide-slate-100 font-medium text-slate-700">{auditLogs.map(log => (
                         <tr key={log.id} className="hover:bg-slate-50/50">
                           <td className="p-3.5 font-mono text-slate-400 text-[11px] whitespace-nowrap align-top">
-                            {new Date(log.timestamp).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
+                            {formatPhilippineDateTime(log.timestamp, undefined, { dateStyle: 'short', timeStyle: 'short' })}
                           </td>
                           <td className="p-3.5 font-bold text-slate-800 whitespace-normal break-words align-top">
                             {log.user} ({log.role})
@@ -3952,7 +3953,7 @@ return (
                     title: saved.title,
                     category: newDocForm.category,
                     uploadedBy: currentUser?.full_name || `Hon. SK Chairperson (${currentBarangay?.name || 'Barangay'})`,
-                    uploadedDate: saved.created_at ? new Date(saved.created_at).toLocaleDateString() : new Date().toLocaleDateString(),
+                    uploadedDate: saved.created_at ? formatPhilippineDate(saved.created_at) : formatPhilippineDate(new Date()),
                     fileSize: `${(selectedUploadFile.size / (1024 * 1024)).toFixed(2)} MB`,
                     status: 'Pending',
                     resolutionNumber: newDocForm.resolutionNumber || `DOC-${saved.id.slice(0, 8)}`,

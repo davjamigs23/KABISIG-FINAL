@@ -1,4 +1,5 @@
 import NotificationMenu from './NotificationMenu';
+import { formatPhilippineDate, formatPhilippineDateTime } from '../lib/dateUtils';
 /* PDF Export Available */ import { generateBudgetUtilizationReport } from '../lib/pdfReports';
 import { useEffect, useRef, useState } from 'react';
 import ProfileSettings from './ProfileSettings';
@@ -186,12 +187,33 @@ useEffect(() => {
 
   const handleOpenHistory = async (b: any) => {
     setHistoryBarangay(b);
+    setHistoryData([]);
     setIsLoadingHistory(true);
     try {
       const res = await kabisigApi.getTransferHistory(b.id);
-      if (res.success && res.data) setHistoryData(res.data);
+      if (res.success && Array.isArray(res.data)) setHistoryData(res.data);
     } catch (e) { console.error(e); }
     finally { setIsLoadingHistory(false); }
+  };
+  const handleLoadEmailHistory = async () => {
+    setEmailHistoryList([]);
+    setIsFetchingEmailHistory(true);
+    try {
+      const res = await kabisigApi.getEmailHistory();
+      if (!res.success) {
+        showPopup(res.message || 'Unable to load email change history.');
+        return;
+      }
+      if (!Array.isArray(res.data)) {
+        showPopup('The email history endpoint returned an invalid response.');
+        return;
+      }
+      setEmailHistoryList(res.data);
+    } catch (error) {
+      showPopup(error instanceof Error ? error.message : 'Unable to load email change history.');
+    } finally {
+      setIsFetchingEmailHistory(false);
+    }
   };
   const [transferringBarangay, setTransferringBarangay] = useState<BarangayTenant | null>(null);
   const [transferReturnToConfigure, setTransferReturnToConfigure] = useState(false);
@@ -443,7 +465,7 @@ useEffect(() => {
         throw new Error('Your session has expired. Please sign in again.');
       }
       const response = await kabisigApi.getAllOfficials();
-      if (!response.success || !response.data) {
+      if (!response.success || !Array.isArray(response.data)) {
         throw new Error(response.message || 'Unable to load officials across all Barangays.');
       }
       setAllOfficialsRoster(response.data);
@@ -994,7 +1016,7 @@ useEffect(() => {
 
     reportWindow.document.write(`<!doctype html><html><head><title>Naga City LYDP ${new Date().getFullYear()}</title><style>
       body{font:12px Arial,sans-serif;color:#172033;margin:36px}h1{font-size:22px;margin:0 0 6px;color:#091d64}h2{font-size:15px;margin:24px 0 8px;color:#091d64}p{line-height:1.5}.meta{color:#586174}table{width:100%;border-collapse:collapse;margin-top:12px}th,td{border:1px solid #cbd5e1;padding:7px;text-align:left}th{background:#f1f5f9} .summary{display:flex;gap:20px;margin:20px 0}.summary div{border:1px solid #cbd5e1;padding:12px;flex:1}.summary b{display:block;font-size:16px;margin-top:4px}@media print{body{margin:15mm}}
-      </style></head><body><h1>Naga City SK Federation</h1><p class="meta">Local Youth Development Plan Report • Generated ${new Date().toLocaleDateString()}</p><h2>Citywide Summary</h2><p>This report summarizes current registry, budget, and active program figures available to KABISIG. It does not create or modify database records.</p><div class="summary"><div>Barangays<b>${barangays.length}</b></div><div>Registered youth<b>${totalYouthPop.toLocaleString()}</b></div><div>Allocated budget<b>₱${totalCityBudget.toLocaleString()}</b></div><div>Active programs<b>${totalActivePrograms}</b></div></div><h2>Barangay Indicators</h2><table><thead><tr><th>Barangay</th><th>Registered youth</th><th>Allocated budget</th><th>Spent</th><th>Active programs</th></tr></thead><tbody>${rows}</tbody></table></body></html>`);
+      </style></head><body><h1>Naga City SK Federation</h1><p class="meta">Local Youth Development Plan Report • Generated ${formatPhilippineDate(new Date())}</p><h2>Citywide Summary</h2><p>This report summarizes current registry, budget, and active program figures available to KABISIG. It does not create or modify database records.</p><div class="summary"><div>Barangays<b>${barangays.length}</b></div><div>Registered youth<b>${totalYouthPop.toLocaleString()}</b></div><div>Allocated budget<b>₱${totalCityBudget.toLocaleString()}</b></div><div>Active programs<b>${totalActivePrograms}</b></div></div><h2>Barangay Indicators</h2><table><thead><tr><th>Barangay</th><th>Registered youth</th><th>Allocated budget</th><th>Spent</th><th>Active programs</th></tr></thead><tbody>${rows}</tbody></table></body></html>`);
     reportWindow.document.close();
     reportWindow.focus();
     reportWindow.print();
@@ -1875,7 +1897,7 @@ useEffect(() => {
                       {filteredAuditLogs.map(log => (
                           <tr key={log.id} className="hover:bg-slate-50/50">
                             <td className="p-3 font-mono text-slate-400 whitespace-nowrap align-top">
-                              {new Date(log.timestamp).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })}
+                              {formatPhilippineDateTime(log.timestamp, undefined, { dateStyle: 'short', timeStyle: 'short' })}
                             </td>
                             <td className="p-3 font-bold text-slate-800 whitespace-normal break-words align-top">
                               <span className="text-[#091d64]">{log.user}</span>
@@ -1960,7 +1982,7 @@ useEffect(() => {
                       )}
                       {!restrictionsLoading && restrictions.map((r: any) => (
                         <tr key={r.id} className="hover:bg-slate-50/50">
-                          <td className="p-3 font-mono text-slate-400 whitespace-nowrap">{new Date(r.created_at).toLocaleString()}</td>
+                          <td className="p-3 font-mono text-slate-400 whitespace-nowrap">{formatPhilippineDateTime(r.created_at)}</td>
                           <td className="p-3 whitespace-nowrap">
                             <span className="font-bold text-slate-800 block">{r.users?.full_name || 'Unknown'}</span>
                             <span className="text-[10px] text-slate-400">{r.users?.email}</span>
@@ -3154,7 +3176,7 @@ useEffect(() => {
                           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{h.reason}</span>
                           <p className="font-bold text-slate-800 text-sm mt-1">{h.outgoing_full_name || h.outgoing_email} <span className="font-normal text-slate-400 mx-1">→</span> {h.incoming_full_name || h.incoming_email}</p>
                         </div>
-                        <span className="text-[10px] font-mono text-slate-400">{new Date(h.created_at).toLocaleDateString()}</span>
+                        <span className="text-[10px] font-mono text-slate-400">{formatPhilippineDate(h.created_at)}</span>
                       </div>
                       <div className="bg-white border border-slate-100 rounded p-3 text-xs text-slate-600 font-mono mt-2">
                         {h.notes || 'No additional notes provided.'}
@@ -3245,7 +3267,7 @@ useEffect(() => {
                         {emailHistoryList.map((log: any) => (
                           <tr key={log.id} className="border-b border-slate-100 hover:bg-slate-50">
                             <td className="px-4 py-4 text-[11px] text-slate-500 align-top whitespace-nowrap">
-                              {new Date(log.created_at).toLocaleString()}
+                              {formatPhilippineDateTime(log.created_at)}
                             </td>
                             <td className="px-4 py-4 text-xs align-top whitespace-nowrap">
                               {log.details?.old_full_name || log.details?.target_name ? (
@@ -3418,7 +3440,7 @@ useEffect(() => {
               </div>
 
               <div className="flex justify-between items-center pt-2 border-t border-slate-100">
-                <button type="button" onClick={() => { setShowFixTypoModal(false); setShowEmailModal(true); setEmailModalTab('history'); setIsFetchingEmailHistory(true); kabisigApi.getEmailHistory().then(res => { if (res.success && res.data) setEmailHistoryList(res.data); setIsFetchingEmailHistory(false); }); }} className="text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline">
+                <button type="button" onClick={() => { setShowFixTypoModal(false); setShowEmailModal(true); setEmailModalTab('history'); void handleLoadEmailHistory(); }} className="text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline">
                   View Change History
                 </button>
                 <div className="flex gap-2">

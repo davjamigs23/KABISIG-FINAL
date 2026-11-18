@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import kabisigApi from './lib/api';
+import { formatPhilippineDate, getPhilippineDateString } from './lib/dateUtils';
 import { 
   NAGA_BARANGAYS, 
   DEFAULT_BARANGAY_LOGOS,
@@ -66,8 +67,8 @@ function mapBackendProgram(program: any): Program {
     title: program.title,
     imageUrl: program.image_url || program.imageUrl || '',
     description: program.description || '',
-    startDate: program.start_date ? program.start_date.split('T')[0] : '',
-    endDate: program.end_date ? program.end_date.split('T')[0] : '',
+    startDate: program.start_date ? getPhilippineDateString(program.start_date) : '',
+    endDate: program.end_date ? getPhilippineDateString(program.end_date) : '',
     location: program.location || '',
     maxParticipants: Number(program.total_slots) || 0,
     budgetAllocation: Number(program.budget_allocation) || 0,
@@ -231,7 +232,9 @@ export default function App() {
         imageUrl: announcement.image_url || '',
         author: announcement.author?.full_name || 'SK Official',
         barangay: tenants.find(tenant => tenant.id === announcement.tenant_id)?.name || 'Barangay',
-        datePosted: (announcement.published_at || announcement.created_at || '').split('T')[0],
+        datePosted: (announcement.published_at || announcement.created_at)
+          ? getPhilippineDateString(announcement.published_at || announcement.created_at)
+          : '',
         category: announcement.category || 'Notice',
         status: announcement.status,
         attachments: [],
@@ -260,7 +263,9 @@ export default function App() {
         imageUrl: a.image_url || '',
         author: a.author?.full_name || 'SK Official',
         barangay: a.barangay?.name || 'Barangay',
-        datePosted: (a.published_at || a.created_at || '').split('T')[0],
+        datePosted: (a.published_at || a.created_at)
+          ? getPhilippineDateString(a.published_at || a.created_at)
+          : '',
         category: a.category || 'Notice',
         status: 'published',
         attachments: [],
@@ -475,7 +480,7 @@ export default function App() {
               status: user.status === 'active' ? 'Approved' : (user.status === 'rejected' ? 'Rejected' : user.status === 'suspended' ? 'suspended' : 'Pending'),
               suspension_reason: (user as any).suspension_reason || null,
               barangayId: user.tenant_id || '',
-              dateRegistered: user.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
+              dateRegistered: user.created_at ? getPhilippineDateString(user.created_at) : getPhilippineDateString(),
               registeredRole: 'Youth Constituent',
               is_demoted: (user as any).is_demoted === true,
               has_edited_profile: (user as any).has_edited_profile === true,
@@ -512,7 +517,12 @@ export default function App() {
           console.warn('Unable to load public polls:', response.message);
           return;
         }
-        const mappedResolutions: ResolutionRecord[] = (response.data || []).map((poll: any) => ({
+        if (!Array.isArray(response.data)) {
+          console.warn('Unable to load public polls: the server returned an invalid response.');
+          setResolutions([]);
+          return;
+        }
+        const mappedResolutions: ResolutionRecord[] = response.data.map((poll: any) => ({
           id: poll.id,
           tenant_id: poll.tenant_id,
           end_date: poll.end_date,
@@ -546,8 +556,8 @@ export default function App() {
             title: p.title,
             imageUrl: p.image_url || p.imageUrl || '',
             description: p.description || '',
-            startDate: p.start_date ? p.start_date.split('T')[0] : '',
-            endDate: p.end_date ? p.end_date.split('T')[0] : '',
+            startDate: p.start_date ? getPhilippineDateString(p.start_date) : '',
+            endDate: p.end_date ? getPhilippineDateString(p.end_date) : '',
             location: p.location || '',
             maxParticipants: Number(p.total_slots) || 0,
             budgetAllocation: Number(p.budget_allocation) || 0,
@@ -606,7 +616,7 @@ export default function App() {
         title: d.title,
         category: normalizeDocumentCategory(d.document_type),
         uploadedBy: d.submitter?.full_name || 'Official',
-        uploadedDate: d.created_at ? new Date(d.created_at).toLocaleDateString() : '',
+        uploadedDate: d.created_at ? formatPhilippineDate(d.created_at) : '',
         fileSize: '',
         status: d.status === 'approved' ? 'Approved' : d.status === 'pending_approval' ? 'Pending' : d.status,
         resolutionNumber: `DOC-${d.id.slice(0, 6).toUpperCase()}`,
@@ -633,8 +643,8 @@ export default function App() {
           withholdingTax: Number(e.withholding_tax ?? e.withholdingTax) || 0,
           netAmount: Number(e.net_amount ?? e.netAmount) || 0,
           description: e.description || '',
-          date: e.expense_date || e.created_at?.split('T')[0] || '',
-          dateLogged: e.expense_date || e.dateLogged || e.created_at?.split('T')[0] || '',
+          date: e.expense_date || (e.created_at ? getPhilippineDateString(e.created_at) : ''),
+          dateLogged: e.expense_date || e.dateLogged || (e.created_at ? getPhilippineDateString(e.created_at) : ''),
           voucherNumber: `DV-${e.id.slice(0, 6).toUpperCase()}`,
           status: e.status === 'approved' ? 'Approved' : 'Pending',
           payee: e.payee || e.title,
@@ -784,7 +794,7 @@ export default function App() {
           sentiment: f.sentiment,
           anonymous: f.is_anonymous || false,
           status: f.status === 'resolved' ? 'Resolved' : f.status === 'under_review' ? 'Reviewed' : (f.status as any) === 'flagged' ? 'flagged' : (f.status as any) === 'dismissed' ? 'Dismissed' : 'Pending',
-          dateSubmitted: f.created_at ? f.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+          dateSubmitted: f.created_at ? getPhilippineDateString(f.created_at) : getPhilippineDateString(),
           submittedBy: f.is_anonymous ? 'Anonymous' : f.users?.full_name || 'Youth Constituent',
           response: f.response || '',
           residentProfile: f.users?.resident_profile ? {
@@ -934,7 +944,7 @@ export default function App() {
           status: userObj.status === 'active' ? 'Approved' : (userObj.status === 'rejected' ? 'Rejected' : userObj.status === 'suspended' ? 'suspended' : 'Pending'),
           suspension_reason: (userObj as any).suspension_reason || null,
           barangayId: userObj.tenant_id || matchedProfile?.barangayId || '',
-          dateRegistered: userObj.created_at?.split('T')[0] || matchedProfile?.dateRegistered || new Date().toISOString().split('T')[0],
+          dateRegistered: userObj.created_at ? getPhilippineDateString(userObj.created_at) : matchedProfile?.dateRegistered || getPhilippineDateString(),
           registeredRole: 'Youth Constituent',
           is_demoted: (userObj as any).is_demoted === true,
           has_edited_profile: (userObj as any).has_edited_profile === true,
@@ -1099,7 +1109,7 @@ export default function App() {
         rating: 1,
         anonymous: false,
         status: 'Resolved',
-        dateSubmitted: new Date().toISOString().split('T')[0],
+        dateSubmitted: getPhilippineDateString(),
         submittedBy: matchedYouth.name,
         response: 'Review your residency information details and re-submit a validation inquiry.'
       };
@@ -1175,7 +1185,7 @@ export default function App() {
       content: `${newP.description}\nLocation: ${newP.location}\nBudget Allocation: ₱${newP.budgetAllocation.toLocaleString()}\nSlots available: ${newP.maxParticipants}. Under the AIP framework, registration is free for KK validated members.`,
       author: authorName,
       barangay: currentTenant?.name || 'City-Wide',
-      datePosted: new Date().toISOString().split('T')[0],
+      datePosted: getPhilippineDateString(),
       category: 'Opportunity',
       imageUrl: (savedProgram as any).image_url || '',
       attachments: ['AIP-Initiative-Flyer.pdf']
@@ -1315,7 +1325,7 @@ export default function App() {
       participantId: currentYouth.id,
       participantName: currentYouth.name,
       status: savedRegistration.status === 'attended' ? 'Completed' : 'Approved',
-      dateRegistered: savedRegistration.registered_at?.split('T')[0] || new Date().toISOString().split('T')[0],
+      dateRegistered: savedRegistration.registered_at ? getPhilippineDateString(savedRegistration.registered_at) : getPhilippineDateString(),
       qrCode: `QR-KK-${currentYouth.id}`
     };
 
@@ -1380,7 +1390,7 @@ export default function App() {
               guardianName: partialProfile.guardianName || '',
               guardianContact: partialProfile.guardianContact || '',
               status: 'Pending',
-              dateRegistered: new Date().toISOString().split('T')[0],
+              dateRegistered: getPhilippineDateString(),
               registeredRole: partialProfile.registeredRole || 'Youth Constituent',
               barangayId: partialProfile.barangayId || '',
               registeredProgramsCount: 0,
@@ -1571,8 +1581,8 @@ export default function App() {
               withholdingTax: Number(e.withholding_tax ?? e.withholdingTax) || 0,
               netAmount: Number(e.net_amount ?? e.netAmount) || 0,
               description: e.description || '',
-              date: e.expense_date || e.created_at?.split('T')[0] || '',
-              dateLogged: e.expense_date || e.dateLogged || e.created_at?.split('T')[0] || '',
+              date: e.expense_date || (e.created_at ? getPhilippineDateString(e.created_at) : ''),
+              dateLogged: e.expense_date || e.dateLogged || (e.created_at ? getPhilippineDateString(e.created_at) : ''),
               voucherNumber: `DV-${e.id.slice(0, 6).toUpperCase()}`,
               status: e.status === 'approved' ? 'Approved' : 'Pending',
               payee: e.payee || e.title,

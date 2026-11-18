@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { formatPhilippineDate, getPhilippineDateString } from '../lib/dateUtils';
 import { 
   Building2, 
   Search, 
@@ -183,7 +184,7 @@ export default function ViewerPages({
         <div class="header">
           <h1>Republic of the Philippines &bull; City of Naga</h1>
           <h2>Sangguniang Kabataan Federation Public Disclosure</h2>
-          <p>Official Public Financial & Expenditure Audit Report &bull; ${targetBgy} &bull; Date: ${new Date().toLocaleDateString()}</p>
+          <p>Official Public Financial & Expenditure Audit Report &bull; ${targetBgy} &bull; Date: ${formatPhilippineDate(new Date())}</p>
         </div>
 
         <div class="section-title">I. Audited Disbursement Vouchers & Statutory Tax Ledger</div>
@@ -334,7 +335,7 @@ export default function ViewerPages({
     title: d.title,
     category: (d as any).document_type || (d as any).category || 'Compliance',
     barangay: tenants.find(t => t.id === d.barangayId)?.name || 'Naga City',
-    date: d.uploadedDate || d.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
+    date: d.uploadedDate || (d.created_at ? getPhilippineDateString(d.created_at) : getPhilippineDateString()),
     status: d.status || 'Compliant',
   })) : [];
 
@@ -1293,7 +1294,7 @@ export default function ViewerPages({
                           <div className="bg-white rounded-lg border border-slate-200 p-3 space-y-2 text-[10px]">
                             <table className="w-full">
                               <tbody>
-                                {budgetCache[prog.id].expenses.map((e: any) => (
+                                {(Array.isArray(budgetCache[prog.id]?.expenses) ? budgetCache[prog.id].expenses : []).map((e: any) => (
                                   <tr key={e.id} className="border-b border-slate-100 last:border-0">
                                     <td className="py-1 text-slate-700 font-medium">{e.title}</td>
                                     <td className="py-1 text-right font-mono text-slate-800">₱{Number(e.gross_amount).toLocaleString()}</td>
@@ -1400,7 +1401,7 @@ export default function ViewerPages({
                           <p className="text-sm text-slate-600 mt-1">{res.content}</p>
                         )}
                         {res.end_date && (
-                          <span className="text-[10px] text-slate-400">Closes: {new Date(res.end_date).toLocaleDateString()}</span>
+                          <span className="text-[10px] text-slate-400">Closes: {formatPhilippineDate(res.end_date)}</span>
                         )}
                         <div className="flex items-center gap-4 text-[10px] font-bold text-slate-500 pt-2 border-t border-slate-200/60">
                           <span className="text-emerald-700">👍 Support: {res.votesSupport}</span>

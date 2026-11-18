@@ -3,6 +3,7 @@ import { formatCurrencyInput } from '../lib/utils';
 import ProfileSettings from './ProfileSettings';
 import { useRef, useState, useEffect, useMemo, type FormEvent } from 'react';
 import { composeFullName, splitFullName } from '../lib/name';
+import { formatPhilippineDate, formatPhilippineDateTime, getPhilippineDateString } from '../lib/dateUtils';
 import { 
   Building2, 
   Calendar, 
@@ -251,7 +252,12 @@ export default function OfficialPages({
     const [inventory, setInventory] = useState<any[]>([]);
   const [complianceRecords, setComplianceRecords] = useState<any[]>([]);
   const [complianceStats, setComplianceStats] = useState<any>({ total: 0, completed_count: 0, overdue_count: 0, on_time_percent: null });
-  const [complianceAutoDetected, setComplianceAutoDetected] = useState<any>({ q2_report_count: 0, liquidation_count: 0 });
+  const [complianceAutoDetected, setComplianceAutoDetected] = useState<any>({
+    q2_report_status: 'Not Yet Submitted',
+    q2_report_count: 0,
+    liquidation_status: 'Not Yet Submitted',
+    liquidation_count: 0,
+  });
   const [engagementAnalytics, setEngagementAnalytics] = useState<EngagementAnalytics | null>(null);
   const [engagementAnalyticsLoaded, setEngagementAnalyticsLoaded] = useState(false);
   useEffect(() => {
@@ -529,7 +535,7 @@ export default function OfficialPages({
       '<thead style="background-color:#091d64;color:white;"><tr><th style="padding:10px;border:1px solid #cbd5e1;">Name</th><th style="padding:10px;border:1px solid #cbd5e1;">Details</th><th style="padding:10px;border:1px solid #cbd5e1;">Status</th></tr></thead>' +
       '<tbody style="text-align:left;">' + (rows || '<tr><td colspan="3" style="text-align:center;padding:20px;">No records found.</td></tr>') + '</tbody>' +
       '</table>' +
-      '<div style="margin-top:40px;font-size:10px;color:#94a3b8;text-align:center;border-top:1px solid #e2e8f0;padding-top:10px;">Generated on ' + new Date().toLocaleString() + ' - System-generated document.</div>';
+      '<div style="margin-top:40px;font-size:10px;color:#94a3b8;text-align:center;border-top:1px solid #e2e8f0;padding-top:10px;">Generated on ' + formatPhilippineDateTime(new Date()) + ' - System-generated document.</div>';
     html2pdf().from(container).save('KABISIG_Report.pdf');
 };;
 
@@ -719,7 +725,7 @@ export default function OfficialPages({
           participantId: profile?.id || row.user_id,
           userId: row.user_id,
           participantName: user?.full_name || profile?.name || "Youth Constituent",
-          dateRegistered: row.registered_at || "",
+          dateRegistered: row.registered_at ? getPhilippineDateString(row.registered_at) : "",
           status: (row.status === "attended" ? "Completed" : "Approved") as Registration['status'],
           qrCode: profile?.qrCode || "",
         };
@@ -1154,7 +1160,7 @@ export default function OfficialPages({
       }
 
       const saved = result.data;
-      const uploadedDate = saved.created_at?.split('T')[0] || new Date().toISOString().split('T')[0];
+      const uploadedDate = saved.created_at ? getPhilippineDateString(saved.created_at) : getPhilippineDateString();
       const newDocument: DocumentRecord = {
         id: saved.id,
         title: saved.title,
@@ -1198,7 +1204,7 @@ export default function OfficialPages({
           history: [
             ...updatedHistory,
             {
-              date: new Date().toISOString().split('T')[0],
+              date: getPhilippineDateString(),
               action: `Document Revised (${newVer})`,
               user: `${currentRole} Secretariat`,
               notes: 'Document metadata updated.'
@@ -1221,8 +1227,8 @@ export default function OfficialPages({
     const userRole = currentRole || 'SK Official';
     const chairpersonName = currentTenant?.chairperson || 'SK Chairperson';
     const now = new Date();
-    const dateStr = now.toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
-    const timeStr = now.toLocaleTimeString('en-PH');
+    const dateStr = formatPhilippineDate(now, 'en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
+    const timeStr = formatPhilippineDateTime(now, 'en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
     const html = `<!DOCTYPE html>
 <html><head><meta charset="utf-8"/><title>${title} - ${barangayName}</title>
@@ -1364,7 +1370,7 @@ export default function OfficialPages({
     if (!expenseForm.taxType) return setExpenseSaveError('Tax classification is required.');
     if (!Number(String(expenseForm.amount).replace(/,/g, ''))) return setExpenseSaveError('Gross invoice amount must be greater than zero.');
     const selectedP = programs.find(p => p.id === expenseForm.programId);
-    const expenseDate = new Date().toISOString().split('T')[0];
+    const expenseDate = getPhilippineDateString();
     setIsSavingExpense(true);
     setExpenseSaveError('');
     const newExp: ExpenseRecord = {
@@ -1665,7 +1671,7 @@ export default function OfficialPages({
         status: 'WRONG_PROGRAM',
         title: 'Program Ended',
         message: 'This program ended on ' + _activeProg.endDate + '. No more check-ins allowed.',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        timestamp: formatPhilippineDateTime(new Date(), undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
       });
       setQrMessage('Cannot check in: this program has already ended.');
       showScanFeedback('error', 'Cannot check in: this program has already ended.');
@@ -1677,13 +1683,13 @@ export default function OfficialPages({
         status: 'NOT_REGISTERED',
         title: 'No Program Selected',
         message: 'Please select an active program from the dropdown at the top of this tab before scanning.',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        timestamp: formatPhilippineDateTime(new Date(), undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
       });
       setQrMessage('Select an active program first.');
       showScanFeedback('error', 'Select an active program first.');
       return;
     }
-    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const timeStr = formatPhilippineDateTime(new Date(), undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const currentProg = programs.find(p => p.id === activeProgId);
     const progTitle = currentProg?.title || activeProgId;
 
@@ -1934,7 +1940,7 @@ export default function OfficialPages({
         participantId: savedRecordWithIdentity.participantId,
         purok: purokVal,
         programTitle: progTitle,
-        timestamp: new Date(savedRecord.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        timestamp: formatPhilippineDateTime(savedRecord.checkInTime, undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
       });
       setQrMessage(`SUCCESS: ${youthName} verified and logged Present!`);
       showScanFeedback('success', `Marked present: ${youthName}`);
@@ -2342,7 +2348,7 @@ export default function OfficialPages({
                         {announcement.category || 'NOTICE'}
                       </span>
                       <span className="text-xs text-slate-400">
-                        {announcement.datePosted ? new Date(announcement.datePosted).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : ''}
+                        {announcement.datePosted ? formatPhilippineDate(announcement.datePosted, 'en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : ''}
                       </span>
                     </div>
                     <h3 className="mb-2 text-lg font-bold text-slate-800">{announcement.title}</h3>
@@ -2378,7 +2384,7 @@ export default function OfficialPages({
                       </div>
                     )}
                     <p className="border-t border-slate-100 pt-4 text-xs text-slate-400">
-                      Posted by {announcement.author || 'SK Official'}{announcement.datePosted ? ` on ${new Date(announcement.datePosted).toLocaleString()}` : ''}
+                      Posted by {announcement.author || 'SK Official'}{announcement.datePosted ? ` on ${formatPhilippineDateTime(announcement.datePosted)}` : ''}
                     </p>
                   </article>
                 ))}
@@ -3452,7 +3458,11 @@ export default function OfficialPages({
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 mt-0.5 flex-shrink-0" />
                             <div>
                               <p className="font-bold text-slate-800">Q2 Financial Performance Report</p>
-                              <p className="text-[10px] text-slate-500">{complianceAutoDetected.q2_report_count > 0 ? `Submitted (${complianceAutoDetected.q2_report_count} files)` : "Not Yet Submitted"}</p>
+                              <p className="text-[10px] text-slate-500">
+                                {complianceAutoDetected.q2_report_status === 'Submitted'
+                                  ? `Submitted (${complianceAutoDetected.q2_report_count} files)`
+                                  : complianceAutoDetected.q2_report_status || 'Not Yet Submitted'}
+                              </p>
                             </div>
                           </div>
 
@@ -3461,9 +3471,9 @@ export default function OfficialPages({
                             <div>
                               <p className="font-bold text-slate-800">Cash Advances Liquidation</p>
                               <p className="text-[10px] text-slate-500">
-                                {complianceAutoDetected.liquidation_count > 0
+                                {complianceAutoDetected.liquidation_status === 'Submitted'
                                   ? `${complianceAutoDetected.liquidation_count} Approved Expenses Recorded`
-                                  : 'No Liquidation Expenses Recorded'}
+                                  : complianceAutoDetected.liquidation_status || 'Not Yet Submitted'}
                               </p>
                             </div>
                           </div>
@@ -4024,7 +4034,7 @@ export default function OfficialPages({
                               </span>
                             </td>
                             <td className="px-6 py-3.5 text-center font-mono text-slate-500 whitespace-nowrap">
-                              {attendanceRecord?.checkInTime ? new Date(attendanceRecord.checkInTime).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '—'}
+                              {attendanceRecord?.checkInTime ? formatPhilippineDateTime(attendanceRecord.checkInTime, [], { dateStyle: 'medium', timeStyle: 'short' }) : '—'}
                             </td>
                             <td className="px-6 py-3.5 text-center whitespace-nowrap">
                               <button
@@ -4398,7 +4408,7 @@ export default function OfficialPages({
                             <td className="px-6 py-4 font-mono font-bold text-[#091d64] whitespace-nowrap">{r.resolutionNumber || r.number || ''}</td>
                             <td className="px-6 py-4 text-slate-800 leading-normal font-semibold max-w-sm whitespace-nowrap">
                               <div>{r.title}</div>
-                              {r.end_date && <span className="text-[10px] text-slate-400 font-medium">Closes: {new Date(r.end_date).toLocaleDateString()}</span>}
+                              {r.end_date && <span className="text-[10px] text-slate-400 font-medium">Closes: {formatPhilippineDate(r.end_date)}</span>}
                             </td>
                             <td className="px-6 py-4 text-center font-mono font-bold text-emerald-600 whitespace-nowrap">
                               {r.votesSupport} Supporting
@@ -4443,7 +4453,7 @@ export default function OfficialPages({
                                   <span className="px-2 py-0.5 rounded text-[9px] font-extrabold uppercase bg-slate-100 text-slate-700">Closed</span>
                                 </td>
                                 <td className="px-6 py-4 text-center font-mono whitespace-nowrap">
-                                  {new Date(resolution.end_date).toLocaleDateString()}
+                                  {formatPhilippineDate(resolution.end_date)}
                                 </td>
                               </tr>
                             ))}
@@ -4942,7 +4952,7 @@ export default function OfficialPages({
                           if (reportModuleCategory === 'attendance') {
                             const selProg = programs.find(p => p.id === selectedProgramForReport) || programs[0];
                             const progAtt = localAttendance.filter(a => a.programId === selProg?.id);
-                            const rowsHtml = progAtt.map((a, i) => `<tr><td style="text-align:center">${i+1}</td><td><strong>${a.participantName}</strong></td><td>${a.status}</td><td>${new Date(a.checkInTime).toLocaleString()}</td><td style="border-bottom:1px solid #000; height:24px;"></td></tr>`).join('');
+                            const rowsHtml = progAtt.map((a, i) => `<tr><td style="text-align:center">${i+1}</td><td><strong>${a.participantName}</strong></td><td>${a.status}</td><td>${formatPhilippineDateTime(a.checkInTime)}</td><td style="border-bottom:1px solid #000; height:24px;"></td></tr>`).join('');
                             printOfficialReport(`Official Attendance Sheet - ${selProg?.title}`, `
                               <h4>Program Title: ${selProg?.title}</h4>
                               <p style="font-size:11px;">Location: ${selProg?.location} | Date: ${selProg?.startDate}</p>
@@ -5135,7 +5145,7 @@ export default function OfficialPages({
                                 <td className="px-5 py-3 text-center whitespace-nowrap">
                                   <span className={`px-2 py-0.5 font-extrabold text-[9px] rounded uppercase ${isPresent ? 'bg-emerald-50 text-emerald-700' : statusLabel === 'Waitlisted' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>{statusLabel}</span>
                                 </td>
-                                <td className="px-5 py-3 font-mono text-[11px] text-slate-500 whitespace-nowrap">{checkedIn?.checked_in_at ? new Date(checkedIn.checked_in_at).toLocaleString() : 'Not checked in'}</td>
+                                <td className="px-5 py-3 font-mono text-[11px] text-slate-500 whitespace-nowrap">{checkedIn?.checked_in_at ? formatPhilippineDateTime(checkedIn.checked_in_at) : 'Not checked in'}</td>
                                 <td className="px-5 py-3 text-center whitespace-nowrap">
                                   <span className="text-[10px] text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded">Verified KK Member</span>
                                 </td>
@@ -6601,7 +6611,7 @@ export default function OfficialPages({
                 <input
                   type="date"
                   value={resForm.endDate}
-                  min={new Date().toISOString().slice(0, 10)}
+                  min={getPhilippineDateString()}
                   onChange={(e) => setResForm({ ...resForm, endDate: e.target.value })}
                   className="w-full p-2 border rounded text-xs"
                   required

@@ -333,6 +333,7 @@ router.get('/programs/:id/budget', async (req: Request, res: Response): Promise<
     .from('expense')
     .select('id, title, description, gross_amount, status, expense_date')
     .eq('program_id', programId)
+    .eq('tenant_id', program.tenant_id)
     .in('status', ['approved', 'pending'])
     .order('expense_date', { ascending: true });
 

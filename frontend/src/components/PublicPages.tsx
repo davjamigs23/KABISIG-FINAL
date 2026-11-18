@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
+import { getPhilippineDateString } from '../lib/dateUtils';
 // Logo served from /public/icon.png (single source of truth)
 import { 
   Building, 
@@ -457,7 +458,7 @@ export default function PublicPages({
       scholarshipSource: signUpForm.scholarshipSource,
       civilStatus: signUpForm.civil_status,
       status: 'Pending',
-      dateRegistered: new Date().toISOString().split('T')[0],
+      dateRegistered: getPhilippineDateString(),
       profilePic: signUpForm.profilePic,
       registeredRole: 'Youth Constituent' as any, // forced per rules
       barangayId: resolvedBarangayId
@@ -1172,7 +1173,7 @@ export default function PublicPages({
                           <input
                             type="date"
                             autoComplete="bday"
-                            max={new Date().toISOString().split('T')[0]}
+                            max={getPhilippineDateString()}
                             value={signUpForm.birthdate}
                             onChange={(event) => setSignUpForm(previous => ({ ...previous, birthdate: event.target.value }))}
                             placeholder="YYYY-MM-DD"

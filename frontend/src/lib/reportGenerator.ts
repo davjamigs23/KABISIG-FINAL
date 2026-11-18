@@ -1,5 +1,7 @@
+import { formatPhilippineDate } from './dateUtils';
+
 export function openPrintableReport(title: string, subtitle: string, columns: string[], data: string[][], meta: any = {}) {
-  const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const today = formatPhilippineDate(new Date(), 'en-US', { year: 'numeric', month: 'long', day: 'numeric' });
   
   // Build the table rows
   const trs = data.map(row => `<tr>${row.map(cell => `<td>${cell || '—'}</td>`).join('')}</tr>`).join('');

@@ -1,5 +1,6 @@
 import { ShieldAlert } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
+import { getPhilippineDateString } from '../lib/dateUtils';
 import { 
   User, 
   Users,
@@ -323,7 +324,7 @@ export default function YouthPages({
           programTitle: program?.title || 'Program',
           participantId: currentYouth.userId || currentYouth.id,
           participantName: currentYouth.name,
-          dateRegistered: row.registered_at?.split('T')[0] || '',
+          dateRegistered: row.registered_at ? getPhilippineDateString(row.registered_at) : '',
           status: row.status === 'attended' ? 'Completed' : row.status === 'registered' ? 'Approved' : 'Pending',
           qrCode: currentYouth.qrCode || `QR-KK-${currentYouth.id}`,
         };
@@ -432,7 +433,7 @@ export default function YouthPages({
           sentiment: feed.sentiment,
           anonymous: feed.is_anonymous || false,
           status: feed.status === 'resolved' ? 'Resolved' : feed.status === 'under_review' ? 'Reviewed' : 'Pending',
-          dateSubmitted: feed.created_at?.split('T')[0] || '',
+          dateSubmitted: feed.created_at ? getPhilippineDateString(feed.created_at) : '',
           submittedBy: feed.is_anonymous ? 'Anonymous' : feed.users?.full_name || youth.name,
           response: feed.response || '',
         })));
@@ -756,7 +757,7 @@ export default function YouthPages({
         sentiment,
         anonymous: (saved as any).is_anonymous ?? (saved as any).feedback?.is_anonymous ?? false,
         status: 'Pending',
-        dateSubmitted: saved.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
+        dateSubmitted: saved.created_at ? getPhilippineDateString(saved.created_at) : getPhilippineDateString(),
         submittedBy: ((saved as any).is_anonymous ?? (saved as any).feedback?.is_anonymous) ? 'Anonymous' : currentYouth.name,
       };
       onSubmitFeedback(newFeed);

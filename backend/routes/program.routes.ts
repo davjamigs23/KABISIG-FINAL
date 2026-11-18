@@ -58,6 +58,7 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
   let query = supabaseAdmin
     .from('program')
     .select('*, barangay(name), program_registrations(count)', { count: 'exact' });
+  query = query.neq('program_registrations.status', 'cancelled');
 
   if (user && user.role !== 'SUPER_ADMIN') {
     if (!user.tenant_id) {
@@ -558,10 +559,23 @@ router.post('/:id/attendance', authenticateUser, requireActiveUser, requireRoles
       }
     }
 
+    const { data: program, error: progError } = await supabaseAdmin
+      .from('program')
+      .select('*')
+      .eq('id', programId)
+      .single();
+    if (progError || !program) { sendError(res, 'Program not found.', 404); return; }
+    if (!canAccessTenant(user, program.tenant_id)) { sendError(res, 'Forbidden.', 403); return; }
+
     let resolvedUserId = attendeeUserId;
 
     if (!resolvedUserId && digitalYouthId) {
-      const { data: rp } = await supabaseAdmin.from('resident_profile').select('user_id').eq('digital_youth_id', digitalYouthId).maybeSingle();
+      const { data: rp } = await supabaseAdmin
+        .from('resident_profile')
+        .select('user_id')
+        .eq('digital_youth_id', digitalYouthId)
+        .eq('tenant_id', program.tenant_id)
+        .maybeSingle();
       if (rp) resolvedUserId = rp.user_id;
     }
 
@@ -570,22 +584,39 @@ router.post('/:id/attendance', authenticateUser, requireActiveUser, requireRoles
       return;
     }
 
-    const { data: program, error: progError } = await supabaseAdmin.from('program').select('*').eq('id', programId).single();
-    if (progError || !program) { sendError(res, 'Program not found.', 404); return; }
-
     if (program.end_date && new Date(program.end_date) < new Date()) {
       sendError(res, `Attendance blocked: this program ended on ${program.end_date}.`, 400, { code: 'PROGRAM_ENDED', end_date: program.end_date });
       return;
     }
-    if (!canAccessTenant(user, program.tenant_id)) { sendError(res, 'Forbidden.', 403); return; }
 
-    const { data: uData } = await supabaseAdmin.from('users').select('id, full_name, email').eq('id', resolvedUserId).maybeSingle();
-    const attendeeName = uData ? uData.full_name : 'Youth Constituent';
+    const { data: uData } = await supabaseAdmin
+      .from('users')
+      .select('id, full_name, email')
+      .eq('id', resolvedUserId)
+      .eq('tenant_id', program.tenant_id)
+      .maybeSingle();
+    if (!uData) {
+      sendError(res, 'Participant not found in this Barangay.', 404);
+      return;
+    }
+    const attendeeName = uData.full_name || 'Youth Constituent';
 
-    const { data: existingAttendance } = await supabaseAdmin.from('program_attendance').select('id').eq('program_id', programId).eq('user_id', resolvedUserId).maybeSingle();
+    const { data: existingAttendance } = await supabaseAdmin
+      .from('program_attendance')
+      .select('id')
+      .eq('program_id', programId)
+      .eq('tenant_id', program.tenant_id)
+      .eq('user_id', resolvedUserId)
+      .maybeSingle();
     if (existingAttendance) { sendError(res, 'Duplicate check-in: Already marked present.', 400, { attendee_name: attendeeName }); return; }
 
-    const { data: registration } = await supabaseAdmin.from('program_registrations').select('id, status').eq('program_id', programId).eq('user_id', resolvedUserId).maybeSingle();
+    const { data: registration } = await supabaseAdmin
+      .from('program_registrations')
+      .select('id, status')
+      .eq('program_id', programId)
+      .eq('tenant_id', program.tenant_id)
+      .eq('user_id', resolvedUserId)
+      .maybeSingle();
     if (!registration) {
       sendError(res, `Error: ${attendeeName} is not registered for this specific program.`, 400, { attendee_name: attendeeName, reason: 'not_registered' });
       return;

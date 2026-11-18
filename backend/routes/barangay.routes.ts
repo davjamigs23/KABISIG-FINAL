@@ -101,7 +101,7 @@ function resolveBarangayLogo(id: string, name: string): string {
 }
 
 // Chairperson email/phone are only returned to the owning barangay and city-level roles.
-const CONTACT_VISIBLE_ROLES = ['SUPER_ADMIN', 'VIEWER', 'FEDERATION_OBSERVER', 'LGU_AUDITOR'];
+const CONTACT_VISIBLE_ROLES = ['SUPER_ADMIN', 'FEDERATION_OBSERVER', 'LGU_AUDITOR'];
 function canSeeBarangayContacts(req: Request, barangayId: string): boolean {
   const viewer = (req as unknown as { user?: { role?: string; tenant_id?: string | null } }).user;
   if (!viewer) return false;

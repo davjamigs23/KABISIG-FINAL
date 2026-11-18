@@ -34,12 +34,11 @@ router.get('/', authenticateUser, requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 
     .from('documents')
     .select('id, title, document_type, status, created_at')
     .eq('tenant_id', user.tenant_id)
-    .in('status', ['approved', 'Approved'])
     .order('created_at', { ascending: false });
 
   if (docsErr) {
     console.error('[/compliance] documents query error:', docsErr.message);
-    sendError(res, `Failed to load approved compliance documents: ${docsErr.message}`, 500);
+    sendError(res, `Failed to load compliance documents: ${docsErr.message}`, 500);
     return;
   }
 
@@ -148,6 +147,10 @@ router.get('/', authenticateUser, requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 
     const title = String(d.title || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
     return type === 'financial report' && /(?:^|\s)q2 financial performance report(?:$|\s)/.test(title);
   });
+  const q2ApprovedDocs = q2Docs.filter((document: any) => String(document.status || '').toLowerCase() === 'approved');
+  const q2PendingDocs = q2Docs.filter((document: any) =>
+    ['pending_approval', 'pending'].includes(String(document.status || '').toLowerCase())
+  );
 
   sendSuccess(res, {
     records: list.map((r: any) => ({
@@ -167,9 +170,14 @@ router.get('/', authenticateUser, requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 
       on_time_percent: onTimePercent,
     },
     auto_detected: {
-      q2_report_status: q2Docs.length > 0 ? 'Submitted' : 'Not Yet Submitted',
-      q2_report_count: q2Docs.length,
+      q2_report_status: q2ApprovedDocs.length > 0
+        ? 'Submitted'
+        : q2PendingDocs.length > 0
+          ? 'Pending Approval'
+          : 'Not Yet Submitted',
+      q2_report_count: q2ApprovedDocs.length,
       q2_latest_upload: q2Docs[0]?.created_at || null,
+      liquidation_status: cashAdvanceExpenses.length > 0 ? 'Submitted' : 'Not Yet Submitted',
       liquidation_count: cashAdvanceExpenses.length,
       liquidation_latest_upload: cashAdvanceExpenses[0]?.created_at || null,
     },
