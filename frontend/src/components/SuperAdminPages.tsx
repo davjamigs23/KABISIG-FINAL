@@ -2343,23 +2343,23 @@ useEffect(() => {
               )}
               {!officialsRosterLoading && !officialsRosterError && officialsRoster && (
                 (() => {
-                  const chairperson = officialsRoster.filter((official: any) => official.role_id === 2);
+                  const chairperson = officialsRoster.filter((official: any) => Number(official.role_id) === 2);
+                  const secretaries = officialsRoster.filter((official: any) => Number(official.role_id) === 3 && official.official_role === 'SK Secretary');
+                  const treasurers = officialsRoster.filter((official: any) => Number(official.role_id) === 3 && official.official_role === 'SK Treasurer');
                   const kagawads = officialsRoster.filter((official: any) =>
-                    official.role_id === 3 && (!official.official_role || official.official_role === 'SK Kagawad')
+                    Number(official.role_id) === 3 && official.official_role !== 'SK Secretary' && official.official_role !== 'SK Treasurer'
                   );
-                  const secretaries = officialsRoster.filter((official: any) =>
-                    official.role_id === 3 && official.official_role === 'SK Secretary'
-                  );
-                  const treasurers = officialsRoster.filter((official: any) =>
-                    official.role_id === 3 && official.official_role === 'SK Treasurer'
-                  );
+                  const showKagawadFallback = kagawads.length === 0 && officialsRoster.length > 0;
 
                   return [
                     { title: 'SK Chairperson', members: chairperson },
                     { title: 'SK Kagawad', members: kagawads },
                     { title: 'SK Secretary', members: secretaries },
                     { title: 'SK Treasurer', members: treasurers },
-                  ].map((group) => (
+                  ].filter((group) =>
+                    group.members.length > 0
+                    || (group.title !== 'SK Secretary' && group.title !== 'SK Treasurer')
+                  ).map((group) => (
                   <section key={group.title}>
                     <h4 className="mb-2 border-b border-slate-100 pb-2 text-xs font-black uppercase tracking-wide text-slate-500">
                       {group.title}
@@ -2394,9 +2394,11 @@ useEffect(() => {
                         })}
                       </div>
                     ) : (
-                      <p className="rounded-lg bg-slate-50 px-3 py-4 text-center text-xs text-slate-400">
-                        No {group.title} assigned.
-                      </p>
+                      group.title === 'SK Kagawad' && !showKagawadFallback ? null : (
+                        <p className="rounded-lg bg-slate-50 px-3 py-4 text-center text-xs text-slate-400">
+                          No {group.title} assigned.
+                        </p>
+                      )
                     )}
                   </section>
                   ));
@@ -2462,12 +2464,13 @@ useEffect(() => {
                   && (barangayMatches || [official.full_name, official.email, official.official_role, official.position]
                     .some((value) => String(value || '').toLowerCase().includes(search)))
                 );
-                const chairperson = members.filter((official) => official.role_id === 2);
-                const secretaries = members.filter((official) => official.role_id === 3 && official.official_role === 'SK Secretary');
-                const treasurers = members.filter((official) => official.role_id === 3 && official.official_role === 'SK Treasurer');
+                const chairperson = members.filter((official) => Number(official.role_id) === 2);
+                const secretaries = members.filter((official) => Number(official.role_id) === 3 && official.official_role === 'SK Secretary');
+                const treasurers = members.filter((official) => Number(official.role_id) === 3 && official.official_role === 'SK Treasurer');
                 const kagawads = members.filter((official) =>
-                  official.role_id === 3 && (!official.official_role || official.official_role === 'SK Kagawad')
+                  Number(official.role_id) === 3 && official.official_role !== 'SK Secretary' && official.official_role !== 'SK Treasurer'
                 );
+                const showKagawadFallback = kagawads.length === 0 && members.length > 0;
                 return (
                   <section key={barangay.id} className="rounded-xl border border-slate-200 p-4">
                     <h4 className="mb-3 border-b border-slate-100 pb-2 text-sm font-black text-[#091d64]">
@@ -2486,13 +2489,23 @@ useEffect(() => {
                         { label: 'SK Kagawad', people: kagawads },
                         { label: 'SK Secretary', people: secretaries },
                         { label: 'SK Treasurer', people: treasurers },
-                      ].filter((group) => !search || barangayMatches || group.people.length > 0).map((group) => (
+                      ].filter((group) =>
+                        !(
+                          group.people.length === 0
+                          && (group.label === 'SK Secretary' || group.label === 'SK Treasurer')
+                        )
+                        && (!search || barangayMatches || group.people.length > 0)
+                      ).map((group) => (
                         <div key={group.label}>
                           <p className="mb-1 font-bold text-slate-600">{group.label}</p>
                           <div className="flex flex-wrap gap-2">
-                            {group.people.length ? group.people.map(renderAllOfficial) : (
-                              !search ? <span className="text-slate-400">None assigned</span> : null
-                            )}
+                            {group.people.length
+                              ? group.people.map(renderAllOfficial)
+                              : !search && group.label === 'SK Kagawad' && showKagawadFallback
+                                ? <span className="text-slate-400">No SK Kagawad assigned.</span>
+                                : !search && group.label !== 'SK Kagawad'
+                                  ? <span className="text-slate-400">None assigned</span>
+                                  : null}
                           </div>
                         </div>
                       ))}
