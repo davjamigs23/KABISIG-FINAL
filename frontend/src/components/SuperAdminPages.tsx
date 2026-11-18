@@ -1439,6 +1439,13 @@ useEffect(() => {
                         const spent = toNumber(liveRow?.budget_spent ?? b.spentBudget);
                         const rate = totalBudget > 0 ? Math.round((spent / totalBudget) * 100) : 0;
                         const chairpersonBadge = getOfficialSetupBadge(b.chairpersonUser);
+                        const chairpersonName = b.chairpersonUser?.full_name || b.chairperson || '';
+                        const normalizedChairpersonName = chairpersonName.trim().toLowerCase();
+                        const isPlaceholderChairpersonName = ['pending invitation', 'hon. sk chairperson', 'hon. sk kagawad']
+                          .includes(normalizedChairpersonName);
+                        const isPendingChairperson = chairpersonBadge.label === 'Pending'
+                          || b.chairpersonUser?.status?.trim().toLowerCase() === 'pending'
+                          || isPlaceholderChairpersonName;
                         return (
                           <tr key={b.id} className="hover:bg-slate-50/50">
                             <td className="p-3 font-bold text-[#091d64] whitespace-nowrap">
@@ -1455,12 +1462,18 @@ useEffect(() => {
                             </td>
                             <td className="p-3 font-semibold whitespace-nowrap">
                               {chairpersonBadge.label !== 'Unassigned' ? (
-                                <div className="flex items-center gap-1.5">
-                                  <span>{b.chairperson}</span>
-                                  <span className={`px-1.5 py-0.5 text-[9px] font-black uppercase rounded ${chairpersonBadge.className}`}>
-                                    {chairpersonBadge.label}
+                                isPendingChairperson ? (
+                                  <span className="text-slate-500">
+                                    {isPlaceholderChairpersonName ? 'Pending Invitation' : chairpersonName}
                                   </span>
-                                </div>
+                                ) : (
+                                  <div className="flex items-center gap-1.5">
+                                    <span>{chairpersonName}</span>
+                                    <span className={`px-1.5 py-0.5 text-[9px] font-black uppercase rounded ${chairpersonBadge.className}`}>
+                                      {chairpersonBadge.label}
+                                    </span>
+                                  </div>
+                                )
                               ) : (
                                 <span className={`px-2 py-0.5 text-[9px] font-black uppercase rounded ${chairpersonBadge.className}`}>
                                   {chairpersonBadge.label}
@@ -3351,7 +3364,7 @@ useEffect(() => {
       {/* FIX USER TYPO MODAL */}
       {showFixTypoModal && (
         <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 max-w-[95vw] md:max-w-2xl lg:max-w-md">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 max-w-[95vw] md:max-w-2xl lg:max-w-md max-h-[90vh] overflow-y-auto">
             <h3 className="font-bold text-slate-800 text-lg mb-1">Manage User Credentials</h3>
             <p className="text-xs text-slate-500 mb-4">Correct a user&apos;s profile, contact info, or birthdate directly in the database. Leave fields blank to keep them unchanged.</p>
             
