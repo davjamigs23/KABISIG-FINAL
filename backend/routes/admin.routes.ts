@@ -98,8 +98,8 @@ router.get('/all-officials', authenticateUser, requireRoles('SUPER_ADMIN'), asyn
       .from('users')
       .select('id, tenant_id, role_id, full_name, first_name, middle_name, last_name, suffix, email, status, avatar_url, barangay(name), resident_profile!resident_profile_user_id_fkey(sex)')
       .in('role_id', [2, 3])
-      .not('tenant_id', 'is', null)
-      .not('full_name', 'ilike', '%Pending Invitation%');
+      .in('status', ['active', 'pending'])
+      .not('tenant_id', 'is', null);
 
     if (error) {
       sendError(res, `Failed to load officials: ${error.message}`, 500);
@@ -157,7 +157,7 @@ router.get('/all-officials', authenticateUser, requireRoles('SUPER_ADMIN'), asyn
       };
     }));
 
-    sendSuccess(res, roster.filter(official => official.setup_completed), 'Barangay officials retrieved.');
+    sendSuccess(res, roster, 'Barangay officials retrieved.');
   } catch (error: any) {
     console.error('Failed to retrieve all Barangay officials:', error);
     sendError(res, error?.message || 'Failed to load officials.', 500);

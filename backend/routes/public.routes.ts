@@ -79,27 +79,47 @@ router.get('/announcements', async (_req: Request, res: Response): Promise<void>
 router.get('/expenses', async (_req: Request, res: Response): Promise<void> => {
   const currentYear = new Date().getFullYear();
   const pageSize = 1000;
+  const { data: budgets, error: budgetError } = await supabaseAdmin
+    .from('budget')
+    .select('id, tenant_id, category, fiscal_year')
+    .eq('fiscal_year', currentYear);
+  if (budgetError) {
+    sendError(res, `Failed to load public budget categories: ${budgetError.message}`, 500);
+    return;
+  }
+  const budgetById = new Map((budgets || []).map((budget) => [
+    budget.id,
+    { tenant_id: budget.tenant_id, category: budget.category, fiscal_year: budget.fiscal_year },
+  ]));
+  const budgetIds = [...budgetById.keys()];
   const allExpenses: any[] = [];
-  for (let offset = 0; ; offset += pageSize) {
-    const { data, error } = await supabaseAdmin
-      .from('expense')
-      .select('id, tenant_id, program_id, title, description, gross_amount, tax_type, tax_rate, tax_amount, net_amount, expense_date, status, budget:budget_id!inner(tenant_id, category, fiscal_year), program:program_id(title)')
-      .eq('status', 'approved')
-      .eq('budget.fiscal_year', currentYear)
-      .order('expense_date', { ascending: false })
-      .order('id', { ascending: true })
-      .range(offset, offset + pageSize - 1);
+  const budgetIdPageSize = 200;
+  for (let budgetOffset = 0; budgetOffset < budgetIds.length; budgetOffset += budgetIdPageSize) {
+    const budgetIdBatch = budgetIds.slice(budgetOffset, budgetOffset + budgetIdPageSize);
+    for (let offset = 0; ; offset += pageSize) {
+      const { data, error } = await supabaseAdmin
+        .from('expense')
+        .select('id, tenant_id, budget_id, program_id, title, description, gross_amount, tax_type, tax_rate, tax_amount, net_amount, expense_date, status, program:program_id(title)')
+        .eq('status', 'approved')
+        .in('budget_id', budgetIdBatch)
+        .order('expense_date', { ascending: false })
+        .order('id', { ascending: true })
+        .range(offset, offset + pageSize - 1);
 
-    if (error) {
-      sendError(res, `Failed to load public expenses: ${error.message}`, 500);
-      return;
+      if (error) {
+        sendError(res, `Failed to load public expenses: ${error.message}`, 500);
+        return;
+      }
+      for (const expense of data || []) {
+        const budget = budgetById.get(expense.budget_id);
+        if (!budget || expense.tenant_id !== budget.tenant_id) {
+          sendError(res, 'An approved expense is linked to a budget from a different Barangay.', 500);
+          return;
+        }
+        allExpenses.push({ ...expense, budget });
+      }
+      if (!data || data.length < pageSize) break;
     }
-    if ((data || []).some((expense) => expense.tenant_id !== expense.budget[0]?.tenant_id)) {
-      sendError(res, 'An approved expense is linked to a budget from a different Barangay.', 500);
-      return;
-    }
-    allExpenses.push(...(data || []));
-    if (!data || data.length < pageSize) break;
   }
   sendSuccess(res, allExpenses, 'Public expenses retrieved.');
 });

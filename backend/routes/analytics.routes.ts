@@ -418,7 +418,7 @@ router.get(
     const currentYear = new Date().getFullYear();
     const { data: allBudgets, error: budgetError } = await supabaseAdmin
       .from('budget')
-      .select('tenant_id, category, allocated_amount')
+      .select('id, tenant_id, category, allocated_amount')
       .gt('allocated_amount', 0)
       .eq('fiscal_year', currentYear);
     if (budgetError) {
@@ -428,6 +428,7 @@ router.get(
 
     const budgetPerBarangay: Record<string, { allocated: number; spent: number }> = {};
     const budgetByCategory: Record<string, number> = {};
+    const budgetTenantMap = new Map<string, string>();
     let cityTotalAllocated = 0;
     let cityTotalSpent = 0;
 
@@ -441,35 +442,41 @@ router.get(
         allocated: current.allocated + allocated,
         spent: current.spent,
       };
+      budgetTenantMap.set(b.id, b.tenant_id);
     });
 
     const expensePageSize = 1000;
-    for (let offset = 0; ; offset += expensePageSize) {
-      const { data: expenseRows, error: expenseError } = await supabaseAdmin
-        .from('expense')
-        .select('id, tenant_id, net_amount, budget:budget_id!inner(tenant_id, fiscal_year)')
-        .eq('status', 'approved')
-        .eq('budget.fiscal_year', currentYear)
-        .order('expense_date', { ascending: true })
-        .order('id', { ascending: true })
-        .range(offset, offset + expensePageSize - 1);
-      if (expenseError) {
-        sendError(res, `Failed to load federation actual expenditures: ${expenseError.message}`, 500);
-        return;
-      }
-
-      for (const expense of expenseRows || []) {
-        const linkedTenantId = expense.budget[0]?.tenant_id;
-        if (!linkedTenantId || expense.tenant_id !== linkedTenantId) {
-          sendError(res, 'An approved expense is linked to a budget from a different Barangay.', 500);
+    const budgetIds = [...budgetTenantMap.keys()];
+    const budgetIdPageSize = 200;
+    for (let budgetOffset = 0; budgetOffset < budgetIds.length; budgetOffset += budgetIdPageSize) {
+      const budgetIdBatch = budgetIds.slice(budgetOffset, budgetOffset + budgetIdPageSize);
+      for (let offset = 0; ; offset += expensePageSize) {
+        const { data: expenseRows, error: expenseError } = await supabaseAdmin
+          .from('expense')
+          .select('id, tenant_id, budget_id, net_amount')
+          .eq('status', 'approved')
+          .in('budget_id', budgetIdBatch)
+          .order('expense_date', { ascending: true })
+          .order('id', { ascending: true })
+          .range(offset, offset + expensePageSize - 1);
+        if (expenseError) {
+          sendError(res, `Failed to load federation actual expenditures: ${expenseError.message}`, 500);
           return;
         }
-        const current = budgetPerBarangay[linkedTenantId] || { allocated: 0, spent: 0 };
-        const spent = Number(expense.net_amount) || 0;
-        budgetPerBarangay[linkedTenantId] = { ...current, spent: current.spent + spent };
-        cityTotalSpent += spent;
+
+        for (const expense of expenseRows || []) {
+          const linkedTenantId = budgetTenantMap.get(expense.budget_id);
+          if (!linkedTenantId || expense.tenant_id !== linkedTenantId) {
+            sendError(res, 'An approved expense is linked to a budget from a different Barangay.', 500);
+            return;
+          }
+          const current = budgetPerBarangay[linkedTenantId] || { allocated: 0, spent: 0 };
+          const spent = Number(expense.net_amount) || 0;
+          budgetPerBarangay[linkedTenantId] = { ...current, spent: current.spent + spent };
+          cityTotalSpent += spent;
+        }
+        if (!expenseRows || expenseRows.length < expensePageSize) break;
       }
-      if (!expenseRows || expenseRows.length < expensePageSize) break;
     }
 
     const { data: cityPrograms } = await supabaseAdmin
