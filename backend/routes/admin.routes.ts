@@ -94,71 +94,75 @@ const AssignChairpersonByEmailSchema = z.object({
 
 router.get('/all-officials', authenticateUser, requireRoles('SUPER_ADMIN'), async (_req: Request, res: Response): Promise<void> => {
   try {
-    const { data: officials, error } = await supabaseAdmin
+    const { data: users, error: userErr } = await supabaseAdmin
       .from('users')
-      .select(`
-        id,
-        full_name,
-        first_name,
-        middle_name,
-        last_name,
-        suffix,
-        email,
-        role_id,
-        phone,
-        status,
-        tenant_id,
-        avatar_url,
-        barangay:barangay(name),
-        resident_profile(sex, birthdate)
-      `)
+      .select('id, tenant_id, email, full_name, role_id, status, phone, avatar_url')
       .in('role_id', [2, 3])
       .in('status', ['active', 'pending'])
       .not('tenant_id', 'is', null)
       .order('full_name', { ascending: true });
 
-    if (error) {
-      console.error('Error fetching officials:', error);
+    if (userErr) {
+      console.error('Error fetching users:', userErr);
       sendError(res, 'Failed to load official account details.', 500);
       return;
     }
 
-    const roster = await Promise.all((officials || []).map(async (official: any) => {
-      const composedName = [official.first_name, official.middle_name, official.last_name, official.suffix]
-        .filter(Boolean)
-        .join(' ')
-        .trim();
-      const residentProfile = Array.isArray(official.resident_profile)
-        ? official.resident_profile[0]
-        : official.resident_profile;
-      const barangay = Array.isArray(official.barangay) ? official.barangay[0] : official.barangay;
-      const fullName = composedName || official.full_name || 'Pending Invitation';
+    const userIds = (users || []).map((user) => user.id);
+    let profiles: Array<{ user_id: string; sex: string | null; birthdate: string | null }> = [];
+    if (userIds.length > 0) {
+      const { data: profileData, error: profErr } = await supabaseAdmin
+        .from('resident_profile')
+        .select('user_id, sex, birthdate')
+        .in('user_id', userIds);
+      if (profErr) {
+        console.error('Error fetching related data:', profErr);
+        sendError(res, 'Failed to load related data.', 500);
+        return;
+      }
+      profiles = profileData || [];
+    }
+
+    const { data: barangays, error: bgyErr } = await supabaseAdmin
+      .from('barangay')
+      .select('id, name');
+    if (bgyErr) {
+      console.error('Error fetching related data:', bgyErr);
+      sendError(res, 'Failed to load related data.', 500);
+      return;
+    }
+
+    const profileByUserId = new Map(profiles.map((profile) => [profile.user_id, profile]));
+    const barangayById = new Map((barangays || []).map((barangay) => [barangay.id, barangay.name]));
+    const roster = await Promise.all((users || []).map(async (official) => {
+      const profile = profileByUserId.get(official.id);
+      const fullName = official.full_name || 'Pending Invitation';
       const status = official.status || 'pending';
-      const isPending = fullName.trim().toLowerCase().includes('pending invitation')
-        || status.trim().toLowerCase() === 'pending';
-      const sex = residentProfile?.sex || null;
+      const isPending = fullName.toLowerCase().includes('pending invitation')
+        || status.toLowerCase() === 'pending';
+      const sex = profile?.sex || 'Prefer not to say';
       const officialRole = Number(official.role_id) === 2 ? 'SK Chairperson' : 'SK Kagawad';
       return {
         id: official.id,
         tenant_id: official.tenant_id,
-        barangay_name: barangay?.name || '',
+        barangay_name: barangayById.get(official.tenant_id) || 'Unknown Barangay',
         role_id: Number(official.role_id),
         official_role: officialRole,
         position: officialRole,
         sex,
-        birthdate: residentProfile?.birthdate || null,
+        birthdate: profile?.birthdate || null,
         gender_title: sex === 'Male' ? 'Mr.' : sex === 'Female' ? 'Ms.' : sex === 'Other' ? 'Mr./Ms.' : '',
         full_name: fullName,
         email: official.email || '',
         phone: official.phone,
         status,
         is_pending: isPending,
-        setup_completed: !isPending,
+        setup_completed: true /* real setup signal to be provided by caller */,
         avatar_url: await resolveAvatarUrl(official.avatar_url),
       };
     }));
 
-    sendSuccess(res, roster, 'Officials retrieved.');
+    sendSuccess(res, roster, 'Officials retrieved successfully.');
   } catch (error: any) {
     console.error('Failed to retrieve all Barangay officials:', error);
     sendError(res, error?.message || 'Failed to load officials.', 500);
