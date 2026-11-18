@@ -36,7 +36,7 @@ function parseSKOfficialRole(value: unknown): SKOfficialRole | null {
 async function resolveSKOfficialRole(userId: string, authUser: {
   user_metadata?: Record<string, unknown>;
   app_metadata?: Record<string, unknown>;
-}): Promise<SKOfficialRole | null> {
+}, publicOfficialRole?: unknown): Promise<SKOfficialRole | null> {
   const { data: assignment, error: assignmentError } = await supabaseAdmin
     .from('audit_logs')
     .select('details')
@@ -59,7 +59,7 @@ async function resolveSKOfficialRole(userId: string, authUser: {
     || parseSKOfficialRole(authUser.app_metadata?.official_role)
     || parseSKOfficialRole(authUser.user_metadata?.official_position)
     || parseSKOfficialRole(authUser.user_metadata?.role);
-  const officialRole = recordedRole || metadataRole;
+  const officialRole = parseSKOfficialRole(publicOfficialRole) || recordedRole || metadataRole;
 
   if (!officialRole) return null;
 
@@ -948,7 +948,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
 
   const userMeta = { ...(data.user.user_metadata || {}) };
   if (profile?.role_id === ROLE_IDS.SK_OFFICIAL) {
-    const officialRole = await resolveSKOfficialRole(data.user.id, data.user);
+    const officialRole = await resolveSKOfficialRole(data.user.id, data.user, profile?.official_role);
     if (!officialRole) {
       sendError(
         res,
@@ -1700,7 +1700,7 @@ router.get('/me', authenticateUser, async (req: Request, res: Response): Promise
   const { data: authData } = await supabaseAdmin.auth.admin.getUserById(user.id);
   const userMeta = { ...(authData?.user?.user_metadata || {}) };
   if (profile?.role_id === ROLE_IDS.SK_OFFICIAL && authData?.user) {
-    const officialRole = await resolveSKOfficialRole(user.id, authData.user);
+    const officialRole = await resolveSKOfficialRole(user.id, authData.user, profile?.official_role);
     if (!officialRole) {
       sendError(
         res,

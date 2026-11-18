@@ -1456,7 +1456,8 @@ export default function App() {
 
       {/* 3. BARANGAY ADMIN (SK CHAIRPERSON) PANELS */}
       {(currentRole === 'Barangay Admin' || currentRole === 'SK Chairperson') && currentTenant && (
-        (currentUser?.user_metadata?.setup_completed !== true &&
+        (currentUser?.setup_completed !== true &&
+          currentUser?.user_metadata?.setup_completed !== true &&
           (!currentUser?.full_name || currentUser.full_name.trim() === '' || currentUser.full_name === 'Pending Chairperson' || currentUser.full_name === 'Pending Invitation' || !currentUser?.resident_profile?.birthdate)) ? (
           <ChairpersonOnboarding 
             currentBarangay={currentTenant}
