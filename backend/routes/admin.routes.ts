@@ -96,9 +96,8 @@ router.get('/all-officials', authenticateUser, requireRoles('SUPER_ADMIN'), asyn
   try {
     const { data: users, error: userErr } = await supabaseAdmin
       .from('users')
-      .select('id, tenant_id, email, full_name, role_id, status, phone, avatar_url, setup_completed')
-      .in('role_id', [2, 3])
-      .in('status', ['active', 'pending'])
+      .select('id, tenant_id, email, full_name, role_id, status, phone, avatar_url, setup_completed, official_role')
+      .or('role_id.in.(2,3),official_role.not.is.null')
       .not('tenant_id', 'is', null)
       .order('full_name', { ascending: true });
 
@@ -141,13 +140,17 @@ router.get('/all-officials', authenticateUser, requireRoles('SUPER_ADMIN'), asyn
       const isPending = fullName.toLowerCase().includes('pending invitation')
         || status.toLowerCase() === 'pending';
       const sex = profile?.sex || 'Prefer not to say';
-      const officialRole = Number(official.role_id) === 2 ? 'SK Chairperson' : 'SK Kagawad';
+      const officialRole = Number(official.role_id) === 2
+        ? 'SK Chairperson'
+        : official.official_role || 'SK Kagawad';
       return {
         id: official.id,
         tenant_id: official.tenant_id,
         barangay_name: barangayById.get(official.tenant_id) || 'Unknown Barangay',
         role_id: Number(official.role_id),
-        official_role: officialRole,
+        official_role: Number(official.role_id) === 2
+          ? 'SK Chairperson'
+          : official.official_role || 'SK Kagawad',
         position: officialRole,
         sex,
         birthdate: profile?.birthdate || null,

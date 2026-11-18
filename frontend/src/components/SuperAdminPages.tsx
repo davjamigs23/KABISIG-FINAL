@@ -2342,12 +2342,24 @@ useEffect(() => {
                 </div>
               )}
               {!officialsRosterLoading && !officialsRosterError && officialsRoster && (
-                [
-                  { title: 'SK Chairperson', members: officialsRoster.filter((person: any) => Number(person.role_id) === 2) },
-                  { title: 'SK Kagawad', members: officialsRoster.filter((person: any) => Number(person.role_id) === 3 && String(person.official_role || '').toLowerCase().includes('kagawad')) },
-                  { title: 'SK Secretary', members: officialsRoster.filter((person: any) => Number(person.role_id) === 3 && String(person.official_role || '').toLowerCase().includes('secretary')) },
-                  { title: 'SK Treasurer', members: officialsRoster.filter((person: any) => Number(person.role_id) === 3 && String(person.official_role || '').toLowerCase().includes('treasurer')) },
-                ].map((group) => (
+                (() => {
+                  const chairperson = officialsRoster.filter((official: any) => official.role_id === 2);
+                  const kagawads = officialsRoster.filter((official: any) =>
+                    official.role_id === 3 && (!official.official_role || official.official_role === 'SK Kagawad')
+                  );
+                  const secretaries = officialsRoster.filter((official: any) =>
+                    official.role_id === 3 && official.official_role === 'SK Secretary'
+                  );
+                  const treasurers = officialsRoster.filter((official: any) =>
+                    official.role_id === 3 && official.official_role === 'SK Treasurer'
+                  );
+
+                  return [
+                    { title: 'SK Chairperson', members: chairperson },
+                    { title: 'SK Kagawad', members: kagawads },
+                    { title: 'SK Secretary', members: secretaries },
+                    { title: 'SK Treasurer', members: treasurers },
+                  ].map((group) => (
                   <section key={group.title}>
                     <h4 className="mb-2 border-b border-slate-100 pb-2 text-xs font-black uppercase tracking-wide text-slate-500">
                       {group.title}
@@ -2387,7 +2399,8 @@ useEffect(() => {
                       </p>
                     )}
                   </section>
-                ))
+                  ));
+                })()
               )}
             </div>
             <div className="flex justify-end border-t border-slate-100 bg-slate-50 p-4">
@@ -2449,27 +2462,28 @@ useEffect(() => {
                   && (barangayMatches || [official.full_name, official.email, official.official_role, official.position]
                     .some((value) => String(value || '').toLowerCase().includes(search)))
                 );
-                const chairpersons = members.filter((official) => Number(official.role_id) === 2);
-                const skOfficials = members.filter((official) => Number(official.role_id) === 3);
-                const kagawad = skOfficials.filter((official) => String(official.official_role || '').toLowerCase().includes('kagawad'));
-                const secretaries = skOfficials.filter((official) => String(official.official_role || '').toLowerCase().includes('secretary'));
-                const treasurers = skOfficials.filter((official) => String(official.official_role || '').toLowerCase().includes('treasurer'));
+                const chairperson = members.filter((official) => official.role_id === 2);
+                const secretaries = members.filter((official) => official.role_id === 3 && official.official_role === 'SK Secretary');
+                const treasurers = members.filter((official) => official.role_id === 3 && official.official_role === 'SK Treasurer');
+                const kagawads = members.filter((official) =>
+                  official.role_id === 3 && (!official.official_role || official.official_role === 'SK Kagawad')
+                );
                 return (
                   <section key={barangay.id} className="rounded-xl border border-slate-200 p-4">
                     <h4 className="mb-3 border-b border-slate-100 pb-2 text-sm font-black text-[#091d64]">
                       Barangay {barangay.name}
                     </h4>
                     <div className="space-y-3 text-xs">
-                      {(!search || barangayMatches || chairpersons.length > 0) && <div>
+                      {(!search || barangayMatches || chairperson.length > 0) && <div>
                         <p className="mb-1 font-bold text-slate-600">SK Chairperson</p>
                         <div className="flex flex-wrap gap-2">
-                          {chairpersons.length ? chairpersons.map(renderAllOfficial) : !search ? (
+                          {chairperson.length ? chairperson.map(renderAllOfficial) : !search ? (
                             <span className="text-slate-400">Pending / Unassigned</span>
                           ) : null}
                         </div>
                       </div>}
                       {[
-                        { label: 'SK Kagawad', people: kagawad },
+                        { label: 'SK Kagawad', people: kagawads },
                         { label: 'SK Secretary', people: secretaries },
                         { label: 'SK Treasurer', people: treasurers },
                       ].filter((group) => !search || barangayMatches || group.people.length > 0).map((group) => (
@@ -2964,7 +2978,7 @@ useEffect(() => {
       {/* TENANT CONFIGURATION & SK CHAIRPERSON ASSIGNMENT MODAL */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="w-full max-w-lg mx-auto bg-white rounded-xl shadow-xl overflow-hidden my-auto">
+          <div className="w-full max-w-3xl mx-auto bg-white rounded-xl shadow-xl overflow-hidden my-auto">
             <div className="bg-[#091d64] p-5 text-white flex justify-between items-center text-left">
               <div>
                 <h3 className="font-sans font-black text-base flex items-center gap-2">
@@ -3061,7 +3075,7 @@ useEffect(() => {
                   </div>
                 </div>
 
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 w-full mt-3">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 w-full p-4 border rounded-lg bg-slate-50">
                   <div className="min-w-0 flex-1">
                     <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">SK Chairperson</span>
                     <span className="block mt-1 text-xs font-bold text-slate-800">
@@ -3071,12 +3085,12 @@ useEffect(() => {
                           ? formatOfficialName(editingChairpersonName, editingBarangay.chairpersonUser.sex, 2, 'SK Chairperson')
                           : 'Unassigned'}
                     </span>
-                    <span className="block break-all text-[10px] text-slate-500">{editingBarangay?.chairpersonEmail || 'No email recorded'}</span>
+                    <span className="block min-w-0 truncate text-[10px] text-slate-500">{editingBarangay?.chairpersonEmail || 'No email recorded'}</span>
                     <span className={`mt-1 inline-block rounded px-1.5 py-0.5 text-[9px] font-bold ${getOfficialSetupBadge(editingBarangay?.chairpersonUser).className}`}>
                       {getOfficialSetupBadge(editingBarangay?.chairpersonUser).label}
                     </span>
                   </div>
-                  <div className="flex flex-wrap shrink-0 gap-2">
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
                     {!editingBarangay?.chairpersonUser ? (
                       <button
                         type="button"
@@ -3085,7 +3099,7 @@ useEffect(() => {
                           setShowModal(false);
                           if (barangay) handleOpenAssignModal(barangay, true);
                         }}
-                        className="px-4 py-2 bg-[#091d64] hover:bg-[#102a83] text-white rounded-lg text-xs font-bold whitespace-nowrap"
+                        className="px-4 py-2 bg-[#091d64] hover:bg-[#102a83] text-white rounded-lg text-xs font-bold max-w-full whitespace-normal break-words text-left"
                       >
                         Assign Chairperson
                       </button>
@@ -3098,7 +3112,7 @@ useEffect(() => {
                             setShowModal(false);
                             if (barangay) handleOpenCancelInviteModal(barangay, true);
                           }}
-                          className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold whitespace-nowrap"
+                          className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold max-w-full whitespace-normal break-words text-left"
                         >
                           Cancel Invitation
                         </button>
@@ -3106,7 +3120,7 @@ useEffect(() => {
                           type="button"
                           disabled={resendingChairpersonBarangayId === editingBarangay.id}
                           onClick={() => void handleResendChairpersonInvitation(editingBarangay)}
-                          className="px-4 py-2 bg-[#091d64] hover:bg-[#102a83] text-white rounded-lg text-xs font-bold whitespace-nowrap disabled:opacity-50"
+                          className="px-4 py-2 bg-[#091d64] hover:bg-[#102a83] text-white rounded-lg text-xs font-bold max-w-full whitespace-normal break-words text-left disabled:opacity-50"
                         >
                           {resendingChairpersonBarangayId === editingBarangay.id ? 'Sending...' : 'Resend Invitation'}
                         </button>
@@ -3117,7 +3131,7 @@ useEffect(() => {
                           type="button"
                           disabled={resendingChairpersonBarangayId === editingBarangay.id}
                           onClick={() => void handleResendChairpersonInvitation(editingBarangay)}
-                          className="px-4 py-2 bg-[#091d64] hover:bg-[#102a83] text-white rounded-lg text-xs font-bold whitespace-nowrap disabled:opacity-50"
+                          className="px-4 py-2 bg-[#091d64] hover:bg-[#102a83] text-white rounded-lg text-xs font-bold max-w-full whitespace-normal break-words text-left disabled:opacity-50"
                         >
                           {resendingChairpersonBarangayId === editingBarangay.id ? 'Sending...' : 'Resend Invitation'}
                         </button>
@@ -3128,7 +3142,7 @@ useEffect(() => {
                             setShowModal(false);
                             if (barangay) handleOpenTransferModal(barangay, true);
                           }}
-                          className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold whitespace-nowrap"
+                          className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold max-w-full whitespace-normal break-words text-left"
                         >
                           Transfer Leadership
                         </button>
@@ -3139,7 +3153,7 @@ useEffect(() => {
                             setShowModal(false);
                             if (barangay) handleOpenInviteOfficialModal(barangay, true);
                           }}
-                          className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-amber-950 rounded-lg text-xs font-bold whitespace-nowrap"
+                          className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-amber-950 rounded-lg text-xs font-bold max-w-full whitespace-normal break-words text-left"
                         >
                           Invite Official
                         </button>
