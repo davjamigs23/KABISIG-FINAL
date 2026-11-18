@@ -2991,8 +2991,8 @@ useEffect(() => {
       {/* TENANT CONFIGURATION & SK CHAIRPERSON ASSIGNMENT MODAL */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="w-full max-w-3xl mx-auto bg-white rounded-xl shadow-xl overflow-hidden my-auto">
-            <div className="bg-[#091d64] p-5 text-white flex justify-between items-center text-left">
+          <div className="flex w-full max-w-2xl max-h-[90vh] mx-auto my-auto flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+            <div className="shrink-0 bg-[#091d64] p-5 text-white flex justify-between items-center text-left">
               <div>
                 <h3 className="font-sans font-black text-base flex items-center gap-2">
                   <ShieldCheck className="w-5 h-5 text-amber-300" />
@@ -3005,7 +3005,7 @@ useEffect(() => {
               </button>
             </div>
 
-            <div className="p-6 space-y-4 text-left text-xs font-semibold">
+            <div className="min-h-0 flex-1 overflow-y-auto p-6 space-y-4 text-left text-xs font-semibold">
               {modalNotice && (
                 <div className={`p-3 rounded-xl border flex items-start gap-2 ${modalNotice.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-rose-50 border-rose-200 text-rose-700'}`}>
                   {modalNotice.type === 'success' ? (
@@ -3177,7 +3177,7 @@ useEffect(() => {
 
               </div>
 
-              <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 p-4 border-t bg-slate-50">
+              <div className="shrink-0 flex flex-col-reverse sm:flex-row justify-end gap-3 p-4 border-t bg-slate-50">
                 <button 
                   disabled={isSaving}
                   onClick={() => setShowModal(false)} 
