@@ -1569,6 +1569,10 @@ useEffect(() => {
                         const chairpersonBadge = getOfficialSetupBadge(b.chairpersonUser);
                         const isAssigned = chairpersonBadge.label !== 'Unassigned';
                         const setupCompleted = chairpersonBadge.label === 'Assigned';
+                        const chairpersonName = b.chairpersonUser?.full_name || b.chairperson || '';
+                        const isPendingName = ['pending invitation', 'unassigned', 'hon. sk chairperson', 'hon. sk kagawad']
+                          .includes(chairpersonName.trim().toLowerCase())
+                          || b.chairpersonUser?.status?.trim().toLowerCase() === 'pending';
 
                         return (
                           <tr key={b.id} className="hover:bg-slate-50/70 transition-colors">
@@ -1606,11 +1610,15 @@ useEffect(() => {
 
                             {/* Assigned Chairperson (Name & Email) */}
                             <td className="py-3.5 px-4 whitespace-nowrap">
-                              {isAssigned ? (
+                              {isPendingName ? (
+                                <span className="inline-flex rounded-full border border-amber-200 bg-amber-100 px-2.5 py-1 text-[9px] font-extrabold uppercase text-amber-800">
+                                  Pending Invitation
+                                </span>
+                              ) : isAssigned ? (
                                 <div className="space-y-0.5">
                                   <div className="flex items-center gap-2">
                                     <span className="font-bold text-slate-900 text-xs">
-                                      {b.chairperson === 'Pending Invitation' ? 'Pending Invitation' : b.chairperson}
+                                      {chairpersonName}
                                     </span>
                                   </div>
                                   {b.chairpersonEmail ? (

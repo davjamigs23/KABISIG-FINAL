@@ -419,6 +419,7 @@ router.get(
     const { data: allBudgets, error: budgetError } = await supabaseAdmin
       .from('budget')
       .select('tenant_id, category, allocated_amount')
+      .gt('allocated_amount', 0)
       .eq('fiscal_year', currentYear);
     if (budgetError) {
       sendError(res, `Failed to load federation AIP budgets: ${budgetError.message}`, 500);
