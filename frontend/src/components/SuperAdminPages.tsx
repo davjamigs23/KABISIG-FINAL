@@ -506,8 +506,42 @@ useEffect(() => {
     return { label: 'Unknown', className: 'bg-slate-100 text-slate-600' };
   };
 
+  const getInitial = (name: string | null | undefined) => {
+    if (!name) return '?';
+    const cleanName = name.trim().replace(/^(Hon\.|Ms\.|Mr\.|Mrs\.)\s+/i, '').trim();
+    return cleanName.charAt(0).toUpperCase() || '?';
+  };
+
+  const dedupeOfficials = (officials: any[]) => {
+    const seen = new Set<string>();
+    return officials.filter((official) => {
+      if (official.id == null) return true;
+      const id = String(official.id);
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+  };
+
+  const getOfficialStatusBadge = (official: { status?: string | null } | null | undefined) => {
+    const status = official?.status;
+    const isPending = status === 'pending';
+    const label = status ? `${status.charAt(0).toUpperCase()}${status.slice(1)}` : 'Unknown';
+
+    if (isPending) {
+      return { label: 'Pending', className: 'bg-amber-100 text-amber-800' };
+    }
+    if (status === 'active') {
+      return { label: 'Active', className: 'bg-emerald-100 text-emerald-700' };
+    }
+    if (status === 'rejected' || status === 'suspended') {
+      return { label, className: 'bg-rose-100 text-rose-700' };
+    }
+    return { label, className: 'bg-slate-100 text-slate-600' };
+  };
+
   const renderAllOfficial = (official: any) => {
-    const badge = getOfficialSetupBadge(official);
+    const badge = getOfficialStatusBadge(official);
 
     return (
       <span key={official.id} className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">
@@ -515,7 +549,7 @@ useEffect(() => {
           <img src={official.avatar_url} alt="" className="h-6 w-6 rounded-full object-cover" />
         ) : (
           <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-[10px] font-black text-[#091d64]">
-            {(official.full_name || '?').trim().charAt(0).toUpperCase()}
+            {getInitial(official.full_name)}
           </span>
         )}
         <span className="break-words">{formatOfficialName(official.full_name || 'Pending Invitation', official.sex, official.role_id, official.position || official.official_role)}</span>
@@ -2343,23 +2377,20 @@ useEffect(() => {
               )}
               {!officialsRosterLoading && !officialsRosterError && officialsRoster && (
                 (() => {
-                  const chairperson = officialsRoster.filter((official: any) => Number(official.role_id) === 2);
-                  const secretaries = officialsRoster.filter((official: any) => Number(official.role_id) === 3 && official.official_role === 'SK Secretary');
-                  const treasurers = officialsRoster.filter((official: any) => Number(official.role_id) === 3 && official.official_role === 'SK Treasurer');
-                  const kagawads = officialsRoster.filter((official: any) =>
+                  const uniqueOfficials = dedupeOfficials(officialsRoster);
+                  const chairperson = uniqueOfficials.filter((official: any) => Number(official.role_id) === 2);
+                  const secretaries = uniqueOfficials.filter((official: any) => Number(official.role_id) === 3 && official.official_role === 'SK Secretary');
+                  const treasurers = uniqueOfficials.filter((official: any) => Number(official.role_id) === 3 && official.official_role === 'SK Treasurer');
+                  const kagawads = uniqueOfficials.filter((official: any) =>
                     Number(official.role_id) === 3 && official.official_role !== 'SK Secretary' && official.official_role !== 'SK Treasurer'
                   );
-                  const showKagawadFallback = kagawads.length === 0 && officialsRoster.length > 0;
 
                   return [
                     { title: 'SK Chairperson', members: chairperson },
                     { title: 'SK Kagawad', members: kagawads },
                     { title: 'SK Secretary', members: secretaries },
                     { title: 'SK Treasurer', members: treasurers },
-                  ].filter((group) =>
-                    group.members.length > 0
-                    || (group.title !== 'SK Secretary' && group.title !== 'SK Treasurer')
-                  ).map((group) => (
+                  ].map((group) => (
                   <section key={group.title}>
                     <h4 className="mb-2 border-b border-slate-100 pb-2 text-xs font-black uppercase tracking-wide text-slate-500">
                       {group.title}
@@ -2367,9 +2398,7 @@ useEffect(() => {
                     {group.members.length > 0 ? (
                       <div className="grid gap-2 sm:grid-cols-2">
                         {group.members.map((person: any) => {
-                          const chairpersonBadge = Number(person.role_id) === 2
-                            ? getOfficialSetupBadge(person)
-                            : null;
+                          const statusBadge = getOfficialStatusBadge(person);
 
                           return (
                             <div key={person.id} className="flex min-w-0 items-center gap-3 rounded-xl border border-slate-200 p-3">
@@ -2377,16 +2406,14 @@ useEffect(() => {
                                 <img src={person.avatar_url} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />
                               ) : (
                                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-black text-[#091d64]">
-                                  {(person.full_name || '?').trim().charAt(0).toUpperCase()}
+                                  {getInitial(person.full_name)}
                                 </div>
                               )}
                               <div className="min-w-0">
                                 <p className="truncate text-sm font-bold text-slate-800">{formatOfficialName(person.full_name || 'Pending Invitation', person.sex, person.role_id, person.position || person.official_role)}</p>
                                 <p className="truncate text-xs text-slate-500">{person.email || 'No email recorded'}</p>
-                                <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold capitalize ${
-                                  chairpersonBadge ? chairpersonBadge.className : 'bg-slate-100 text-slate-600'
-                                }`}>
-                                  {chairpersonBadge?.label || person.status || 'unassigned'}
+                                <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold capitalize ${statusBadge.className}`}>
+                                  {statusBadge.label}
                                 </span>
                               </div>
                             </div>
@@ -2394,11 +2421,7 @@ useEffect(() => {
                         })}
                       </div>
                     ) : (
-                      group.title === 'SK Kagawad' && !showKagawadFallback ? null : (
-                        <p className="rounded-lg bg-slate-50 px-3 py-4 text-center text-xs text-slate-400">
-                          No {group.title} assigned.
-                        </p>
-                      )
+                      <div className="text-sm text-slate-500 italic">No {group.title} assigned.</div>
                     )}
                   </section>
                   ));
@@ -2459,53 +2482,44 @@ useEffect(() => {
               }).map((barangay) => {
                 const search = allOfficialsSearch.trim().toLowerCase();
                 const barangayMatches = !search || barangay.name.toLowerCase().includes(search);
-                const members = allOfficialsRoster.filter((official) =>
+                const members = dedupeOfficials(allOfficialsRoster.filter((official) =>
                   official.tenant_id === barangay.id
                   && (barangayMatches || [official.full_name, official.email, official.official_role, official.position]
                     .some((value) => String(value || '').toLowerCase().includes(search)))
-                );
+                ));
                 const chairperson = members.filter((official) => Number(official.role_id) === 2);
                 const secretaries = members.filter((official) => Number(official.role_id) === 3 && official.official_role === 'SK Secretary');
                 const treasurers = members.filter((official) => Number(official.role_id) === 3 && official.official_role === 'SK Treasurer');
                 const kagawads = members.filter((official) =>
                   Number(official.role_id) === 3 && official.official_role !== 'SK Secretary' && official.official_role !== 'SK Treasurer'
                 );
-                const showKagawadFallback = kagawads.length === 0 && members.length > 0;
                 return (
                   <section key={barangay.id} className="rounded-xl border border-slate-200 p-4">
                     <h4 className="mb-3 border-b border-slate-100 pb-2 text-sm font-black text-[#091d64]">
                       Barangay {barangay.name}
                     </h4>
                     <div className="space-y-3 text-xs">
-                      {(!search || barangayMatches || chairperson.length > 0) && <div>
+                      <div>
                         <p className="mb-1 font-bold text-slate-600">SK Chairperson</p>
                         <div className="flex flex-wrap gap-2">
                           {chairperson.length ? chairperson.map(renderAllOfficial) : !search ? (
-                            <span className="text-slate-400">Pending / Unassigned</span>
+                            <span className="text-sm text-slate-500 italic">No SK Chairperson assigned.</span>
                           ) : null}
                         </div>
-                      </div>}
+                      </div>
                       {[
                         { label: 'SK Kagawad', people: kagawads },
                         { label: 'SK Secretary', people: secretaries },
                         { label: 'SK Treasurer', people: treasurers },
-                      ].filter((group) =>
-                        !(
-                          group.people.length === 0
-                          && (group.label === 'SK Secretary' || group.label === 'SK Treasurer')
-                        )
-                        && (!search || barangayMatches || group.people.length > 0)
-                      ).map((group) => (
+                      ].map((group) => (
                         <div key={group.label}>
                           <p className="mb-1 font-bold text-slate-600">{group.label}</p>
                           <div className="flex flex-wrap gap-2">
                             {group.people.length
                               ? group.people.map(renderAllOfficial)
-                              : !search && group.label === 'SK Kagawad' && showKagawadFallback
-                                ? <span className="text-slate-400">No SK Kagawad assigned.</span>
-                                : !search && group.label !== 'SK Kagawad'
-                                  ? <span className="text-slate-400">None assigned</span>
-                                  : null}
+                              : !search
+                                ? <span className="text-sm text-slate-500 italic">No {group.label} assigned.</span>
+                                : null}
                           </div>
                         </div>
                       ))}
@@ -2991,7 +3005,7 @@ useEffect(() => {
       {/* TENANT CONFIGURATION & SK CHAIRPERSON ASSIGNMENT MODAL */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="flex w-full max-w-2xl max-h-[90vh] mx-auto my-auto flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+          <div className="flex w-full max-w-2xl max-h-[85vh] mx-auto my-auto flex-col overflow-hidden rounded-xl bg-white shadow-xl">
             <div className="shrink-0 bg-[#091d64] p-5 text-white flex justify-between items-center text-left">
               <div>
                 <h3 className="font-sans font-black text-base flex items-center gap-2">
@@ -3005,7 +3019,8 @@ useEffect(() => {
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-6 space-y-4 text-left text-xs font-semibold">
+            <div className="flex min-h-0 flex-1 flex-col text-left text-xs font-semibold">
+              <div className="min-h-0 flex-1 overflow-y-auto p-6 space-y-4">
               {modalNotice && (
                 <div className={`p-3 rounded-xl border flex items-start gap-2 ${modalNotice.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-rose-50 border-rose-200 text-rose-700'}`}>
                   {modalNotice.type === 'success' ? (
@@ -3175,6 +3190,7 @@ useEffect(() => {
                   </div>
                 </div>
 
+              </div>
               </div>
 
               <div className="shrink-0 flex flex-col-reverse sm:flex-row justify-end gap-3 p-4 border-t bg-slate-50">

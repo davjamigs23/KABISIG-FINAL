@@ -136,9 +136,8 @@ router.get('/all-officials', authenticateUser, requireRoles('SUPER_ADMIN'), asyn
     const roster = await Promise.all((users || []).map(async (official) => {
       const profile = profileByUserId.get(official.id);
       const fullName = official.full_name || 'Pending Invitation';
-      const status = official.status || 'pending';
-      const isPending = fullName.toLowerCase().includes('pending invitation')
-        || status.toLowerCase() === 'pending';
+      const status = official.status;
+      const isPending = status === 'pending';
       const sex = profile?.sex || 'Prefer not to say';
       const officialRole = Number(official.role_id) === 2
         ? 'SK Chairperson'
