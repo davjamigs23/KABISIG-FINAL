@@ -62,20 +62,25 @@ export default function PopupDialog({ notice, onClose }: PopupDialogProps) {
         <h3 id="popup-dialog-title" className="mb-2 text-lg font-bold text-slate-800">{notice.title}</h3>
         <p className="mb-6 whitespace-pre-wrap text-sm text-slate-600">{notice.message}</p>
         {setupLink && (
-          <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50 p-3 text-left">
-            <p className="mb-2 text-xs font-bold text-slate-700">Setup link</p>
-            <code className="block max-h-24 select-all overflow-auto break-all rounded-lg bg-white p-2 text-[11px] text-slate-700">
-              {setupLink}
-            </code>
-            <button
-              type="button"
-              onClick={() => void handleCopySetupLink()}
-              className="mt-2 rounded-lg bg-[#091d64] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#102a83]"
-            >
-              {copiedSetupLink === setupLink ? 'Copied' : 'Copy setup link'}
-            </button>
-            {copyError && <p role="alert" className="mt-2 text-xs text-rose-700">{copyError}</p>}
-          </div>
+          <details className="mb-5 rounded-xl border border-slate-200 bg-slate-50 p-3 text-left">
+            <summary className="cursor-pointer text-xs font-semibold text-slate-700">
+              Email not received? Click here to copy the setup link manually.
+            </summary>
+            <div className="mt-3">
+              <p className="mb-2 text-xs font-bold text-slate-700">Setup link</p>
+              <code className="block max-h-24 select-all overflow-auto break-all rounded-lg bg-white p-2 text-[11px] text-slate-700">
+                {setupLink}
+              </code>
+              <button
+                type="button"
+                onClick={() => void handleCopySetupLink()}
+                className="mt-2 rounded-lg bg-[#091d64] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#102a83]"
+              >
+                {copiedSetupLink === setupLink ? 'Copied' : 'Copy setup link'}
+              </button>
+              {copyError && <p role="alert" className="mt-2 text-xs text-rose-700">{copyError}</p>}
+            </div>
+          </details>
         )}
         {isConfirmation ? (
           <div className="flex gap-2">

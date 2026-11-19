@@ -2213,9 +2213,14 @@ useEffect(() => {
               </div>
 
               {cancelInviteNotice && (
+                (cancelInviteNotice.type !== 'error'
+                  || cancelInviteNotice.text !== 'No active Chairperson to cancel.'
+                  || cancellingBarangay.chairpersonUser === null
+                  || cancellingBarangay.chairpersonUser === undefined) && (
                 <div className={'p-3 rounded-xl text-xs border ' + (cancelInviteNotice.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-700')}>
                   {cancelInviteNotice.text}
                 </div>
+                )
               )}
 
               {cancelInviteNotice?.type === 'success' ? (
@@ -2536,7 +2541,7 @@ useEffect(() => {
       {/* P9/P10: INVITE SK OFFICIAL MODAL */}
       {showInviteOfficialModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl max-w-[95vw] md:max-w-2xl lg:max-w-md">
+          <div className="flex w-full max-w-2xl max-h-[90vh] mx-auto my-auto flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
             <div className="shrink-0 bg-[#091d64] p-5 text-white flex justify-between items-center text-left">
               <div>
                 <h3 className="font-sans font-black text-base flex items-center gap-2">
@@ -3000,7 +3005,7 @@ useEffect(() => {
       {/* TENANT CONFIGURATION & SK CHAIRPERSON ASSIGNMENT MODAL */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl max-w-[95vw] md:max-w-2xl lg:max-w-md">
+          <div className="flex w-full max-w-2xl max-h-[85vh] mx-auto my-auto flex-col overflow-hidden rounded-xl bg-white shadow-xl">
             <div className="shrink-0 bg-[#091d64] p-4 text-white flex justify-between items-center text-left">
               <div>
                 <h3 className="font-sans font-black text-base flex items-center gap-2">
@@ -3036,7 +3041,7 @@ useEffect(() => {
                       type="text"
                       value={modalForm.name}
                       readOnly
-                      className="w-full p-2.5 border border-slate-200 rounded-xl bg-slate-100 text-slate-700 font-bold"
+                      className="w-full p-2.5 border border-slate-200 rounded-xl bg-slate-100 text-slate-700 font-medium"
                     />
                   </div>
 
@@ -3048,7 +3053,7 @@ useEffect(() => {
                       type="text"
                       value={displayBarangayId}
                       readOnly
-                      className="w-full p-2.5 border border-slate-200 rounded-xl bg-slate-100 text-slate-700 font-bold"
+                      className="w-full p-2.5 border border-slate-200 rounded-xl bg-slate-100 text-slate-700 font-medium"
                     />
                   </div>
                 </div>
@@ -3097,21 +3102,19 @@ useEffect(() => {
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">SK CHAIRPERSON</span>
-                    <span className="block mt-1 break-words leading-tight text-sm font-bold text-slate-800">
-                      {editingChairpersonIsPending && !editingChairpersonName
-                        ? 'Pending Invite'
-                        : editingBarangay?.chairpersonUser
-                          ? formatOfficialName(editingChairpersonName, editingBarangay.chairpersonUser.sex, 2, 'SK Chairperson')
-                          : 'Unassigned'}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 py-4 border-b border-slate-200">
+                  <div className="min-w-0 flex-1">
+                    <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 whitespace-nowrap">
+                      SK CHAIRPERSON
                     </span>
-                    <span className="block min-w-0 break-all text-[10px] text-slate-500">
-                      {editingBarangay?.chairpersonEmail || editingBarangay?.chairpersonUser?.email || 'No email recorded'}
+                    <span className="block text-sm font-medium text-slate-800 break-words leading-tight">
+                      {editingBarangay?.chairpersonUser?.full_name || 'Unassigned'}
+                    </span>
+                    <span className="block text-[10px] text-slate-500 break-all mt-1">
+                      {editingBarangay?.chairpersonEmail || 'No email recorded'}
                     </span>
                   </div>
-                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  <div className="flex shrink-0 gap-2 items-center">
                     {editingChairpersonIsPending ? (
                       <>
                         <button

@@ -140,15 +140,24 @@ async function inviteWithBrevo(
 }
 
 async function findAuthUserByEmail(email: string): Promise<{ user: any | null; error: any | null }> {
+  const normalizedEmail = email.toLowerCase();
   const perPage = 1000;
-  for (let page = 1; ; page += 1) {
-    const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
-    if (error) return { user: null, error };
-
-    const user = data.users.find(authUser => authUser.email?.toLowerCase() === email);
-    if (user) return { user, error: null };
-    if (data.users.length < perPage) return { user: null, error: null };
+  try {
+    for (let page = 1; page <= 20; page += 1) {
+      const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage });
+      if (error) {
+        console.warn('[findAuthUserByEmail] listUsers failed, treating as not found:', error.message);
+        return { user: null, error: null };
+      }
+      const user = data.users.find((u: any) => u.email?.toLowerCase() === normalizedEmail);
+      if (user) return { user, error: null };
+      if (data.users.length < perPage) return { user: null, error: null };
+    }
+  } catch (err: any) {
+    console.warn('[findAuthUserByEmail] exception:', err?.message || err);
+    return { user: null, error: null };
   }
+  return { user: null, error: null };
 }
 
 
@@ -707,11 +716,12 @@ router.post(
     const chairpersonAuthFullName = existingUser?.full_name || 'Pending Invitation';
 
     // 3. Check Supabase Auth users too, since invite/create may fail if the auth user already exists
-    const { user: existingAuthUser, error: listAuthError } = await findAuthUserByEmail(cleanEmail);
-
-    if (listAuthError) {
-      sendError(res, `Failed to inspect existing auth users: ${listAuthError.message}`, 500);
-      return;
+    let existingAuthUser: any | null = null;
+    try {
+      const authLookup = await findAuthUserByEmail(cleanEmail);
+      existingAuthUser = authLookup.user;
+    } catch (error) {
+      console.error('[assign-chairperson] findAuthUserByEmail failed:', error);
     }
 
     if (existingUser) {
@@ -1091,8 +1101,7 @@ router.post(
       fallback: { first_name: 'SK', last_name: 'Official' },
     }).full_name;
 
-    const { user: existingAuthUser, error: listAuthError } = await findAuthUserByEmail(cleanEmail);
-    if (listAuthError) { sendError(res, 'Failed to inspect existing auth users: ' + listAuthError.message, 500); return; }
+    const { user: existingAuthUser } = await findAuthUserByEmail(cleanEmail);
 
     const existingOfficialRoleMetadata = String(existingUser?.official_role || '').toLowerCase();
     const existingOfficialRole = existingOfficialRoleMetadata.includes('secretary') ? 'SK Secretary'
@@ -1921,25 +1930,27 @@ router.post(
 
     const { data: pendingChair } = await supabaseAdmin
       .from('users')
-      .select('id, email, full_name, first_name, last_name, role_id, status')
+      .select('id, email, full_name, first_name, last_name, role_id, status, setup_completed')
       .eq('tenant_id', barangay_id)
       .eq('role_id', 2)
-      .eq('status', 'active')
+      .in('status', ['active', 'pending'])
       .maybeSingle();
 
     if (!pendingChair) {
-      sendError(res, 'No active Chairperson to cancel.', 404);
+      sendError(res, 'No pending Chairperson invitation to cancel.', 404);
       return;
     }
 
     const isPendingInvite =
-      pendingChair.full_name === 'Pending Invitation'
+      pendingChair.status === 'pending'
+      || pendingChair.setup_completed === false
+      || pendingChair.full_name === 'Pending Invitation'
       || (!pendingChair.first_name && !pendingChair.last_name);
 
     if (!isPendingInvite) {
       sendError(
         res,
-        `Barangay ${barangay.name}'s Chairperson has already completed onboarding (${pendingChair.full_name}). Use Transfer Leadership instead.`,
+        'This Chairperson has completed onboarding and cannot be cancelled. Use Transfer Leadership instead.',
         409,
         { code: 'CHAIRPERSON_ALREADY_REGISTERED' }
       );
@@ -1958,10 +1969,10 @@ router.post(
       return;
     }
 
-    try {
-      await supabaseAdmin.auth.admin.deleteUser(pendingChair.id);
-    } catch (authErr: any) {
-      console.warn('Auth user delete warning (non-fatal):', authErr?.message);
+    const { error: authDeleteError } = await supabaseAdmin.auth.admin.deleteUser(pendingChair.id);
+    if (authDeleteError) {
+      sendError(res, 'Failed to remove Chairperson authentication account: ' + authDeleteError.message, 500);
+      return;
     }
 
     const { error: delErr } = await supabaseAdmin
