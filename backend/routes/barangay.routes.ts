@@ -137,15 +137,21 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
       full_name: string | null;
       email: string | null;
       status: string | null;
+      is_pending: boolean;
       setup_completed: boolean | null;
     }>();
     allUsers?.forEach((c) => {
-      if (Number(c.role_id) === 2 && c.tenant_id && !chairMap.has(c.tenant_id)) {
+      if (Number(c.role_id) === 2 && c.tenant_id) {
+        const existingChairperson = chairMap.get(c.tenant_id);
+        if (existingChairperson && (existingChairperson.status === 'active' || c.status !== 'active')) {
+          return;
+        }
         chairMap.set(c.tenant_id, {
           id: c.id,
           full_name: c.full_name,
           email: c.email,
           status: c.status,
+          is_pending: c.status === 'pending',
           setup_completed: typeof c.setup_completed === 'boolean' ? c.setup_completed : null,
         });
       }
@@ -237,7 +243,11 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
             full_name: chairpersonUser.full_name,
             setup_completed: chairpersonUser.setup_completed,
             ...(canViewChairpersonContacts
-              ? { email: chairpersonUser.email, status: chairpersonUser.status }
+              ? {
+                  email: chairpersonUser.email,
+                  status: chairpersonUser.status,
+                  is_pending: chairpersonUser.is_pending,
+                }
               : {}),
           }
         : null;

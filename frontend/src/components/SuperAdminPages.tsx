@@ -26,6 +26,11 @@ import ProgramTrendD3 from './charts/ProgramTrendD3';
 import { kabisigApi } from '../lib/api';
 import PopupDialog, { PopupMessage } from './PopupDialog';
 
+const isPendingChair = (chair: any) =>
+  !chair ? false
+    : chair.status?.trim().toLowerCase() === 'pending'
+      || chair.setup_completed === false;
+
 interface SuperAdminPagesProps {
   barangays: BarangayTenant[];
   programs: Program[];
@@ -54,8 +59,13 @@ export default function SuperAdminPages({
   const [activeMenu, setActiveMenu] = useState<string>('dashboard');
   const [popupMsg, setPopupMsg] = useState<PopupMessage | null>(null);
   const [confirmMsg, setConfirmMsg] = useState<PopupMessage | null>(null);
-  const showPopup = (message: string, type: PopupMessage['type'] = 'error') => {
-    setPopupMsg({ title: type === 'success' ? 'Success' : type === 'error' ? 'Notice' : 'Information', message, type });
+  const showPopup = (message: string, type: PopupMessage['type'] = 'error', setupLink?: string) => {
+    setPopupMsg({
+      title: type === 'success' ? 'Success' : type === 'error' ? 'Notice' : 'Information',
+      message,
+      type,
+      ...(setupLink ? { setupLink } : {}),
+    });
   };
   
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -165,7 +175,6 @@ useEffect(() => {
   // Dedicated Assign SK Chairperson Modal State (Email-only)
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [assigningBarangay, setAssigningBarangay] = useState<BarangayTenant | null>(null);
-  const [resendingChairpersonBarangayId, setResendingChairpersonBarangayId] = useState<string | null>(null);
   const assigningChairpersonName = assigningBarangay?.chairpersonUser?.full_name?.trim() || '';
   const assigningChairpersonStatus = assigningBarangay?.chairpersonUser?.status?.trim().toLowerCase();
   const assigningBarangayHasActiveChairperson = Boolean(
@@ -377,9 +386,10 @@ useEffect(() => {
   const [isSaving, setIsSaving] = useState(false);
   const [editingBarangay, setEditingBarangay] = useState<BarangayTenant | null>(null);
   const editingChairpersonName = editingBarangay?.chairpersonUser?.full_name?.trim() || '';
-  const normalizedEditingChairpersonName = editingChairpersonName.toLowerCase();
-  const editingChairpersonIsPending = editingBarangay?.chairpersonUser?.status?.trim().toLowerCase() === 'pending'
-    || ['pending invitation', 'sk chairperson', 'hon. sk chairperson'].includes(normalizedEditingChairpersonName);
+  const editingChairpersonIsPending = isPendingChair(editingBarangay?.chairpersonUser);
+  const editingChairpersonIsActive =
+    editingBarangay?.chairpersonUser?.status?.trim().toLowerCase() === 'active'
+    && editingBarangay?.chairpersonUser?.setup_completed !== false;
   const [modalNotice, setModalNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [modalForm, setModalForm] = useState({
     name: '',
@@ -681,6 +691,8 @@ useEffect(() => {
     try {
       const res = await kabisigApi.inviteSkOfficial(inviteOfficialBarangay.id, email, inviteOfficialRole);
       if (!res.success) {
+        const setupLink = res.details?.action_link || res.details?.setup_url;
+        if (setupLink) showPopup(res.message || 'Invitation could not be completed.', 'error', setupLink);
         if (inviteOfficialEmailRef.current.trim().toLowerCase() === email) {
           setInviteOfficialNotice({ type: 'error', text: getInviteOfficialFailureMessage(res) });
         }
@@ -690,10 +702,11 @@ useEffect(() => {
       const refreshedCapacity = await kabisigApi.getRoleCapacity(inviteOfficialBarangay.id);
       if (refreshedCapacity.success) setRoleCapacity(refreshedCapacity.data);
       if (inviteOfficialEmailRef.current.trim().toLowerCase() === email) {
-        setInviteOfficialNotice({
-          type: 'success',
-          text: `SK Official invitation sent to ${email} for ${inviteOfficialBarangay.name}.`,
-        });
+        showPopup(
+          res.message || 'SK Official invitation completed.',
+          'success',
+          res.data?.action_link || res.data?.setup_url
+        );
       }
     } catch (err: any) {
       if (inviteOfficialEmailRef.current.trim().toLowerCase() === email) {
@@ -719,13 +732,16 @@ useEffect(() => {
         official.official_role
       );
       if (!response.success) {
+        const setupLink = response.details?.action_link || response.details?.setup_url;
+        if (setupLink) showPopup(response.message || 'Invitation could not be resent.', 'error', setupLink);
         setInviteOfficialNotice({ type: 'error', text: response.message || 'Failed to resend invitation.' });
         return;
       }
-      setInviteOfficialNotice({
-        type: 'success',
-        text: `A new invitation was sent to ${official.email}.`,
-      });
+      showPopup(
+        response.message || 'Invitation resent.',
+        'success',
+        response.data?.action_link || response.data?.setup_url
+      );
       const refreshedCapacity = await kabisigApi.getRoleCapacity(inviteOfficialBarangay.id);
       if (refreshedCapacity.success) setRoleCapacity(refreshedCapacity.data);
     } catch (error: any) {
@@ -917,23 +933,6 @@ useEffect(() => {
     setShowAssignModal(true);
   };
 
-  const handleResendChairpersonInvitation = async (barangay: BarangayTenant) => {
-    setResendingChairpersonBarangayId(barangay.id);
-    try {
-      const response = await kabisigApi.resendChairpersonInvitation(barangay.id);
-      if (!response.success) {
-        showPopup(response.message || 'Failed to resend the Chairperson sign-in link.');
-        return;
-      }
-      showPopup(response.message || 'A secure sign-in link was sent to the Chairperson.', 'success');
-      await onRefreshAuditLogs();
-    } catch (error: unknown) {
-      showPopup(error instanceof Error ? error.message : 'Failed to resend the Chairperson sign-in link.');
-    } finally {
-      setResendingChairpersonBarangayId(null);
-    }
-  };
-
   const handleAssignChairpersonSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!assigningBarangay) {
@@ -959,6 +958,8 @@ useEffect(() => {
     try {
       const res = await kabisigApi.assignChairpersonByEmail(assigningBarangay.id, email);
       if (!res.success) {
+        const setupLink = res.details?.action_link || res.details?.setup_url;
+        if (setupLink) showPopup(res.message || 'Chairperson invitation could not be completed.', 'error', setupLink);
         setAssignError(res.message || 'Failed to dispatch Chairperson assignment.');
         setAssignNotice({ type: 'error', text: res.message || 'Failed to dispatch Chairperson assignment.' });
         setIsAssigning(false);
@@ -971,11 +972,10 @@ useEffect(() => {
         chairpersonEmail: email,
       });
       await onRefreshAuditLogs();
-      setChairpersonSetupLink(res.data?.action_link || res.data?.setup_url || '');
-      setAssignNotice({
-        type: 'success',
-        text: `SK Chairperson invitation sent to ${email} for ${assigningBarangay.name}.`,
-      });
+      const setupLink = res.data?.action_link || res.data?.setup_url;
+      setChairpersonSetupLink(setupLink || '');
+      setAssignNotice(null);
+      showPopup(res.message || 'Chairperson invitation completed.', 'success', setupLink);
     } catch (err: any) {
       setAssignError(err.message || 'Network connection failed.');
       setAssignNotice({ type: 'error', text: err.message || 'Network connection failed.' });
@@ -1504,14 +1504,6 @@ useEffect(() => {
                         const totalBudget = toNumber(liveRow?.budget_allocated ?? b.totalBudget);
                         const spent = toNumber(liveRow?.budget_spent ?? b.spentBudget);
                         const rate = totalBudget > 0 ? Math.round((spent / totalBudget) * 100) : 0;
-                        const chairpersonBadge = getOfficialSetupBadge(b.chairpersonUser);
-                        const chairpersonName = b.chairpersonUser?.full_name || b.chairperson || '';
-                        const normalizedChairpersonName = chairpersonName.trim().toLowerCase();
-                        const isPlaceholderChairpersonName = ['pending invitation', 'hon. sk chairperson', 'hon. sk kagawad']
-                          .includes(normalizedChairpersonName);
-                        const isPendingChairperson = chairpersonBadge.label === 'Pending'
-                          || b.chairpersonUser?.status?.trim().toLowerCase() === 'pending'
-                          || isPlaceholderChairpersonName;
                         return (
                           <tr key={b.id} className="hover:bg-slate-50/50">
                             <td className="p-3 font-bold text-[#091d64] whitespace-nowrap">
@@ -1526,25 +1518,21 @@ useEffect(() => {
                                 <span>Brgy. {displayBarangayName(b.name)}</span>
                               </div>
                             </td>
-                            <td className="p-3 font-semibold whitespace-nowrap">
-                              {chairpersonBadge.label !== 'Unassigned' ? (
-                                isPendingChairperson ? (
-                                  <span className="text-slate-500">
-                                    {isPlaceholderChairpersonName ? 'Pending Invitation' : formatOfficialName(chairpersonName, b.chairpersonUser?.sex, 2, 'SK Chairperson')}
-                                  </span>
-                                ) : (
-                                  <div className="flex items-center gap-1.5">
-                                    <span>{formatOfficialName(chairpersonName, b.chairpersonUser?.sex, 2, 'SK Chairperson')}</span>
-                                    <span className={`px-1.5 py-0.5 text-[9px] font-black uppercase rounded ${chairpersonBadge.className}`}>
-                                      {chairpersonBadge.label}
-                                    </span>
-                                  </div>
-                                )
-                              ) : (
-                                <span className={`px-2 py-0.5 text-[9px] font-black uppercase rounded ${chairpersonBadge.className}`}>
-                                  {chairpersonBadge.label}
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs font-medium text-slate-800">
+                                  {b.chairpersonUser?.full_name || 'Unassigned'}
                                 </span>
-                              )}
+                                {b.chairpersonUser && (
+                                  <span className={`shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                                    isPendingChair(b.chairpersonUser)
+                                      ? 'bg-amber-100 text-amber-800'
+                                      : 'bg-emerald-100 text-emerald-700'
+                                  }`}>
+                                    {isPendingChair(b.chairpersonUser) ? 'Pending' : 'Active'}
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="p-3 font-mono whitespace-nowrap">{registeredYouth.toLocaleString()}</td>
                             <td className="p-3 font-mono font-bold text-slate-800 whitespace-nowrap">₱{totalBudget.toLocaleString()}</td>
@@ -1649,11 +1637,8 @@ useEffect(() => {
                         const isAssigned = Boolean(b.chairpersonUser);
                         const setupCompleted = chairpersonBadge.label === 'Assigned';
                         const chairpersonName = b.chairpersonUser?.full_name || b.chairperson || '';
-                        const normalizedChairpersonName = chairpersonName.trim().toLowerCase();
-                        const isPendingName = ['pending invitation', 'hon. sk chairperson', 'hon. sk kagawad']
-                          .includes(normalizedChairpersonName)
-                          || b.chairpersonUser?.status?.trim().toLowerCase() === 'pending';
-                        const hasChairperson = isAssigned || isPendingName;
+                        const isPendingChairperson = isPendingChair(b.chairpersonUser);
+                        const hasChairperson = isAssigned || isPendingChairperson;
                         const chairpersonEmail = b.chairpersonEmail || b.chairpersonUser?.email;
 
                         return (
@@ -1692,11 +1677,20 @@ useEffect(() => {
 
                             {/* Assigned Chairperson (Name & Email) */}
                             <td className="py-3.5 px-4 whitespace-nowrap">
-                              {hasChairperson ? (
+                              {isPendingChairperson ? (
+                                <div className="space-y-0.5">
+                                  <span className="font-bold text-slate-900 text-xs">Pending Invite</span>
+                                  {chairpersonEmail && (
+                                    <span className="block text-slate-500 text-[10px] break-all">
+                                      {chairpersonEmail}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : hasChairperson ? (
                                 <div className="space-y-0.5">
                                   <div className="flex items-center gap-2">
                                     <span className="font-bold text-slate-900 text-xs">
-                                      {isPendingName ? 'Pending Invitation' : formatOfficialName(chairpersonName, b.chairpersonUser?.sex, 2, 'SK Chairperson')}
+                                      {formatOfficialName(chairpersonName, b.chairpersonUser?.sex, 2, 'SK Chairperson')}
                                     </span>
                                     <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-200">
                                       ASSIGNED
@@ -2284,7 +2278,7 @@ useEffect(() => {
                 <p className="font-bold text-rose-900 text-sm">{transferCurrentChair?.name || 'Unknown'}</p>
                 <p className="text-rose-700 text-[11px] font-mono">{transferCurrentChair?.email || 'no email'}</p>
                 <p className="text-[10px] text-rose-600 mt-2 italic">
-                  This person will be demoted to SK Official. Their record is preserved.
+                  This person will be demoted to Youth Constituent. Their record is preserved.
                 </p>
               </div>
 
@@ -2396,9 +2390,9 @@ useEffect(() => {
                     <h4 className="mb-2 border-b border-slate-100 pb-2 text-xs font-black uppercase tracking-wide text-slate-500">
                       {group.title}
                     </h4>
-                    {group.members.length > 0 ? (
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {group.members.map((person: any) => {
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {group.members.length > 0 ? (
+                        group.members.map((person: any) => {
                           const statusBadge = getOfficialStatusBadge(person);
 
                           return (
@@ -2419,15 +2413,13 @@ useEffect(() => {
                               </div>
                             </div>
                           );
-                        })}
-                      </div>
-                    ) : (
-                      group.title === 'SK Secretary' ? (
-                        <div className="text-sm text-slate-500 italic">No SK Secretary assigned.</div>
-                      ) : group.title === 'SK Treasurer' ? (
-                        <div className="text-sm text-slate-500 italic">No SK Treasurer assigned.</div>
-                      ) : null
-                    )}
+                        })
+                      ) : (
+                        <p className="text-xs text-slate-400 italic py-2 px-3 sm:col-span-2">
+                          No {group.title} assigned yet
+                        </p>
+                      )}
+                    </div>
                   </section>
                   ));
                 })()
@@ -2507,7 +2499,9 @@ useEffect(() => {
                       <div>
                         <p className="mb-1 font-bold text-slate-600">SK Chairperson</p>
                         <div className="flex flex-wrap gap-2">
-                          {chairperson.map(renderAllOfficial)}
+                          {chairperson.length > 0
+                            ? chairperson.map(renderAllOfficial)
+                            : <p className="text-xs text-slate-400 italic py-2 px-3">No SK Chairperson assigned yet</p>}
                         </div>
                       </div>
                       {[
@@ -2520,11 +2514,7 @@ useEffect(() => {
                           <div className="flex flex-wrap gap-2">
                             {group.people.length > 0
                               ? group.people.map(renderAllOfficial)
-                              : group.label === 'SK Secretary'
-                                ? <span className="text-sm text-slate-500 italic">No SK Secretary assigned.</span>
-                                : group.label === 'SK Treasurer'
-                                  ? <span className="text-sm text-slate-500 italic">No SK Treasurer assigned.</span>
-                                  : null}
+                              : <p className="text-xs text-slate-400 italic py-2 px-3">No {group.label} assigned yet</p>}
                           </div>
                         </div>
                       ))}
@@ -3010,8 +3000,8 @@ useEffect(() => {
       {/* TENANT CONFIGURATION & SK CHAIRPERSON ASSIGNMENT MODAL */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="flex w-full max-w-2xl max-h-[85vh] mx-auto my-auto flex-col overflow-hidden rounded-xl bg-white shadow-xl">
-            <div className="shrink-0 bg-[#091d64] p-5 text-white flex justify-between items-center text-left">
+          <div className="flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl max-w-[95vw] md:max-w-2xl lg:max-w-md">
+            <div className="shrink-0 bg-[#091d64] p-4 text-white flex justify-between items-center text-left">
               <div>
                 <h3 className="font-sans font-black text-base flex items-center gap-2">
                   <ShieldCheck className="w-5 h-5 text-amber-300" />
@@ -3024,7 +3014,7 @@ useEffect(() => {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            <div className="flex-1 overflow-y-auto p-6 space-y-3">
               {modalNotice && (
                 <div className={`p-3 rounded-xl border flex items-start gap-2 ${modalNotice.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-rose-50 border-rose-200 text-rose-700'}`}>
                   {modalNotice.type === 'success' ? (
@@ -3037,106 +3027,104 @@ useEffect(() => {
               )}
 
               <div className="space-y-3">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                    Barangay Name
-                  </label>
-                  <input
-                    type="text"
-                    value={modalForm.name}
-                    readOnly
-                    className="w-full p-2.5 border border-slate-200 rounded-xl bg-slate-100 text-slate-700 font-bold"
-                  />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                      Barangay Name
+                    </label>
+                    <input
+                      type="text"
+                      value={modalForm.name}
+                      readOnly
+                      className="w-full p-2.5 border border-slate-200 rounded-xl bg-slate-100 text-slate-700 font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                      Barangay ID
+                    </label>
+                    <input
+                      type="text"
+                      value={displayBarangayId}
+                      readOnly
+                      className="w-full p-2.5 border border-slate-200 rounded-xl bg-slate-100 text-slate-700 font-bold"
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                    Barangay ID
-                  </label>
-                  <input
-                    type="text"
-                    value={displayBarangayId}
-                    readOnly
-                    className="w-full p-2.5 border border-slate-200 rounded-xl bg-slate-100 text-slate-700 font-mono"
-                  />
-                </div>
-
-                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                        Logo
-                      </label>
-                      <p className="text-[10px] text-slate-500">This can be changed anytime.</p>
-                    </div>
-                    <div className="w-16 h-16 rounded-2xl bg-white border border-slate-200 p-1 flex items-center justify-center overflow-hidden flex-shrink-0 shadow-xs">
-                      {modalForm.logo ? (
-                        <img
-                          src={modalForm.logo}
-                          alt="Barangay Logo Preview"
-                          className="w-full h-full object-contain rounded-xl"
+                <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="min-w-0">
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                      Logo
+                    </label>
+                    <p className="text-[10px] text-slate-500">This can be changed anytime.</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <label className="px-3 py-1.5 bg-[#091d64] hover:bg-[#122e7d] text-white text-[11px] font-bold rounded-lg cursor-pointer flex items-center gap-1.5 transition-colors shadow-xs">
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Upload Logo</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleLogoUpload}
+                          className="hidden"
                         />
-                      ) : (
-                        <div className="text-center text-slate-400">
-                          <ImageIcon className="w-6 h-6 mx-auto mb-0.5 text-slate-300" />
-                          <span className="text-[8px] font-bold block uppercase">No Seal</span>
-                        </div>
+                      </label>
+                      {modalForm.logo && (
+                        <button
+                          type="button"
+                          onClick={() => setModalForm(prev => ({ ...prev, logo: '' }))}
+                          className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-[11px] font-bold rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" /> Remove
+                        </button>
                       )}
                     </div>
                   </div>
-                  <div className="mt-3 flex items-center gap-2">
-                    <label className="px-3 py-1.5 bg-[#091d64] hover:bg-[#122e7d] text-white text-[11px] font-bold rounded-lg cursor-pointer flex items-center gap-1.5 transition-colors shadow-xs">
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>Upload Logo</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleLogoUpload}
-                        className="hidden"
+                  <div className="w-16 h-16 rounded-xl bg-white border border-slate-200 p-1 flex items-center justify-center overflow-hidden shrink-0 shadow-xs">
+                    {modalForm.logo ? (
+                      <img
+                        src={modalForm.logo}
+                        alt="Barangay Logo Preview"
+                        className="w-full h-full object-contain rounded-xl"
                       />
-                    </label>
-                    {modalForm.logo && (
-                      <button
-                        type="button"
-                        onClick={() => setModalForm(prev => ({ ...prev, logo: '' }))}
-                        className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-[11px] font-bold rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" /> Remove
-                      </button>
+                    ) : (
+                      <div className="text-center text-slate-400">
+                        <ImageIcon className="w-6 h-6 mx-auto mb-0.5 text-slate-300" />
+                        <span className="text-[8px] font-bold block uppercase">No Seal</span>
+                      </div>
                     )}
                   </div>
                 </div>
 
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 w-full p-4 border rounded-lg bg-slate-50">
-                  <div className="min-w-0 flex-1">
-                    <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">SK Chairperson</span>
-                    <span className="block mt-1 text-xs font-bold text-slate-800">
-                      {editingChairpersonIsPending
-                        ? 'Unassigned / Pending'
+                <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">SK CHAIRPERSON</span>
+                    <span className="block mt-1 break-words leading-tight text-sm font-bold text-slate-800">
+                      {editingChairpersonIsPending && !editingChairpersonName
+                        ? 'Pending Invite'
                         : editingBarangay?.chairpersonUser
                           ? formatOfficialName(editingChairpersonName, editingBarangay.chairpersonUser.sex, 2, 'SK Chairperson')
                           : 'Unassigned'}
                     </span>
-                    <span className="block min-w-0 truncate text-[10px] text-slate-500">{editingBarangay?.chairpersonEmail || 'No email recorded'}</span>
-                    <span className={`mt-1 inline-block rounded px-1.5 py-0.5 text-[9px] font-bold ${getOfficialSetupBadge(editingBarangay?.chairpersonUser).className}`}>
-                      {getOfficialSetupBadge(editingBarangay?.chairpersonUser).label}
+                    <span className="block min-w-0 break-all text-[10px] text-slate-500">
+                      {editingBarangay?.chairpersonEmail || editingBarangay?.chairpersonUser?.email || 'No email recorded'}
                     </span>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2 shrink-0">
-                    {!editingBarangay?.chairpersonUser ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const barangay = editingBarangay;
-                          setShowModal(false);
-                          if (barangay) handleOpenAssignModal(barangay, true);
-                        }}
-                        className="px-4 py-2 bg-[#091d64] hover:bg-[#102a83] text-white rounded-lg text-xs font-bold max-w-full whitespace-normal break-words text-left"
-                      >
-                        Assign Chairperson
-                      </button>
-                    ) : editingBarangay.chairpersonUser.setup_completed === false || editingChairpersonIsPending ? (
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">
+                    {editingChairpersonIsPending ? (
                       <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const barangay = editingBarangay;
+                            setShowModal(false);
+                            if (barangay) handleOpenAssignModal(barangay, true);
+                          }}
+                          className="px-3 py-2 bg-[#091d64] hover:bg-[#102a83] text-white rounded-lg text-xs font-bold whitespace-nowrap"
+                        >
+                          Resend Invitation
+                        </button>
                         <button
                           type="button"
                           onClick={() => {
@@ -3144,29 +3132,13 @@ useEffect(() => {
                             setShowModal(false);
                             if (barangay) handleOpenCancelInviteModal(barangay, true);
                           }}
-                          className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold max-w-full whitespace-normal break-words text-left"
+                          className="px-3 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold whitespace-nowrap"
                         >
                           Cancel Invitation
                         </button>
-                        <button
-                          type="button"
-                          disabled={resendingChairpersonBarangayId === editingBarangay.id}
-                          onClick={() => void handleResendChairpersonInvitation(editingBarangay)}
-                          className="px-4 py-2 bg-[#091d64] hover:bg-[#102a83] text-white rounded-lg text-xs font-bold max-w-full whitespace-normal break-words text-left disabled:opacity-50"
-                        >
-                          {resendingChairpersonBarangayId === editingBarangay.id ? 'Sending...' : 'Resend Invitation'}
-                        </button>
                       </>
-                    ) : (
+                    ) : editingChairpersonIsActive ? (
                       <>
-                        <button
-                          type="button"
-                          disabled={resendingChairpersonBarangayId === editingBarangay.id}
-                          onClick={() => void handleResendChairpersonInvitation(editingBarangay)}
-                          className="px-4 py-2 bg-[#091d64] hover:bg-[#102a83] text-white rounded-lg text-xs font-bold max-w-full whitespace-normal break-words text-left disabled:opacity-50"
-                        >
-                          {resendingChairpersonBarangayId === editingBarangay.id ? 'Sending...' : 'Resend Invitation'}
-                        </button>
                         <button
                           type="button"
                           onClick={() => {
@@ -3174,7 +3146,7 @@ useEffect(() => {
                             setShowModal(false);
                             if (barangay) handleOpenTransferModal(barangay, true);
                           }}
-                          className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold max-w-full whitespace-normal break-words text-left"
+                          className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold whitespace-nowrap"
                         >
                           Transfer Leadership
                         </button>
@@ -3185,18 +3157,30 @@ useEffect(() => {
                             setShowModal(false);
                             if (barangay) handleOpenInviteOfficialModal(barangay, true);
                           }}
-                          className="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-amber-950 rounded-lg text-xs font-bold max-w-full whitespace-normal break-words text-left"
+                          className="px-3 py-2 bg-[#091d64] hover:bg-[#102a83] text-white rounded-lg text-xs font-bold whitespace-nowrap"
                         >
                           Invite Official
                         </button>
                       </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const barangay = editingBarangay;
+                          setShowModal(false);
+                          if (barangay) handleOpenAssignModal(barangay, true);
+                        }}
+                        className="px-3 py-2 bg-[#091d64] hover:bg-[#102a83] text-white rounded-lg text-xs font-bold whitespace-nowrap"
+                      >
+                        Assign Chairperson
+                      </button>
                     )}
                   </div>
                 </div>
 
               </div>
-                </div>
-              <div className="flex justify-end gap-3 p-4 border-t bg-slate-50">
+            </div>
+            <div className="flex justify-end gap-3 p-4 border-t bg-slate-50">
                 <button 
                   disabled={isSaving}
                   onClick={() => setShowModal(false)} 

@@ -15,38 +15,95 @@ async function sendInvitationEmail(email: string, role: string, setupLink: strin
 }
 
 // Wrapper: generate invite link via Supabase, then email it via Brevo
+type InvitationLinkType = 'invite' | 'recovery' | 'magiclink';
+
+function getInvitationErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error) {
+    return String(error.message);
+  }
+  return String(error);
+}
+
 async function inviteWithBrevo(
   email: string,
   options: any = {}
 ): Promise<{ data: any; error: any }> {
+  const inviteOptions = {
+    ...options,
+    expiresIn: 18000,
+    data: {
+      ...(options.data || {}),
+      setup_completed: false,
+    },
+  };
+  const attemptLink = async (type: InvitationLinkType): Promise<{ data: any; error: Error | null }> => {
+    let result: { data: any; error: any };
+    try {
+      if (type === 'invite') {
+        result = await supabaseAdmin.auth.admin.generateLink({ type: 'invite', email, options: inviteOptions });
+      } else if (type === 'recovery') {
+        result = await supabaseAdmin.auth.admin.generateLink({ type: 'recovery', email, options: inviteOptions });
+      } else {
+        result = await supabaseAdmin.auth.admin.generateLink({ type: 'magiclink', email, options: inviteOptions });
+      }
+    } catch (error) {
+      const attemptError = new Error(getInvitationErrorMessage(error));
+      console.error(`[INVITATION LINK] type=${type} result=error reason=${attemptError.message}`);
+      return { data: null, error: attemptError };
+    }
+
+    if (result.error) {
+      const attemptError = new Error(getInvitationErrorMessage(result.error));
+      console.error(`[INVITATION LINK] type=${type} result=error reason=${attemptError.message}`);
+      return { data: result.data, error: attemptError };
+    }
+    if (!result.data?.properties?.action_link) {
+      const attemptError = new Error('Supabase did not return an action link.');
+      console.error(`[INVITATION LINK] type=${type} result=error reason=${attemptError.message}`);
+      return { data: result.data, error: attemptError };
+    }
+    if (!result.data.user?.id) {
+      const attemptError = new Error('Supabase did not return the linked user account.');
+      console.error(`[INVITATION LINK] type=${type} result=error reason=${attemptError.message}`);
+      return { data: result.data, error: attemptError };
+    }
+
+    console.info(`[INVITATION LINK] type=${type} result=success`);
+    return { data: result.data, error: null };
+  };
+
+  const failedAttempts: string[] = [];
+  let successfulType: InvitationLinkType = 'invite';
+  let linkAttempt = await attemptLink(successfulType);
+  if (linkAttempt.error) {
+    const inviteError = linkAttempt.error.message;
+    if (!/already|registered|exists/i.test(inviteError)) {
+      return {
+        data: linkAttempt.data,
+        error: new Error(`Supabase link type 'invite' failed: ${inviteError}`),
+      };
+    }
+
+    failedAttempts.push(`invite: ${inviteError}`);
+    successfulType = 'recovery';
+    linkAttempt = await attemptLink(successfulType);
+    if (linkAttempt.error) {
+      failedAttempts.push(`recovery: ${linkAttempt.error.message}`);
+      successfulType = 'magiclink';
+      linkAttempt = await attemptLink(successfulType);
+      if (linkAttempt.error) {
+        failedAttempts.push(`magiclink: ${linkAttempt.error.message}`);
+        return {
+          data: linkAttempt.data,
+          error: new Error(`Supabase link generation failed after attempts: ${failedAttempts.join('; ')}`),
+        };
+      }
+    }
+  }
+
+  const data = { ...linkAttempt.data, link_type: successfulType };
   try {
-    const inviteOptions = {
-      ...options,
-      expiresIn: 18000,
-      data: {
-        ...(options.data || {}),
-        setup_completed: false,
-      },
-    };
-    const { data, error } = await supabaseAdmin.auth.admin.generateLink({
-      type: 'invite',
-      email,
-      options: inviteOptions,
-    });
-    if (error) {
-      console.error('[CHAIRPERSON INVITE] Supabase invite link generation failed:', error);
-      return { data, error };
-    }
-    if (!data?.properties?.action_link) {
-      const linkError = new Error('Supabase did not return an invitation action link.');
-      console.error('[CHAIRPERSON INVITE]', linkError.message);
-      return { data, error: linkError };
-    }
-    if (!data.user?.id) {
-      const linkError = new Error('Supabase did not return the invited user account.');
-      console.error('[CHAIRPERSON INVITE]', linkError.message);
-      return { data, error: linkError };
-    }
     const { error: setupMetadataError } = await supabaseAdmin.auth.admin.updateUserById(data.user.id, {
       app_metadata: {
         ...(data.user.app_metadata || {}),
@@ -54,18 +111,32 @@ async function inviteWithBrevo(
       },
     });
     if (setupMetadataError) {
-      console.error('[CHAIRPERSON INVITE] Failed to initialize setup state:', setupMetadataError);
-      return { data, error: setupMetadataError };
+      return {
+        data,
+        error: new Error(`Supabase link type '${successfulType}' succeeded, but setup state initialization failed: ${getInvitationErrorMessage(setupMetadataError)}`),
+      };
     }
-
-    const setupLink = data.properties.action_link;
-    const invRole = inviteOptions.data.role_id === 2 ? 'SK Chairperson' : (inviteOptions.data.official_role || inviteOptions.data.role || 'SK Official');
-    await sendInvitationEmail(email, invRole, setupLink);
-    return { data, error: null };
   } catch (error) {
-    console.error('[CHAIRPERSON INVITE] Invitation email delivery failed:', error);
-    return { data: null, error };
+    return {
+      data,
+      error: new Error(`Supabase link type '${successfulType}' succeeded, but setup state initialization failed: ${getInvitationErrorMessage(error)}`),
+    };
   }
+
+  const setupLink = data.properties.action_link;
+  const invRole = inviteOptions.data.role_id === 2 ? 'SK Chairperson' : (inviteOptions.data.official_role || inviteOptions.data.role || 'SK Official');
+  try {
+    await sendInvitationEmail(email, invRole, setupLink);
+  } catch (error) {
+    const reason = getInvitationErrorMessage(error);
+    console.error(`[INVITATION EMAIL] link_type=${successfulType} result=error reason=${reason}`);
+    return {
+      data,
+      error: new Error(`Supabase link type '${successfulType}' generated a setup link, but Brevo email delivery failed: ${reason}`),
+    };
+  }
+
+  return { data, error: null };
 }
 
 async function findAuthUserByEmail(email: string): Promise<{ user: any | null; error: any | null }> {
@@ -137,7 +208,7 @@ router.get('/all-officials', authenticateUser, requireRoles('SUPER_ADMIN'), asyn
       const profile = profileByUserId.get(official.id);
       const fullName = official.full_name || 'Pending Invitation';
       const status = official.status;
-      const isPending = status === 'pending';
+      const isPending = status === 'pending' || fullName === 'Pending Invitation';
       const sex = profile?.sex || 'Prefer not to say';
       const officialRole = Number(official.role_id) === 2
         ? 'SK Chairperson'
@@ -154,7 +225,8 @@ router.get('/all-officials', authenticateUser, requireRoles('SUPER_ADMIN'), asyn
         sex,
         birthdate: profile?.birthdate || null,
         gender_title: sex === 'Male' ? 'Mr.' : sex === 'Female' ? 'Ms.' : sex === 'Other' ? 'Mr./Ms.' : '',
-        full_name: fullName,
+        full_name: official.full_name || '',
+        display_name: isPending ? 'Pending Invite' : (official.full_name || 'Unassigned'),
         email: official.email || '',
         phone: official.phone,
         status,
@@ -230,22 +302,38 @@ router.post(
       return;
     }
     const setupUrl = `${FRONTEND_URL}/chairperson-setup?invite_email=${encodeURIComponent(cleanEmail)}&role=chairperson&tenant_id=${barangay_id}`;
-    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-      type: 'magiclink',
-      email: cleanEmail,
-      options: { redirectTo: setupUrl, expiresIn: 18000 } as any,
-    });
+    let linkData: any = null;
+    let linkError: unknown = null;
+    try {
+      const generatedLink = await supabaseAdmin.auth.admin.generateLink({
+        type: 'magiclink',
+        email: cleanEmail,
+        options: { redirectTo: setupUrl, expiresIn: 18000 } as any,
+      });
+      linkData = generatedLink.data;
+      linkError = generatedLink.error;
+    } catch (error) {
+      linkError = error;
+    }
     const actionLink = linkData?.properties?.action_link;
     if (linkError || !actionLink) {
-      sendError(res, `Failed to generate Chairperson sign-in link: ${linkError?.message || 'No action link was returned.'}`, 502);
+      const reason = linkError ? getInvitationErrorMessage(linkError) : 'Supabase did not return an action link.';
+      console.error(`[INVITATION LINK] type=magiclink result=error reason=${reason}`);
+      sendError(res, `Supabase link type 'magiclink' failed: ${reason}`, 502, { link_type: 'magiclink' });
       return;
     }
+    console.info('[INVITATION LINK] type=magiclink result=success');
 
     try {
       await sendInvitationEmail(cleanEmail, 'SK Chairperson', actionLink);
     } catch (emailError) {
-      const message = emailError instanceof Error ? emailError.message : String(emailError);
-      sendError(res, `Failed to send Chairperson sign-in link: ${message}`, 502);
+      const message = getInvitationErrorMessage(emailError);
+      sendError(
+        res,
+        `Supabase link type 'magiclink' generated a setup link, but Brevo email delivery failed: ${message}`,
+        502,
+        { link_type: 'magiclink', action_link: actionLink, setup_url: setupUrl }
+      );
       return;
     }
 
@@ -263,7 +351,11 @@ router.post(
       ipAddress: req.ip || null,
     });
 
-    sendSuccess(res, { email: cleanEmail, barangay_id }, `A secure sign-in link was sent to ${cleanEmail}.`);
+    sendSuccess(
+      res,
+      { email: cleanEmail, barangay_id, link_type: 'magiclink', action_link: actionLink, setup_url: setupUrl },
+      `A secure sign-in link was sent to ${cleanEmail}.`
+    );
   }
 );
 
@@ -603,6 +695,7 @@ router.post(
 
     let targetUserId: string = '';
     let actionLink = '';
+    let invitationLinkType: InvitationLinkType | null = null;
     let inviteMethod: 'email_invitation' | 'existing_auth_user' | 'temp_credentials' = 'existing_auth_user';
 
     // 2. Check the app's users table first
@@ -656,11 +749,18 @@ router.post(
           const errorMessage = inviteErr instanceof Error
             ? inviteErr.message
             : inviteErr?.message || 'Supabase did not return an invited Chairperson account.';
-          sendError(res, `Failed to send Chairperson invitation: ${errorMessage}`, 500);
+          const linkType = inviteData?.link_type || 'invite';
+          sendError(
+            res,
+            `Failed to send Chairperson invitation using Supabase link type '${linkType}': ${errorMessage}`,
+            502,
+            { link_type: linkType, action_link: inviteData?.properties?.action_link || null }
+          );
           return;
         }
         targetUserId = inviteData.user.id;
         actionLink = inviteData.properties.action_link;
+        invitationLinkType = inviteData.link_type || 'invite';
         inviteMethod = 'email_invitation';
 
         const { error: rebindErr } = await supabaseAdmin
@@ -768,11 +868,18 @@ router.post(
         const errorMessage = inviteErr instanceof Error
           ? inviteErr.message
           : inviteErr?.message || 'Supabase did not return an invited Chairperson account.';
-        sendError(res, `Failed to send Chairperson invitation: ${errorMessage}`, 500);
+        const linkType = inviteData?.link_type || 'invite';
+        sendError(
+          res,
+          `Failed to send Chairperson invitation using Supabase link type '${linkType}': ${errorMessage}`,
+          502,
+          { link_type: linkType, action_link: inviteData?.properties?.action_link || null }
+        );
         return;
       }
       targetUserId = inviteData.user.id;
       actionLink = inviteData.properties.action_link;
+      invitationLinkType = inviteData.link_type || 'invite';
       inviteMethod = 'email_invitation';
 
       // 5. Pre-set public.users record with role_id: 2, tenant_id, status: 'active'
@@ -835,6 +942,7 @@ router.post(
     let actionLinkError: unknown;
     if (!actionLink) {
       try {
+        console.info('[INVITATION LINK] type=magiclink result=attempt');
         const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
           type: 'magiclink',
           email: cleanEmail,
@@ -845,24 +953,36 @@ router.post(
         });
         if (linkError) throw linkError;
         actionLink = linkData?.properties?.action_link || '';
+        if (actionLink) {
+          invitationLinkType = 'magiclink';
+          console.info('[INVITATION LINK] type=magiclink result=success');
+        } else {
+          actionLinkError = new Error('Supabase did not return an action link.');
+          console.error(`[INVITATION LINK] type=magiclink result=error reason=${getInvitationErrorMessage(actionLinkError)}`);
+        }
       } catch (linkErr) {
         actionLinkError = linkErr;
-        console.warn('generateLink warning:', linkErr);
+        console.error(`[INVITATION LINK] type=magiclink result=error reason=${getInvitationErrorMessage(linkErr)}`);
       }
     }
 
     if (inviteMethod === 'existing_auth_user') {
       if (!actionLink) {
-        const errorMessage = actionLinkError instanceof Error ? actionLinkError.message : 'Supabase did not return a setup link.';
-        sendError(res, `Failed to generate Chairperson invitation: ${errorMessage}`, 502);
+        const errorMessage = actionLinkError ? getInvitationErrorMessage(actionLinkError) : 'Supabase did not return a setup link.';
+        sendError(res, `Supabase link type 'magiclink' failed: ${errorMessage}`, 502, { link_type: 'magiclink' });
         return;
       }
       try {
         await sendInvitationEmail(cleanEmail, 'SK Chairperson', actionLink);
         inviteMethod = 'email_invitation';
       } catch (emailError) {
-        const errorMessage = emailError instanceof Error ? emailError.message : String(emailError);
-        sendError(res, `Failed to send Chairperson invitation: ${errorMessage}`, 502);
+        const errorMessage = getInvitationErrorMessage(emailError);
+        sendError(
+          res,
+          `Supabase link type '${invitationLinkType || 'magiclink'}' generated a setup link, but Brevo email delivery failed: ${errorMessage}`,
+          502,
+          { link_type: invitationLinkType || 'magiclink', action_link: actionLink }
+        );
         return;
       }
     }
@@ -903,8 +1023,9 @@ router.post(
         invitation_method: inviteMethod,
         invitation_status: emailDelivered ? 'email_sent' : 'setup_link_only',
         email_delivery: emailDelivered,
-        setup_url: '',
-        action_link: '',
+        link_type: invitationLinkType || 'magiclink',
+        setup_url: directSetupUrl,
+        action_link: actionLink || directSetupUrl,
       },
       responseMessage
     );
@@ -944,7 +1065,10 @@ router.post(
     if (bgyError || !barangay) { sendError(res, 'Target Barangay does not exist in Naga City registry.', 404); return; }
 
     let targetUserId: string = '';
-    let inviteMethod: 'email_invitation' | 'existing_auth_user' | 'temp_credentials' = 'email_invitation';
+    let actionLink = '';
+    let invitationLinkType: InvitationLinkType | null = null;
+    let invitationDeliveryError: unknown = null;
+    let inviteMethod: 'email_invitation' | 'existing_auth_user' | 'temp_credentials' | 'setup_link_only' = 'email_invitation';
     const redirectUrl = FRONTEND_URL + '/official-setup?invite_email=' + encodeURIComponent(cleanEmail) + '&role=official&tenant_id=' + barangay_id + '&official_role=' + encodeURIComponent(official_role);
 
     const { data: existingUser, error: existingUserError } = await supabaseAdmin
@@ -1093,9 +1217,26 @@ router.post(
           data: { tenant_id: barangay_id, role_id: 3, official_role, full_name: officialAuthFullName },
           redirectTo: redirectUrl,
         } as any);
-        if (!inviteErr && inviteData?.user) {
+        const emailDeliveryFailed = inviteErr instanceof Error && inviteErr.message.includes('Brevo email delivery failed');
+        if (inviteData?.user && inviteData?.properties?.action_link && (!inviteErr || emailDeliveryFailed)) {
           targetUserId = inviteData.user.id;
-          inviteMethod = 'email_invitation';
+          actionLink = inviteData.properties.action_link;
+          invitationLinkType = inviteData.link_type || 'invite';
+          if (emailDeliveryFailed) {
+            inviteMethod = 'setup_link_only';
+            invitationDeliveryError = inviteErr;
+          } else {
+            inviteMethod = 'email_invitation';
+          }
+        } else if (inviteErr && inviteData?.properties?.action_link) {
+          const linkType = inviteData.link_type || 'invite';
+          sendError(
+            res,
+            `Supabase link type '${linkType}' generated a link, but SK Official setup initialization failed: ${inviteErr.message}`,
+            502,
+            { link_type: linkType, action_link: inviteData.properties.action_link }
+          );
+          return;
         } else {
           const tempPassword = 'Kb' + Math.random().toString(36).slice(-6) + 'A!1';
           const { data: createData, error: createErr } = await supabaseAdmin.auth.admin.createUser({
@@ -1198,9 +1339,26 @@ router.post(
         data: { tenant_id: barangay_id, role_id: 3, official_role, full_name: officialAuthFullName },
         redirectTo: redirectUrl,
       } as any);
-      if (!inviteErr && inviteData?.user) {
+      const emailDeliveryFailed = inviteErr instanceof Error && inviteErr.message.includes('Brevo email delivery failed');
+      if (inviteData?.user && inviteData?.properties?.action_link && (!inviteErr || emailDeliveryFailed)) {
         targetUserId = inviteData.user.id;
-        inviteMethod = 'email_invitation';
+        actionLink = inviteData.properties.action_link;
+        invitationLinkType = inviteData.link_type || 'invite';
+        if (emailDeliveryFailed) {
+          inviteMethod = 'setup_link_only';
+          invitationDeliveryError = inviteErr;
+        } else {
+          inviteMethod = 'email_invitation';
+        }
+      } else if (inviteErr && inviteData?.properties?.action_link) {
+        const linkType = inviteData.link_type || 'invite';
+        sendError(
+          res,
+          `Supabase link type '${linkType}' generated a link, but SK Official setup initialization failed: ${inviteErr.message}`,
+          502,
+          { link_type: linkType, action_link: inviteData.properties.action_link }
+        );
+        return;
       } else {
         const tempPassword = 'Kb' + Math.random().toString(36).slice(-6) + 'A!1';
         const { data: createData, error: createErr } = await supabaseAdmin.auth.admin.createUser({
@@ -1273,35 +1431,49 @@ router.post(
       return;
     }
 
-    let actionLink = '';
     let actionLinkError: unknown;
-    try {
-      const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-        type: 'magiclink',
-        email: cleanEmail,
-        options: { redirectTo: redirectUrl, expiresIn: 18000 } as any,
-      });
-      if (linkError) throw linkError;
-      if (linkData?.properties?.action_link) actionLink = linkData.properties.action_link;
-    } catch (linkErr) {
-      actionLinkError = linkErr;
-      console.warn('generateLink warning:', linkErr);
+    if (!actionLink) {
+      console.info('[INVITATION LINK] type=magiclink result=attempt');
+      try {
+        const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+          type: 'magiclink',
+          email: cleanEmail,
+          options: { redirectTo: redirectUrl, expiresIn: 18000 } as any,
+        });
+        if (linkError) throw linkError;
+        actionLink = linkData?.properties?.action_link || '';
+        if (actionLink) {
+          invitationLinkType = 'magiclink';
+          console.info('[INVITATION LINK] type=magiclink result=success');
+        } else {
+          actionLinkError = new Error('Supabase did not return an action link.');
+          console.error(`[INVITATION LINK] type=magiclink result=error reason=${getInvitationErrorMessage(actionLinkError)}`);
+        }
+      } catch (linkErr) {
+        actionLinkError = linkErr;
+        console.error(`[INVITATION LINK] type=magiclink result=error reason=${getInvitationErrorMessage(linkErr)}`);
+      }
     }
 
     if (inviteMethod === 'existing_auth_user') {
       if (!actionLink) {
-        const errorMessage = actionLinkError instanceof Error
-          ? actionLinkError.message
+        const errorMessage = actionLinkError
+          ? getInvitationErrorMessage(actionLinkError)
           : 'Supabase did not return a setup link.';
-        sendError(res, `Failed to generate SK Official invitation: ${errorMessage}`, 502);
+        sendError(res, `Supabase link type 'magiclink' failed: ${errorMessage}`, 502, { link_type: 'magiclink' });
         return;
       }
       try {
         await sendInvitationEmail(cleanEmail, official_role, actionLink);
         inviteMethod = 'email_invitation';
       } catch (emailError) {
-        const errorMessage = emailError instanceof Error ? emailError.message : String(emailError);
-        sendError(res, `Failed to send SK Official invitation: ${errorMessage}`, 502);
+        const errorMessage = getInvitationErrorMessage(emailError);
+        sendError(
+          res,
+          `Supabase link type '${invitationLinkType || 'magiclink'}' generated a setup link, but Brevo email delivery failed: ${errorMessage}`,
+          502,
+          { link_type: invitationLinkType || 'magiclink', action_link: actionLink, setup_url: redirectUrl }
+        );
         return;
       }
     }
@@ -1326,7 +1498,9 @@ router.post(
 
     const emailDelivered = inviteMethod === 'email_invitation';
     const composedRespName = [first_name, middle_name, last_name, suffix].filter(Boolean).join(' ') || cleanEmail;
-    const responseMessage = official_role + ' invitation sent to ' + composedRespName + ' (' + cleanEmail + ') for Barangay ' + barangay.name + '. Please check the inbox (and spam folder) for the setup email. If it has not arrived within a few minutes, retry the invitation.';
+    const responseMessage = invitationDeliveryError
+      ? `${official_role} invitation prepared for ${composedRespName} (${cleanEmail}) for Barangay ${barangay.name}, but email delivery failed: ${getInvitationErrorMessage(invitationDeliveryError)}. Manually deliver the setup link below.`
+      : official_role + ' invitation sent to ' + composedRespName + ' (' + cleanEmail + ') for Barangay ' + barangay.name + '. Please check the inbox (and spam folder) for the setup email. If it has not arrived within a few minutes, retry the invitation.';
 
     sendCreated(res, {
       user_id: targetUserId,
@@ -1340,6 +1514,7 @@ router.post(
       invitation_method: inviteMethod,
       invitation_status: emailDelivered ? 'email_sent' : 'setup_link_only',
       email_delivery: emailDelivered,
+      link_type: invitationLinkType || 'magiclink',
       setup_url: actionLink || redirectUrl,
       action_link: actionLink,
     }, responseMessage);
@@ -1527,8 +1702,10 @@ router.post(
 
     // 3. Find or create successor
     let successorUserId: string | null = null;
-    let successorInviteMethod: 'existing_user' | 'email_invitation' | 'temp_credentials' | 'resignation' = 'resignation';
+    let successorInviteMethod: 'existing_user' | 'email_invitation' | 'temp_credentials' | 'setup_link_only' | 'resignation' = 'resignation';
     let successorLink = '';
+    let successorLinkType: InvitationLinkType | null = null;
+    let successorInviteError: unknown = null;
     let successor: any = null;
     let successorNeedsPublicRecord = false;
     const redirectUrl = FRONTEND_URL + '/chairperson-setup?invite_email=' + encodeURIComponent(cleanSuccessorEmail || '') + '&role=chairperson&tenant_id=' + barangay_id;
@@ -1557,9 +1734,26 @@ router.post(
           } as any
         );
 
-        if (!inviteErr && inviteData?.user) {
+        const emailDeliveryFailed = inviteErr instanceof Error && inviteErr.message.includes('Brevo email delivery failed');
+        if (inviteData?.user && inviteData?.properties?.action_link && (!inviteErr || emailDeliveryFailed)) {
           successorUserId = inviteData.user.id;
-          successorInviteMethod = 'email_invitation';
+          successorLink = inviteData.properties.action_link;
+          successorLinkType = inviteData.link_type || 'invite';
+          if (emailDeliveryFailed) {
+            successorInviteMethod = 'setup_link_only';
+            successorInviteError = inviteErr;
+          } else {
+            successorInviteMethod = 'email_invitation';
+          }
+        } else if (inviteErr && inviteData?.properties?.action_link) {
+          const linkType = inviteData.link_type || 'invite';
+          sendError(
+            res,
+            `Supabase link type '${linkType}' generated a link, but successor setup initialization failed: ${inviteErr.message}`,
+            502,
+            { link_type: linkType, action_link: inviteData.properties.action_link }
+          );
+          return;
         } else {
           const tempPassword = 'Kb' + Math.random().toString(36).slice(-6) + 'A!1';
           const { data: createData, error: createErr } = await supabaseAdmin.auth.admin.createUser({
@@ -1579,20 +1773,27 @@ router.post(
           successorInviteMethod = 'temp_credentials';
         }
 
-        // Generate setup link
-        try {
-          const { data: linkData } = await supabaseAdmin.auth.admin.generateLink({
-            type: 'magiclink',
-            email: cleanSuccessorEmail,
-            options: { redirectTo: redirectUrl, expiresIn: 18000 } as any,
-          });
-          if (linkData?.properties?.action_link) {
-            successorLink = linkData.properties.action_link;
+        if (!successorLink) {
+          console.info('[INVITATION LINK] type=magiclink result=attempt');
+          try {
+            const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+              type: 'magiclink',
+              email: cleanSuccessorEmail,
+              options: { redirectTo: redirectUrl, expiresIn: 18000 } as any,
+            });
+            if (linkError) throw linkError;
+            if (linkData?.properties?.action_link) {
+              successorLink = linkData.properties.action_link;
+              successorLinkType = 'magiclink';
+              console.info('[INVITATION LINK] type=magiclink result=success');
+            } else {
+              console.error('[INVITATION LINK] type=magiclink result=error reason=Supabase did not return an action link.');
+            }
+          } catch (linkErr) {
+            console.error(`[INVITATION LINK] type=magiclink result=error reason=${getInvitationErrorMessage(linkErr)}`);
           }
-        } catch (linkErr) {
-          console.warn('generateLink warning:', linkErr);
         }
-      if (!successorLink) successorLink = redirectUrl;
+        if (!successorLink) successorLink = redirectUrl;
       }
     }
 
@@ -1634,7 +1835,7 @@ router.post(
     });
 
     // 7. Response
-    const emailDelivered = successorInviteMethod === 'email_invitation';
+    let emailDelivered = successorInviteMethod === 'email_invitation';
     console.log('[TRANSFER] Preparing to send emails...');
     try {
       const outgoingEmail = outgoing.email;
@@ -1650,6 +1851,11 @@ router.post(
         console.log('[TRANSFER] Sending appointment email to successor: ' + successorEmail);
         const successHtml = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;"><h1 style="color: #091d64; margin: 0 0 8px 0;">KABISIG</h1><p style="color: #64748b; font-size: 12px; margin: 0 0 24px 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p><h2 style="color: #091d64;">You are Invited to be SK Chairperson!</h2><p style="color: #334155; line-height: 1.6;">You have been appointed as the new SK Chairperson. Please click the button below to set up your account password and complete your profile.</p><div style="text-align: center; margin: 24px 0;"><a href="' + successorLink + '" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Set Up Account</a></div><p style="color: #94a3b8; font-size: 11px;">If the button does not work, copy this link: ' + successorLink + '</p></div>';
         await sendEmail(successorEmail, 'KABISIG Chairmanship Appointment', successHtml);
+        emailDelivered = true;
+        if (successorInviteMethod === 'setup_link_only') {
+          successorInviteMethod = 'email_invitation';
+          successorInviteError = null;
+        }
       }
     } catch (emailErr) {
       console.error('[TRANSFER] Email dispatch failed:', emailErr);
@@ -1664,7 +1870,7 @@ router.post(
         id: outgoing.id,
         email: outgoing.email,
         full_name: outgoing.full_name,
-        new_role: 'SK Official',
+        new_role: 'Youth Constituent',
       },
       incoming: {
         id: successorUserId,
@@ -1674,11 +1880,12 @@ router.post(
         status: 'active',
         new_role: 'Barangay Admin',
       },
-      setup_url: '',
-      action_link: '',
+      link_type: successorLinkType || undefined,
+      setup_url: successorLink,
+      action_link: successorLink,
       invitation_method: successorInviteMethod,
       email_delivery: emailDelivered,
-    }, 'Leadership transferred at Barangay ' + barangay.name + '. ' + (outgoing.full_name || outgoing.email) + ' demoted to Youth Constituent (pending re-approval); ' + cleanSuccessorEmail + ' is now Chairperson.');
+    }, 'Leadership transferred at Barangay ' + barangay.name + '. ' + (outgoing.full_name || outgoing.email) + ' demoted to Youth Constituent (pending re-approval); ' + cleanSuccessorEmail + ' is now Chairperson.' + (successorInviteError ? ' The invitation email failed: ' + getInvitationErrorMessage(successorInviteError) + '. Manually deliver the setup link from the response.' : ''));
   }
 );
 // ============================================================

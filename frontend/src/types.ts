@@ -24,6 +24,7 @@ export interface BarangayTenant {
     full_name: string;
     email?: string | null;
     status?: string | null;
+    is_pending?: boolean;
     sex?: string | null;
     setup_completed?: boolean | null;
   } | null;

@@ -241,14 +241,14 @@ class KabisigApiClient {
     return { success: res.success, message: res.message, error: res.error };
   }
 
-  async assignChairpersonByEmail(barangayId: string, email: string): Promise<{ success: boolean; data?: any; message?: string; error?: any }> {
+  async assignChairpersonByEmail(barangayId: string, email: string): Promise<{ success: boolean; data?: any; message?: string; error?: any; details?: any }> {
     return await this.request('/admin/assign-chairperson', {
       method: 'POST',
       body: JSON.stringify({ barangay_id: barangayId, email }),
     });
   }
 
-  async resendChairpersonInvitation(barangayId: string): Promise<{ success: boolean; data?: any; message?: string; error?: any }> {
+  async resendChairpersonInvitation(barangayId: string): Promise<{ success: boolean; data?: any; message?: string; error?: any; details?: any }> {
     return await this.request('/admin/resend-chairperson-invitation', {
       method: 'POST',
       body: JSON.stringify({ barangay_id: barangayId }),
@@ -397,7 +397,7 @@ class KabisigApiClient {
     return Array.isArray(res.data) ? res.data : [];
   }
 
-  async inviteSkOfficial(barangayId: string, email: string, officialRole: string, name?: { first_name?: string | null; middle_name?: string | null; last_name?: string | null; suffix?: string | null }): Promise<{ success: boolean; message?: string; data?: any }> {
+  async inviteSkOfficial(barangayId: string, email: string, officialRole: string, name?: { first_name?: string | null; middle_name?: string | null; last_name?: string | null; suffix?: string | null }): Promise<{ success: boolean; message?: string; data?: any; error?: any; details?: any }> {
     return await this.request<any>('/admin/invite-sk-official', {
       method: 'POST',
       body: JSON.stringify({ barangay_id: barangayId, email, official_role: officialRole, ...(name || {}) }),
