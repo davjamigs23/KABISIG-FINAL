@@ -506,9 +506,10 @@ useEffect(() => {
     return { label: 'Unknown', className: 'bg-slate-100 text-slate-600' };
   };
 
-  const getInitial = (name: string | null | undefined) => {
+  const getInitial = (name: string) => {
     if (!name) return '?';
-    const cleanName = name.trim().replace(/^(Hon\.|Ms\.|Mr\.|Mrs\.)\s+/i, '').trim();
+    // Strip prefixes like Hon., Ms., Mr., etc. (handles periods and spaces)
+    const cleanName = name.replace(/^(Hon\.|Ms\.|Mr\.|Mrs\.|Dr\.|Engr\.)\s*/gi, '').trim();
     return cleanName.charAt(0).toUpperCase() || '?';
   };
 
@@ -2421,7 +2422,11 @@ useEffect(() => {
                         })}
                       </div>
                     ) : (
-                      <div className="text-sm text-slate-500 italic">No {group.title} assigned.</div>
+                      group.title === 'SK Secretary' ? (
+                        <div className="text-sm text-slate-500 italic">No SK Secretary assigned.</div>
+                      ) : group.title === 'SK Treasurer' ? (
+                        <div className="text-sm text-slate-500 italic">No SK Treasurer assigned.</div>
+                      ) : null
                     )}
                   </section>
                   ));
@@ -2502,9 +2507,7 @@ useEffect(() => {
                       <div>
                         <p className="mb-1 font-bold text-slate-600">SK Chairperson</p>
                         <div className="flex flex-wrap gap-2">
-                          {chairperson.length ? chairperson.map(renderAllOfficial) : !search ? (
-                            <span className="text-sm text-slate-500 italic">No SK Chairperson assigned.</span>
-                          ) : null}
+                          {chairperson.map(renderAllOfficial)}
                         </div>
                       </div>
                       {[
@@ -2515,11 +2518,13 @@ useEffect(() => {
                         <div key={group.label}>
                           <p className="mb-1 font-bold text-slate-600">{group.label}</p>
                           <div className="flex flex-wrap gap-2">
-                            {group.people.length
+                            {group.people.length > 0
                               ? group.people.map(renderAllOfficial)
-                              : !search
-                                ? <span className="text-sm text-slate-500 italic">No {group.label} assigned.</span>
-                                : null}
+                              : group.label === 'SK Secretary'
+                                ? <span className="text-sm text-slate-500 italic">No SK Secretary assigned.</span>
+                                : group.label === 'SK Treasurer'
+                                  ? <span className="text-sm text-slate-500 italic">No SK Treasurer assigned.</span>
+                                  : null}
                           </div>
                         </div>
                       ))}
@@ -3019,8 +3024,7 @@ useEffect(() => {
               </button>
             </div>
 
-            <div className="flex min-h-0 flex-1 flex-col text-left text-xs font-semibold">
-              <div className="min-h-0 flex-1 overflow-y-auto p-6 space-y-4">
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
               {modalNotice && (
                 <div className={`p-3 rounded-xl border flex items-start gap-2 ${modalNotice.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-rose-50 border-rose-200 text-rose-700'}`}>
                   {modalNotice.type === 'success' ? (
@@ -3191,9 +3195,8 @@ useEffect(() => {
                 </div>
 
               </div>
-              </div>
-
-              <div className="shrink-0 flex flex-col-reverse sm:flex-row justify-end gap-3 p-4 border-t bg-slate-50">
+                </div>
+              <div className="flex justify-end gap-3 p-4 border-t bg-slate-50">
                 <button 
                   disabled={isSaving}
                   onClick={() => setShowModal(false)} 
@@ -3215,7 +3218,6 @@ useEffect(() => {
                     <span>Save Barangay Settings</span>
                   )}
                 </button>
-              </div>
             </div>
           </div>
         </div>

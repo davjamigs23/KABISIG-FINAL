@@ -293,11 +293,17 @@ router.get('/users/lookup', authenticateUser, requireRoles('SUPER_ADMIN'), async
     if (isUuid) {
       userQuery = userQuery.eq('id', identifier);
     } else {
-      userQuery = userQuery.eq('email', identifier.toLowerCase());
+      userQuery = userQuery.ilike('email', '%' + identifier.toLowerCase() + '%');
     }
 
-    const { data: user, error: userErr } = await userQuery.maybeSingle();
+    const { data: matchingUsers, error: userErr } = await userQuery.limit(2);
     if (userErr) { sendError(res, 'Lookup failed: ' + userErr.message, 500); return; }
+    if (!matchingUsers?.length) { sendError(res, 'User not found.', 404); return; }
+    if (matchingUsers.length > 1) {
+      sendError(res, 'Multiple users match this email. Enter a more specific email address.', 409);
+      return;
+    }
+    const user = matchingUsers[0];
     if (!user) { sendError(res, 'User not found.', 404); return; }
 
     // Profile is optional — only youth constituents have it.
