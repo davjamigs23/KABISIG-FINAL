@@ -243,6 +243,7 @@ router.get('/programs', async (_req: Request, res: Response): Promise<void> => {
   const { data, error } = await supabaseAdmin
     .from('program')
     .select('id, tenant_id, title, description, category, location, start_date, end_date, total_slots, budget_allocation, aip_reference, image_url, status, barangay(name)')
+    .in('status', ['active', 'approved', 'upcoming', 'ongoing'])
     .order('start_date', { ascending: false })
     .limit(100);
 

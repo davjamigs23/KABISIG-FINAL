@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, MapPin, Mail, Phone, Calendar, VenusAndMars, X, Loader2, Camera, Save, Edit2 } from 'lucide-react';
 import { kabisigApi } from '../lib/api';
 import ImageCropModal from './ImageCropModal';
+import { splitFullName } from '../lib/name';
 
 export default function ProfileSettings() {
   const [user, setUser] = useState<any>(null);
@@ -11,16 +12,25 @@ export default function ProfileSettings() {
   const [notice, setNotice] = useState<{type: 'success'|'error', text: string} | null>(null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
 
-  const [form, setForm] = useState({ first_name: '', middle_name: '', last_name: '', suffix: '', email: '' });
+  const [form, setForm] = useState({
+    first_name: '', middle_name: '', last_name: '', suffix: '', email: '',
+    phone: '', birthdate: '', address: '', sex: '',
+  });
 
   useEffect(() => {
     let cancelled = false;
     Promise.all([kabisigApi.getCurrentUser(), kabisigApi.getProfile()]).then(([u, profileResponse]) => {
       if (!cancelled) {
         const profile = profileResponse.success ? profileResponse.data as any : null;
+        const fullName = u?.full_name || u?.name || profile?.full_name || profile?.name || '';
+        const parsedName = splitFullName(fullName);
         const mergedUser = {
           ...u,
-          phone: u?.phone || profile?.mobile || '',
+          first_name: u?.first_name || profile?.first_name || parsedName.first_name,
+          middle_name: u?.middle_name || profile?.middle_name || parsedName.middle_name,
+          last_name: u?.last_name || profile?.last_name || parsedName.last_name,
+          suffix: u?.suffix || profile?.suffix || parsedName.suffix,
+          phone: u?.phone || profile?.phone || profile?.mobile || '',
           birthdate: u?.birthdate || profile?.birthdate || '',
           address: u?.address || profile?.address || '',
           sex: u?.sex || profile?.sex || '',
@@ -31,7 +41,11 @@ export default function ProfileSettings() {
           middle_name: mergedUser.middle_name || '',
           last_name: mergedUser.last_name || '',
           suffix: mergedUser.suffix || '',
-          email: mergedUser.email || ''
+          email: mergedUser.email || '',
+          phone: mergedUser.phone || '',
+          birthdate: mergedUser.birthdate || '',
+          address: mergedUser.address || '',
+          sex: mergedUser.sex || '',
         });
         setLoading(false);
       }
@@ -107,7 +121,13 @@ export default function ProfileSettings() {
   const handleSave = async () => {
     setSaving(true); setNotice(null);
     try {
-      const res = await kabisigApi.updateProfile(form, user.id);
+      const res = await kabisigApi.updateProfile({
+        ...form,
+        phone: form.phone.trim(),
+        birthdate: form.birthdate,
+        address: form.address.trim(),
+        sex: form.sex,
+      });
       if (res.success) {
         setUser({ ...user, ...form });
         setNotice({ type: 'success', text: 'Profile updated successfully. SK Fed President has been notified.' });
@@ -182,19 +202,19 @@ export default function ProfileSettings() {
 
           <div>
             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1.5"><Phone className="w-3.5 h-3.5" /> Phone Number</label>
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800">{user?.phone || '—'}</div>
+            {isEditing && Number(user?.role_id) === 1 ? <input type="tel" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm font-semibold focus:ring-1 focus:ring-[#091d64] outline-none" /> : <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800">{user?.phone || '—'}</div>}
           </div>
           <div>
             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" /> Birthdate</label>
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800">{user?.birthdate || '—'}</div>
+            {isEditing && Number(user?.role_id) === 1 ? <input type="date" value={form.birthdate} onChange={e => setForm({...form, birthdate: e.target.value})} className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm font-semibold focus:ring-1 focus:ring-[#091d64] outline-none" /> : <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800">{user?.birthdate || '—'}</div>}
           </div>
           <div>
             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5" /> Address</label>
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800">{user?.address || '—'}</div>
+            {isEditing && Number(user?.role_id) === 1 ? <input type="text" value={form.address} onChange={e => setForm({...form, address: e.target.value})} className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm font-semibold focus:ring-1 focus:ring-[#091d64] outline-none" /> : <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800">{user?.address || '—'}</div>}
           </div>
           <div>
             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1.5"><VenusAndMars className="w-3.5 h-3.5" /> Biological Sex</label>
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800">{user?.sex || '—'}</div>
+            {isEditing && Number(user?.role_id) === 1 ? <select value={form.sex} onChange={e => setForm({...form, sex: e.target.value})} className="w-full p-3 bg-white border border-slate-300 rounded-xl text-sm font-semibold focus:ring-1 focus:ring-[#091d64] outline-none"><option value="">Select sex</option><option value="Male">Male</option><option value="Female">Female</option><option value="Other">Other</option><option value="Prefer not to say">Prefer not to say</option></select> : <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800">{user?.sex || '—'}</div>}
           </div>
           
           {Number(user?.role_id) !== 1 && (

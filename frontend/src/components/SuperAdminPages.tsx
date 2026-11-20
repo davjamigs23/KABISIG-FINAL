@@ -31,6 +31,7 @@ import { useRealtimeData } from '../hooks/useRealtimeData';
 const isPendingChair = (chair: any) =>
   !chair ? false
     : chair.status?.trim().toLowerCase() === 'pending'
+      || chair.status?.trim().toLowerCase() === 'pending_invite'
       || chair.full_name?.trim() === 'SK Chairperson'
       || chair.full_name?.trim() === 'Pending Invitation';
 
@@ -69,6 +70,14 @@ export default function SuperAdminPages({
     },
     enabled: Boolean(kabisigApi.getToken()),
   });
+  const barangaysQuery = useQuery({
+    queryKey: ['barangays'],
+    queryFn: async () => {
+      const response = await kabisigApi.getBarangays();
+      return Array.isArray(response) ? response : [];
+    },
+    enabled: Boolean(kabisigApi.getToken()),
+  });
   useRealtimeData({
     table: 'users',
     queryKey: ['all-officials'],
@@ -79,6 +88,14 @@ export default function SuperAdminPages({
   const toNumber = (value: number | string | null | undefined) => {
     const parsed = typeof value === 'number' ? value : Number(value ?? 0);
     return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const getOfficialGroup = (official: any) => {
+    const role = String(official?.official_role || official?.position || '').trim().toLowerCase();
+    if (Number(official?.role_id) === 2 || role.includes('chairperson')) return 'SK Chairperson';
+    if (role.includes('secretary')) return 'SK Secretary';
+    if (role.includes('treasurer')) return 'SK Treasurer';
+    return 'SK Kagawad';
   };
   const [activeMenu, setActiveMenu] = useState<string>('dashboard');
   const [popupMsg, setPopupMsg] = useState<PopupMessage | null>(null);
@@ -129,7 +146,21 @@ useEffect(() => {
     if (!typoUserId.trim()) return;
     setIsSearching(true);
     try {
-      const res = await kabisigApi.lookupUser(typoUserId.trim());
+      const searchValue = typoUserId.trim().toLowerCase();
+      let lookupIdentifier = typoUserId.trim();
+      if (!searchValue.includes('@')) {
+        const officialsResponse = await kabisigApi.getAllOfficials();
+        const matchingOfficials = (officialsResponse.data || []).filter((official: any) =>
+          String(official.email || '').toLowerCase().includes(searchValue)
+          || String(official.full_name || '').toLowerCase().includes(searchValue)
+        );
+        if (matchingOfficials.length > 1) {
+          showPopup('Multiple officials match this search. Enter a more specific email or full name.');
+          return;
+        }
+        if (matchingOfficials[0]?.id) lookupIdentifier = matchingOfficials[0].id;
+      }
+      const res = await kabisigApi.lookupUser(lookupIdentifier);
       if (res.success && res.data) {
         const user = res.data;
         // If split name fields are missing, parse from full_name
@@ -214,6 +245,7 @@ useEffect(() => {
   const [isAssigning, setIsAssigning] = useState(false);
   const [assignError, setAssignError] = useState<string | null>(null);
   const [assignNotice, setAssignNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [assignSuccessMessage, setAssignSuccessMessage] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [chairpersonSetupLink, setChairpersonSetupLink] = useState('');
   const [districtFilter, setDistrictFilter] = useState<'All' | 'North' | 'South' | 'West' | 'East'>('All');
@@ -286,6 +318,7 @@ useEffect(() => {
   const [inviteOfficialRole, setInviteOfficialRole] = useState<'SK Kagawad' | 'SK Secretary' | 'SK Treasurer' | ''>('');
   const [isInvitingOfficial, setIsInvitingOfficial] = useState(false);
   const [inviteOfficialNotice, setInviteOfficialNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [inviteOfficialSuccessMessage, setInviteOfficialSuccessMessage] = useState<string | null>(null);
   const [pendingOfficialToCancel, setPendingOfficialToCancel] = useState<any>(null);
   const [isCancellingOfficialInvite, setIsCancellingOfficialInvite] = useState(false);
   const [isResendingOfficialId, setIsResendingOfficialId] = useState<string | null>(null);
@@ -664,6 +697,7 @@ useEffect(() => {
     setInviteOfficialEmail('');
     setInviteOfficialRole('');
     setInviteOfficialNotice(null);
+    setInviteOfficialSuccessMessage(null);
     setRoleCapacity(null);
     setIsLoadingCapacity(Boolean(barangay?.id));
     setInviteReturnToConfigure(returnToConfigure);
@@ -731,11 +765,7 @@ useEffect(() => {
       const refreshedCapacity = await kabisigApi.getRoleCapacity(inviteOfficialBarangay.id);
       if (refreshedCapacity.success) setRoleCapacity(refreshedCapacity.data);
       if (inviteOfficialEmailRef.current.trim().toLowerCase() === email) {
-        showPopup(
-          res.message || 'SK Official invitation completed.',
-          'success',
-          res.data?.action_link || res.data?.setup_url
-        );
+        setInviteOfficialSuccessMessage(`SK Official invitation sent to ${email} for ${inviteOfficialBarangay.name}.`);
       }
     } catch (err: any) {
       if (inviteOfficialEmailRef.current.trim().toLowerCase() === email) {
@@ -939,7 +969,7 @@ useEffect(() => {
 
       onSyncBarangay(transferringBarangay.id, {
         chairperson: res.data?.incoming?.full_name || 'Pending Invitation',
-        chairpersonUser: { full_name: res.data?.incoming?.full_name || 'Pending Invitation', email },
+        chairpersonUser: { full_name: res.data?.incoming?.full_name || 'Pending Invitation', email, status: 'pending' },
         chairpersonEmail: email,
       });
       await onRefreshAuditLogs();
@@ -956,6 +986,7 @@ useEffect(() => {
     setAssignEmail(barangay?.chairpersonEmail || '');
     setAssignError(null);
     setAssignNotice(null);
+    setAssignSuccessMessage(null);
     setChairpersonSetupLink('');
     setCopiedLink(false);
     setAssignReturnToConfigure(returnToConfigure);
@@ -997,14 +1028,17 @@ useEffect(() => {
 
       onSyncBarangay(assigningBarangay.id, {
         chairperson: res.data?.full_name || (assigningBarangay.chairperson && assigningBarangay.chairperson !== 'Unassigned' ? assigningBarangay.chairperson : 'Pending Invitation'),
-        chairpersonUser: { full_name: res.data?.full_name || 'Pending Invitation', email },
+        chairpersonUser: { full_name: res.data?.full_name || 'Pending Invitation', email, status: 'pending' },
         chairpersonEmail: email,
       });
+      const refreshedBarangays = await barangaysQuery.refetch();
+      const refreshedBarangay = refreshedBarangays.data?.find((barangay) => String(barangay.id) === String(assigningBarangay.id));
+      if (refreshedBarangay) onSyncBarangay(assigningBarangay.id, refreshedBarangay);
       await onRefreshAuditLogs();
       const setupLink = res.data?.action_link || res.data?.setup_url;
       setChairpersonSetupLink(setupLink || '');
       setAssignNotice(null);
-      showPopup(res.message || 'Chairperson invitation completed.', 'success', setupLink);
+      setAssignSuccessMessage(`SK Chairperson invitation sent to ${email} for ${assigningBarangay.name}.`);
     } catch (err: any) {
       setAssignError(err.message || 'Network connection failed.');
       setAssignNotice({ type: 'error', text: err.message || 'Network connection failed.' });
@@ -1722,9 +1756,11 @@ useEffect(() => {
                             <td className="py-3.5 px-4 whitespace-nowrap">
                               {isPendingChairperson ? (
                                 <div className="space-y-0.5">
-                                  <span className="font-bold text-slate-900 text-xs">Pending Invite</span>
+                                  <span className="inline-block rounded bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-600">
+                                    PENDING INVITATION
+                                  </span>
                                   {chairpersonEmail && (
-                                    <span className="block text-slate-500 text-[10px] break-all">
+                                    <span className="mt-1 block text-sm text-slate-600 break-all">
                                       {chairpersonEmail}
                                     </span>
                                   )}
@@ -2421,19 +2457,12 @@ useEffect(() => {
               {!officialsRosterLoading && !officialsRosterError && officialsRoster && (
                 (() => {
                   const uniqueOfficials = dedupeOfficials(officialsRoster);
-                  const chairperson = uniqueOfficials.filter((official: any) => Number(official.role_id) === 2);
-                  const secretaries = uniqueOfficials.filter((official: any) => Number(official.role_id) === 3 && official.official_role === 'SK Secretary');
-                  const treasurers = uniqueOfficials.filter((official: any) => Number(official.role_id) === 3 && official.official_role === 'SK Treasurer');
-                  const kagawads = uniqueOfficials.filter((official: any) =>
-                    Number(official.role_id) === 3 && official.official_role !== 'SK Secretary' && official.official_role !== 'SK Treasurer'
-                  );
+                  const groups = ['SK Chairperson', 'SK Kagawad', 'SK Secretary', 'SK Treasurer'].map((title) => ({
+                    title,
+                    members: uniqueOfficials.filter((official: any) => getOfficialGroup(official) === title),
+                  }));
 
-                  return [
-                    { title: 'SK Chairperson', members: chairperson },
-                    { title: 'SK Kagawad', members: kagawads },
-                    { title: 'SK Secretary', members: secretaries },
-                    { title: 'SK Treasurer', members: treasurers },
-                  ].map((group) => (
+                  return groups.map((group) => (
                   <section key={group.title}>
                     <h4 className="mb-2 border-b border-slate-100 pb-2 text-xs font-black uppercase tracking-wide text-slate-500">
                       {group.title}
@@ -2520,7 +2549,7 @@ useEffect(() => {
                 const search = allOfficialsSearch.trim().toLowerCase();
                 if (!search || barangay.name.toLowerCase().includes(search)) return true;
                 return allOfficialsRoster.some((official) =>
-                  official.tenant_id === barangay.id
+                  String(official.tenant_id) === String(barangay.id)
                   && [official.full_name, official.email, official.official_role, official.position]
                     .some((value) => String(value || '').toLowerCase().includes(search))
                 );
@@ -2528,16 +2557,14 @@ useEffect(() => {
                 const search = allOfficialsSearch.trim().toLowerCase();
                 const barangayMatches = !search || barangay.name.toLowerCase().includes(search);
                 const members = dedupeOfficials(allOfficialsRoster.filter((official) =>
-                  official.tenant_id === barangay.id
+                  String(official.tenant_id) === String(barangay.id)
                   && (barangayMatches || [official.full_name, official.email, official.official_role, official.position]
                     .some((value) => String(value || '').toLowerCase().includes(search)))
                 ));
-                const chairperson = members.filter((official) => Number(official.role_id) === 2);
-                const secretaries = members.filter((official) => Number(official.role_id) === 3 && official.official_role === 'SK Secretary');
-                const treasurers = members.filter((official) => Number(official.role_id) === 3 && official.official_role === 'SK Treasurer');
-                const kagawads = members.filter((official) =>
-                  Number(official.role_id) === 3 && official.official_role !== 'SK Secretary' && official.official_role !== 'SK Treasurer'
-                );
+                const groupedOfficials = ['SK Chairperson', 'SK Kagawad', 'SK Secretary', 'SK Treasurer'].map((label) => ({
+                  label,
+                  people: members.filter((official) => getOfficialGroup(official) === label),
+                }));
                 return (
                   <section key={barangay.id} className="rounded-xl border border-slate-200 p-4">
                     <h4 className="mb-3 border-b border-slate-100 pb-2 text-sm font-black text-[#091d64]">
@@ -2547,16 +2574,12 @@ useEffect(() => {
                       <div>
                         <p className="mb-1 font-bold text-slate-600">SK Chairperson</p>
                         <div className="flex flex-wrap gap-2">
-                          {chairperson.length > 0
-                            ? chairperson.map(renderAllOfficial)
+                          {groupedOfficials[0].people.length > 0
+                            ? groupedOfficials[0].people.map(renderAllOfficial)
                             : <p className="text-xs text-slate-400 italic py-2 px-3">No SK Chairperson assigned yet</p>}
                         </div>
                       </div>
-                      {[
-                        { label: 'SK Kagawad', people: kagawads },
-                        { label: 'SK Secretary', people: secretaries },
-                        { label: 'SK Treasurer', people: treasurers },
-                      ].map((group) => (
+                      {groupedOfficials.slice(1).map((group) => (
                         <div key={group.label}>
                           <p className="mb-1 font-bold text-slate-600">{group.label}</p>
                           <div className="flex flex-wrap gap-2">
@@ -2776,6 +2799,11 @@ useEffect(() => {
               {inviteOfficialNotice && (
                 <div className={'p-3 rounded-xl text-xs border ' + (inviteOfficialNotice.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-700')}>
                   {inviteOfficialNotice.text}
+                </div>
+              )}
+              {inviteOfficialSuccessMessage && (
+                <div className="p-3 mb-4 text-sm text-emerald-800 bg-emerald-50 rounded-lg border border-emerald-200">
+                  {inviteOfficialSuccessMessage}
                 </div>
               )}
               {(() => {
@@ -3004,7 +3032,11 @@ useEffect(() => {
                 </div>}
 
 
-                {assignNotice?.type === 'success' && (                   <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800">                     {assignNotice.text}                   </div>                 )}
+                {assignSuccessMessage && (
+                  <div className="p-3 mb-4 text-sm text-emerald-800 bg-emerald-50 rounded-lg border border-emerald-200">
+                    {assignSuccessMessage}
+                  </div>
+                )}
 
                 {assignError && (
                   <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-start gap-2 animate-in fade-in">
@@ -3048,7 +3080,7 @@ useEffect(() => {
       {/* TENANT CONFIGURATION & SK CHAIRPERSON ASSIGNMENT MODAL */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="flex w-full max-w-2xl max-h-[85vh] mx-auto my-auto flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+          <div className="flex w-full max-w-lg max-h-[85vh] mx-auto my-auto flex-col overflow-hidden rounded-xl bg-white shadow-xl">
             <div className="shrink-0 bg-[#091d64] p-4 text-white flex justify-between items-center text-left">
               <div>
                 <h3 className="font-sans font-black text-base flex items-center gap-2">
@@ -3084,7 +3116,7 @@ useEffect(() => {
                       type="text"
                       value={modalForm.name}
                       readOnly
-                      className="w-full p-2.5 border border-slate-200 rounded-xl bg-slate-100 text-slate-700 font-medium"
+                      className="w-full cursor-default border border-slate-200 bg-slate-100 p-2.5 font-medium text-slate-500 rounded-xl focus:outline-none focus:ring-0"
                     />
                   </div>
 
@@ -3096,7 +3128,7 @@ useEffect(() => {
                       type="text"
                       value={displayBarangayId}
                       readOnly
-                      className="w-full p-2.5 border border-slate-200 rounded-xl bg-slate-100 text-slate-700 font-medium"
+                      className="w-full cursor-default border border-slate-200 bg-slate-100 p-2.5 font-medium text-slate-500 rounded-xl focus:outline-none focus:ring-0"
                     />
                   </div>
                 </div>
@@ -3401,6 +3433,7 @@ useEffect(() => {
                   const res = await kabisigApi.updateUserEmail(emailForm);
                   setIsUpdatingEmail(false);
                   if (res.success) {
+                    await handleLoadEmailHistory();
                     showPopup('Email updated successfully!', 'success');
                     setShowEmailModal(false);
                     setEmailForm({ current_email: '', new_email: '', reason: '' });
