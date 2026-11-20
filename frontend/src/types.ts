@@ -167,6 +167,10 @@ export interface ExpenseRecord {
   id: string;
   programId: string;
   budgetId?: string;
+  gross_amount?: number;
+  tax_amount?: number;
+  net_amount?: number;
+  barangay_name?: string | null;
   programTitle: string;
   amount: number;
   supplier?: string;

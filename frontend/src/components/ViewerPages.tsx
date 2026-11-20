@@ -261,8 +261,8 @@ export default function ViewerPages({
                 <td>Barangay ${tenants.find(t=>t.id===e.barangayId)?.name || 'Barangay'}</td>
                 <td>${e.supplier || e.title || e.description || e.payee || 'N/A'}</td>
                 <td>${e.aipCode || 'AIP-2026-SPT-01'}</td>
-                <td class="text-right">₱${Number(e.amount || 0).toLocaleString()}</td>
-                <td class="text-right">₱${e.isVat ? Math.round(Number(e.amount || 0) * 0.05).toLocaleString() : '0'}</td>
+                <td class="text-right">₱${Number(e.gross_amount ?? e.amount ?? 0).toLocaleString()}</td>
+                <td class="text-right">₱${Number(e.tax_amount ?? e.vatAmount ?? 0).toLocaleString()}</td>
                 <td class="text-center"><span class="badge">Verified</span></td>
               </tr>
             `).join('')}
@@ -1262,9 +1262,12 @@ export default function ViewerPages({
                               <span className={`block font-bold ${exp.title || (exp as any).description ? 'text-slate-800' : 'text-slate-400 italic'}`}>
                                 {exp.title || (exp as any).description || 'Unnamed Transaction'}
                               </span>
+                              <span className="block text-sm text-gray-500">
+                                {exp.barangay_name || 'Unknown Barangay'}
+                              </span>
                             </td>
                             <td className="px-5 py-3.5 text-right font-mono text-slate-800">
-                              ₱{Number((exp as any).gross_amount ?? exp.amount ?? 0).toLocaleString()}
+                              ₱{Number(exp.gross_amount ?? exp.amount ?? 0).toLocaleString()}
                             </td>
                             <td className={`px-5 py-3.5 ${exp.title ? 'text-slate-600' : 'text-slate-400 italic'}`}>
                               {exp.title || 'Unspecified'}
@@ -1275,10 +1278,10 @@ export default function ViewerPages({
                               </span>
                             </td>
                             <td className="px-5 py-3.5 text-right font-mono text-slate-500">
-                              ₱{Number((exp as any).tax_amount ?? exp.withholdingTax ?? 0).toLocaleString()}
+                              ₱{Number(exp.tax_amount ?? exp.vatAmount ?? exp.withholdingTax ?? 0).toLocaleString()}
                             </td>
                             <td className="px-5 py-3.5 text-right font-mono text-[#091d64] font-bold">
-                              ₱{Number((exp as any).net_amount ?? exp.netAmount ?? exp.amount ?? 0).toLocaleString()}
+                              ₱{Number(exp.net_amount ?? exp.netAmount ?? exp.amount ?? 0).toLocaleString()}
                             </td>
                           </tr>
                         ))}
@@ -1366,7 +1369,7 @@ export default function ViewerPages({
                                 src={getImageUrl(prog.image_url || prog.imageUrl || prog.banner_url)}
                                 alt={prog.title || 'Program image'}
                                 loading="lazy"
-                                className="w-full h-full object-cover cursor-pointer transition-transform hover:scale-105"
+                                className="w-full h-48 object-cover rounded-t-lg cursor-pointer transition-transform hover:scale-105"
                                 onClick={() => setLightboxImg(getImageUrl(prog.image_url || prog.imageUrl || prog.banner_url))}
                               />
                             ) : (

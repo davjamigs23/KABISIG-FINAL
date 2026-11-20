@@ -137,7 +137,7 @@ export default function PublicPages({
   activeTab,
   setActiveTab
 }: PublicPagesProps) {
-  const availableBarangays = barangays.filter(b => b.is_registration_open === true);
+  const hasOpenBarangays = barangays.some(b => b.is_registration_open === true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -1058,17 +1058,24 @@ export default function PublicPages({
                           <select 
                             value={signUpBarangayId || ""}
                             onChange={(e) => setSignUpBarangayId(e.target.value)}
-                            disabled={availableBarangays.length === 0}
+                            disabled={!hasOpenBarangays}
                             className="w-full pl-3.5 pr-10 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors font-bold cursor-pointer appearance-none"
                           >
                             <option value="">Select a Barangay</option>
-                            {availableBarangays.map(b => (
-                              <option key={b.id} value={b.id}>{b.name}</option>
+                            {barangays.map(barangay => (
+                              <option
+                                key={barangay.id}
+                                value={barangay.id}
+                                disabled={!barangay.is_registration_open}
+                              >
+                                {barangay.name}
+                                {!barangay.is_registration_open && ' (No active Chairperson assigned)'}
+                              </option>
                             ))}
                           </select>
                           <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                         </div>
-                        {availableBarangays.length === 0 && (
+                        {!hasOpenBarangays && (
                           <p className="mt-2 text-xs text-slate-500">
                             Registration is currently closed for all barangays pending chairperson setup.
                           </p>
