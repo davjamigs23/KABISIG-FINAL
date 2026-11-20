@@ -243,6 +243,7 @@ useEffect(() => {
     !['pending invitation', 'unassigned'].includes(assigningChairpersonName.toLowerCase()) &&
     (!assigningChairpersonStatus || assigningChairpersonStatus === 'active')
   );
+  const assigningBarangayHasChairpersonUser = Boolean(assigningBarangay?.chairpersonUser);
   const [assignEmail, setAssignEmail] = useState('');
   const [isAssigning, setIsAssigning] = useState(false);
   const [assignError, setAssignError] = useState<string | null>(null);
@@ -985,7 +986,7 @@ useEffect(() => {
   };
   const handleOpenAssignModal = (barangay?: BarangayTenant, returnToConfigure: boolean = false) => {
     setAssigningBarangay(barangay || null);
-    setAssignEmail(barangay?.chairpersonEmail || '');
+    setAssignEmail(barangay?.chairpersonUser?.email || barangay?.chairpersonEmail || '');
     setAssignError(null);
     setAssignNotice(null);
     setAssignSuccessMessage(null);
@@ -1003,6 +1004,10 @@ useEffect(() => {
     }
     if (assigningBarangayHasActiveChairperson) {
       setAssignError('This Barangay already has an active Chairperson. Use Transfer Leadership instead.');
+      return;
+    }
+    if (assigningBarangayHasChairpersonUser) {
+      setAssignError('An invitation is already pending for this email. Cancel it first to change.');
       return;
     }
 
@@ -1152,12 +1157,12 @@ useEffect(() => {
     }[character] || character));
     const rows = sortedBarangays.map(barangay => {
       const liveRow = federationRows.find((row: any) => row.id === barangay.id);
-      return `<tr><td>${escapeHtml(barangay.name)}</td><td>${toNumber(liveRow?.registered_youth ?? barangay.youthPopulation)}</td><td>₱${toNumber(liveRow?.budget_allocated ?? barangay.totalBudget).toLocaleString()}</td><td>₱${toNumber(liveRow?.budget_spent ?? barangay.spentBudget).toLocaleString()}</td><td>${toNumber(liveRow?.active_programs ?? barangay.activePrograms)}</td></tr>`;
+      return `<tr><td>${escapeHtml(barangay.name)}</td><td>${toNumber(liveRow?.registered_youth ?? barangay.youthPopulation)}</td><td>₱${Number(toNumber(liveRow?.budget_allocated ?? barangay.totalBudget) || 0).toLocaleString()}</td><td>₱${Number(toNumber(liveRow?.budget_spent ?? barangay.spentBudget) || 0).toLocaleString()}</td><td>${toNumber(liveRow?.active_programs ?? barangay.activePrograms)}</td></tr>`;
     }).join('');
 
     reportWindow.document.write(`<!doctype html><html><head><title>Naga City LYDP ${new Date().getFullYear()}</title><style>
       body{font:12px Arial,sans-serif;color:#172033;margin:36px}h1{font-size:22px;margin:0 0 6px;color:#091d64}h2{font-size:15px;margin:24px 0 8px;color:#091d64}p{line-height:1.5}.meta{color:#586174}table{width:100%;border-collapse:collapse;margin-top:12px}th,td{border:1px solid #cbd5e1;padding:7px;text-align:left}th{background:#f1f5f9} .summary{display:flex;gap:20px;margin:20px 0}.summary div{border:1px solid #cbd5e1;padding:12px;flex:1}.summary b{display:block;font-size:16px;margin-top:4px}@media print{body{margin:15mm}}
-      </style></head><body><h1>Naga City SK Federation</h1><p class="meta">Local Youth Development Plan Report • Generated ${formatPhilippineDate(new Date())}</p><h2>Citywide Summary</h2><p>This report summarizes current registry, budget, and active program figures available to KABISIG. It does not create or modify database records.</p><div class="summary"><div>Barangays<b>${barangays.length}</b></div><div>Registered youth<b>${totalYouthPop.toLocaleString()}</b></div><div>Allocated budget<b>₱${totalCityBudget.toLocaleString()}</b></div><div>Active programs<b>${totalActivePrograms}</b></div></div><h2>Barangay Indicators</h2><table><thead><tr><th>Barangay</th><th>Registered youth</th><th>Allocated budget</th><th>Spent</th><th>Active programs</th></tr></thead><tbody>${rows}</tbody></table></body></html>`);
+      </style></head><body><h1>Naga City SK Federation</h1><p class="meta">Local Youth Development Plan Report • Generated ${formatPhilippineDate(new Date())}</p><h2>Citywide Summary</h2><p>This report summarizes current registry, budget, and active program figures available to KABISIG. It does not create or modify database records.</p><div class="summary"><div>Barangays<b>${barangays.length}</b></div><div>Registered youth<b>${Number(totalYouthPop || 0).toLocaleString()}</b></div><div>Allocated budget<b>₱${Number(totalCityBudget || 0).toLocaleString()}</b></div><div>Active programs<b>${Number(totalActivePrograms || 0)}</b></div></div><h2>Barangay Indicators</h2><table><thead><tr><th>Barangay</th><th>Registered youth</th><th>Allocated budget</th><th>Spent</th><th>Active programs</th></tr></thead><tbody>${rows}</tbody></table></body></html>`);
     reportWindow.document.close();
     reportWindow.focus();
     reportWindow.print();
@@ -1378,7 +1383,7 @@ useEffect(() => {
                       <Users className="w-5 h-5" />
                     </div>
                   </div>
-                  <span className="text-3xl font-black text-[#091d64] block">{totalYouthPop.toLocaleString()}</span>
+                  <span className="text-3xl font-black text-[#091d64] block">{Number(totalYouthPop || 0).toLocaleString()}</span>
                   <p className="text-[11px] text-slate-500 font-medium flex items-center gap-1">
                     {totalYouthPop > 0 ? (
                       <>
@@ -1399,10 +1404,10 @@ useEffect(() => {
                     </div>
                   </div>
                   <span className="text-3xl font-black text-emerald-600 block">
-                    {totalCityBudget > 0 ? `₱${Number(totalCityBudget).toLocaleString('en-US')}` : '₱0'}
+                    {totalCityBudget > 0 ? `₱${Number(totalCityBudget || 0).toLocaleString('en-US')}` : '₱0'}
                   </span>
                   <p className="text-[11px] text-slate-400 font-medium">
-                    {totalCitySpent > 0 ? `₱${Number(totalCitySpent).toLocaleString('en-US')} Spent (${avgBudgetUtilization}%)` : '₱0 Spent (0%)'}
+                    {totalCitySpent > 0 ? `₱${Number(totalCitySpent || 0).toLocaleString('en-US')} Spent (${avgBudgetUtilization}%)` : '₱0 Spent (0%)'}
                   </p>
                 </div>
 
@@ -1524,7 +1529,7 @@ useEffect(() => {
                               <Cell key={`cell-${index}`} fill={entry.color} />
                             ))}
                           </Pie>
-                          <Tooltip formatter={(value: number) => `₱${Number(value).toLocaleString('en-US')}`} />
+                          <Tooltip formatter={(value: number) => `₱${Number(value || 0).toLocaleString('en-US')}`} />
                         </PieChart>
                       </ResponsiveContainer>
                     </div>
@@ -1537,7 +1542,7 @@ useEffect(() => {
                           <span className="text-slate-600 max-w-md whitespace-normal break-words truncate max-w-[140px]">{item.name}</span>
                         </div>
                         <span className="font-bold text-slate-900">
-                          {item.value > 0 ? `₱${Number(item.value).toLocaleString('en-US')}` : '₱0'}
+                          {item.value > 0 ? `₱${Number(item.value || 0).toLocaleString('en-US')}` : '₱0'}
                         </span>
                       </div>
                     ))}
@@ -1613,9 +1618,9 @@ useEffect(() => {
                                 )}
                               </div>
                             </td>
-                            <td className="p-3 font-mono whitespace-nowrap">{registeredYouth.toLocaleString()}</td>
-                            <td className="p-3 font-mono font-bold text-slate-800 whitespace-nowrap">₱{totalBudget.toLocaleString()}</td>
-                            <td className="p-3 font-mono text-emerald-700 whitespace-nowrap">₱{spent.toLocaleString()}</td>
+                            <td className="p-3 font-mono whitespace-nowrap">{Number(registeredYouth || 0).toLocaleString()}</td>
+                            <td className="p-3 font-mono font-bold text-slate-800 whitespace-nowrap">₱{Number(totalBudget || 0).toLocaleString()}</td>
+                            <td className="p-3 font-mono text-emerald-700 whitespace-nowrap">₱{Number(spent || 0).toLocaleString()}</td>
                             <td className="p-3 whitespace-nowrap">
                               <div className="flex items-center gap-2">
                                 <div className="w-16 h-2 bg-slate-200 rounded-full overflow-hidden">
@@ -1758,14 +1763,14 @@ useEffect(() => {
                             <td className="py-3.5 px-4 whitespace-nowrap">
                               {isPendingChairperson ? (
                                 <div className="flex items-center gap-2">
-                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-200">
-                                    ASSIGNED
-                                  </span>
                                   {chairpersonEmail && (
-                                    <span className="block text-sm text-slate-500 break-all">
+                                    <span className="block text-sm text-slate-600 break-all">
                                       {chairpersonEmail}
                                     </span>
                                   )}
+                                  <span className="ml-2 shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-200">
+                                    ASSIGNED
+                                  </span>
                                 </div>
                               ) : hasChairperson ? (
                                 <div className="space-y-0.5">
@@ -1945,8 +1950,8 @@ useEffect(() => {
                       <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
                         <BarChart data={analyticsChartData}>
                           <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} />
-                          <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(value: number) => `₱${Number(value).toLocaleString('en-US')}`} />
-                          <Tooltip formatter={(value: number) => `₱${Number(value).toLocaleString('en-US')}`} />
+                          <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(value: number) => `₱${Number(value || 0).toLocaleString('en-US')}`} />
+                          <Tooltip formatter={(value: number) => `₱${Number(value || 0).toLocaleString('en-US')}`} />
                           <Legend />
                           <Bar dataKey="budget" fill="#059669" name="Total AIP Budget" radius={[4, 4, 0, 0]} />
                           <Bar dataKey="spent" fill="#10b981" name="Actual Spent" radius={[4, 4, 0, 0]} />
@@ -2007,9 +2012,9 @@ useEffect(() => {
                                 ? 'Unassigned / Pending'
                                 : formatOfficialName(chairpersonName, b.chairpersonUser?.sex, 2, 'SK Chairperson')}
                             </td>
-                            <td className="p-3 font-mono whitespace-nowrap">{registeredYouth.toLocaleString()}</td>
-                            <td className="p-3 font-mono font-bold text-slate-800 whitespace-nowrap">₱{totalBudget.toLocaleString()}</td>
-                            <td className="p-3 font-mono text-emerald-700 whitespace-nowrap">₱{spentBudget.toLocaleString()}</td>
+                            <td className="p-3 font-mono whitespace-nowrap">{Number(registeredYouth || 0).toLocaleString()}</td>
+                            <td className="p-3 font-mono font-bold text-slate-800 whitespace-nowrap">₱{Number(totalBudget || 0).toLocaleString()}</td>
+                            <td className="p-3 font-mono text-emerald-700 whitespace-nowrap">₱{Number(spentBudget || 0).toLocaleString()}</td>
                             <td className="p-3 font-bold text-emerald-800 whitespace-nowrap">{rate}%</td>
                             <td className="p-3 font-mono whitespace-nowrap">{activePrograms} Programs</td>
                           </tr>
@@ -2216,7 +2221,7 @@ useEffect(() => {
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
                 <h4 className="font-extrabold text-slate-900 text-sm">Naga City SK Federation - 3-Year LYDP Summary</h4>
                 <p className="text-slate-600 max-w-md whitespace-normal break-words">
-                  Current KABISIG snapshot: {barangays.length} barangays, {totalYouthPop.toLocaleString()} registered youth, and {totalActivePrograms} active programs. Figures reflect loaded records, not a certified population estimate.
+                  Current KABISIG snapshot: {barangays.length} barangays, {Number(totalYouthPop || 0).toLocaleString()} registered youth, and {Number(totalActivePrograms || 0)} active programs. Figures reflect loaded records, not a certified population estimate.
                 </p>
               </div>
 
@@ -3032,13 +3037,15 @@ useEffect(() => {
                       onChange={(e) => setAssignEmail(e.target.value)}
                       placeholder="chairperson.example@naga.gov.ph"
                       className="w-full pl-9 pr-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-[#091d64] focus:border-[#091d64] font-mono"
-                      disabled={assigningBarangayHasActiveChairperson}
+                      disabled={assigningBarangayHasChairpersonUser}
                       required
                     />
                     <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
                   </div>
                   <p className="text-[10px] text-slate-500 mt-1">
-                    Enter ONLY the Chairperson's email. An invitation link will be triggered.
+                    {assigningBarangayHasChairpersonUser
+                      ? 'An invitation is already pending for this email. Cancel it first to change.'
+                      : "Enter ONLY the Chairperson's email. An invitation link will be triggered."}
                   </p>
                 </div>}
 
@@ -3067,7 +3074,7 @@ useEffect(() => {
                   </button>
                   <button 
                     type="submit"
-                    disabled={isAssigning || !assigningBarangay || !assignEmail.trim() || assigningBarangayHasActiveChairperson}
+                    disabled={isAssigning || !assigningBarangay || !assignEmail.trim() || assigningBarangayHasChairpersonUser}
                     className="px-5 py-2 bg-[#091d64] hover:bg-[#112d75] text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-xs disabled:opacity-50 flex items-center gap-2"
                   >
                     {isAssigning ? (
@@ -3078,7 +3085,7 @@ useEffect(() => {
                     ) : (
                       <>
                         <ShieldCheck className="w-3.5 h-3.5 text-amber-300" />
-                        <span>Send Invitation & Assign</span>
+                        <span>{assigningBarangayHasChairpersonUser ? 'Cancel Invitation First' : 'Send Invitation & Assign'}</span>
                       </>
                     )}
                   </button>
@@ -3196,11 +3203,11 @@ useEffect(() => {
                     <span className="block text-sm font-medium text-slate-800 break-words leading-tight">
                       {editingChairpersonDisplayName}
                     </span>
-                    <span className="block break-all text-sm text-slate-500">
+                    <span className="block break-all text-sm text-slate-600 max-w-[200px]">
                       {editingBarangay?.chairpersonEmail || 'No email recorded'}
                     </span>
                   </div>
-                  <div className="flex shrink-0 gap-2 items-center">
+                  <div className="flex flex-wrap gap-2 items-center">
                     {editingChairpersonIsPending ? (
                       <>
                         <button

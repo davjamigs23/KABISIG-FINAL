@@ -312,9 +312,9 @@ export default function BarangayAdminPages({
         ['Category', 'Allocated', 'Spent', 'Remaining'],
         (budgetAllocations || []).map(b => [
           b.category || 'General',
-          `₱${(Number(b.allocated_amount) || 0).toLocaleString()}`,
-          `₱${(Number(b.spent_amount) || 0).toLocaleString()}`,
-          `₱${(Number(b.remaining_amount) || 0).toLocaleString()}`
+          `₱${(Number(b.allocated_amount || 0) || 0).toLocaleString()}`,
+          `₱${(Number(b.spent_amount || 0) || 0).toLocaleString()}`,
+          `₱${(Number(b.remaining_amount || 0) || 0).toLocaleString()}`
         ]),
         {
           barangay: currentBarangay?.name,
@@ -504,7 +504,7 @@ export default function BarangayAdminPages({
           });
           const spent = programExpenses.reduce((sum, expense) => sum + (Number(expense.netAmount) || 0), 0);
           totalAmount += spent;
-          return [program.title, program.category, program.status, program.registeredCount, `₱${spent.toLocaleString()}`];
+          return [program.title, program.category, program.status, program.registeredCount, `₱${Number(spent || 0).toLocaleString()}`];
         });
         break;
       case 'beneficiaries':
@@ -541,7 +541,7 @@ export default function BarangayAdminPages({
           const spent = programExpenses.reduce((sum, expense) => sum + (Number(expense.netAmount) || 0), 0);
           const allocated = Number(program.budgetAllocation) || 0;
           totalAmount += spent;
-          return [program.title, `₱${allocated.toLocaleString()}`, `₱${spent.toLocaleString()}`, `₱${(allocated - spent).toLocaleString()}`];
+          return [program.title, `₱${Number(allocated || 0).toLocaleString()}`, `₱${Number(spent || 0).toLocaleString()}`, `₱${Number(allocated - spent || 0).toLocaleString()}`];
         });
         break;
       case 'executive':
@@ -551,7 +551,7 @@ export default function BarangayAdminPages({
         records = programs.map(program => {
           const allocated = Number(program.budgetAllocation) || 0;
           totalAmount += allocated;
-          return [program.title, program.category, program.status, program.registeredCount, `₱${allocated.toLocaleString()}`];
+          return [program.title, program.category, program.status, program.registeredCount, `₱${Number(allocated || 0).toLocaleString()}`];
         });
     }
 
@@ -560,9 +560,9 @@ export default function BarangayAdminPages({
       : `<tr><td colspan="${headers.length}" class="text-center">No records found.</td></tr>`;
     const summaryStatsHTML = `
       <div class="stat-grid">
-        <div class="stat-box"><div class="stat-label">Report Records</div><div class="stat-value">${records.length.toLocaleString()}</div></div>
+        <div class="stat-box"><div class="stat-label">Report Records</div><div class="stat-value">${Number(records.length || 0).toLocaleString()}</div></div>
         <div class="stat-box"><div class="stat-label">Barangay</div><div class="stat-value">${escapeHtml(currentBarangay?.name || 'Not specified')}</div></div>
-        ${totalAmount > 0 ? `<div class="stat-box"><div class="stat-label">Total Amount</div><div class="stat-value">₱${totalAmount.toLocaleString()}</div></div>` : ''}
+        ${totalAmount > 0 ? `<div class="stat-box"><div class="stat-label">Total Amount</div><div class="stat-value">₱${Number(totalAmount || 0).toLocaleString()}</div></div>` : ''}
       </div>
     `;
     openDynamicPrintPDF(
@@ -2010,7 +2010,7 @@ return (
                 ...overspentBudgetPrograms.map(row => ({
                   id: `overspending-${row.program}`,
                   title: `Overspending in ${row.program}`,
-                  message: `₱${(row.spent - row.allocated).toLocaleString()} over the allocated budget.`,
+                  message: `₱${Number(row.spent - row.allocated || 0).toLocaleString()} over the allocated budget.`,
                   is_read: false,
                 })),
                 ...(pendingRegistrations.length === 0 ? [{ id: 'no-pending-validations', title: 'No pending validations', message: 'There are no registration requests waiting for review.', is_read: true, countInBadge: false }] : []),
@@ -2078,7 +2078,7 @@ return (
                 <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-xs flex justify-between items-center">
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Budget</span>
-                    <span className="text-2xl font-black text-slate-800 mt-1 block">₱{totalBudget.toLocaleString()}</span>
+                    <span className="text-2xl font-black text-slate-800 mt-1 block">₱{Number(totalBudget || 0).toLocaleString()}</span>
                     <span className="text-[10px] text-slate-500 font-medium block mt-1">FY {budgetYear} Budget</span>
                   </div>
                   <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center">
@@ -2726,7 +2726,7 @@ return (
                         setAvailableYears(prev => Array.from(new Set([...prev, savedFiscalYear])).sort((a,b)=>b-a));
                         setTotalForm({ amount: '', fiscalYear: String(new Date().getFullYear()) });
                         setSavedTotalBudget({ amount: savedAmount, fiscalYear: String(savedFiscalYear) });
-                        setTotalBudgetNotice('Total SK budget saved: P' + savedAmount.toLocaleString());
+                        setTotalBudgetNotice('Total SK budget saved: P' + Number(savedAmount || 0).toLocaleString());
                         window.setTimeout(() => setTotalBudgetNotice(''), 5000);
 
                         // Force refetch so display updates even if budgetYear didn't change
@@ -2911,23 +2911,23 @@ return (
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
                       <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-2xs">
                         <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Total budget</span>
-                        <p className="mt-3 text-2xl font-extrabold text-slate-800">₱{totalBudget.toLocaleString()}</p>
+                        <p className="mt-3 text-2xl font-extrabold text-slate-800">₱{Number(totalBudget || 0).toLocaleString()}</p>
                       </div>
                       <div className="rounded-xl border border-blue-100 bg-blue-50/30 p-5 shadow-2xs">
                         <span className="text-[10px] font-bold uppercase tracking-widest text-blue-600">Allocated to programs</span>
                         <div className="mt-3 flex flex-wrap items-center gap-2">
-                          <p className="text-2xl font-extrabold text-blue-700">₱{allocatedToPrograms.toLocaleString()}</p>
+                          <p className="text-2xl font-extrabold text-blue-700">₱{Number(allocatedToPrograms || 0).toLocaleString()}</p>
                           {allocatedToPrograms > totalBudget && <span className="text-xs text-rose-600">OVER-ALLOCATED</span>}
                         </div>
                       </div>
                       <div className="rounded-xl border border-rose-100 bg-rose-50/30 p-5 shadow-2xs">
                         <span className="text-[10px] font-bold uppercase tracking-widest text-rose-600">Total spent</span>
-                        <p className="mt-3 text-2xl font-extrabold text-rose-700">₱{totalSpent.toLocaleString()}</p>
+                        <p className="mt-3 text-2xl font-extrabold text-rose-700">₱{Number(totalSpent || 0).toLocaleString()}</p>
                         <span className="text-xs text-slate-500">{utilizationRate.toFixed(1)}% utilization</span>
                       </div>
                       <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-2xs">
                         <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{remainingBalance < 0 ? 'Over Budget (Deficit)' : 'Remaining Balance'}</span>
-                        <p className={`mt-3 text-2xl font-extrabold ${remainingBalance < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>₱{remainingBalance.toLocaleString()}</p>
+                        <p className={`mt-3 text-2xl font-extrabold ${remainingBalance < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>₱{Number(remainingBalance || 0).toLocaleString()}</p>
                       </div>
                     </div>
 
@@ -2938,9 +2938,9 @@ return (
                         return (
                           <tr key={row.program}>
                             <td className={`px-3 py-3 font-bold whitespace-nowrap ${isOverAllocated ? 'text-rose-600' : 'text-slate-700'}`}>{row.program}</td>
-                            <td className={`px-3 py-3 text-right whitespace-nowrap ${isOverAllocated ? 'text-rose-600' : ''}`}>₱{row.allocated.toLocaleString()}</td>
-                            <td className="px-3 py-3 text-right whitespace-nowrap">₱{row.spent.toLocaleString()}</td>
-                            <td className={`px-3 py-3 text-right whitespace-nowrap ${isOverAllocated ? 'text-rose-600' : ''}`}>₱{row.remaining.toLocaleString()}</td>
+                            <td className={`px-3 py-3 text-right whitespace-nowrap ${isOverAllocated ? 'text-rose-600' : ''}`}>₱{Number(row.allocated || 0).toLocaleString()}</td>
+                            <td className="px-3 py-3 text-right whitespace-nowrap">₱{Number(row.spent || 0).toLocaleString()}</td>
+                            <td className={`px-3 py-3 text-right whitespace-nowrap ${isOverAllocated ? 'text-rose-600' : ''}`}>₱{Number(row.remaining || 0).toLocaleString()}</td>
                             <td className={`px-3 py-3 text-right font-bold whitespace-nowrap ${row.rate > 100 || isOverAllocated ? 'text-rose-600' : 'text-slate-700'}`}>{isOverAllocated ? 'Over-Allocated' : `${row.rate.toFixed(1)}%`}</td>
                           </tr>
                         );
@@ -3212,9 +3212,9 @@ return (
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="p-5 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1"><div className="flex justify-between items-center text-slate-400"><span className="text-[10px] font-bold uppercase tracking-wider">Registered Youth</span><Users className="w-4 h-4 text-[#091d64]" /></div><h4 className="text-xl font-black text-[#091d64]">{youthProfiles.length.toLocaleString()}</h4><p className="text-[10px] text-slate-500">KK roster</p></div>
+                  <div className="p-5 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1"><div className="flex justify-between items-center text-slate-400"><span className="text-[10px] font-bold uppercase tracking-wider">Registered Youth</span><Users className="w-4 h-4 text-[#091d64]" /></div><h4 className="text-xl font-black text-[#091d64]">{Number(youthProfiles.length || 0).toLocaleString()}</h4><p className="text-[10px] text-slate-500">KK roster</p></div>
                   <div className="p-5 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1"><div className="flex justify-between items-center text-slate-400"><span className="text-[10px] font-bold uppercase tracking-wider">Active Programs</span><ClipboardList className="w-4 h-4 text-blue-600" /></div><h4 className="text-xl font-black text-blue-600">{programs.filter(p => p.status === 'Upcoming' || p.status === 'Ongoing').length}</h4><p className="text-[10px] text-slate-500">Upcoming & ongoing</p></div>
-                  <div className="p-5 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1"><div className="flex justify-between items-center text-slate-400"><span className="text-[10px] font-bold uppercase tracking-wider">Total Allocated</span><Coins className="w-4 h-4 text-emerald-600" /></div><h4 className="text-xl font-black text-emerald-600">₱{programs.reduce((s, p) => s + (Number(p.budgetAllocation) || 0), 0).toLocaleString()}</h4><p className="text-[10px] text-slate-500">Program budget</p></div>
+                  <div className="p-5 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1"><div className="flex justify-between items-center text-slate-400"><span className="text-[10px] font-bold uppercase tracking-wider">Total Allocated</span><Coins className="w-4 h-4 text-emerald-600" /></div><h4 className="text-xl font-black text-emerald-600">₱{Number(programs.reduce((s, p) => s + (Number(p.budgetAllocation) || 0), 0) || 0).toLocaleString()}</h4><p className="text-[10px] text-slate-500">Program budget</p></div>
                   <div className="p-5 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1"><div className="flex justify-between items-center text-slate-400"><span className="text-[10px] font-bold uppercase tracking-wider">Documents</span><Folder className="w-4 h-4 text-amber-600" /></div><h4 className="text-xl font-black text-amber-600">{documents.length}</h4><p className="text-[10px] text-slate-500">Repository records</p></div>
                 </div>
 
@@ -3253,7 +3253,7 @@ return (
                 {reportSubTab === 'attendance' && (<div className="border border-slate-100 rounded-xl">
                   <div className="w-full overflow-x-auto block"><table className="w-full text-left text-xs min-w-[600px]"><thead className="bg-[#091d64] text-white text-[10px] font-bold uppercase"><tr><th className="px-4 py-3 whitespace-nowrap">Program</th><th className="px-4 py-3 text-right whitespace-nowrap">Registered</th><th className="px-4 py-3 text-right whitespace-nowrap">Slots</th><th className="px-4 py-3 text-right whitespace-nowrap">Fill Rate</th></tr></thead><tbody className="divide-y divide-slate-100">{programs.map(p => { const reg = p.registeredCount || 0; const max = p.maxParticipants || 1; return <tr key={p.id}><td className="px-4 py-3 font-bold whitespace-nowrap">{p.title}</td><td className="px-4 py-3 text-right font-mono whitespace-nowrap">{reg}</td><td className="px-4 py-3 text-right font-mono whitespace-nowrap">{p.maxParticipants || 0}</td><td className="px-4 py-3 text-right font-mono font-bold text-[#091d64] whitespace-nowrap">{((max > 0 ? (max > 0 ? (reg / max) * 100 : 0) : 0)).toFixed(0)}%</td></tr>; })}</tbody></table></div>
                 </div>)}
-                {reportSubTab === 'accomplishments' && (<div className="grid grid-cols-1 sm:grid-cols-3 gap-4"><div className="p-4 bg-emerald-50/60 rounded-xl border border-emerald-100 text-center"><span className="text-2xl font-black text-emerald-800 block">{youthProfiles.length.toLocaleString()}</span><span className="text-[10px] font-bold text-emerald-600 uppercase block mt-1">Total Registrations</span></div><div className="p-4 bg-blue-50/60 rounded-xl border border-blue-100 text-center"><span className="text-2xl font-black text-[#091d64] block">{programs.filter(p => p.status === 'Completed').length}</span><span className="text-[10px] font-bold text-blue-600 uppercase block mt-1">Completed Programs</span></div><div className="p-4 bg-amber-50/60 rounded-xl border border-amber-100 text-center"><span className="text-2xl font-black text-amber-800 block">{documents.length}</span><span className="text-[10px] font-bold text-amber-600 uppercase block mt-1">Documented Reports</span></div></div>)}
+                {reportSubTab === 'accomplishments' && (<div className="grid grid-cols-1 sm:grid-cols-3 gap-4"><div className="p-4 bg-emerald-50/60 rounded-xl border border-emerald-100 text-center"><span className="text-2xl font-black text-emerald-800 block">{Number(youthProfiles.length || 0).toLocaleString()}</span><span className="text-[10px] font-bold text-emerald-600 uppercase block mt-1">Total Registrations</span></div><div className="p-4 bg-blue-50/60 rounded-xl border border-blue-100 text-center"><span className="text-2xl font-black text-[#091d64] block">{programs.filter(p => p.status === 'Completed').length}</span><span className="text-[10px] font-bold text-blue-600 uppercase block mt-1">Completed Programs</span></div><div className="p-4 bg-amber-50/60 rounded-xl border border-amber-100 text-center"><span className="text-2xl font-black text-amber-800 block">{documents.length}</span><span className="text-[10px] font-bold text-amber-600 uppercase block mt-1">Documented Reports</span></div></div>)}
                 {reportSubTab === 'beneficiaries' && (<div className="border border-slate-100 rounded-xl">
                   <div className="w-full overflow-x-auto block"><table className="w-full text-left text-xs min-w-[600px]"><thead className="bg-[#091d64] text-white text-[10px] font-bold uppercase"><tr><th className="px-4 py-3 whitespace-nowrap">Name</th><th className="px-4 py-3 whitespace-nowrap">Zone</th><th className="px-4 py-3 whitespace-nowrap">Status</th></tr></thead><tbody className="divide-y divide-slate-100">{youthProfiles.slice(0, 50).map(y => <tr key={y.id}><td className="px-4 py-3 font-bold whitespace-nowrap">{y.name}</td><td className="px-4 py-3 text-slate-500 whitespace-nowrap">{y.zone || 'Not Specified'}</td><td className="px-4 py-3 whitespace-nowrap">{y.status}</td></tr>)}</tbody></table></div>
                 </div>)}
@@ -3319,7 +3319,7 @@ return (
                   </div>
                 )}
                 {reportSubTab === 'financial' && (<div className="border border-slate-100 rounded-xl">
-                  <div className="w-full overflow-x-auto block"><table className="w-full text-left text-xs min-w-[600px]"><thead className="bg-[#091d64] text-white text-[10px] font-bold uppercase"><tr><th className="px-4 py-3 whitespace-nowrap">Program</th><th className="px-4 py-3 text-right whitespace-nowrap">Allocated</th></tr></thead><tbody className="divide-y divide-slate-100">{programs.map(p => { const alloc = Number(p.budgetAllocation) || 0; return <tr key={p.id}><td className="px-4 py-3 font-bold whitespace-nowrap">{p.title}</td><td className="px-4 py-3 text-right font-mono whitespace-nowrap">₱{alloc.toLocaleString()}</td></tr>; })}</tbody></table></div>
+                  <div className="w-full overflow-x-auto block"><table className="w-full text-left text-xs min-w-[600px]"><thead className="bg-[#091d64] text-white text-[10px] font-bold uppercase"><tr><th className="px-4 py-3 whitespace-nowrap">Program</th><th className="px-4 py-3 text-right whitespace-nowrap">Allocated</th></tr></thead><tbody className="divide-y divide-slate-100">{programs.map(p => { const alloc = Number(p.budgetAllocation) || 0; return <tr key={p.id}><td className="px-4 py-3 font-bold whitespace-nowrap">{p.title}</td><td className="px-4 py-3 text-right font-mono whitespace-nowrap">₱{Number(alloc || 0).toLocaleString()}</td></tr>; })}</tbody></table></div>
                 </div>)}
               </div>
             </div>

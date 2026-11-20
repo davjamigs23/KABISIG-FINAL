@@ -27,9 +27,9 @@ import {
   ArrowRight
 } from 'lucide-react';
 
-const getProgramImageUrl = (program: any): string | null => {
-  const image = program?.imageUrl || program?.image_url;
-  if (!image) return null;
+const getImageUrl = (url: string | null | undefined): string => {
+  if (!url) return '/images/placeholder.png';
+  const image = String(url);
   if (/^https?:\/\//i.test(image)) return image;
   const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   return baseUrl
@@ -114,14 +114,12 @@ export default function ViewerPages({
   useRealtimeData({
     table: 'expense',
     queryKey: ['public-expenses'],
-    filter: 'status=eq.approved',
     enabled: activeMenu === 'transparency',
     updateCache: false,
   });
   useRealtimeData({
     table: 'documents',
     queryKey: ['public-documents'],
-    filter: 'status=eq.approved',
     enabled: activeMenu === 'transparency',
     updateCache: false,
   });
@@ -262,8 +260,8 @@ export default function ViewerPages({
                 <td>Barangay ${tenants.find(t=>t.id===e.barangayId)?.name || 'Barangay'}</td>
                 <td>${e.supplier || e.title || e.description || e.payee || 'N/A'}</td>
                 <td>${e.aipCode || 'AIP-2026-SPT-01'}</td>
-                <td class="text-right">₱${e.amount.toLocaleString()}</td>
-                <td class="text-right">₱${e.isVat ? Math.round(e.amount * 0.05).toLocaleString() : '0'}</td>
+                <td class="text-right">₱${Number(e.amount || 0).toLocaleString()}</td>
+                <td class="text-right">₱${e.isVat ? Math.round(Number(e.amount || 0) * 0.05).toLocaleString() : '0'}</td>
                 <td class="text-center"><span class="badge">Verified</span></td>
               </tr>
             `).join('')}
@@ -708,7 +706,7 @@ export default function ViewerPages({
                 <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">City Youth Census</span>
-                    <h4 className="text-2xl font-black text-slate-800 mt-1">{totalCityYouth.toLocaleString()}</h4>
+                    <h4 className="text-2xl font-black text-slate-800 mt-1">{Number(totalCityYouth || 0).toLocaleString()}</h4>
                     <span className="text-[10px] text-blue-600 font-bold block mt-0.5">Registered Constituents</span>
                   </div>
                   <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
@@ -719,7 +717,7 @@ export default function ViewerPages({
                 <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Federation Budget</span>
-                    <h4 className="text-2xl font-black text-slate-800 mt-1">₱{totalBudget.toLocaleString()}</h4>
+                    <h4 className="text-2xl font-black text-slate-800 mt-1">₱{Number(totalBudget || 0).toLocaleString()}</h4>
                     <span className="text-[10px] text-amber-600 font-bold block mt-0.5">Allocated Annual Fund</span>
                   </div>
                   <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
@@ -891,10 +889,18 @@ export default function ViewerPages({
                   <div className="space-y-3">
                     {filteredPublicOfficials.map((group) => {
                       const isExpanded = expandedOfficialBarangay === group.barangay_name;
+                      const barangay = tenants.find((tenant) => tenant.name === group.barangay_name);
                       return (
                         <section key={group.barangay_name} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
                           <div className="flex items-center justify-between gap-3 px-5 py-4">
-                            <h4 className="text-sm font-extrabold text-[#091d64]">Barangay {group.barangay_name}</h4>
+                            <div className="flex min-w-0 items-center gap-3">
+                              <img
+                                src={barangay?.logo_url || barangay?.logo || '/images/default-barangay.png'}
+                                alt={group.barangay_name}
+                                className="mr-3 h-8 w-8 rounded-full object-cover"
+                              />
+                              <h4 className="text-sm font-extrabold text-[#091d64]">Barangay {group.barangay_name}</h4>
+                            </div>
                             <button
                               type="button"
                               onClick={() => setExpandedOfficialBarangay(isExpanded ? null : group.barangay_name)}
@@ -953,7 +959,7 @@ export default function ViewerPages({
                     <div className="bg-white rounded-xl shadow-xs border-l-4 border-[#091d64] p-5 flex items-center justify-between">
                       <div>
                         <span className="text-[10px] font-bold text-slate-400 uppercase block tracking-wider">City Youth Demographics</span>
-                        <h3 className="text-2xl font-black text-slate-800 mt-1">{totalCityYouth.toLocaleString()}</h3>
+                        <h3 className="text-2xl font-black text-slate-800 mt-1">{Number(totalCityYouth || 0).toLocaleString()}</h3>
                         <span className="text-[10px] text-slate-500 font-medium block mt-1">Total profiling census</span>
                       </div>
                       <div className="p-3 bg-blue-50 text-[#091d64] rounded-lg">
@@ -964,7 +970,7 @@ export default function ViewerPages({
                     <div className="bg-white rounded-xl shadow-xs border-l-4 border-amber-500 p-5 flex items-center justify-between">
                       <div>
                         <span className="text-[10px] font-bold text-slate-400 uppercase block tracking-wider">Total Federation Budget</span>
-                        <h3 className="text-2xl font-black text-slate-800 mt-1">₱{totalBudget.toLocaleString()}</h3>
+                        <h3 className="text-2xl font-black text-slate-800 mt-1">₱{Number(totalBudget || 0).toLocaleString()}</h3>
                         <span className="text-[10px] text-emerald-600 font-bold block mt-1">Shared municipal funding</span>
                       </div>
                       <div className="p-3 bg-amber-50 text-amber-600 rounded-lg">
@@ -975,7 +981,7 @@ export default function ViewerPages({
                     <div className="bg-white rounded-xl shadow-xs border-l-4 border-rose-500 p-5 flex items-center justify-between">
                       <div>
                         <span className="text-[10px] font-bold text-slate-400 uppercase block tracking-wider">Total Disbursed Funds</span>
-                        <h3 className="text-2xl font-black text-slate-800 mt-1">₱{totalDisbursed.toLocaleString()}</h3>
+                        <h3 className="text-2xl font-black text-slate-800 mt-1">₱{Number(totalDisbursed || 0).toLocaleString()}</h3>
                         <span className="text-[10px] text-rose-600 font-bold block mt-1">Utilization: {totalBudget > 0 ? ((totalDisbursed / totalBudget) * 100).toFixed(1) : "0.0"}%</span>
                       </div>
                       <div className="p-3 bg-rose-50 text-rose-600 rounded-lg">
@@ -1255,7 +1261,7 @@ export default function ViewerPages({
                               <span className="font-bold text-slate-800 block">{exp.programTitle}</span>
                               <span className="text-[10px] text-slate-400 font-mono block">ID: {exp.id}</span>
                             </td>
-                            <td className="px-5 py-3.5 text-right font-mono text-slate-800">₱{exp.amount.toLocaleString()}</td>
+                            <td className="px-5 py-3.5 text-right font-mono text-slate-800">₱{Number(exp.amount || 0).toLocaleString()}</td>
                             <td className="px-5 py-3.5 text-slate-600">{(exp as any).payee_name || exp.supplier || 'Various Suppliers'}</td>
                             <td className="px-5 py-3.5 text-center">
                               <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px] font-bold">
@@ -1346,17 +1352,17 @@ export default function ViewerPages({
                         <p className="text-[10px] text-slate-500 font-bold">Brgy. {sortedTenants.find((t: any) => t.id === prog.barangayId)?.name || "Naga City"}</p>
                           <div key={`img-${prog.id}`} className="relative w-full h-48 mb-3 overflow-hidden rounded-lg bg-slate-100">
                             <img
-                              src={getProgramImageUrl(prog) || '/placeholder.png'}
+                              src={getImageUrl(prog.imageUrl || prog.image_url)}
                               alt={prog.title || 'Program image'}
                               loading="lazy"
                               className="w-full h-full object-contain cursor-pointer transition-transform hover:scale-105"
-                              onClick={() => setLightboxImg(getProgramImageUrl(prog))}
+                              onClick={() => setLightboxImg(getImageUrl(prog.imageUrl || prog.image_url))}
                             />
                           </div>
 
                         <div className="flex justify-between items-center text-[10px] text-slate-400 font-medium pt-1 border-t border-slate-100">
                           <span>{prog.location}</span>
-                          <span className="font-mono font-bold text-[#091d64]">₱{prog.budgetAllocation.toLocaleString()}</span>
+                          <span className="font-mono font-bold text-[#091d64]">₱{Number(prog.budgetAllocation || 0).toLocaleString()}</span>
                         </div>
                         <button
                           type="button"
@@ -1373,7 +1379,7 @@ export default function ViewerPages({
                                 {(Array.isArray(budgetCache[prog.id]?.expenses) ? budgetCache[prog.id].expenses : []).map((e: any) => (
                                   <tr key={e.id} className="border-b border-slate-100 last:border-0">
                                     <td className="py-1 text-slate-700 font-medium">{e.title}</td>
-                                    <td className="py-1 text-right font-mono text-slate-800">₱{Number(e.gross_amount).toLocaleString()}</td>
+                                    <td className="py-1 text-right font-mono text-slate-800">₱{Number(e.gross_amount || 0).toLocaleString()}</td>
                                     <td className="py-1 pl-2 text-right text-[9px] uppercase font-bold">
                                       <span className={e.status === "approved" ? "text-emerald-600" : "text-amber-600"}>{e.status}</span>
                                     </td>
@@ -1385,15 +1391,15 @@ export default function ViewerPages({
                             <div className="pt-2 border-t border-slate-200 space-y-1">
                               <div className="flex justify-between font-semibold text-slate-700">
                                 <span>Total Allocation</span>
-                                <span className="font-mono">₱{Number(budgetCache[prog.id].summary.total_allocated).toLocaleString()}</span>
+                                <span className="font-mono">₱{Number(budgetCache[prog.id].summary.total_allocated || 0).toLocaleString()}</span>
                               </div>
                               <div className="flex justify-between font-semibold text-slate-700">
                                 <span>Total Spent</span>
-                                <span className="font-mono text-rose-600">₱{Number(budgetCache[prog.id].summary.total_spent).toLocaleString()}</span>
+                                <span className="font-mono text-rose-600">₱{Number(budgetCache[prog.id].summary.total_spent || 0).toLocaleString()}</span>
                               </div>
                               <div className="flex justify-between font-semibold text-slate-700">
                                 <span>Remaining</span>
-                                <span className="font-mono text-emerald-600">₱{Number(budgetCache[prog.id].summary.remaining_balance).toLocaleString()}</span>
+                                <span className="font-mono text-emerald-600">₱{Number(budgetCache[prog.id].summary.remaining_balance || 0).toLocaleString()}</span>
                               </div>
                               <div className="flex justify-between font-bold text-[#091d64] pt-1 border-t border-slate-200">
                                 <span>Utilization</span>
@@ -1425,18 +1431,21 @@ export default function ViewerPages({
                         </div>
 
                         <h4 className="text-sm font-black text-slate-900 leading-snug">{ann.title}</h4>
-                        {ann.imageUrl && (
-                          <img 
-                            src={ann.imageUrl} 
-                            alt={ann.title} 
-                            className="w-full h-48 object-cover rounded-xl cursor-pointer hover:opacity-90 transition-opacity" 
-                            onClick={() => setLightboxImg(ann.imageUrl || null)} 
-                          />
+                        {(ann.imageUrl || (ann as any).image_url) && (
+                          <div className="w-full flex justify-center items-center py-4">
+                            <img
+                              src={ann.imageUrl || (ann as any).image_url}
+                              alt={ann.title}
+                              className="mx-auto object-contain max-h-[350px] rounded-lg shadow-sm w-full cursor-pointer hover:opacity-90 transition-opacity"
+                              onClick={() => setLightboxImg(ann.imageUrl || (ann as any).image_url || null)}
+                            />
+                          </div>
                         )}
                         <div className="space-y-1 text-xs text-slate-600">
                           {ann.what && <p><strong>What:</strong> {ann.what}</p>}
                           {ann.where && <p><strong>Where:</strong> {ann.where}</p>}
                           {ann.when && <p><strong>When:</strong> {ann.when}</p>}
+                          <p className="text-slate-500">Posted by {(ann as any).author?.full_name || ann.author || 'SK Official'}</p>
                           <p className="line-clamp-3 leading-relaxed font-medium">{ann.content}</p>
                           {ann.hashtags && <p className="font-semibold text-blue-700">{ann.hashtags}</p>}
                         </div>
@@ -1518,7 +1527,7 @@ export default function ViewerPages({
 
             <div className="p-6 space-y-4 text-xs font-semibold">
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-400 text-[10px] border-b border-slate-100 pb-2">
-                <span>POSTED BY: Hon. {readAnnounce.author}</span>
+                <span>POSTED BY: {(readAnnounce as any).author?.full_name || readAnnounce.author || 'SK Official'}</span>
                 <span>BARANGAY: {readAnnounce.barangay}</span>
                 <span>DATE: {readAnnounce.datePosted}</span>
               </div>
@@ -1530,12 +1539,14 @@ export default function ViewerPages({
                   {readAnnounce.when && <p><strong>When:</strong> {readAnnounce.when}</p>}
                 </div>
                 {((readAnnounce as any).image_url || readAnnounce.imageUrl) && (
-                  <img
-                    src={(readAnnounce as any).image_url || readAnnounce.imageUrl}
-                    alt={readAnnounce.title}
-                    className="h-auto max-h-[500px] w-full rounded-xl border border-slate-200 object-contain shadow-sm cursor-pointer transition-opacity hover:opacity-90 md:col-span-5"
-                    onClick={() => setLightboxImg((readAnnounce as any).image_url || readAnnounce.imageUrl || null)}
-                  />
+                  <div className="w-full flex justify-center my-4 md:col-span-5">
+                    <img
+                      src={(readAnnounce as any).image_url || readAnnounce.imageUrl}
+                      alt={readAnnounce.title}
+                      className="mx-auto object-contain max-h-[350px] rounded-lg shadow-sm cursor-pointer transition-opacity hover:opacity-90"
+                      onClick={() => setLightboxImg((readAnnounce as any).image_url || readAnnounce.imageUrl || null)}
+                    />
+                  </div>
                 )}
               </div>
               <h4 className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Body Content</h4>

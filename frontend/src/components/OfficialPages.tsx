@@ -2389,11 +2389,11 @@ export default function OfficialPages({
                         </div>
                       )}
                       {(announcement.imageUrl || (announcement as any).image_url) && (
-                        <div className="flex justify-center items-center w-full md:col-span-5">
+                        <div className="w-full flex justify-center items-center py-4 md:col-span-5">
                           <img
                             src={announcement.imageUrl || (announcement as any).image_url}
                             alt={announcement.title}
-                            className="mx-auto block w-full max-w-md max-h-[400px] rounded-lg border border-slate-200 object-contain shadow-sm cursor-pointer transition-opacity hover:opacity-90"
+                            className="mx-auto object-contain max-h-[350px] rounded-lg shadow-sm block w-full max-w-md border border-slate-200 cursor-pointer transition-opacity hover:opacity-90"
                             onClick={() => setLightboxImg(announcement.imageUrl || (announcement as any).image_url)}
                           />
                         </div>
@@ -2597,7 +2597,7 @@ export default function OfficialPages({
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Program Allocations</span>
                           <span className="hidden sm:inline text-[9px] font-bold bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded">Current Year</span>
                         </div>
-                        <h3 className="text-base sm:text-xl font-black text-[#091d64] mt-0.5">₱{totalBarangayBudget.toLocaleString()}</h3>
+                        <h3 className="text-base sm:text-xl font-black text-[#091d64] mt-0.5">₱{Number(totalBarangayBudget || 0).toLocaleString()}</h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">From saved SK programs</p>
                       </div>
                     </div>
@@ -2611,7 +2611,7 @@ export default function OfficialPages({
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Disbursed Ledger</span>
                           <span className="hidden sm:inline text-[9px] font-bold bg-rose-50 text-rose-700 px-1.5 py-0.2 rounded">COA Audited</span>
                         </div>
-                        <h3 className="text-base sm:text-xl font-black text-rose-600 mt-0.5">₱{totalSpentExpenses.toLocaleString()}</h3>
+                        <h3 className="text-base sm:text-xl font-black text-rose-600 mt-0.5">₱{Number(totalSpentExpenses || 0).toLocaleString()}</h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">VAT / Non-VAT Expenses</p>
                       </div>
                     </div>
@@ -2625,7 +2625,7 @@ export default function OfficialPages({
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Cash Balance</span>
                           <span className="hidden sm:inline text-[9px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded">{((remainingCash / (totalBarangayBudget || 1))*100).toFixed(1)}% Left</span>
                         </div>
-                        <h3 className="text-base sm:text-xl font-black text-emerald-600 mt-0.5">₱{remainingCash.toLocaleString()}</h3>
+                        <h3 className="text-base sm:text-xl font-black text-emerald-600 mt-0.5">₱{Number(remainingCash || 0).toLocaleString()}</h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">Net Unexpended Funds</p>
                       </div>
                     </div>
@@ -2683,8 +2683,8 @@ export default function OfficialPages({
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Program Allocations</span>
                           <span className="hidden sm:inline text-[9px] font-bold bg-amber-50 text-amber-700 px-1.5 py-0.2 rounded">Current Year</span>
                         </div>
-                        <h3 className="text-base sm:text-xl font-black text-amber-600 mt-0.5">₱{totalBarangayBudget.toLocaleString()}</h3>
-                        <p className="text-[10px] text-slate-500 truncate mt-0.5">₱{remainingCash.toLocaleString()} Cash Balance</p>
+                        <h3 className="text-base sm:text-xl font-black text-amber-600 mt-0.5">₱{Number(totalBarangayBudget || 0).toLocaleString()}</h3>
+                        <p className="text-[10px] text-slate-500 truncate mt-0.5">₱{Number(remainingCash || 0).toLocaleString()} Cash Balance</p>
                       </div>
                     </div>
                     <div className="bg-white rounded-xl border border-slate-100 p-3.5 sm:p-5 flex items-center gap-2.5 sm:gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
@@ -3402,8 +3402,8 @@ export default function OfficialPages({
                                     return (
                                       <div className="bg-slate-900 text-white p-3 rounded-lg shadow-lg text-xs space-y-1">
                                         <p className="font-bold uppercase tracking-wider text-amber-400">{data.program}</p>
-                                        <p className="text-slate-300">Budget Limit: <span className="font-mono font-bold text-blue-300">₱{data.allocated.toLocaleString()}</span></p>
-                                        <p className="text-slate-300">Actual Expenditure: <span className="font-mono font-bold text-green-300">₱{data.actual.toLocaleString()}</span></p>
+                                        <p className="text-slate-300">Budget Limit: <span className="font-mono font-bold text-blue-300">₱{Number(data.allocated || 0).toLocaleString()}</span></p>
+                                        <p className="text-slate-300">Actual Expenditure: <span className="font-mono font-bold text-green-300">₱{Number(data.actual || 0).toLocaleString()}</span></p>
                                         <p className="text-slate-300">Utilization %: <span className="font-mono font-bold text-emerald-400">{util}%</span></p>
                                       </div>
                                     );
@@ -3450,9 +3450,9 @@ export default function OfficialPages({
                                   <tr key={exp.id} className="hover:bg-slate-50/80">
                                     <td className="px-3 py-2 font-mono font-bold text-[#091d64] whitespace-nowrap">{exp.voucherNumber || 'DV-2026-001'}</td>
                                     <td className="px-3 py-2 text-slate-700 font-semibold truncate max-w-xs whitespace-nowrap">{(exp as any).payee || exp.supplier || exp.title || exp.description || 'N/A'}</td>
-                                    <td className="px-3 py-2 font-mono font-bold text-slate-800 whitespace-nowrap">₱{gross.toLocaleString()}</td>
+                                    <td className="px-3 py-2 font-mono font-bold text-slate-800 whitespace-nowrap">₱{Number(gross || 0).toLocaleString()}</td>
                                     <td className="px-3 py-2 font-mono text-xs text-amber-700 whitespace-nowrap">
-                                      {exp.isVat ? `₱${vat.toLocaleString()} (5% VAT)` : 'Non-VAT Exempt'}
+                                      {exp.isVat ? `₱${Number(vat || 0).toLocaleString()} (5% VAT)` : 'Non-VAT Exempt'}
                                     </td>
                                     <td className="px-3 py-2 text-center whitespace-nowrap">
                                       <span className="px-2 py-0.5 rounded text-[9px] font-extrabold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -3690,7 +3690,7 @@ export default function OfficialPages({
                       <div className="bg-slate-50 border-t border-slate-50 p-4 text-[11px] space-y-1 text-slate-500 font-medium">
                         <div className="flex justify-between"><span>Location:</span><span className="text-slate-800 font-bold">{p.location}</span></div>
                         <div className="flex justify-between"><span>Date:</span><span className="text-slate-800 font-bold">{p.startDate} - {p.endDate}</span></div>
-                        <div className="flex justify-between"><span>Allocated Budget:</span><span className="text-slate-800 font-bold">₱{p.budgetAllocation.toLocaleString()}</span></div>
+                        <div className="flex justify-between"><span>Allocated Budget:</span><span className="text-slate-800 font-bold">₱{Number(p.budgetAllocation || 0).toLocaleString()}</span></div>
                         <div className="flex justify-between"><span>Registered Youth:</span><span className="text-slate-800 font-bold">{p.registeredCount} / {p.maxParticipants} slots</span></div>
                         {currentRole === 'SK Kagawad' && (
                           <div className="flex justify-end gap-2 pt-2">
@@ -3736,7 +3736,7 @@ export default function OfficialPages({
                           <td className="px-6 py-4 font-bold text-slate-800 whitespace-nowrap">{formatProgramTitle(p.title)}</td>
                           <td className="px-6 py-4 text-slate-500 whitespace-nowrap">{p.location}</td>
                           <td className="px-6 py-4 font-mono text-slate-500 whitespace-nowrap">{p.startDate} - {p.endDate}</td>
-                          <td className="px-6 py-4 text-right font-mono text-slate-800 whitespace-nowrap">₱{p.budgetAllocation.toLocaleString()}</td>
+                          <td className="px-6 py-4 text-right font-mono text-slate-800 whitespace-nowrap">₱{Number(p.budgetAllocation || 0).toLocaleString()}</td>
                           <td className="px-6 py-4 text-center font-mono text-slate-800 whitespace-nowrap">{p.registeredCount} / {p.maxParticipants}</td>
                           {currentRole === 'SK Kagawad' && (
                             <td className="px-6 py-4 text-center whitespace-nowrap">
@@ -4532,7 +4532,7 @@ export default function OfficialPages({
                         <span className="text-[10px] font-bold uppercase tracking-wider">Annual SK 10% Fund</span>
                         <Coins className="w-4 h-4 text-[#091d64]" />
                       </div>
-                      <h4 className="text-xl font-black text-[#091d64]">₱{totalBarangayBudget.toLocaleString()}</h4>
+                      <h4 className="text-xl font-black text-[#091d64]">₱{Number(totalBarangayBudget || 0).toLocaleString()}</h4>
                       <p className="text-[10px] text-slate-500">Statutory allocation under RA 10742</p>
                     </div>
 
@@ -4541,7 +4541,7 @@ export default function OfficialPages({
                         <span className="text-[10px] font-bold uppercase tracking-wider">Disbursed Expenditures</span>
                         <DollarSign className="w-4 h-4 text-rose-600" />
                       </div>
-                      <h4 className="text-xl font-black text-rose-600">₱{totalSpentExpenses.toLocaleString()}</h4>
+                      <h4 className="text-xl font-black text-rose-600">₱{Number(totalSpentExpenses || 0).toLocaleString()}</h4>
                       <p className="text-[10px] text-slate-500">{budgetUtilizationRate.toFixed(1)}% total fund utilization rate</p>
                     </div>
 
@@ -4550,7 +4550,7 @@ export default function OfficialPages({
                         <span className="text-[10px] font-bold uppercase tracking-wider">Unliquidated / Cash Balance</span>
                         <RefreshCw className="w-4 h-4 text-emerald-600" />
                       </div>
-                      <h4 className="text-xl font-black text-emerald-600">₱{remainingCash.toLocaleString()}</h4>
+                      <h4 className="text-xl font-black text-emerald-600">₱{Number(remainingCash || 0).toLocaleString()}</h4>
                       <p className="text-[10px] text-slate-500">Current available fiscal surplus</p>
                     </div>
 
@@ -4559,7 +4559,7 @@ export default function OfficialPages({
                         <span className="text-[10px] font-bold uppercase tracking-wider">BIR Tax Withholdings</span>
                         <Tag className="w-4 h-4 text-amber-600" />
                       </div>
-                      <h4 className="text-xl font-black text-amber-700">₱{totalWithheld.toLocaleString('en-US', { minimumFractionDigits: 2 })}</h4>
+                      <h4 className="text-xl font-black text-amber-700">₱{Number(totalWithheld || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</h4>
                       <p className="text-[10px] text-slate-500">Audited deductions for BIR remittance</p>
                     </div>
                   </div>
@@ -4626,7 +4626,7 @@ export default function OfficialPages({
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">{cat.label}</span>
                       <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#091d64] flex items-center justify-center font-bold text-xs group-hover:scale-110 transition-transform">₱</div>
                     </div>
-                    <h4 className="text-2xl font-black text-[#091d64] mt-1 tracking-tight">₱{stats.alloc.toLocaleString()}</h4>
+                    <h4 className="text-2xl font-black text-[#091d64] mt-1 tracking-tight">₱{Number(stats.alloc || 0).toLocaleString()}</h4>
                     <div className="mt-4">
                       <div className="flex justify-between text-[10px] font-bold mb-1.5">
                         <span className="text-slate-400 uppercase">Utilization</span>
@@ -4697,8 +4697,8 @@ export default function OfficialPages({
                                       return (
                                         <div className="bg-slate-900 text-white p-3 rounded-lg shadow-lg text-xs space-y-1">
                                           <p className="font-bold uppercase tracking-wider text-amber-400">{data.program}</p>
-                                          <p className="text-slate-300">Budget Limit: <span className="font-mono font-bold text-blue-300">₱{data.allocated.toLocaleString()}</span></p>
-                                          <p className="text-slate-300">Actual Expenditure: <span className="font-mono font-bold text-green-300">₱{data.actual.toLocaleString()}</span></p>
+                                          <p className="text-slate-300">Budget Limit: <span className="font-mono font-bold text-blue-300">₱{Number(data.allocated || 0).toLocaleString()}</span></p>
+                                          <p className="text-slate-300">Actual Expenditure: <span className="font-mono font-bold text-green-300">₱{Number(data.actual || 0).toLocaleString()}</span></p>
                                           <p className="text-slate-300">Utilization %: <span className="font-mono font-bold text-emerald-400">{util}%</span></p>
                                         </div>
                                       );
@@ -4753,9 +4753,9 @@ export default function OfficialPages({
                                 return (
                                   <tr key={idx} className="hover:bg-slate-50">
                                     <td className="px-5 py-3 font-bold text-slate-800 whitespace-nowrap">{p.program}</td>
-                                    <td className="px-5 py-3 text-right font-mono text-slate-800 whitespace-nowrap">₱{p.allocated.toLocaleString()}</td>
-                                    <td className="px-5 py-3 text-right font-mono font-bold text-emerald-600 whitespace-nowrap">₱{p.actual.toLocaleString()}</td>
-                                    <td className="px-5 py-3 text-right font-mono text-slate-500 whitespace-nowrap">₱{rem.toLocaleString()}</td>
+                                    <td className="px-5 py-3 text-right font-mono text-slate-800 whitespace-nowrap">₱{Number(p.allocated || 0).toLocaleString()}</td>
+                                    <td className="px-5 py-3 text-right font-mono font-bold text-emerald-600 whitespace-nowrap">₱{Number(p.actual || 0).toLocaleString()}</td>
+                                    <td className="px-5 py-3 text-right font-mono text-slate-500 whitespace-nowrap">₱{Number(rem || 0).toLocaleString()}</td>
                                     <td className={`whitespace-nowrap ${`px-5 py-3 text-right font-mono font-bold ${Number(util) > 0 ? 'text-emerald-600' : 'text-slate-400'}`}`}>{util}%</td>
                                     <td className="px-5 py-3 text-center whitespace-nowrap">
                                       <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 font-extrabold text-[9px] rounded uppercase">Within Limit</span>
@@ -4786,17 +4786,17 @@ export default function OfficialPages({
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div className="p-4 rounded-xl border border-slate-100 bg-white space-y-1">
                           <span className="text-[10px] font-bold text-slate-400 uppercase">Gross Invoice Disbursements</span>
-                          <h4 className="text-xl font-black text-slate-800">₱{expenses.reduce((a,c)=>a+c.amount,0).toLocaleString()}</h4>
+                          <h4 className="text-xl font-black text-slate-800">₱{Number(expenses.reduce((a,c)=>a + (Number(c.amount) || 0), 0) || 0).toLocaleString()}</h4>
                           <p className="text-[10px] text-slate-500">Total payments issued</p>
                         </div>
                         <div className="p-4 rounded-xl border border-rose-100 bg-rose-50/30 space-y-1">
                           <span className="text-[10px] font-bold text-rose-600 uppercase">Total Tax Withheld (BIR)</span>
-                          <h4 className="text-xl font-black text-rose-600">₱{totalWithheld.toLocaleString('en-US', { minimumFractionDigits: 2 })}</h4>
+                          <h4 className="text-xl font-black text-rose-600">₱{Number(totalWithheld || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</h4>
                           <p className="text-[10px] text-slate-500">Government withholding compliance</p>
                         </div>
                         <div className="p-4 rounded-xl border border-emerald-100 bg-emerald-50/30 space-y-1">
                           <span className="text-[10px] font-bold text-emerald-700 uppercase">Net Payables Remitted</span>
-                          <h4 className="text-xl font-black text-emerald-700">₱{totalNetPayable.toLocaleString('en-US', { minimumFractionDigits: 2 })}</h4>
+                          <h4 className="text-xl font-black text-emerald-700">₱{Number(totalNetPayable || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</h4>
                           <p className="text-[10px] text-slate-500">Net disbursed to suppliers</p>
                         </div>
                       </div>
@@ -4822,11 +4822,11 @@ export default function OfficialPages({
                               return (
                               <tr key={exp.id} className="hover:bg-slate-50">
                                 <td className="px-5 py-3.5 font-bold text-slate-800 whitespace-nowrap">{exp.programTitle}</td>
-                                <td className="px-5 py-3.5 text-right font-mono text-slate-800 font-bold whitespace-nowrap">₱{exp.amount.toLocaleString()}</td>
+                                <td className="px-5 py-3.5 text-right font-mono text-slate-800 font-bold whitespace-nowrap">₱{Number(exp.amount || 0).toLocaleString()}</td>
                                 <td className="px-5 py-3.5 text-slate-600 font-semibold whitespace-nowrap">{exp.supplier}</td>
                                 <td className="px-5 py-3.5 text-center whitespace-nowrap"><span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[10px] font-black">{exp.taxType}</span></td>
-                                <td className="px-5 py-3.5 text-right font-mono text-rose-600 font-bold whitespace-nowrap">-₱{withholdingTax.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                <td className="px-5 py-3.5 text-right font-mono text-[#091d64] font-black text-sm whitespace-nowrap">₱{getNetPayable(exp).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                                <td className="px-5 py-3.5 text-right font-mono text-rose-600 font-bold whitespace-nowrap">-₱{Number(withholdingTax || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                                <td className="px-5 py-3.5 text-right font-mono text-[#091d64] font-black text-sm whitespace-nowrap">₱{Number(getNetPayable(exp) || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                                 <td className="px-5 py-3.5 font-mono text-[11px] text-slate-400 text-center whitespace-nowrap">{exp.dateLogged}</td>
                               </tr>
                               );
@@ -4893,8 +4893,8 @@ export default function OfficialPages({
                                       {isCurrent && <span className="px-1.5 py-0.5 bg-[#091d64] text-white rounded text-[8px] uppercase">Your Barangay</span>}
                                     </td>
                                     <td className="px-5 py-3 text-slate-600 whitespace-nowrap">{bg.chairperson}</td>
-                                    <td className="px-5 py-3 text-right font-mono text-slate-800 whitespace-nowrap">₱{bg.allocated.toLocaleString()}</td>
-                                    <td className="px-5 py-3 text-right font-mono text-emerald-600 font-bold whitespace-nowrap">₱{bg.actual.toLocaleString()}</td>
+                                    <td className="px-5 py-3 text-right font-mono text-slate-800 whitespace-nowrap">₱{Number(bg.allocated || 0).toLocaleString()}</td>
+                                    <td className="px-5 py-3 text-right font-mono text-emerald-600 font-bold whitespace-nowrap">₱{Number(bg.actual || 0).toLocaleString()}</td>
                                     <td className="px-5 py-3 text-right font-mono font-black text-[#091d64] whitespace-nowrap">{util}%</td>
                                     <td className="px-5 py-3 text-center whitespace-nowrap">
                                       <span className={`px-2 py-0.5 rounded font-bold text-xs ${status.color}`}>
@@ -4919,7 +4919,7 @@ export default function OfficialPages({
                           <h4 className="font-bold text-slate-800 text-sm">SK Council Properties, Physical Assets & Inventory Valuation</h4>
                           <p className="text-xs text-slate-400 mt-0.5">Asset registry and condition auditing for year-end inventory reporting.</p>
                         </div>
-                        <span className="text-xs font-bold text-[#091d64]">Total Asset Value: ₱{inventory.reduce((a,c)=>a+(c.cost*c.quantity),0).toLocaleString()}</span>
+                        <span className="text-xs font-bold text-[#091d64]">Total Asset Value: ₱{Number(inventory.reduce((a,c)=>a + (Number(c.cost) || 0) * (Number(c.quantity) || 0), 0) || 0).toLocaleString()}</span>
                       </div>
 
                       {/* Inventory Valuation Table */}
@@ -4948,8 +4948,8 @@ export default function OfficialPages({
                                     {item.condition}
                                   </span>
                                 </td>
-                                <td className="px-5 py-3.5 text-right font-mono text-slate-800 whitespace-nowrap">₱{item.cost.toLocaleString()}</td>
-                                <td className="px-5 py-3.5 text-right font-mono font-bold text-[#091d64] whitespace-nowrap">₱{(item.cost * item.quantity).toLocaleString()}</td>
+                                <td className="px-5 py-3.5 text-right font-mono text-slate-800 whitespace-nowrap">₱{Number(item.cost || 0).toLocaleString()}</td>
+                                <td className="px-5 py-3.5 text-right font-mono font-bold text-[#091d64] whitespace-nowrap">₱{Number((item.cost || 0) * (item.quantity || 0)).toLocaleString()}</td>
                                 <td className="px-5 py-3.5 text-slate-600 font-medium whitespace-nowrap">{item.location}</td>
                               </tr>
                             ))}
@@ -5004,7 +5004,7 @@ export default function OfficialPages({
                               <table>
                                 <thead><tr><th>Program Name</th><th>Category</th><th>Target Beneficiaries</th><th>Actual Attendance</th><th>Allocated Budget</th><th>Disbursed</th></tr></thead>
                                 <tbody>
-                                  ${accomplishmentPrograms.map(p => `<tr><td><strong>${p.title}</strong></td><td>${p.category}</td><td>${p.maxParticipants}</td><td>${p.registeredCount || 0}</td><td>₱${(Number(p.budgetAllocation) || 0).toLocaleString()}</td><td>₱${expenses.filter(expense => expense.programId === p.id).reduce((sum, expense) => sum + (Number(expense.netAmount) || 0), 0).toLocaleString()}</td></tr>`).join('')}
+                                  ${accomplishmentPrograms.map(p => `<tr><td><strong>${p.title}</strong></td><td>${p.category}</td><td>${p.maxParticipants}</td><td>${p.registeredCount || 0}</td><td>₱${Number(p.budgetAllocation || 0).toLocaleString()}</td><td>₱${Number(expenses.filter(expense => expense.programId === p.id).reduce((sum, expense) => sum + (Number(expense.netAmount) || 0), 0) || 0).toLocaleString()}</td></tr>`).join('')}
                                 </tbody>
                               </table>
                             `);
@@ -5257,7 +5257,7 @@ export default function OfficialPages({
                         </div>
                         <div className="p-4 bg-emerald-50/50 border border-emerald-100 rounded-xl space-y-1">
                           <span className="text-[10px] font-bold text-emerald-700 uppercase">Youth Beneficiaries Reached</span>
-                          <h4 className="text-xl font-black text-emerald-700">{accomplishmentBeneficiaries.toLocaleString()} Participants</h4>
+                          <h4 className="text-xl font-black text-emerald-700">{Number(accomplishmentBeneficiaries || 0).toLocaleString()} Participants</h4>
                           <p className="text-[11px] text-slate-500">Based on registered participants in live programs.</p>
                         </div>
                         <div className="p-4 bg-violet-50/50 border border-violet-100 rounded-xl space-y-1">
@@ -5286,8 +5286,8 @@ export default function OfficialPages({
                                 <td className="px-5 py-3 font-bold text-slate-800 whitespace-nowrap">{p.title}</td>
                                 <td className="px-5 py-3 font-bold text-slate-600 whitespace-nowrap">{p.category}</td>
                                 <td className="px-5 py-3 text-center font-bold text-[#091d64] whitespace-nowrap">{p.registeredCount || filteredRegistrations.filter(registration => registration.programId === p.id).length} / {p.maxParticipants}</td>
-                                <td className="px-5 py-3 text-right font-mono text-slate-700 whitespace-nowrap">₱{(Number(p.budgetAllocation) || 0).toLocaleString()}</td>
-                                <td className="px-5 py-3 text-right font-mono font-bold text-emerald-600 whitespace-nowrap">₱{expenses.filter(expense => expense.programId === p.id).reduce((sum, expense) => sum + (Number(expense.netAmount) || 0), 0).toLocaleString()}</td>
+                                <td className="px-5 py-3 text-right font-mono text-slate-700 whitespace-nowrap">₱{Number(p.budgetAllocation || 0).toLocaleString()}</td>
+                                <td className="px-5 py-3 text-right font-mono font-bold text-emerald-600 whitespace-nowrap">₱{Number(expenses.filter(expense => expense.programId === p.id).reduce((sum, expense) => sum + (Number(expense.netAmount) || 0), 0) || 0).toLocaleString()}</td>
                                 <td className="px-5 py-3 text-center whitespace-nowrap">
                                   <span className="px-2 py-0.5 bg-blue-50 text-[#091d64] rounded text-[9px] font-bold uppercase">{p.category}</span>
                                 </td>
@@ -5949,25 +5949,25 @@ export default function OfficialPages({
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="p-5 rounded-xl border border-slate-100 bg-white">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Total SK Budget</span>
-                  <h4 className="text-xl font-black text-[#091d64] mt-1">₱{totalBarangayBudget.toLocaleString()}</h4>
+                  <h4 className="text-xl font-black text-[#091d64] mt-1">₱{Number(totalBarangayBudget || 0).toLocaleString()}</h4>
                   <p className="text-[10px] text-slate-400 mt-0.5">Annual 10% Fund ceiling</p>
                 </div>
                 <div className="p-5 rounded-xl border border-blue-100 bg-blue-50/30">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 block">Allocated to Programs</span>
                   <div className="mt-1 flex flex-wrap items-center gap-2">
-                    <h4 className="text-xl font-black text-blue-700">₱{allocatedToPrograms.toLocaleString()}</h4>
+                    <h4 className="text-xl font-black text-blue-700">₱{Number(allocatedToPrograms || 0).toLocaleString()}</h4>
                     {allocatedToPrograms > totalBarangayBudget && <span className="text-xs text-rose-600">OVER-ALLOCATED</span>}
                   </div>
                   <p className="text-[10px] text-slate-400 mt-0.5">Sum of program allocations</p>
                 </div>
                 <div className="p-5 rounded-xl border border-rose-100 bg-rose-50/30">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-rose-600 block">Total Spent</span>
-                  <h4 className="text-xl font-black text-rose-700 mt-1">₱{totalSpentExpenses.toLocaleString()}</h4>
+                  <h4 className="text-xl font-black text-rose-700 mt-1">₱{Number(totalSpentExpenses || 0).toLocaleString()}</h4>
                   <p className="text-[10px] text-slate-400 mt-0.5">{budgetUtilizationRate.toFixed(1)}% utilized</p>
                 </div>
                 <div className="p-5 rounded-xl border border-emerald-100 bg-emerald-50/30">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 block">Remaining Balance</span>
-                  <h4 className={`text-xl font-black mt-1 ${remainingCash < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>₱{remainingCash.toLocaleString()}</h4>
+                  <h4 className={`text-xl font-black mt-1 ${remainingCash < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>₱{Number(remainingCash || 0).toLocaleString()}</h4>
                   <p className="text-[10px] text-slate-400 mt-0.5">Available to spend</p>
                 </div>
               </div>
@@ -6015,8 +6015,8 @@ export default function OfficialPages({
                               <td className="px-5 py-4 font-mono text-[11px] text-slate-400 whitespace-nowrap">{aipReference || 'No AIP reference'}</td>
                               <td className="px-5 py-4 font-bold text-slate-800 whitespace-nowrap">{title}</td>
                               <td className="px-5 py-4 whitespace-nowrap"><span className="px-2 py-0.5 bg-blue-50 text-[#091d64] rounded text-[9px] font-bold uppercase">{category}</span></td>
-                              <td className="px-5 py-4 text-right font-mono font-bold text-slate-800 whitespace-nowrap">₱{allocatedAmount.toLocaleString()}</td>
-                              <td className="px-5 py-4 text-right font-mono text-slate-600 font-semibold whitespace-nowrap">₱{spent.toLocaleString()}</td>
+                              <td className="px-5 py-4 text-right font-mono font-bold text-slate-800 whitespace-nowrap">₱{Number(allocatedAmount || 0).toLocaleString()}</td>
+                              <td className="px-5 py-4 text-right font-mono text-slate-600 font-semibold whitespace-nowrap">₱{Number(spent || 0).toLocaleString()}</td>
                               <td className="px-5 py-4 text-center whitespace-nowrap">
                                 <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${isOver ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>
                                   {isOver ? 'Over Budget' : 'Within Limit'}
@@ -6088,11 +6088,11 @@ export default function OfficialPages({
                         return (
                         <tr key={exp.id} className="hover:bg-slate-50 transition-colors">
                           <td className="px-5 py-4 font-bold text-slate-800 tracking-tight whitespace-nowrap">{exp.programTitle}</td>
-                          <td className="px-5 py-4 text-right font-mono text-slate-800 font-bold whitespace-nowrap">₱{exp.amount.toLocaleString()}</td>
+                          <td className="px-5 py-4 text-right font-mono text-slate-800 font-bold whitespace-nowrap">₱{Number(exp.amount || 0).toLocaleString()}</td>
                           <td className="px-5 py-4 text-slate-600 font-semibold whitespace-nowrap">{exp.supplier}</td>
                           <td className="px-5 py-4 text-center whitespace-nowrap"><span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-[10px] font-black">{exp.taxType}</span></td>
-                          <td className="px-5 py-4 text-right font-mono text-rose-600 font-bold whitespace-nowrap">-₱{withholdingTax.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                          <td className="px-5 py-4 text-right font-mono text-[#091d64] font-black text-sm whitespace-nowrap">₱{getNetPayable(exp).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                          <td className="px-5 py-4 text-right font-mono text-rose-600 font-bold whitespace-nowrap">-₱{Number(withholdingTax || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                          <td className="px-5 py-4 text-right font-mono text-[#091d64] font-black text-sm whitespace-nowrap">₱{Number(getNetPayable(exp) || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                           <td className="px-5 py-4 font-mono text-[11px] text-slate-400 text-center font-bold italic whitespace-nowrap">{exp.dateLogged}</td>
                           <td className="px-5 py-4 text-center whitespace-nowrap">
                             <div className="inline-flex items-center gap-2">
@@ -6167,7 +6167,7 @@ export default function OfficialPages({
                             {item.condition}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-right font-mono text-slate-800 font-bold whitespace-nowrap">₱{item.cost.toLocaleString()}</td>
+                        <td className="px-6 py-4 text-right font-mono text-slate-800 font-bold whitespace-nowrap">₱{Number(item.cost || 0).toLocaleString()}</td>
                         <td className="px-6 py-4 text-slate-600 font-bold whitespace-nowrap">{item.location}</td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center gap-1">
@@ -6536,7 +6536,7 @@ export default function OfficialPages({
               <div>
                 <div className="mb-3 p-3 rounded-lg bg-blue-50/50 border border-blue-100">
                   <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Total SK Budget (Chairperson)</span>
-                  <span className="text-sm font-black text-[#091d64] mt-0.5 block">₱{totalBarangayBudget.toLocaleString()}</span>
+                  <span className="text-sm font-black text-[#091d64] mt-0.5 block">₱{Number(totalBarangayBudget || 0).toLocaleString()}</span>
                   <span className="text-[10px] text-slate-400 block mt-0.5">Pick a program allocation below to deduct from</span>
                 </div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Program Budget Allocation *</label>
@@ -6598,9 +6598,9 @@ export default function OfficialPages({
               <div className="bg-slate-50 border p-4 rounded-lg space-y-1.5 text-xs font-semibold">
                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Automated Treasurer Deductions</span>
                 <div className="flex justify-between"><span>Gross Invoice Amount:</span><span className="font-mono">₱{Number(String(expenseForm.amount).replace(/,/g, '') || 0).toLocaleString()}</span></div>
-                <div className="flex justify-between"><span>Input VAT Base:</span><span className="font-mono text-slate-600">₱{calcVat.toLocaleString()}</span></div>
-                <div className="flex justify-between text-rose-600"><span>Withholding Tax:</span><span className="font-mono font-bold">-₱{calcWithholding.toLocaleString()}</span></div>
-                <div className="flex justify-between border-t pt-1.5 text-[#091d64] text-sm font-bold"><span>Net Payable Amount:</span><span className="font-mono text-base">₱{calcNet.toLocaleString()}</span></div>
+                <div className="flex justify-between"><span>Input VAT Base:</span><span className="font-mono text-slate-600">₱{Number(calcVat || 0).toLocaleString()}</span></div>
+                <div className="flex justify-between text-rose-600"><span>Withholding Tax:</span><span className="font-mono font-bold">-₱{Number(calcWithholding || 0).toLocaleString()}</span></div>
+                <div className="flex justify-between border-t pt-1.5 text-[#091d64] text-sm font-bold"><span>Net Payable Amount:</span><span className="font-mono text-base">₱{Number(calcNet || 0).toLocaleString()}</span></div>
               </div>
 
               <div className="flex justify-end gap-2 border-t pt-4">

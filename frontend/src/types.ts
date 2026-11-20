@@ -38,6 +38,7 @@ export interface BarangayTenant {
   contact: string;
   status: 'Active' | 'Inactive';
   logo?: string;
+  logo_url?: string;
   dateCreated?: string;
   district?: string;
   skDistrict?: string | null;

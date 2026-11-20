@@ -75,7 +75,7 @@ router.get('/announcements', async (_req: Request, res: Response): Promise<void>
   sendSuccess(res, signedAnnouncements, 'Public announcements retrieved.');
 });
 
-// GET /api/public/expenses — approved only, without receipt or personal data
+// GET /api/public/expenses — public financial records without receipt or personal data
 router.get('/expenses', async (_req: Request, res: Response): Promise<void> => {
   const currentYear = new Date().getFullYear();
   const pageSize = 1000;
@@ -110,7 +110,6 @@ router.get('/expenses', async (_req: Request, res: Response): Promise<void> => {
       const { data, error } = await supabaseAdmin
         .from('expense')
         .select('id, tenant_id, budget_id, program_id, title, description, gross_amount, tax_type, tax_rate, tax_amount, net_amount, expense_date, status, budget:budget_id(category), program:program_id(title)')
-        .eq('status', 'approved')
         .in('budget_id', budgetIdBatch)
         .order('expense_date', { ascending: false })
         .order('id', { ascending: true })
@@ -411,12 +410,11 @@ router.get('/programs/:id/budget', async (req: Request, res: Response): Promise<
 });
 
 
-// GET /api/public/documents — approved FPD documents (no PII)
+// GET /api/public/documents — public FPD documents (no PII)
 router.get('/documents', async (_req: Request, res: Response): Promise<void> => {
   const { data, error } = await supabaseAdmin
     .from('documents')
     .select('id, title, document_type, tenant_id, created_at, status')
-    .eq('status', 'approved')
     .order('created_at', { ascending: false });
 
   if (error) {
