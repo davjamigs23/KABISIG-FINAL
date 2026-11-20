@@ -90,13 +90,6 @@ export default function SuperAdminPages({
     return Number.isFinite(parsed) ? parsed : 0;
   };
 
-  const getOfficialGroup = (official: any) => {
-    const role = String(official?.official_role || official?.position || '').trim().toLowerCase();
-    if (Number(official?.role_id) === 2 || role.includes('chairperson')) return 'SK Chairperson';
-    if (role.includes('secretary')) return 'SK Secretary';
-    if (role.includes('treasurer')) return 'SK Treasurer';
-    return 'SK Kagawad';
-  };
   const isDisplayedOfficial = (official: any) =>
     official?.status === 'active' && official?.setup_completed === true;
   const [activeMenu, setActiveMenu] = useState<string>('dashboard');
@@ -814,7 +807,7 @@ useEffect(() => {
         return;
       }
       showPopup(
-        response.message || 'Invitation resent.',
+        `${official.official_role} invitation resent to ${String(official.email).trim().toLowerCase()} for Barangay ${inviteOfficialBarangay.name}. Please check the inbox (and spam folder).`,
         'success',
         response.data?.action_link || response.data?.setup_url
       );
@@ -2477,11 +2470,31 @@ useEffect(() => {
               )}
               {!officialsRosterLoading && !officialsRosterError && officialsRoster && (
                 (() => {
-                  const uniqueOfficials = dedupeOfficials(officialsRoster.filter(isDisplayedOfficial));
-                  const groups = ['SK Chairperson', 'SK Kagawad', 'SK Secretary', 'SK Treasurer'].map((title) => ({
-                    title,
-                    members: uniqueOfficials.filter((official: any) => getOfficialGroup(official) === title),
-                  }));
+                  const activeOfficials = dedupeOfficials(officialsRoster.filter(isDisplayedOfficial));
+                  const groups = [
+                    {
+                      title: 'SK Chairperson',
+                      members: activeOfficials.filter((official: any) => Number(official.role_id) === 2),
+                    },
+                    {
+                      title: 'SK Kagawad',
+                      members: activeOfficials.filter((official: any) =>
+                        Number(official.role_id) === 3 && official.official_role === 'SK Kagawad'
+                      ).slice(0, 7),
+                    },
+                    {
+                      title: 'SK Secretary',
+                      members: activeOfficials.filter((official: any) =>
+                        Number(official.role_id) === 3 && official.official_role === 'SK Secretary'
+                      ),
+                    },
+                    {
+                      title: 'SK Treasurer',
+                      members: activeOfficials.filter((official: any) =>
+                        Number(official.role_id) === 3 && official.official_role === 'SK Treasurer'
+                      ),
+                    },
+                  ];
 
                   return groups.map((group) => (
                   <section key={group.title}>
@@ -2505,11 +2518,6 @@ useEffect(() => {
                               <div className="min-w-0">
                                 <p className="flex items-center gap-2 text-sm font-bold text-slate-800">
                                   <span className="truncate">{formatOfficialName(person.full_name || 'Pending Invitation', person.sex, person.role_id, person.position || person.official_role)}</span>
-                                  {(!person.phone || !person.birthdate) && (
-                                    <span className="shrink-0 rounded bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-rose-700">
-                                      Incomplete
-                                    </span>
-                                  )}
                                 </p>
                                 <p className="truncate text-xs text-slate-500">{person.email || 'No email recorded'}</p>
                                 <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold capitalize ${statusBadge.className}`}>
@@ -2585,37 +2593,41 @@ useEffect(() => {
               }).map((barangay) => {
                 const search = allOfficialsSearch.trim().toLowerCase();
                 const barangayMatches = !search || barangay.name.toLowerCase().includes(search);
-                const members = dedupeOfficials(allOfficialsRoster.filter((official) =>
+                const officials = dedupeOfficials(allOfficialsRoster.filter((official) =>
                   String(official.tenant_id) === String(barangay.id)
                   && isDisplayedOfficial(official)
                   && (barangayMatches || [official.full_name, official.email, official.official_role, official.position]
                     .some((value) => String(value || '').toLowerCase().includes(search)))
                 ));
-                const groupedOfficials = ['SK Chairperson', 'SK Kagawad', 'SK Secretary', 'SK Treasurer'].map((label) => ({
-                  label,
-                  people: members.filter((official) => getOfficialGroup(official) === label),
-                }));
+                const chairperson = officials.filter((official) => Number(official.role_id) === 2);
+                const secretaries = officials.filter((official) =>
+                  Number(official.role_id) === 3 && official.official_role === 'SK Secretary'
+                );
+                const treasurers = officials.filter((official) =>
+                  Number(official.role_id) === 3 && official.official_role === 'SK Treasurer'
+                );
+                const kagawads = officials.filter((official) =>
+                  Number(official.role_id) === 3 && official.official_role === 'SK Kagawad'
+                ).slice(0, 7);
+                const groupedOfficials = [
+                  { label: 'SK Chairperson', people: chairperson, emptyMessage: 'Unassigned' },
+                  { label: 'SK Kagawad', people: kagawads, emptyMessage: 'No SK Kagawad assigned.' },
+                  { label: 'SK Secretary', people: secretaries, emptyMessage: 'No SK Secretary assigned.' },
+                  { label: 'SK Treasurer', people: treasurers, emptyMessage: 'No SK Treasurer assigned.' },
+                ];
                 return (
                   <section key={barangay.id} className="rounded-xl border border-slate-200 p-4">
                     <h4 className="mb-3 border-b border-slate-100 pb-2 text-sm font-black text-[#091d64]">
                       Barangay {barangay.name}
                     </h4>
                     <div className="space-y-3 text-xs">
-                      <div>
-                        <p className="mb-1 font-bold text-slate-600">SK Chairperson</p>
-                        <div className="flex flex-wrap gap-2">
-                          {groupedOfficials[0].people.length > 0
-                            ? groupedOfficials[0].people.map(renderAllOfficial)
-                            : <p className="text-xs text-slate-400 italic py-2 px-3">No SK Chairperson assigned yet</p>}
-                        </div>
-                      </div>
-                      {groupedOfficials.slice(1).map((group) => (
+                      {groupedOfficials.map((group) => (
                         <div key={group.label}>
                           <p className="mb-1 font-bold text-slate-600">{group.label}</p>
                           <div className="flex flex-wrap gap-2">
                             {group.people.length > 0
                               ? group.people.map(renderAllOfficial)
-                              : <p className="text-xs text-slate-400 italic py-2 px-3">No {group.label} assigned yet</p>}
+                              : <p className="text-xs text-slate-400 italic py-2 px-3">{group.emptyMessage}</p>}
                           </div>
                         </div>
                       ))}
