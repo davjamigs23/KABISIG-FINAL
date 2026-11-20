@@ -1,6 +1,6 @@
 import { formatCurrencyInput } from '../lib/utils';
 import { formatOfficialName } from '../lib/officialFormatting';
-import { formatPhilippineDate, formatPhilippineDateTime, getPhilippineDateString } from '../lib/dateUtils';
+import { formatBirthdate, formatPhilippineDate, formatPhilippineDateTime, getPhilippineDateString } from '../lib/dateUtils';
 import { generateBudgetUtilizationReport } from '../lib/pdfReports';
 import ProfileSettings from './ProfileSettings';
 import RestrictedUsersPanel from './RestrictedUsersPanel';
@@ -771,20 +771,6 @@ export default function BarangayAdminPages({
     }
   };
 
-  const fallbackBarangay: BarangayTenant = {
-    id: '',
-    name: '',
-    chairperson: '',
-    youthPopulation: 0,
-    activePrograms: 0,
-    totalBudget: 0,
-    allocatedBudget: 0,
-    spentBudget: 0,
-    contact: '',
-    status: 'Active',
-    district: '',
-  };
-
   // Backend already scopes by tenant_id; frontend only needs to confirm the profile belongs here.
   const isMatchBarangay = (profile: YouthProfile) =>
     !currentBarangay?.id || profile.barangayId === currentBarangay.id;
@@ -816,16 +802,15 @@ export default function BarangayAdminPages({
     .sort((a, b) => b.programCount - a.programCount);
 
   const localProfiles = youthProfiles.filter(p => isMatchBarangay(p));
-  const programAllocatedBudget = programs.reduce((sum, program) => sum + (Number(program.budgetAllocation) || 0), 0);
   // ===== Fiscal Year Filtered Arrays (PATCH 205) =====
   const _filterPrograms = (programs || []).filter((p: any) => {
     const _d = p.startDate || p.start_date || p.created_at;
-    if (!_d) return true;
+    if (!_d) return false;
     return new Date(_d).getFullYear() === Number(budgetYear);
   });
   const _filterExpenses = (expenses || []).filter((e: any) => {
     const _d = e.expense_date || e.created_at || e.date;
-    if (!_d) return true;
+    if (!_d) return false;
     return new Date(_d).getFullYear() === Number(budgetYear);
   });
   const _filterYouth = (localProfiles || youthProfiles || []).filter((y: any) => {
@@ -845,8 +830,31 @@ export default function BarangayAdminPages({
   });
   // ===== End Filtered Arrays =====
 
-  const budgetAnalytics = getBudgetAnalytics(programAllocatedBudget, _filterPrograms, _filterExpenses);
-  const budgetAlerts = monitorBudgets(currentBarangay || fallbackBarangay, _filterPrograms, _filterExpenses);
+  const savedTotalBudgetForYear = savedTotalBudget?.fiscalYear === budgetYear ? savedTotalBudget.amount : undefined;
+  const generalFundBudget = budgetAllocations.find((budget: any) =>
+    String(budget.category || '').trim().toLowerCase() === 'general youth development fund'
+  );
+  const selectedYearBudget = savedTotalBudgetForYear
+    ?? (Number(generalFundBudget?.allocated_amount) || (
+      Number(currentBarangay.active_fiscal_year) === Number(budgetYear)
+        ? Number(currentBarangay.allocated_budget ?? currentBarangay.allocatedBudget ?? 0)
+        : 0
+    ));
+  const selectedYearSpent = _filterExpenses.reduce((sum, expense: any) =>
+    sum + Number(expense.netAmount ?? expense.net_amount ?? expense.amount ?? 0), 0
+  );
+  const programAllocatedBudgetForYear = _filterPrograms.reduce(
+    (sum, program: any) => sum + (Number(program.budgetAllocation) || 0),
+    0
+  );
+  const budgetAnalytics = getBudgetAnalytics(programAllocatedBudgetForYear, _filterPrograms, _filterExpenses);
+  const budgetAlerts = currentBarangay
+    ? monitorBudgets(
+      { ...currentBarangay, totalBudget: selectedYearBudget, spentBudget: selectedYearSpent },
+      _filterPrograms,
+      _filterExpenses
+    )
+    : [];
   const budgetAlertSignature = budgetAlerts
     .map(alert => `${alert.code}:${alert.level}:${alert.message}`)
     .join('|');
@@ -1336,13 +1344,8 @@ export default function BarangayAdminPages({
     const matchesFilter = budgetProgramFilter === 'All Programs' || program.id === budgetProgramFilter;
     return inYear && matchesFilter;
   });
-  const savedTotalBudgetForYear = savedTotalBudget?.fiscalYear === budgetYear ? savedTotalBudget.amount : undefined;
-  const totalBudget = Number(
-    savedTotalBudgetForYear
-      ?? currentBarangay.allocated_budget
-      ?? 0
-  );
-  const totalSpent = expenses.reduce((sum, expense) => sum + Number(expense.netAmount ?? expense.net_amount ?? 0), 0);
+  const totalBudget = selectedYearBudget;
+  const totalSpent = selectedYearSpent;
   const allocatedToPrograms = budgetAllocations
     .filter((budget: any) =>
       budget.category !== 'General Youth Development Fund'
@@ -3694,7 +3697,7 @@ return (
               <div className="grid sm:grid-cols-2 gap-4 text-xs font-bold text-slate-600 max-w-md whitespace-normal break-words">
                 <div>
                   <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Birthdate</span>
-                  <span className="text-slate-800 block">{inspectProfile.birthdate || 'Not provided'}</span>
+                  <span className="text-slate-800 block">{formatBirthdate(inspectProfile.birthdate) || 'Not provided'}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Age</span>

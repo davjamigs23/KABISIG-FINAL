@@ -305,6 +305,14 @@ router.post(
       return;
     }
 
+    const isFullyOnboarded =
+      authUserData.user.app_metadata?.setup_completed === true
+      || chairperson.status === 'active';
+    if (isFullyOnboarded) {
+      sendError(res, 'This official has already completed onboarding. Please use Transfer Leadership instead.', 400);
+      return;
+    }
+
     const cleanEmail = chairperson.email.trim().toLowerCase();
     if (authUserData.user.email?.trim().toLowerCase() !== cleanEmail) {
       sendError(res, 'The Chairperson email does not match the linked authentication account.', 409);
@@ -1938,6 +1946,14 @@ router.post(
 
     if (!pendingChair) {
       sendError(res, 'No pending Chairperson invitation to cancel.', 404);
+      return;
+    }
+
+    const isFullyOnboarded =
+      pendingChair.setup_completed === true
+      || pendingChair.status === 'active';
+    if (isFullyOnboarded) {
+      sendError(res, 'This official has already completed onboarding. Please use Transfer Leadership instead.', 400);
       return;
     }
 

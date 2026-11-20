@@ -6644,7 +6644,14 @@ export default function OfficialPages({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Category Group</label>
-                  <input required value={invForm.category} onChange={(e)=>setInvForm({...invForm, category: e.target.value})} className="w-full p-2 border rounded text-xs" placeholder="e.g. Sports Equipment" />
+                  <select required value={invForm.category} onChange={(e)=>setInvForm({...invForm, category: e.target.value})} className="w-full p-2 border rounded text-xs">
+                    <option value="" disabled>Select a Category</option>
+                    <option value="IT Equipment">IT Equipment</option>
+                    <option value="Sports Equipment">Sports Equipment</option>
+                    <option value="Furniture">Furniture</option>
+                    <option value="Vehicles">Vehicles</option>
+                    <option value="Others">Others</option>
+                  </select>
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Condition Status</label>

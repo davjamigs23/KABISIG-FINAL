@@ -48,6 +48,7 @@ const ALLOWED_DOCUMENT_TYPES = new Set([
   'image/png',
 ]);
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
+const INTERNAL_DOCUMENT_ROLES = new Set(['BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN']);
 
 function getStoragePath(fileUrl: string): string | null {
   if (!fileUrl.startsWith('http://') && !fileUrl.startsWith('https://')) {
@@ -205,10 +206,18 @@ router.post(
 router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): Promise<void> => {
   const user = (req as AuthRequest).user;
   const { status, document_type, tenant_id } = req.query;
+  const canReadInternalDocuments = Boolean(user && INTERNAL_DOCUMENT_ROLES.has(user.role));
+
+  if (user && user.status !== 'active') {
+    sendError(res, 'Your account must be active to access documents.', 403);
+    return;
+  }
 
   let query = supabaseAdmin
     .from('documents')
-    .select('*, submitter:users!submitted_by(full_name, email), reviewer:users!reviewed_by(full_name)');
+    .select(canReadInternalDocuments
+      ? '*, submitter:users!submitted_by(full_name, email), reviewer:users!reviewed_by(full_name)'
+      : '*, submitter:users!submitted_by(full_name), reviewer:users!reviewed_by(full_name)');
 
   if (user && user.role !== 'SUPER_ADMIN') {
     if (!user.tenant_id) {
@@ -222,7 +231,11 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
     query = query.eq('status', 'approved');
   }
 
-  if (status && typeof status === 'string') {
+  if (user && !canReadInternalDocuments) {
+    query = query.eq('status', 'approved');
+  }
+
+  if (canReadInternalDocuments && status && typeof status === 'string') {
     query = query.eq('status', status);
   }
 
@@ -239,7 +252,7 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
 
   try {
     const documentsWithSignedUrls = await Promise.all((documents || []).map(withSignedDocumentUrl));
-    const publicSafeDocuments = user
+    const publicSafeDocuments = canReadInternalDocuments
       ? documentsWithSignedUrls
       : documentsWithSignedUrls.map((doc: any) => ({
           ...doc,
@@ -252,17 +265,23 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
 });
 
 // Authenticated download; the loaded document is checked against the user's tenant before signing.
-router.get('/:id/download', authenticateUser, async (req: Request, res: Response): Promise<void> => {
+router.get('/:id/download', authenticateUser, requireActiveUser, async (req: Request, res: Response): Promise<void> => {
   const id = String(req.params.id || '');
   const user = (req as AuthRequest).user!;
+  const canReadInternalDocuments = INTERNAL_DOCUMENT_ROLES.has(user.role);
 
   const { data: document, error } = await supabaseAdmin
     .from('documents')
-    .select('id, tenant_id, file_url')
+    .select('id, tenant_id, file_url, status')
     .eq('id', id)
     .single();
 
   if (error || !document) {
+    sendError(res, 'Document not found.', 404);
+    return;
+  }
+
+  if (!canReadInternalDocuments && document.status !== 'approved') {
     sendError(res, 'Document not found.', 404);
     return;
   }
@@ -284,17 +303,25 @@ router.get('/:id/download', authenticateUser, async (req: Request, res: Response
 });
 
 // Authenticated detail read; the loaded document is checked against the user's tenant before return.
-router.get('/:id', authenticateUser, async (req: Request, res: Response): Promise<void> => {
+router.get('/:id', authenticateUser, requireActiveUser, async (req: Request, res: Response): Promise<void> => {
   const id = String(req.params.id || '');
   const user = (req as AuthRequest).user!;
+  const canReadInternalDocuments = INTERNAL_DOCUMENT_ROLES.has(user.role);
 
   const { data: document, error } = await supabaseAdmin
     .from('documents')
-    .select('*, submitter:users!submitted_by(full_name, email), reviewer:users!reviewed_by(full_name)')
+    .select(canReadInternalDocuments
+      ? '*, submitter:users!submitted_by(full_name, email), reviewer:users!reviewed_by(full_name)'
+      : '*, submitter:users!submitted_by(full_name), reviewer:users!reviewed_by(full_name)')
     .eq('id', id)
     .single();
 
   if (error || !document) {
+    sendError(res, 'Document not found.', 404);
+    return;
+  }
+
+  if (!canReadInternalDocuments && document.status !== 'approved') {
     sendError(res, 'Document not found.', 404);
     return;
   }

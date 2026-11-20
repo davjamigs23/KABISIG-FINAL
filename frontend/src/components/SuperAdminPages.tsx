@@ -387,6 +387,13 @@ useEffect(() => {
   const [editingBarangay, setEditingBarangay] = useState<BarangayTenant | null>(null);
   const editingChairpersonName = editingBarangay?.chairpersonUser?.full_name?.trim() || '';
   const editingChairpersonIsPending = isPendingChair(editingBarangay?.chairpersonUser);
+  const editingChairpersonIsPendingDisplay =
+    editingBarangay?.chairpersonUser?.status?.trim().toLowerCase() === 'pending'
+    || editingChairpersonName === 'SK Chairperson'
+    || editingChairpersonName === 'Pending Invitation';
+  const editingChairpersonDisplayName = editingChairpersonIsPendingDisplay
+    ? 'Pending Invite'
+    : (editingBarangay?.chairpersonUser?.full_name || 'Unassigned');
   const editingChairpersonIsActive =
     editingBarangay?.chairpersonUser?.status?.trim().toLowerCase() === 'active'
     && editingBarangay?.chairpersonUser?.setup_completed !== false;
@@ -598,6 +605,7 @@ useEffect(() => {
 
   const budgetColors = ['#091d64', '#2563eb', '#059669', '#d97706', '#7c3aed', '#db2777'];
   const pieBudgetData = (federationAnalytics?.budget_by_category || [])
+    .filter((item: any) => String(item.category || '').trim().toLowerCase() !== 'general youth development fund')
     .map((item: any, index: number) => ({
       name: item.category,
       value: toNumber(item.allocated),
@@ -3032,7 +3040,7 @@ useEffect(() => {
               )}
 
               <div className="space-y-3">
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="flex flex-col gap-4">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
                       Barangay Name
@@ -3108,7 +3116,7 @@ useEffect(() => {
                       SK CHAIRPERSON
                     </span>
                     <span className="block text-sm font-medium text-slate-800 break-words leading-tight">
-                      {editingBarangay?.chairpersonUser?.full_name || 'Unassigned'}
+                      {editingChairpersonDisplayName}
                     </span>
                     <span className="block text-[10px] text-slate-500 break-all mt-1">
                       {editingBarangay?.chairpersonEmail || 'No email recorded'}
@@ -3139,6 +3147,17 @@ useEffect(() => {
                         >
                           Cancel Invitation
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const barangay = editingBarangay;
+                            setShowModal(false);
+                            if (barangay) handleOpenInviteOfficialModal(barangay, true);
+                          }}
+                          className="px-3 py-2 bg-[#091d64] hover:bg-[#102a83] text-white rounded-lg text-xs font-bold whitespace-nowrap"
+                        >
+                          Invite Official
+                        </button>
                       </>
                     ) : editingChairpersonIsActive ? (
                       <>
@@ -3166,17 +3185,30 @@ useEffect(() => {
                         </button>
                       </>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const barangay = editingBarangay;
-                          setShowModal(false);
-                          if (barangay) handleOpenAssignModal(barangay, true);
-                        }}
-                        className="px-3 py-2 bg-[#091d64] hover:bg-[#102a83] text-white rounded-lg text-xs font-bold whitespace-nowrap"
-                      >
-                        Assign Chairperson
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const barangay = editingBarangay;
+                            setShowModal(false);
+                            if (barangay) handleOpenAssignModal(barangay, true);
+                          }}
+                          className="px-3 py-2 bg-[#091d64] hover:bg-[#102a83] text-white rounded-lg text-xs font-bold whitespace-nowrap"
+                        >
+                          Assign Chairperson
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const barangay = editingBarangay;
+                            setShowModal(false);
+                            if (barangay) handleOpenInviteOfficialModal(barangay, true);
+                          }}
+                          className="px-3 py-2 bg-[#091d64] hover:bg-[#102a83] text-white rounded-lg text-xs font-bold whitespace-nowrap"
+                        >
+                          Invite Official
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>

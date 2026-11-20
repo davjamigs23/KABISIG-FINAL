@@ -165,7 +165,7 @@ router.get(
   '/:id/registrations',
   authenticateUser,
   requireActiveUser,
-  requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN', 'YOUTH_CONSTITUENT'),
+  requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'),
   async (req: Request, res: Response): Promise<void> => {
     const programId = String(req.params.id || '');
     const user = (req as AuthRequest).user!;
@@ -442,9 +442,13 @@ router.post(
       return;
     }
 
-    if (program.end_date && new Date(program.end_date) < new Date()) {
-      sendError(res, `Cannot register: This program ended on ${program.end_date}.`, 400, { code: 'PROGRAM_ENDED', end_date: program.end_date });
-      return;
+    if (program.end_date) {
+      const endDate = new Date(program.end_date);
+      endDate.setHours(23, 59, 59, 999);
+      if (endDate < new Date()) {
+        sendError(res, `Cannot register: This program ended on ${program.end_date}.`, 400, { code: 'PROGRAM_ENDED', end_date: program.end_date });
+        return;
+      }
     }
 
     if (!canAccessTenant(user, program.tenant_id)) {

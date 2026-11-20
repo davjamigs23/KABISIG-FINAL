@@ -1,5 +1,4 @@
 import { BarangayTenant, ResolutionRecord, SystemAuditLog, YouthProfile } from '../types';
-import { NAGA_BARANGAYS } from '../data';
 
 export interface AnnouncementPayload {
   title: string;
@@ -211,18 +210,21 @@ class KabisigApiClient {
       method: 'GET',
       ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
     });
-    if (res.success && Array.isArray(res.data) && res.data.length > 0) {
-      return res.data;
+    if (!res.success) {
+      throw new Error(res.message || 'Failed to load the barangay registry.');
     }
-    return [...NAGA_BARANGAYS];
+    if (!Array.isArray(res.data)) {
+      throw new Error('The barangay registry response was invalid.');
+    }
+    return res.data;
   }
 
   async getBarangay(id: string): Promise<BarangayTenant | null> {
     const res = await this.request<BarangayTenant>(`/barangays/${id}`, { method: 'GET' });
-    if (res.success && res.data) {
-      return res.data;
+    if (!res.success) {
+      throw new Error(res.message || 'Failed to load the barangay.');
     }
-    return NAGA_BARANGAYS.find(b => b.id === id) || null;
+    return res.data || null;
   }
 
   async updateBarangaySettings(id: string, settings: Partial<BarangayTenant>): Promise<{ success: boolean; message?: string; error?: any }> {

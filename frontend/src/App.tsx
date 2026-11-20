@@ -3,16 +3,7 @@
 import { useState, useEffect } from 'react';
 import kabisigApi from './lib/api';
 import { formatPhilippineDate, getPhilippineDateString } from './lib/dateUtils';
-import { 
-  NAGA_BARANGAYS, 
-  DEFAULT_BARANGAY_LOGOS,
-
-
-
-
-
-
-} from './data';
+import { DEFAULT_BARANGAY_LOGOS } from './data';
 import PublicPages from './components/PublicPages';
 import LandingPage from './components/LandingPage';
 import SuperAdminPages from './components/SuperAdminPages';
@@ -83,7 +74,7 @@ function mapBackendProgram(program: any): Program {
 
 export default function App() {
   // --- Client state synchronized with the backend ---
-  const [tenants, setTenants] = useState<BarangayTenant[]>(NAGA_BARANGAYS);
+  const [tenants, setTenants] = useState<BarangayTenant[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
 
   const [youthProfiles, setYouthProfiles] = useState<YouthProfile[]>([]);
@@ -280,7 +271,7 @@ export default function App() {
         programTitle: e.program?.title || e.title || 'General',
         category: e.budget?.category || 'Supplies',
         amount: Number(e.gross_amount) || 0,
-        supplier: 'Various Suppliers',
+        supplier: e.payee_name || e.payee || e.supplier || 'Various Suppliers',
         taxType: e.tax_type === 'EXEMPT' ? 'Exempt' : e.tax_type || 'Non-VAT',
         vatAmount: Number(e.tax_amount) || 0,
         withholdingTax: 0,
@@ -319,46 +310,31 @@ export default function App() {
 
   useEffect(() => {
     kabisigApi.getBarangays().then((data) => {
-      if (data && data.length > 0) {
-        setTenants(prev => {
-          const updated = prev.map(existing => {
-            const backendBarangay = data.find(b => b.id === existing.id);
-            if (!backendBarangay) return existing;
+      const sortedBarangays = data
+        .map(barangay => ({
+          ...barangay,
+          logo: barangay.logo || DEFAULT_BARANGAY_LOGOS[barangay.name] || '',
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      setTenants(sortedBarangays);
 
-            return {
-              ...existing,
-              ...backendBarangay,
-              youthPopulation: backendBarangay.youthPopulation ?? existing.youthPopulation ?? 0,
-              youthPopulationAvailable: backendBarangay.youthPopulationAvailable ?? false,
-              activePrograms: backendBarangay.activePrograms ?? existing.activePrograms ?? 0,
-              totalBudget: backendBarangay.totalBudget ?? existing.totalBudget ?? 0,
-              allocatedBudget: backendBarangay.allocatedBudget ?? existing.allocatedBudget ?? 0,
-              spentBudget: backendBarangay.spentBudget ?? existing.spentBudget ?? 0,
-              logo: backendBarangay.logo || existing.logo || ''
-            };
-          });
-          return updated.sort((a, b) => a.name.localeCompare(b.name));
-        });
-
-        // If user already restored with tenant_id, sync currentTenant with backend data
-        const token = kabisigApi.getToken();
-        if (token) {
-          kabisigApi.getCurrentUser().then(user => {
-            if (user?.tenant_id) {
-              const matchedBgy = data.find(b => b.id === user.tenant_id);
-              if (matchedBgy) {
-                setCurrentTenant({
-                  ...matchedBgy,
-                  logo: matchedBgy.logo || DEFAULT_BARANGAY_LOGOS[matchedBgy.name] || ''
-                });
-              }
-            }
-          }).catch(console.warn).finally(() => setAuthReady(true));
-        } else {
-          setAuthReady(true);
-        }
+      const token = kabisigApi.getToken();
+      if (token) {
+        kabisigApi.getCurrentUser().then(user => {
+          if (user?.tenant_id) {
+            const matchedBgy = sortedBarangays.find(b => b.id === user.tenant_id);
+            if (matchedBgy) setCurrentTenant(matchedBgy);
+          }
+        }).catch(console.warn).finally(() => setAuthReady(true));
+      } else {
+        setAuthReady(true);
       }
-    }).catch(console.warn);
+    }).catch(error => {
+      console.error('Unable to load barangay registry:', error);
+      setTenants([]);
+      showGlobalAlert('The barangay registry could not be loaded. Please refresh and try again.', 'error');
+      setAuthReady(true);
+    });
 
     // Invitation links must never reuse an existing Super Admin/browser session.
     const inviteParams = typeof window !== 'undefined'
@@ -410,7 +386,7 @@ export default function App() {
           } else if (restoredRole === 'Barangay Admin') {
             setCurrentRole(restoredRole);
             if (user.tenant_id) {
-              const bgy = tenants.find(t => t.id === user.tenant_id) || NAGA_BARANGAYS.find(t => t.id === user.tenant_id);
+              const bgy = tenants.find(t => t.id === user.tenant_id);
               if (bgy) {
                 setCurrentTenant({
                   ...bgy,
@@ -425,7 +401,7 @@ export default function App() {
           ) {
             setCurrentRole(restoredRole);
             if (user.tenant_id) {
-              const bgy = tenants.find(t => t.id === user.tenant_id) || NAGA_BARANGAYS.find(t => t.id === user.tenant_id);
+              const bgy = tenants.find(t => t.id === user.tenant_id);
               if (bgy) {
                 setCurrentTenant({
                   ...bgy,
@@ -436,7 +412,7 @@ export default function App() {
           } else if (restoredRole === 'Youth Constituent') {
             setCurrentRole(restoredRole);
             if (user.tenant_id) {
-              const bgy = tenants.find(t => t.id === user.tenant_id) || NAGA_BARANGAYS.find(t => t.id === user.tenant_id);
+              const bgy = tenants.find(t => t.id === user.tenant_id);
               if (bgy) {
                 setCurrentTenant({
                   ...bgy,
@@ -448,21 +424,21 @@ export default function App() {
             const resident = user.resident_profile || {};
             const youthFromDb: any = {
               userId: user.id,
-              id: meta.id || resident.digital_youth_id || `SK-2026-${user.id.slice(0, 4)}`,
-              name: user.full_name || meta.name || 'Anonymous',
+              id: meta.id || resident.digital_youth_id || '',
+              name: user.full_name || meta.name || '',
               first_name: (user as any).first_name || (meta as any).first_name || '',
               middle_name: (user as any).middle_name || (meta as any).middle_name || '',
               last_name: (user as any).last_name || (meta as any).last_name || '',
               suffix: (user as any).suffix || (meta as any).suffix || '',
-              sex: resident.sex || meta.sex || 'Female',
-              birthdate: resident.birthdate || meta.birthdate || '2005-01-01',
-              age: meta.age || 20,
-              civilStatus: resident.civil_status || resident.marital_status || meta.civilStatus || 'Single',
+              sex: resident.sex || meta.sex || '',
+              birthdate: resident.birthdate || meta.birthdate || '',
+              age: Number(meta.age) || 0,
+              civilStatus: resident.civil_status || resident.marital_status || meta.civilStatus || '',
               address: resident.address || meta.address || '',
-              zone: resident.zone || meta.zone || 'Not specified',
+              zone: resident.zone || meta.zone || '',
               mobile: user.phone || meta.mobile || '',
               email: user.email || meta.email || '',
-              educationalLevel: meta.educationalLevel || resident.educational_status || 'College',
+              educationalLevel: meta.educationalLevel || resident.educational_status || '',
               school: resident.school || meta.school || '',
               course: resident.course || meta.course || '',
               youthSector: (resident as any).youth_sector || '',
@@ -917,21 +893,21 @@ export default function App() {
         const resident = userObj.resident_profile || {};
         const mergedFromDb: any = {
           userId: userObj.id,
-          id: meta.id || resident.digital_youth_id || matchedProfile?.id || `SK-2026-${userObj.id.slice(0, 4)}`,
-          name: userObj.full_name || meta.name || matchedProfile?.name || 'Anonymous',
-          sex: resident.sex || meta.sex || matchedProfile?.sex || 'Female',
-          birthdate: resident.birthdate || meta.birthdate || matchedProfile?.birthdate || '2005-01-01',
-          age: meta.age || matchedProfile?.age || 20,
-          civilStatus: resident.civil_status || resident.marital_status || meta.civilStatus || matchedProfile?.civilStatus || 'Single',
+          id: resident.digital_youth_id || meta.id || matchedProfile?.id || '',
+          name: userObj.full_name || meta.name || matchedProfile?.name || '',
+          sex: resident.sex || meta.sex || matchedProfile?.sex || '',
+          birthdate: resident.birthdate || meta.birthdate || matchedProfile?.birthdate || '',
+          age: Number(meta.age ?? matchedProfile?.age) || 0,
+          civilStatus: resident.civil_status || resident.marital_status || meta.civilStatus || matchedProfile?.civilStatus || '',
           address: resident.address || meta.address || matchedProfile?.address || '',
-          zone: resident.zone || meta.zone || matchedProfile?.zone || 'Not specified',
+          zone: resident.zone || meta.zone || matchedProfile?.zone || '',
           mobile: userObj.phone || meta.mobile || matchedProfile?.mobile || '',
           email: userObj.email || meta.email || matchedProfile?.email || emailOrName || '',
-          educationalLevel: meta.educationalLevel || resident.educational_status || matchedProfile?.educationalLevel || 'College',
+          educationalLevel: meta.educationalLevel || resident.educational_status || matchedProfile?.educationalLevel || '',
           school: resident.school || meta.school || matchedProfile?.school || '',
           course: resident.course || meta.course || matchedProfile?.course || '',
           youthSector: (resident as any).youth_sector || matchedProfile?.youthSector || '',
-          year: resident.year_level || meta.year || matchedProfile?.year || '1st Year',
+          year: resident.year_level || meta.year || matchedProfile?.year || '',
           employmentStatus: resident.employment_status || meta.employmentStatus || matchedProfile?.employmentStatus || '',
           scholarStatus: resident.scholar_status || meta.scholarStatus || matchedProfile?.scholarStatus || '',
           scholarshipSource: resident.scholarship_source || meta.scholarshipSource || matchedProfile?.scholarshipSource || '',
@@ -984,36 +960,6 @@ export default function App() {
     if (typeof window !== 'undefined') {
       try { localStorage.clear(); sessionStorage.clear(); } catch {}
       window.location.href = '/';
-    }
-  };
-
-  // --- SYSTEM REGISTRATION WORKFLOWS (Multi-Tenancy Binding) ---
-  const handleSignUpSubmit = (newProfile: YouthProfile) => {
-    // Bind profile strictly to an existing home barangay from the 27 Naga City registry
-    const targetTenant = tenants.find(t => t.id === newProfile.barangayId) || tenants[0];
-    const boundProfile: YouthProfile = {
-      ...newProfile,
-      barangayId: targetTenant.id
-    };
-
-    // Add profile to local database
-    setYouthProfiles(prev => [boundProfile, ...prev]);
-
-    const isOfficial = boundProfile.registeredRole && boundProfile.registeredRole !== 'Youth Constituent';
-
-    if (isOfficial) {
-      // Create a pending SK Official registration request
-      const newLog: SystemAuditLog = {
-        id: `LOG-${Date.now().toString().slice(-4)}`,
-        timestamp: new Date().toISOString().replace('T', ' ').slice(0, 19),
-        user: boundProfile.name,
-        role: boundProfile.registeredRole || 'SK Official',
-        action: 'Account Self-Registration',
-        details: `Registered as ${boundProfile.registeredRole} bound to Brgy. ${targetTenant.name} (Tenant ID: ${targetTenant.id}). Status: PENDING validation.`
-      };
-      setAuditLogs(prev => [newLog, ...prev]);
-    } else {
-      // Keep the newly registered account signed out until it is approved.
     }
   };
 
@@ -1371,34 +1317,6 @@ export default function App() {
           activeTab={publicView}
           setActiveTab={(tab) => setPublicView(tab === '_landing' ? 'landing' : (tab as any))}
           onLogin={(email, role, tenantId, userObj) => { if (role === 'Viewer') { kabisigApi.logout(); setCurrentUser(null); setCurrentYouth(null); setCurrentEmail('viewer@kabisig.ph'); setCurrentRole('Viewer'); setPublicView('login'); return; } handleLogin(role, tenantId || '', email, userObj); }}
-          onSignUp={(partialProfile) => {
-            const completeProfile: YouthProfile = {
-              id: `SK-2026-${Math.floor(100 + Math.random() * 900)}`,
-              name: partialProfile.name || 'Anonymous',
-              sex: partialProfile.sex || 'Male',
-              birthdate: partialProfile.birthdate || '',
-              age: partialProfile.age || 0,
-              mobile: partialProfile.mobile || '',
-              email: partialProfile.email || '',
-              address: partialProfile.address || '',
-              zone: partialProfile.zone || '',
-              school: partialProfile.school || '',
-              educationalLevel: partialProfile.educationalLevel || 'College',
-              course: partialProfile.course || '',
-              year: partialProfile.year || '1st Year',
-              scholarStatus: partialProfile.scholarStatus || 'Non-Scholar',
-              guardianName: partialProfile.guardianName || '',
-              guardianContact: partialProfile.guardianContact || '',
-              status: 'Pending',
-              dateRegistered: getPhilippineDateString(),
-              registeredRole: partialProfile.registeredRole || 'Youth Constituent',
-              barangayId: partialProfile.barangayId || '',
-              registeredProgramsCount: 0,
-              attendanceRate: 0,
-              engagementScore: 0
-            };
-            handleSignUpSubmit(completeProfile);
-          }}
         />
       )}
 
@@ -1443,7 +1361,7 @@ export default function App() {
                   return latest ? { ...current, ...latest } : current;
                 }));
               }
-            }).catch(() => {});
+            }).catch(error => console.warn('Failed to refresh the barangay registry after saving settings:', error));
 
             kabisigApi.getAuditLogs().then(logs => {
               if (logs) setAuditLogs(logs);

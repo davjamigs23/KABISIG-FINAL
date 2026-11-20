@@ -336,20 +336,20 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
       .eq('role_id', 2)
       .eq('tenant_id', barangay.id)
       .eq('status', 'active')
+      .eq('setup_completed', true)
       .limit(1)
       .maybeSingle();
 
     if (chairLookupErr) {
-      sendError(res, 'Failed to verify barangay chairperson: ' + chairLookupErr.message, 500);
+      sendError(res, 'Failed to verify Barangay SK Chairperson status.', 500);
       return;
     }
 
     if (!activeChair) {
       sendError(
         res,
-        'Registration unavailable: Barangay ' + barangay.name + ' does not yet have an active SK Chairperson. Registration will open once the SK Federation President assigns one.',
-        409,
-        { code: 'BARANGAY_NO_CHAIRPERSON', barangay_id: barangay.id }
+        'Registration is not allowed yet. This Barangay does not have an active SK Chairperson who has completed setup.',
+        400
       );
       return;
     }
@@ -525,6 +525,11 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
   }
 
   const userId = authData.user.id;
+  const user = {
+    id: userId,
+    role_id: ROLE_IDS.YOUTH_CONSTITUENT,
+    tenant_id: barangay_id,
+  };
 
   // 4. Create Public User Record
   const { error: userError } = await supabaseAdmin.from('users').insert([
@@ -598,6 +603,40 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
     sendError(res, `Failed to create resident profile: ${profileError.message}`, 500, profileError);
     return;
   }
+
+  if (user.role_id === 4) {
+    try {
+      const { data: chairpersons, error: chairpersonsError } = await supabaseAdmin
+        .from('users')
+        .select('id')
+        .eq('tenant_id', user.tenant_id)
+        .eq('role_id', 2)
+        .eq('status', 'active');
+
+      if (chairpersonsError) {
+        console.error('Failed to find Chairpersons for youth registration notification:', chairpersonsError);
+      } else if (chairpersons && chairpersons.length > 0) {
+        const { error: notificationError } = await supabaseAdmin
+          .from('notifications')
+          .insert(chairpersons.map((chairperson) => ({
+            tenant_id: user.tenant_id,
+            user_id: chairperson.id,
+            title: 'New Youth Registered',
+            message: `${resolvedName.full_name} submitted a new youth registration for review.`,
+            notification_type: 'NEW_YOUTH_REGISTERED',
+            link: '/youth-management',
+            is_read: false,
+          })));
+
+        if (notificationError) {
+          console.error('Failed to create youth registration notification:', notificationError);
+        }
+      }
+    } catch (notificationException) {
+      console.error('Unexpected youth registration notification error:', notificationException);
+    }
+  }
+
   // Panel rec #12 (Option A): upload front + back ID during signup
   const _uploadID = async (b64: string, mime: string, name: string | undefined, prefix: string) => {
     const buf = Buffer.from(b64, 'base64');

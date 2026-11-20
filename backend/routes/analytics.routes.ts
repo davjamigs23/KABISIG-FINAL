@@ -23,7 +23,7 @@ const BudgetAlertSchema = z.object({
   link: z.string().max(500).optional(),
 });
 
-router.post('/budget-alerts', authenticateUser, requireRoles('BARANGAY_ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response): Promise<void> => {
+router.post('/budget-alerts', authenticateUser, requireActiveUser, requireRoles('BARANGAY_ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response): Promise<void> => {
   const user = (req as AuthRequest).user!;
   const parsed = BudgetAlertSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -96,7 +96,7 @@ router.post('/budget-alerts', authenticateUser, requireRoles('BARANGAY_ADMIN', '
   sendSuccess(res, { inserted: notifications.length }, 'Budget alert notifications persisted.');
 });
 
-router.post('/compliance', authenticateUser, requireRoles('BARANGAY_ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response): Promise<void> => {
+router.post('/compliance', authenticateUser, requireActiveUser, requireRoles('BARANGAY_ADMIN', 'SUPER_ADMIN'), async (req: Request, res: Response): Promise<void> => {
   const user = (req as AuthRequest).user!;
   const parsed = ComplianceIssueSchema.safeParse(req.body);
   if (!parsed.success) {

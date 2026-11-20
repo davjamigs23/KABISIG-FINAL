@@ -1214,7 +1214,7 @@ export default function ViewerPages({
                               <span className="text-[10px] text-slate-400 font-mono block">ID: {exp.id}</span>
                             </td>
                             <td className="px-5 py-3.5 text-right font-mono text-slate-800">₱{exp.amount.toLocaleString()}</td>
-                            <td className="px-5 py-3.5 text-slate-600">{exp.supplier}</td>
+                            <td className="px-5 py-3.5 text-slate-600">{(exp as any).payee_name || exp.supplier || 'Various Suppliers'}</td>
                             <td className="px-5 py-3.5 text-center">
                               <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px] font-bold">
                                 {exp.taxType}

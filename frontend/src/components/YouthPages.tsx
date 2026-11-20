@@ -1,6 +1,6 @@
 import { ShieldAlert } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
-import { getPhilippineDateString } from '../lib/dateUtils';
+import { formatBirthdate, getPhilippineDateString } from '../lib/dateUtils';
 import { 
   User, 
   Users,
@@ -1622,17 +1622,17 @@ export default function YouthPages({
                         {/* 2. Sex */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">2. Sex</td>
-                          <td className="py-2.5 px-4 font-bold">{youth.sex || 'Male'}</td>
+                          <td className="py-2.5 px-4 font-bold">{youth.sex || 'Not specified'}</td>
                         </tr>
                         {/* 3. Birthdate */}
                         <tr className="hover:bg-slate-50/50">
                           <td className="py-2.5 px-4 font-bold text-slate-900">3. Birthdate</td>
-                          <td className="py-2.5 px-4 font-bold font-mono">{youth.birthdate || '2004-05-12'}</td>
+                          <td className="py-2.5 px-4 font-bold font-mono">{formatBirthdate(youth.birthdate) || 'Not provided'}</td>
                         </tr>
                         {/* 4. Age */}
                         <tr className="hover:bg-slate-50/50 bg-blue-50/20">
                           <td className="py-2.5 px-4 font-bold text-slate-900">4. Age</td>
-                          <td className="py-2.5 px-4 font-black text-slate-900">{calculateAge(youth.birthdate)} Years Old</td>
+                          <td className="py-2.5 px-4 font-black text-slate-900">{youth.birthdate ? `${calculateAge(youth.birthdate)} Years Old` : 'Not specified'}</td>
                         </tr>
                         {/* 5. Civil Status */}
                         <tr className="hover:bg-slate-50/50">
@@ -2448,7 +2448,7 @@ export default function YouthPages({
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Birthdate</label>
                       <input 
                         type="date" 
-                        value={editForm.birthdate || '2004-05-12'} 
+                        value={(editForm.birthdate || '').slice(0, 10)}
                         onChange={(e) => setEditForm({ ...editForm, birthdate: e.target.value })}
                         disabled={isProfileLocked}
                         readOnly={isProfileLocked}

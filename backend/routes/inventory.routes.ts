@@ -3,7 +3,7 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { supabaseAdmin } from '../services/supabase.service.js';
 import { sendSuccess, sendCreated, sendError } from '../utils/response.js';
-import { authenticateUser, requireRoles } from '../middleware/auth.js';
+import { authenticateUser, requireActiveUser, requireRoles } from '../middleware/auth.js';
 import type { AuthRequest } from '../types/database.types.js';
 
 const router = express.Router();
@@ -20,7 +20,12 @@ const InventoryItemSchema = z.object({
   photo_url: z.string().optional().nullable(),
 });
 
-router.get('/', authenticateUser, async (req: Request, res: Response): Promise<void> => {
+router.get(
+  '/',
+  authenticateUser,
+  requireActiveUser,
+  requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'),
+  async (req: Request, res: Response): Promise<void> => {
   const user = (req as AuthRequest).user!;
   let query = supabaseAdmin
     .from('inventory')
@@ -41,11 +46,13 @@ router.get('/', authenticateUser, async (req: Request, res: Response): Promise<v
     return;
   }
   sendSuccess(res, data || [], 'Inventory retrieved successfully.');
-});
+  }
+);
 
 router.post(
   '/',
   authenticateUser,
+  requireActiveUser,
   requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'),
   async (req: Request, res: Response): Promise<void> => {
     const user = (req as AuthRequest).user!;
@@ -77,6 +84,7 @@ router.post(
 router.put(
   '/:id',
   authenticateUser,
+  requireActiveUser,
   requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'),
   async (req: Request, res: Response): Promise<void> => {
     const user = (req as AuthRequest).user!;
@@ -120,6 +128,7 @@ router.put(
 router.delete(
   '/:id',
   authenticateUser,
+  requireActiveUser,
   requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'),
   async (req: Request, res: Response): Promise<void> => {
     const user = (req as AuthRequest).user!;

@@ -714,18 +714,10 @@ router.get(
       return;
     }
 
-    const includeOfficials = req.query.include_officials === 'true';
-    const isSecretary = user.role_id === 3 && String(user.official_role || '').toLowerCase().includes('secretary');
-
     let query = supabaseAdmin
       .from('users')
-      .select('*, resident_profile!resident_profile_user_id_fkey(*)');
-
-    if (isSecretary) {
-      query = query.eq('role_id', 4);
-    } else {
-      query = includeOfficials ? query.in('role_id', [3, 4]) : query.or('role_id.eq.4,and(role_id.eq.3,status.eq.pending)');
-    }
+      .select('*, resident_profile!resident_profile_user_id_fkey(*)')
+      .eq('role_id', 4);
 
     if (!(isSuperAdmin && allTenantsRequested)) {
       query = query.eq('tenant_id', user.tenant_id);

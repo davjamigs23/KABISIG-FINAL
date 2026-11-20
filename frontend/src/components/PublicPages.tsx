@@ -103,7 +103,6 @@ export function KabisigLogo({ className = "w-28" }: { className?: string }) {
 
 interface PublicPagesProps {
   onLogin: (email: string, role: UserRole, barangayId?: string, userObj?: any) => void;
-  onSignUp: (profile: Partial<YouthProfile>) => void;
   barangays: BarangayTenant[];
   programs: Program[];
   activeTab: string;
@@ -131,7 +130,6 @@ function calculateAgeFromISODate(value: string): number {
 
 export default function PublicPages({
   onLogin,
-  onSignUp,
   barangays,
   programs,
   activeTab,
@@ -433,37 +431,6 @@ export default function PublicPages({
 
     setIsSubmittingSignUp(true);
 
-    const newProfile: Partial<YouthProfile> = {
-      name: signUpFullName || 'Anonymous User',
-      sex: signUpForm.sex,
-      birthdate: (() => {
-            const raw = signUpForm.birthdate;
-            if (!raw) return '';
-            const parts = raw.split(/[\/\-]/);
-            if (parts.length === 3) {
-              if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`; // YYYY-MM-DD
-              if (parts[2].length === 4) return `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`; // MM-DD-YYYY
-            }
-            return raw;
-          })(),
-      age: calculateAgeFromISODate(signUpForm.birthdate),
-      mobile: signUpForm.mobile,
-      guardianName: signUpForm.guardianName.trim(),
-      guardianContact: signUpForm.guardianContact.trim(),
-      email: signUpForm.email,
-      address: signUpForm.address,
-      zone: signUpForm.zone,
-      educationalLevel: signUpForm.educationalLevel,
-      scholarStatus: signUpForm.scholarStatus,
-      scholarshipSource: signUpForm.scholarshipSource,
-      civilStatus: signUpForm.civil_status,
-      status: 'Pending',
-      dateRegistered: getPhilippineDateString(),
-      profilePic: signUpForm.profilePic,
-      registeredRole: 'Youth Constituent' as any, // forced per rules
-      barangayId: resolvedBarangayId
-    };
-
     try {
       // Rules file: only youth can self-register. Officials invited by SA.
       const isOfficial = false;
@@ -616,7 +583,6 @@ export default function PublicPages({
         }
       }
 
-      onSignUp(newProfile);
       showPopup('Registration submitted successfully!\n\nYour profile has been saved into the database and is pending validation by your Sangguniang Kabataan officials.', 'success');
       setActiveTab('login');
       setSignUpStep(1);
@@ -1076,8 +1042,8 @@ export default function PublicPages({
                           >
                             <option value="">Select a Barangay</option>
                             {barangays.map(b => (
-                              <option key={b.id} value={b.id} disabled={!b.has_chairperson}>
-                                {b.name} {!b.has_chairperson ? '(No Chairperson assigned)' : ''}
+                              <option key={b.id} value={b.id} disabled={!b.chairpersonUser || b.chairpersonUser.status !== 'active'}>
+                                {b.name} {!b.chairpersonUser || b.chairpersonUser.status !== 'active' ? '(No active Chairperson assigned)' : ''}
                               </option>
                             ))}
                           </select>
