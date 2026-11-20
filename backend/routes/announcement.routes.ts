@@ -115,7 +115,10 @@ async function deletePubmat(path: string | null | undefined): Promise<string | n
 
 router.get('/', authenticateUser, requireActiveUser, async (req, res) => {
   const user = (req as AuthRequest).user!;
-  let query = supabaseAdmin.from('announcement').select('*').order('created_at', { ascending: false });
+  let query = supabaseAdmin
+    .from('announcement')
+    .select('*, author:users!author_id(full_name)')
+    .order('created_at', { ascending: false });
   if (user.role !== 'SUPER_ADMIN' && user.role !== 'VIEWER') {
     if (!user.tenant_id) {
       sendError(res, 'User has no assigned Barangay tenant.', 400);

@@ -537,6 +537,11 @@ router.post('/:id/attendance', authenticateUser, requireActiveUser, requireRoles
   try {
     const programId = String(req.params.id);
     const user = (req as AuthRequest).user!;
+    const requestedProgramId = typeof req.body?.program_id === 'string' ? req.body.program_id.trim() : '';
+    if (requestedProgramId && requestedProgramId !== programId) {
+      sendError(res, 'Selected program does not match the attendance request.', 400);
+      return;
+    }
     const qrPayload = typeof req.body?.qr_payload === 'string' ? req.body.qr_payload.trim() : '';
     const directUserId = typeof req.body?.userId === 'string'
       ? req.body.userId.trim()

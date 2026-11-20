@@ -2365,7 +2365,7 @@ export default function OfficialPages({
                           <img
                             src={announcement.imageUrl || (announcement as any).image_url}
                             alt={announcement.title}
-                            className="h-auto max-h-[500px] w-full rounded-xl border border-slate-200 object-contain shadow-sm cursor-pointer transition-opacity hover:opacity-90"
+                            className="mx-auto block w-full max-w-md max-h-[400px] rounded-lg border border-slate-200 object-contain shadow-sm cursor-pointer transition-opacity hover:opacity-90"
                             onClick={() => setLightboxImg(announcement.imageUrl || (announcement as any).image_url)}
                           />
                         </div>
@@ -2384,7 +2384,7 @@ export default function OfficialPages({
                       </div>
                     )}
                     <p className="border-t border-slate-100 pt-4 text-xs text-slate-400">
-                      Posted by {announcement.author || 'SK Official'}{announcement.datePosted ? ` on ${formatPhilippineDateTime(announcement.datePosted)}` : ''}
+                      Posted by {(announcement as any).users?.full_name || (announcement as any).author?.full_name || (announcement as any).author_name || announcement.author || 'SK Official'}{announcement.datePosted ? ` on ${formatPhilippineDateTime(announcement.datePosted)}` : ''}
                     </p>
                   </article>
                 ))}
@@ -4039,8 +4039,8 @@ export default function OfficialPages({
                             <td className="px-6 py-3.5 text-center whitespace-nowrap">
                               <button
                                 onClick={() => handleManualCheckIn(r)}
-                                disabled={isPresent || isProgramEnded}
-                                className={`px-3.5 py-1.5 rounded-xl text-[10px] font-bold cursor-pointer ${isPresent || isProgramEnded ? 'bg-slate-100 text-slate-400 cursor-default' : 'bg-[#091d64] text-white hover:bg-opacity-90'}`}
+                                disabled={isPresent || isProgramEnded || !selectedProgId}
+                                className={`px-3.5 py-1.5 rounded-xl text-[10px] font-bold cursor-pointer ${isPresent || isProgramEnded || !selectedProgId ? 'bg-slate-100 text-slate-400 cursor-default' : 'bg-[#091d64] text-white hover:bg-opacity-90'}`}
                               >
                                 {isPresent ? 'Marked Present' : 'Mark Present'}
                               </button>
@@ -6382,7 +6382,7 @@ export default function OfficialPages({
                 )}
               </div>
               <div className="flex justify-end gap-2 border-t pt-4">
-                <button onClick={()=>{ setShowProgModal(false); setEditingProgramId(null); }} className="h-10 px-6 rounded-lg font-bold border text-xs">Cancel</button>
+                <button onClick={()=>{ setPubmatFile(null); setPubmatPreview(null); setShowProgModal(false); setEditingProgramId(null); }} className="h-10 px-6 rounded-lg font-bold border text-xs">Cancel</button>
                 <button onClick={handlePublishProgram} className="h-10 px-6 rounded-lg font-bold bg-[#091d64] text-white text-xs">{editingProgramId ? 'Save Changes' : 'Publish Initiative'}</button>
               </div>
             </div>

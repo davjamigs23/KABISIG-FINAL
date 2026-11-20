@@ -2567,7 +2567,7 @@ useEffect(() => {
       {/* P9/P10: INVITE SK OFFICIAL MODAL */}
       {showInviteOfficialModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="flex w-full max-w-2xl max-h-[90vh] mx-auto my-auto flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+          <div className="flex w-full max-w-lg max-h-[85vh] mx-auto my-auto flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
             <div className="shrink-0 bg-[#091d64] p-5 text-white flex justify-between items-center text-left">
               <div>
                 <h3 className="font-sans font-black text-base flex items-center gap-2">
