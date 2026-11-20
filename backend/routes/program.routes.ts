@@ -20,6 +20,7 @@ const CreateProgramSchema = z.object({
   budget_allocation: z.number().min(0).default(0),
   aip_reference: z.string().trim().max(100).optional(),
   status: z.enum(['draft', 'upcoming', 'ongoing', 'completed', 'cancelled']).default('upcoming'),
+  override: z.boolean().optional(),
 });
 
 const UpdateProgramSchema = CreateProgramSchema.partial();
@@ -241,7 +242,7 @@ router.post(
       return;
     }
 
-    if (ACTIVE_PROGRAM_STATUSES.includes(programData.status)) {
+    if (ACTIVE_PROGRAM_STATUSES.includes(programData.status) && !programData.override) {
       const { data: overlappingProgram, error: overlapError } = await findOverlappingProgram(
         tenantId,
         programData.start_date,
@@ -262,6 +263,7 @@ router.post(
       .insert([
         {
           ...programData,
+          override: undefined,
           image_url: imageUrl,
           tenant_id: tenantId,
           created_by: user.id,
@@ -320,15 +322,16 @@ router.put(
       return;
     }
 
-    const updatedStartDate = parseResult.data.start_date || existing.start_date;
-    const updatedEndDate = parseResult.data.end_date || existing.end_date;
-    const updatedStatus = parseResult.data.status || existing.status;
+    const { override, ...updateFields } = parseResult.data;
+    const updatedStartDate = updateFields.start_date || existing.start_date;
+    const updatedEndDate = updateFields.end_date || existing.end_date;
+    const updatedStatus = updateFields.status || existing.status;
     if (new Date(updatedEndDate) < new Date(updatedStartDate)) {
       sendError(res, 'End date cannot be prior to start date.', 400);
       return;
     }
 
-    if (ACTIVE_PROGRAM_STATUSES.includes(updatedStatus)) {
+    if (ACTIVE_PROGRAM_STATUSES.includes(updatedStatus) && !override) {
       const { data: overlappingProgram, error: overlapError } = await findOverlappingProgram(
         existing.tenant_id,
         updatedStartDate,
@@ -348,7 +351,7 @@ router.put(
     const { data: updated, error: updateError } = await supabaseAdmin
       .from('program')
       .update({
-        ...parseResult.data,
+        ...updateFields,
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)

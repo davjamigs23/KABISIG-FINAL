@@ -140,6 +140,8 @@ useEffect(() => {
         setTypoPhone(String(user.phone || ''));
         const birthdate = user.birthdate || user.resident_profile?.birthdate;
         setTypoBirthdate(typeof birthdate === 'string' ? birthdate.slice(0, 10) : '');
+        setTypoAddress(user.address || user.resident_profile?.address || '');
+        setTypoSex(user.sex || user.resident_profile?.sex || '');
         setTypoFullName(_fullName);
 
         // Notify user if profile is missing (SK Officials, Chairpersons)
@@ -163,6 +165,8 @@ useEffect(() => {
   const [typoEmail, setTypoEmail] = useState('');
   const [typoPhone, setTypoPhone] = useState('');
   const [typoBirthdate, setTypoBirthdate] = useState('');
+  const [typoAddress, setTypoAddress] = useState('');
+  const [typoSex, setTypoSex] = useState('');
   const [typoReason, setTypoReason] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -992,6 +996,16 @@ useEffect(() => {
     }
   };
 
+  const handleResendChairpersonInvitation = async (barangay: BarangayTenant) => {
+    const response = await kabisigApi.resendChairpersonInvitation(barangay.id);
+    if (!response.success) {
+      showPopup(response.message || 'Failed to resend invitation.');
+      return;
+    }
+    showPopup(response.message || 'Chairperson invitation resent.', 'success', response.data?.action_link || response.data?.setup_url);
+    await onRefreshAuditLogs();
+  };
+
   // Filtered audit logs
   const filteredAuditLogs = auditLogs.filter(log => {
     if (!auditSearchTerm.trim()) return true;
@@ -1375,6 +1389,8 @@ useEffect(() => {
     setTypoEmail('');
     setTypoPhone('');
     setTypoBirthdate('');
+    setTypoAddress('');
+    setTypoSex('');
     setTypoReason('');
     setShowFixTypoModal(true);
   }}
@@ -3130,7 +3146,7 @@ useEffect(() => {
                           onClick={() => {
                             const barangay = editingBarangay;
                             setShowModal(false);
-                            if (barangay) handleOpenAssignModal(barangay, true);
+                            if (barangay) void handleResendChairpersonInvitation(barangay);
                           }}
                           className="px-3 py-2 bg-[#091d64] hover:bg-[#102a83] text-white rounded-lg text-xs font-bold whitespace-nowrap"
                         >
@@ -3511,6 +3527,8 @@ useEffect(() => {
                   email: typoEmail.trim() || undefined,
                   phone: typoPhone.trim() || undefined,
                   birthdate: typoBirthdate || undefined,
+                  address: typoAddress.trim() || undefined,
+                  sex: typoSex || undefined,
                   reason: typoReason.trim() || undefined
                 });
                 if (res.success) {
@@ -3580,6 +3598,22 @@ useEffect(() => {
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Corrected Birthdate</label>
                 <input type="date" value={typoBirthdate} onChange={e => setTypoBirthdate(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Address</label>
+                <input type="text" value={typoAddress} onChange={e => setTypoAddress(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank if unchanged" />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Biological Sex</label>
+                <select value={typoSex} onChange={e => setTypoSex(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs">
+                  <option value="">Leave unchanged</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Other">Other</option>
+                  <option value="Prefer not to say">Prefer not to say</option>
+                </select>
               </div>
 
               <div>

@@ -2425,8 +2425,8 @@ export default function OfficialPages({
                 </div>
               </section>
               
-              <div className="flex items-center gap-3 mb-4">
-                <div className="flex items-center gap-2">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="flex items-center gap-4">
   <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Fiscal Year</span>
   <span className="px-3 py-1.5 bg-[#091d64] text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-1.5">
     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
@@ -5599,7 +5599,7 @@ export default function OfficialPages({
                   <optgroup label="Scholarship"><option value="Scholar">Scholar</option><option value="Non-Scholar">Non-Scholar</option></optgroup>
                   <optgroup label="Educational Level"><option value="College">College</option><option value="Senior High">Senior High</option><option value="Junior High">Junior High</option><option value="Elementary">Elementary</option><option value="Vocational">Vocational</option></optgroup>
                   <optgroup label="Employment Status"><option value="Employed">Employed</option><option value="Unemployed">Unemployed</option><option value="Student">Student</option></optgroup>
-                  <optgroup label="Youth Sector"><option value="In-School Youth">In-School Youth</option><option value="Out-of-School Youth">Out-of-School Youth</option><option value="Working Youth">Working Youth</option></optgroup>
+                  <optgroup label="Youth Sector"><option value="In-School Youth">In-School Youth</option><option value="Out-of-School Youth">Out-of-School Youth</option></optgroup>
                 </select>
               </div>
 
@@ -6646,7 +6646,7 @@ export default function OfficialPages({
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Category Group</label>
                   <select required value={invForm.category} onChange={(e)=>setInvForm({...invForm, category: e.target.value})} className="w-full p-2 border rounded text-xs">
                     <option value="" disabled>Select a Category</option>
-                    <option value="IT Equipment">IT Equipment</option>
+                    <option value="Office IT Equipment">Office IT Equipment</option>
                     <option value="Sports Equipment">Sports Equipment</option>
                     <option value="Furniture">Furniture</option>
                     <option value="Vehicles">Vehicles</option>

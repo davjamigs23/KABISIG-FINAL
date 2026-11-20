@@ -146,7 +146,7 @@ class KabisigApiClient {
     return this.token;
   }
 
-  async request<T>(endpoint: string, options: RequestInit = {}): Promise<{ success: boolean; data?: T; message?: string; error?: any; details?: any; errors?: unknown }> {
+  async request<T>(endpoint: string, options: RequestInit = {}): Promise<{ success: boolean; status?: number; data?: T; message?: string; error?: any; details?: any; errors?: unknown }> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(options.headers as Record<string, string>),
@@ -178,6 +178,7 @@ class KabisigApiClient {
       if (!response.ok) {
         return {
           success: false,
+          status: response.status,
           message: json.message || `Request failed with status ${response.status}`,
           error: json.error || json.details || null,
           details: json.details,
@@ -187,6 +188,7 @@ class KabisigApiClient {
 
       return {
         success: true,
+        status: response.status,
         data: json.data as T,
         message: json.message,
       };
@@ -638,7 +640,7 @@ class KabisigApiClient {
     return this.request<any>(`/admin/users/lookup?identifier=${encodeURIComponent(identifier)}`, { method: 'GET' });
   }
 
-  async updateUserName(userId: string, payload: { full_name: string; first_name?: string; middle_name?: string; last_name?: string; suffix?: string; email?: string; phone?: string; birthdate?: string; reason?: string }): Promise<{ success: boolean; data?: any; message?: string }> {
+  async updateUserName(userId: string, payload: { full_name: string; first_name?: string; middle_name?: string; last_name?: string; suffix?: string; email?: string; phone?: string; birthdate?: string; address?: string; sex?: string; reason?: string }): Promise<{ success: boolean; data?: any; message?: string }> {
     return await this.request(`/admin/users/${encodeURIComponent(userId)}/update-name`, { method: 'PUT', body: JSON.stringify(payload) });
   }
 
@@ -721,7 +723,7 @@ class KabisigApiClient {
     return res.data;
   }
 
-  async createProgram(programData: any): Promise<{ success: boolean; data?: any; message?: string }> {
+  async createProgram(programData: any): Promise<{ success: boolean; status?: number; data?: any; message?: string }> {
     return await this.request('/programs', {
       method: 'POST',
       body: JSON.stringify(programData),

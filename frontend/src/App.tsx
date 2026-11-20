@@ -12,7 +12,7 @@ import ChairpersonOnboarding from './components/ChairpersonOnboarding';
 import OfficialPages from './components/OfficialPages';
 import YouthPages from './components/YouthPages';
 import ViewerPages from './components/ViewerPages';
-import { computeProgramStatus, detectScheduleConflicts } from './lib/intelligence';
+import { computeProgramStatus } from './lib/intelligence';
 import { resolveUserRole } from './lib/role-routing';
 import { 
   BarangayTenant, 
@@ -290,6 +290,7 @@ export default function App() {
 
   // --- PUBLIC PAGES NAVIGATION STATE ---
   const [publicView, setPublicView] = useState<'landing' | 'login' | 'signup' | 'transparency'>('landing');
+  const [programConflict, setProgramConflict] = useState<{ program: Program; resolve: (confirmed: boolean) => void } | null>(null);
 
   // Load 27 permanently seeded Naga City barangays and restore session from backend API
   useEffect(() => {
@@ -1067,21 +1068,7 @@ export default function App() {
   };
 
   // --- SK OFFICIAL ACTIONS WORKFLOWS ---
-  const handleCreateProgram = async (newP: Program): Promise<boolean> => {
-    const conflicts = detectScheduleConflicts(
-      {
-        title: newP.title,
-        startDate: newP.startDate,
-        endDate: newP.endDate,
-        location: newP.location,
-      },
-      programs
-    );
-    if (conflicts.length > 0) {
-      showGlobalAlert(`Program scheduling conflict detected:\n\n${conflicts.join('\n\n')}`, 'error');
-      return false;
-    }
-
+  const handleCreateProgram = async (newP: Program, override = false): Promise<boolean> => {
     const result = await kabisigApi.createProgram({
       title: newP.title,
       description: newP.description,
@@ -1093,12 +1080,16 @@ export default function App() {
       budget_allocation: newP.budgetAllocation || 0,
       aip_reference: newP.aipReference || undefined,
       status: 'upcoming',
+      override,
       tenant_id: currentTenant?.id,
       image_base64: (newP as any).image_base64 || null,
       image_mime_type: (newP as any).image_mime_type || null
     });
 
     if (!result.success || !result.data) {
+      if (result.status === 409 && !override) {
+        return await new Promise<boolean>((resolve) => setProgramConflict({ program: newP, resolve }));
+      }
       showGlobalAlert(result.message || 'Program could not be saved to the server.', 'error');
       return false;
     }
@@ -1566,6 +1557,18 @@ export default function App() {
 
 
           {/* GLOBAL KABISIG ALERT MODAL */}
+      {programConflict && (
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-slate-950/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <h3 className="text-lg font-black text-slate-900">Schedule conflict detected</h3>
+            <p className="mt-2 text-sm text-slate-600">This program overlaps an active program in the same Barangay. Do you want to create it anyway?</p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" onClick={() => { programConflict.resolve(false); setProgramConflict(null); }} className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600">Cancel</button>
+              <button type="button" onClick={async () => { const pending = programConflict; setProgramConflict(null); const confirmed = await handleCreateProgram(pending.program, true); pending.resolve(confirmed); }} className="rounded-xl bg-[#091d64] px-4 py-2 text-xs font-bold text-white">Create Anyway</button>
+            </div>
+          </div>
+        </div>
+      )}
       {globalAlert && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl text-center">

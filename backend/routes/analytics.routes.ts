@@ -432,7 +432,10 @@ router.get(
     let cityTotalAllocated = 0;
     let cityTotalSpent = 0;
 
+    const seenBudgetIds = new Set<string>();
     allBudgets?.forEach((b) => {
+      if (seenBudgetIds.has(b.id) || b.category === 'General Youth Development Fund') return;
+      seenBudgetIds.add(b.id);
       const allocated = Number(b.allocated_amount) || 0;
       cityTotalAllocated += allocated;
       budgetByCategory[b.category] = (budgetByCategory[b.category] || 0) + allocated;

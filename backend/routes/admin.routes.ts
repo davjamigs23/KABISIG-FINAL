@@ -418,7 +418,7 @@ router.get('/users/lookup', authenticateUser, requireRoles('SUPER_ADMIN'), async
     // Profile is optional — only youth constituents have it.
     const { data: profile, error: profileErr } = await supabaseAdmin
       .from('resident_profile')
-      .select('birthdate, sex')
+      .select('birthdate, sex, address')
       .eq('user_id', user.id)
       .maybeSingle();
     if (profileErr) {
@@ -430,6 +430,7 @@ router.get('/users/lookup', authenticateUser, requireRoles('SUPER_ADMIN'), async
       ...user,
       birthdate: profile?.birthdate || null,
       sex: profile?.sex || null,
+      address: profile?.address || null,
       resident_profile: profile || null,
       has_profile: !!profile
     }, 'User found.');
@@ -442,7 +443,7 @@ router.put('/users/:userId/update-name', authenticateUser, requireRoles('SUPER_A
   try {
     const authUser = (req as AuthRequest).user!;
     const rawId = String(req.params.userId || '').trim();
-    const { full_name, first_name, middle_name, last_name, suffix, email, phone, birthdate, reason } = req.body;
+    const { full_name, first_name, middle_name, last_name, suffix, email, phone, birthdate, address, sex, reason } = req.body;
     if (!full_name) { sendError(res, 'Full name is required.', 400); return; }
 
     // --- Resolve UUID from Email or use as-is if already a UUID ---
@@ -472,7 +473,7 @@ router.put('/users/:userId/update-name', authenticateUser, requireRoles('SUPER_A
 
     // --- Fetch old data for diff ---
     const { data: oldUser } = await supabaseAdmin.from('users').select('full_name, first_name, middle_name, last_name, email, phone').eq('id', userId).single();
-    const { data: oldProfile } = await supabaseAdmin.from('resident_profile').select('birthdate').eq('user_id', userId).single();
+    const { data: oldProfile } = await supabaseAdmin.from('resident_profile').select('birthdate, address, sex').eq('user_id', userId).single();
 
     // --- Fetch target's barangay for audit trail ---
     const { data: _targetBgy } = await supabaseAdmin.from('users').select('barangay(name)').eq('id', userId).maybeSingle();
@@ -503,8 +504,12 @@ router.put('/users/:userId/update-name', authenticateUser, requireRoles('SUPER_A
     if (authError) { sendError(res, 'Auth update failed: ' + authError.message, 500); return; }
 
     // --- Update resident_profile ---
-    if (birthdate) {
-      const { error: profileError } = await supabaseAdmin.from('resident_profile').update({ birthdate: birthdate }).eq('user_id', userId);
+    if (birthdate || address !== undefined || sex !== undefined) {
+      const profileUpdate: Record<string, string | null> = {};
+      if (birthdate) profileUpdate.birthdate = birthdate;
+      if (address !== undefined) profileUpdate.address = address?.trim() || null;
+      if (sex !== undefined) profileUpdate.sex = sex || null;
+      const { error: profileError } = await supabaseAdmin.from('resident_profile').update(profileUpdate).eq('user_id', userId);
       if (profileError) { console.warn('Profile update failed:', profileError.message); }
     }
 
@@ -514,6 +519,8 @@ router.put('/users/:userId/update-name', authenticateUser, requireRoles('SUPER_A
     if (oldUser?.email !== email && email) changesList.push(`Email: ${oldUser?.email || 'None'} &rarr; ${email}`);
     if (oldUser?.phone !== phone) changesList.push(`Phone: ${oldUser?.phone || 'None'} &rarr; ${phone || 'None'}`);
     if (oldProfile?.birthdate !== birthdate && birthdate) changesList.push(`Birthdate: ${oldProfile?.birthdate || 'None'} &rarr; ${birthdate}`);
+    if (oldProfile?.address !== address && address !== undefined) changesList.push(`Address: ${oldProfile?.address || 'None'} &rarr; ${address || 'None'}`);
+    if (oldProfile?.sex !== sex && sex !== undefined) changesList.push(`Biological sex: ${oldProfile?.sex || 'None'} &rarr; ${sex || 'None'}`);
 
     if (changesList.length > 0) {
       const emailSubject = 'Security Alert: Your KABISIG Account Was Updated';
@@ -1949,8 +1956,15 @@ router.post(
       return;
     }
 
+    const { data: authUserData, error: authUserError } = await supabaseAdmin.auth.admin.getUserById(pendingChair.id);
+    if (authUserError || !authUserData.user) {
+      sendError(res, `Failed to load the Chairperson account: ${authUserError?.message || 'Auth account not found.'}`, 500);
+      return;
+    }
+
     const isFullyOnboarded =
-      pendingChair.setup_completed === true
+      authUserData.user.app_metadata?.setup_completed === true
+      || pendingChair.setup_completed === true
       || pendingChair.status === 'active';
     if (isFullyOnboarded) {
       sendError(res, 'This official has already completed onboarding. Please use Transfer Leadership instead.', 400);

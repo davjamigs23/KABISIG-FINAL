@@ -75,7 +75,7 @@ router.get('/announcements', async (_req: Request, res: Response): Promise<void>
   sendSuccess(res, signedAnnouncements, 'Public announcements retrieved.');
 });
 
-// GET /api/public/expenses — approved only, no payee/receipt fields
+// GET /api/public/expenses — approved only, without receipt or personal data
 router.get('/expenses', async (_req: Request, res: Response): Promise<void> => {
   const currentYear = new Date().getFullYear();
   const pageSize = 1000;
@@ -91,6 +91,16 @@ router.get('/expenses', async (_req: Request, res: Response): Promise<void> => {
     budget.id,
     { tenant_id: budget.tenant_id, category: budget.category, fiscal_year: budget.fiscal_year },
   ]));
+  const tenantIds = [...new Set((budgets || []).map((budget) => budget.tenant_id).filter(Boolean))];
+  const { data: barangays, error: barangayError } = await supabaseAdmin
+    .from('barangay')
+    .select('id, name')
+    .in('id', tenantIds);
+  if (barangayError) {
+    sendError(res, `Failed to load public Barangay names: ${barangayError.message}`, 500);
+    return;
+  }
+  const barangayNames = new Map((barangays || []).map((barangay) => [barangay.id, barangay.name]));
   const budgetIds = [...budgetById.keys()];
   const allExpenses: any[] = [];
   const budgetIdPageSize = 200;
@@ -116,7 +126,12 @@ router.get('/expenses', async (_req: Request, res: Response): Promise<void> => {
           sendError(res, 'An approved expense is linked to a budget from a different Barangay.', 500);
           return;
         }
-        allExpenses.push({ ...expense, budget });
+        allExpenses.push({
+          ...expense,
+          barangay_name: barangayNames.get(budget.tenant_id) || null,
+          payee_name: (expense as any).payee_name || (expense as any).payee || (expense as any).supplier || expense.title || 'Various Suppliers',
+          budget,
+        });
       }
       if (!data || data.length < pageSize) break;
     }

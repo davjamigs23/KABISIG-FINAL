@@ -184,6 +184,7 @@ export default function PublicPages({
   const [signUpStep, setSignUpStep] = useState(1);
   const [signUpBarangayId, setSignUpBarangayId] = useState('');
   const [customError, setCustomError] = useState<string | null>(null);
+  const [birthdateError, setBirthdateError] = useState('');
   const [signUpForm, setSignUpForm] = useState({
     firstName: '',
     middleName: '',
@@ -374,6 +375,11 @@ export default function PublicPages({
   };
 
   const handleSignUpSubmit = async () => {
+    if (!signUpForm.birthdate || calculateAgeFromISODate(signUpForm.birthdate) < 15 || calculateAgeFromISODate(signUpForm.birthdate) > 30) {
+      setCustomError('Youth constituents must be between 15 and 30 years old.');
+      setSignUpStep(1);
+      return;
+    }
     if (!signUpForm.educational_status || !signUpForm.employment_status) {
       showPopup("Please go back to Step 3 and fill out Educational Attainment and Employment Status.");
       setSignUpStep(3);
@@ -1141,12 +1147,20 @@ export default function PublicPages({
                             autoComplete="bday"
                             max={getPhilippineDateString()}
                             value={signUpForm.birthdate}
-                            onChange={(event) => setSignUpForm(previous => ({ ...previous, birthdate: event.target.value }))}
+                            onChange={(event) => {
+                              setBirthdateError('');
+                              setSignUpForm(previous => ({ ...previous, birthdate: event.target.value }));
+                            }}
+                            onBlur={() => {
+                              const age = calculateAgeFromISODate(signUpForm.birthdate);
+                              setBirthdateError(!signUpForm.birthdate || age < 15 || age > 30 ? 'Age must be between 15 and 30.' : '');
+                            }}
                             placeholder="YYYY-MM-DD"
                             aria-label="Birthdate"
                             className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none"
                             required
                           />
+                          {birthdateError && <p className="mt-1 text-[10px] font-semibold text-rose-600">{birthdateError}</p>}
                         </div>
                       </div>
                     </div>
@@ -1566,8 +1580,9 @@ export default function PublicPages({
                         if (signUpStep === 1) {
                           if (!signUpForm.registeredRole) { showPopup('Please select your Desired KABISIG Role.'); return; }
                           if (!signUpForm.firstName.trim() || !signUpForm.lastName.trim()) { showPopup('First Name and Last Name are required.'); return; }
-                          if (!signUpForm.birthdate) {
-                            showPopup('Birthdate is required.');
+                          const age = calculateAgeFromISODate(signUpForm.birthdate);
+                          if (!signUpForm.birthdate || age < 15 || age > 30) {
+                            showPopup('Birthdate must be valid and the registrant must be between 15 and 30 years old.');
                             return;
                           }
                           if (!signUpForm.sex) {
@@ -1584,11 +1599,15 @@ export default function PublicPages({
                           if (!signUpForm.guardianContact.trim()) { showPopup('Parent or guardian contact number is required.'); return; }
                         }
                         if (signUpStep === 3) {
-                          if (!signUpForm.educationalLevel.trim()) { showPopup('Status is required.'); return; }
+                          if (!signUpForm.educational_status.trim() || !signUpForm.school.trim() || !signUpForm.employment_status.trim()) { showPopup('Educational level, school, and employment status are required.'); return; }
                         }
                         setSignUpStep(signUpStep + 1);
                       }}
-                      className="w-full mt-4 py-3 bg-[#091d64] hover:bg-[#061344] text-white font-bold rounded-lg shadow-sm transition-all active:scale-[0.99] text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer"
+                      disabled={
+                        (signUpStep === 1 && (!signUpForm.birthdate || calculateAgeFromISODate(signUpForm.birthdate) < 15 || calculateAgeFromISODate(signUpForm.birthdate) > 30))
+                        || (signUpStep === 3 && (!signUpForm.educational_status.trim() || !signUpForm.school.trim() || !signUpForm.employment_status.trim()))
+                      }
+                      className="w-full mt-4 py-3 bg-[#091d64] hover:bg-[#061344] text-white font-bold rounded-lg shadow-sm transition-all active:scale-[0.99] text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Continue
                     </button>

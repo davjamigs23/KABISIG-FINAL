@@ -2672,7 +2672,7 @@ return (
 </div>
                       {/* Sticky Footer */}
                       <div className="flex justify-end gap-2 pt-3 border-t border-slate-200 sticky bottom-0 bg-white">
-                        <button type="button" onClick={() => { setShowCreateProgDrawer(false); }} className="h-10 px-6 text-xs border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 font-bold cursor-pointer transition-colors">Cancel</button>
+                        <button type="button" onClick={() => { setPubmatFile(null); setShowCreateProgDrawer(false); }} className="h-10 px-6 text-xs border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 font-bold cursor-pointer transition-colors">Cancel</button>
                         <button type="submit" className="h-10 px-6 text-xs bg-[#091d64] hover:bg-[#061344] text-white rounded-lg font-bold cursor-pointer transition-colors shadow-sm">{editingProgram ? 'Save Changes' : 'Create Program'}</button>
                       </div>
                     </form>
