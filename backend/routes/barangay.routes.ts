@@ -121,6 +121,22 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
       return;
     }
 
+    const { data: activeChairs, error: activeChairsError } = await supabaseAdmin
+      .from('users')
+      .select('tenant_id')
+      .eq('role_id', 2)
+      .eq('status', 'active')
+      .eq('setup_completed', true);
+    if (activeChairsError) {
+      sendError(res, `Failed to load active chairpersons: ${activeChairsError.message}`, 500);
+      return;
+    }
+
+    const activeChairTenantIds = new Set<string>();
+    activeChairs?.forEach(chair => {
+      if (chair.tenant_id) activeChairTenantIds.add(chair.tenant_id);
+    });
+
     // Include pending officials, but exclude rejected records from the roster.
     const { data: allUsers, error: usersError } = await supabaseAdmin
       .from('users')
@@ -262,6 +278,7 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
         chairperson: chairpersonUser?.full_name || 'Unassigned',
         chairpersonUser: visibleChairpersonUser,
         has_chairperson: Boolean(chairpersonUser),
+        is_registration_open: activeChairTenantIds.has(b.id),
         chairpersonEmail: canViewChairpersonContacts ? (chairpersonUser?.email || '') : '',
         contact: '',
         youthPopulation: youthCountMap.get(b.id) || 0,

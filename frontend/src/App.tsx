@@ -106,6 +106,7 @@ function AppContent() {
   const [currentYouth, setCurrentYouth] = useState<YouthProfile | null>(null);
   const [currentEmail, setCurrentEmail] = useState<string>('');
   const [authReady, setAuthReady] = useState(false);
+  const [pendingLoginMessage, setPendingLoginMessage] = useState<string | null>(null);
 
   // Program registrations and notifications are private and must only load for authenticated roles.
   const programIdsKey = programs.map(program => program.id).join(',');
@@ -300,13 +301,13 @@ function AppContent() {
   // Load 27 permanently seeded Naga City barangays and restore session from backend API
   useEffect(() => {
     const invalidateSession = () => {
-      kabisigApi.logout();
+      kabisigApi.setToken(null);
       setCurrentUser(null);
       setCurrentRole(null);
       setCurrentTenant(null);
       setCurrentYouth(null);
       setCurrentEmail('');
-      setPublicView('landing');
+      setPublicView('login');
     };
     window.addEventListener('kabisig:auth-invalid', invalidateSession);
 
@@ -315,6 +316,8 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
+    const storedToken = kabisigApi.getToken();
+    if (!storedToken) setPublicView('login');
     kabisigApi.getBarangays().then((data) => {
       const sortedBarangays = data
         .map(barangay => ({
@@ -324,8 +327,7 @@ function AppContent() {
         .sort((a, b) => a.name.localeCompare(b.name));
       setTenants(sortedBarangays);
 
-      const token = kabisigApi.getToken();
-      if (token) {
+      if (storedToken) {
         kabisigApi.getCurrentUser().then(user => {
           if (user?.tenant_id) {
             const matchedBgy = sortedBarangays.find(b => b.id === user.tenant_id);
@@ -336,9 +338,11 @@ function AppContent() {
         setAuthReady(true);
       }
     }).catch(error => {
-      console.error('Unable to load barangay registry:', error);
-      setTenants([]);
-      showGlobalAlert('The barangay registry could not be loaded. Please refresh and try again.', 'error');
+      if (error?.message !== 'UNAUTHORIZED') {
+        console.error('Unable to load barangay registry:', error);
+        setTenants([]);
+        showGlobalAlert('The barangay registry could not be loaded. Please refresh and try again.', 'error');
+      }
       setAuthReady(true);
     });
 
@@ -363,17 +367,33 @@ function AppContent() {
     if (token) {
       kabisigApi.getCurrentUser().then(user => {
         if (user) {
-          if (user.status === 'pending' || user.status === 'rejected') {
-            kabisigApi.logout();
-            showGlobalAlert(
-              user.status === 'pending'
-                ? 'Access Denied!\n\nYour account is still pending approval by your Sangguniang Kabataan Chairperson.'
-                : 'Access Denied!\n\nYour account application was rejected.',
-              'error'
-            );
+          const restoredRole = resolveUserRole(user);
+          if (
+            user.status === 'pending'
+            && restoredRole !== 'Super Admin'
+            && restoredRole !== 'Barangay Admin'
+          ) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('kabisig_token');
+            localStorage.removeItem('user');
+            sessionStorage.clear();
+            kabisigApi.setToken(null);
+            setCurrentUser(null);
+            setCurrentRole(null);
+            setCurrentTenant(null);
+            setCurrentYouth(null);
+            setCurrentEmail('');
+            setGlobalAlert(null);
+            setPendingLoginMessage('Your account is still pending approval by your Sangguniang Kabataan Chairperson. Please contact your SK Chairperson.');
+            setPublicView('login');
+            setAuthReady(true);
             return;
           }
-          const restoredRole = resolveUserRole(user);
+          if (user.status === 'rejected') {
+            kabisigApi.logout();
+            showGlobalAlert('Access Denied!\n\nYour account application was rejected.', 'error');
+            return;
+          }
           if (!restoredRole) {
             kabisigApi.logout();
             setCurrentUser(null);
@@ -475,6 +495,38 @@ function AppContent() {
     }
 
   }, []);
+
+  useEffect(() => {
+    const authenticatedUserId = currentUser?.id;
+    const authenticatedTenantId = currentUser?.tenant_id;
+    if (!authenticatedUserId) return;
+
+    let isMounted = true;
+    kabisigApi.getBarangays().then(data => {
+      if (!isMounted) return;
+      const sortedBarangays = data
+        .map(barangay => ({
+          ...barangay,
+          logo: barangay.logo || DEFAULT_BARANGAY_LOGOS[barangay.name] || '',
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      setTenants(sortedBarangays);
+      if (authenticatedTenantId) {
+        const matchedBarangay = sortedBarangays.find(barangay => barangay.id === authenticatedTenantId);
+        if (matchedBarangay) setCurrentTenant(matchedBarangay);
+      }
+    }).catch(error => {
+      if (!isMounted) return;
+      if (error?.message !== 'UNAUTHORIZED') {
+        console.error('Unable to refresh barangay registry:', error);
+        showGlobalAlert('The barangay registry could not be loaded. Please refresh and try again.', 'error');
+      }
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser?.id, currentUser?.tenant_id]);
 
   useEffect(() => {
     if (!currentRole) {
@@ -1137,6 +1189,10 @@ function AppContent() {
   };
 
   const handleUpdateProgram = async (program: Program): Promise<boolean> => {
+    const imageFields = program as Program & {
+      image_base64?: string | null;
+      image_mime_type?: string | null;
+    };
     const result = await kabisigApi.updateProgram(program.id, {
       title: program.title,
       description: program.description,
@@ -1148,6 +1204,12 @@ function AppContent() {
       budget_allocation: program.budgetAllocation,
       aip_reference: program.aipReference || undefined,
       status: program.status.toLowerCase() === 'published' ? 'upcoming' : program.status.toLowerCase(),
+      ...(imageFields.image_base64 && imageFields.image_mime_type
+        ? {
+          image_base64: imageFields.image_base64,
+          image_mime_type: imageFields.image_mime_type,
+        }
+        : {}),
     });
     if (!result.success) {
       showGlobalAlert(result.message || 'Program could not be updated.', 'error');
@@ -1310,6 +1372,7 @@ function AppContent() {
         <PublicPages 
           barangays={tenants}
           programs={programs}
+          loginErrorMessage={pendingLoginMessage}
           activeTab={publicView}
           setActiveTab={(tab) => setPublicView(tab === '_landing' ? 'landing' : (tab as any))}
           onLogin={(email, role, tenantId, userObj) => { if (role === 'Viewer') { kabisigApi.logout(); setCurrentUser(null); setCurrentYouth(null); setCurrentEmail('viewer@kabisig.ph'); setCurrentRole('Viewer'); setPublicView('login'); return; } handleLogin(role, tenantId || '', email, userObj); }}
@@ -1590,9 +1653,24 @@ function AppContent() {
                 return <span key={i} className="block">{line}</span>;
               })}
             </p>
-            <button onClick={() => setGlobalAlert(null)} className="w-full py-3 bg-[#091d64] hover:bg-[#102a83] text-white font-bold rounded-xl text-xs transition-colors cursor-pointer">
-              Okay, I understand
-            </button>
+            <div className="space-y-2">
+              <button onClick={() => setGlobalAlert(null)} className="w-full py-3 bg-[#091d64] hover:bg-[#102a83] text-white font-bold rounded-xl text-xs transition-colors cursor-pointer">
+                Okay, I understand
+              </button>
+              {globalAlert.message.startsWith('Access Denied!') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    localStorage.clear();
+                    sessionStorage.clear();
+                    window.location.reload();
+                  }}
+                  className="w-full rounded-xl border border-slate-200 py-2.5 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50"
+                >
+                  Clear Session
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}</div>

@@ -167,13 +167,16 @@ class KabisigApiClient {
       
       
       
-      if (response.status === 401 && !endpoint.includes('/auth/login')) {
+      if (response.status === 401) {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
         this.setToken(null);
         if (!this.invalidating && typeof window !== 'undefined') {
           this.invalidating = true;
           window.dispatchEvent(new CustomEvent('kabisig:auth-invalid'));
           window.setTimeout(() => { this.invalidating = false; }, 0);
         }
+        throw new Error('UNAUTHORIZED');
       }
       if (!response.ok) {
         return {
@@ -193,6 +196,13 @@ class KabisigApiClient {
         message: json.message,
       };
     } catch (err: any) {
+      if (err?.message === 'UNAUTHORIZED') {
+        return {
+          success: false,
+          message: 'UNAUTHORIZED',
+          error: err,
+        };
+      }
       console.warn(`API call failed for ${endpoint}:`, err.message);
       const isConnectionFailed = err?.name === 'TypeError' || err?.message === 'Failed to fetch';
       return {

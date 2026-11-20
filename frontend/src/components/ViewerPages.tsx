@@ -20,6 +20,7 @@ import {
   Menu,
   UserPlus,
   Home,
+  Calendar,
   CheckCircle2,
   PieChart as PieChartIcon,
   Award,
@@ -1258,15 +1259,15 @@ export default function ViewerPages({
                         {filteredExpenses.map(exp => (
                           <tr key={exp.id} className="hover:bg-slate-50">
                             <td className="px-5 py-3.5">
-                              <span className="font-bold text-slate-800 block">
-                                {(exp as any).description || (exp as any).title || 'N/A'}
+                              <span className={`block font-bold ${exp.title || (exp as any).description ? 'text-slate-800' : 'text-slate-400 italic'}`}>
+                                {exp.title || (exp as any).description || 'Unnamed Transaction'}
                               </span>
                             </td>
                             <td className="px-5 py-3.5 text-right font-mono text-slate-800">
                               ₱{Number((exp as any).gross_amount ?? exp.amount ?? 0).toLocaleString()}
                             </td>
-                            <td className="px-5 py-3.5 text-slate-600">
-                              {(exp as any).supplier_name || (exp as any).payee_name || exp.supplier || (exp as any).title || 'N/A'}
+                            <td className={`px-5 py-3.5 ${exp.title ? 'text-slate-600' : 'text-slate-400 italic'}`}>
+                              {exp.title || 'Unspecified'}
                             </td>
                             <td className="px-5 py-3.5 text-center">
                               <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px] font-bold">
@@ -1360,13 +1361,20 @@ export default function ViewerPages({
                         </div>
                         <p className="text-[10px] text-slate-500 font-bold">Brgy. {sortedTenants.find((t: any) => t.id === prog.barangayId)?.name || "Naga City"}</p>
                           <div key={`img-${prog.id}`} className="relative w-full h-48 mb-3 overflow-hidden rounded-lg bg-slate-100">
-                            <img
-                              src={getImageUrl(prog.image_url || prog.banner_url)}
-                              alt={prog.title || 'Program image'}
-                              loading="lazy"
-                              className="w-full h-full object-contain cursor-pointer transition-transform hover:scale-105"
-                              onClick={() => setLightboxImg(getImageUrl(prog.image_url || prog.banner_url))}
-                            />
+                            {prog.image_url || prog.imageUrl || prog.banner_url ? (
+                              <img
+                                src={getImageUrl(prog.image_url || prog.imageUrl || prog.banner_url)}
+                                alt={prog.title || 'Program image'}
+                                loading="lazy"
+                                className="w-full h-full object-cover cursor-pointer transition-transform hover:scale-105"
+                                onClick={() => setLightboxImg(getImageUrl(prog.image_url || prog.imageUrl || prog.banner_url))}
+                              />
+                            ) : (
+                              <div className="w-full h-full flex flex-col items-center justify-center bg-slate-100">
+                                <Calendar className="w-12 h-12 text-slate-300" />
+                                <span className="text-xs text-slate-400 mt-2">{prog.category || 'Program'}</span>
+                              </div>
+                            )}
                           </div>
 
                         <div className="flex justify-between items-center text-[10px] text-slate-400 font-medium pt-1 border-t border-slate-100">
@@ -1541,28 +1549,26 @@ export default function ViewerPages({
                 <span>DATE: {readAnnounce.datePosted}</span>
               </div>
 
-              <div className="grid grid-cols-1 items-start gap-8 md:grid-cols-12">
-                <div className="space-y-2 text-slate-600 md:col-span-7">
-                  {readAnnounce.what && <p><strong>What:</strong> {readAnnounce.what}</p>}
-                  {readAnnounce.where && <p><strong>Where:</strong> {readAnnounce.where}</p>}
-                  {readAnnounce.when && <p><strong>When:</strong> {readAnnounce.when}</p>}
-                </div>
-                {((readAnnounce as any).image_url || readAnnounce.imageUrl) && (
-                  <div className="w-full flex justify-center my-4 md:col-span-5">
-                    <img
-                      src={(readAnnounce as any).image_url || readAnnounce.imageUrl}
-                      alt={readAnnounce.title}
-                      className="mx-auto object-contain max-h-[350px] rounded-lg shadow-sm cursor-pointer transition-opacity hover:opacity-90"
-                      onClick={() => setLightboxImg((readAnnounce as any).image_url || readAnnounce.imageUrl || null)}
-                    />
-                  </div>
-                )}
+              <div className="space-y-2 text-slate-600">
+                {readAnnounce.what && <p><strong>What:</strong> {readAnnounce.what}</p>}
+                {readAnnounce.where && <p><strong>Where:</strong> {readAnnounce.where}</p>}
+                {readAnnounce.when && <p><strong>When:</strong> {readAnnounce.when}</p>}
               </div>
               <h4 className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Body Content</h4>
               <p className="text-slate-600 leading-relaxed text-sm font-medium whitespace-pre-wrap">
                 {readAnnounce.content}
               </p>
               {readAnnounce.hashtags && <p className="border-t border-slate-100 pt-3 font-semibold text-blue-700">{readAnnounce.hashtags}</p>}
+              {((readAnnounce as any).image_url || readAnnounce.imageUrl) && (
+                <div className="w-full flex justify-center items-center my-6">
+                  <img
+                    src={(readAnnounce as any).image_url || readAnnounce.imageUrl}
+                    alt={readAnnounce.title}
+                    className="mx-auto max-h-[400px] w-auto rounded-lg shadow-md object-contain cursor-pointer transition-opacity hover:opacity-90"
+                    onClick={() => setLightboxImg((readAnnounce as any).image_url || readAnnounce.imageUrl || null)}
+                  />
+                </div>
+              )}
 
               {readAnnounce.attachments && readAnnounce.attachments.length > 0 && (
                 <div className="pt-3 border-t border-slate-100 space-y-2">

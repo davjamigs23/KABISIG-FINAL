@@ -23,7 +23,10 @@ const CreateProgramSchema = z.object({
   override: z.boolean().optional(),
 });
 
-const UpdateProgramSchema = CreateProgramSchema.partial();
+const UpdateProgramSchema = CreateProgramSchema.partial().extend({
+  image_base64: z.string().nullable().optional(),
+  image_mime_type: z.string().nullable().optional(),
+});
 
 const AttendanceScanSchema = z.object({
   qr_payload: z.string().min(1, 'QR payload or digital ID is required'),
@@ -321,7 +324,29 @@ router.put(
       return;
     }
 
-    const { override, ...updateFields } = parseResult.data;
+    const { override, image_base64, image_mime_type, ...updateFields } = parseResult.data;
+    if (Boolean(image_base64) !== Boolean(image_mime_type)) {
+      sendError(res, 'Both program image data and image MIME type are required.', 400);
+      return;
+    }
+
+    let imageUrl: string | undefined;
+    if (image_base64 && image_mime_type) {
+      const buffer = Buffer.from(image_base64, 'base64');
+      const ext = image_mime_type.split('/')[1] || 'png';
+      const fileName = `${existing.tenant_id}/${Date.now()}_pubmat.${ext}`;
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from('program-pubmats')
+        .upload(fileName, buffer, { contentType: image_mime_type, upsert: true });
+
+      if (uploadError) {
+        sendError(res, `Failed to upload program image: ${uploadError.message}`, 500);
+        return;
+      }
+
+      const { data: urlData } = supabaseAdmin.storage.from('program-pubmats').getPublicUrl(fileName);
+      imageUrl = urlData.publicUrl;
+    }
     const updatedStartDate = updateFields.start_date || existing.start_date;
     const updatedEndDate = updateFields.end_date || existing.end_date;
     const updatedStatus = updateFields.status || existing.status;
@@ -351,6 +376,7 @@ router.put(
       .from('program')
       .update({
         ...updateFields,
+        ...(imageUrl ? { image_url: imageUrl } : {}),
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)

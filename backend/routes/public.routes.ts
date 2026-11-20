@@ -251,7 +251,17 @@ router.get('/programs', async (_req: Request, res: Response): Promise<void> => {
     sendError(res, 'Failed to load public programs: ' + error.message, 500);
     return;
   }
-  sendSuccess(res, data || [], 'Public programs retrieved.');
+  const programs = (data || []).map(program => {
+    const imageUrl = typeof program.image_url === 'string' ? program.image_url.trim() : '';
+    const storagePath = imageUrl.match(
+      /\/storage\/v1\/object\/(?:public|sign|authenticated)\/program-pubmats\/([^?#]+)/i
+    )?.[1] || (/^https?:\/\//i.test(imageUrl) ? '' : imageUrl);
+    const resolvedImageUrl = storagePath
+      ? supabaseAdmin.storage.from('program-pubmats').getPublicUrl(storagePath).data.publicUrl || ''
+      : imageUrl;
+    return { ...program, image_url: resolvedImageUrl };
+  });
+  sendSuccess(res, programs, 'Public programs retrieved.');
 });
 
 // GET /api/public/officials — active public roster without contact or address data

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { getPhilippineDateString } from '../lib/dateUtils';
 // Logo served from /public/icon.png (single source of truth)
@@ -103,6 +103,7 @@ export function KabisigLogo({ className = "w-28" }: { className?: string }) {
 
 interface PublicPagesProps {
   onLogin: (email: string, role: UserRole, barangayId?: string, userObj?: any) => void;
+  loginErrorMessage?: string | null;
   barangays: BarangayTenant[];
   programs: Program[];
   activeTab: string;
@@ -130,11 +131,13 @@ function calculateAgeFromISODate(value: string): number {
 
 export default function PublicPages({
   onLogin,
+  loginErrorMessage,
   barangays,
   programs,
   activeTab,
   setActiveTab
 }: PublicPagesProps) {
+  const availableBarangays = barangays.filter(b => b.is_registration_open === true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -144,6 +147,9 @@ export default function PublicPages({
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  useEffect(() => {
+    if (loginErrorMessage) setLoginError(loginErrorMessage);
+  }, [loginErrorMessage]);
   const [isSubmittingSignUp, setIsSubmittingSignUp] = useState(false);
   const [popupMsg, setPopupMsg] = useState<PopupMessage | null>(null);
   const showPopup = (message: string, type: PopupMessage['type'] = 'error') => {
@@ -281,7 +287,15 @@ export default function PublicPages({
         return;
       }
       if (dbUser?.status === 'pending') {
-        showPopup('Access Denied!\n\nYour account is currently PENDING approval by your Sangguniang Kabataan Chairperson.');
+        if (finalRole !== 'Super Admin' && finalRole !== 'Barangay Admin') {
+          localStorage.removeItem('token');
+          localStorage.removeItem('kabisig_token');
+          localStorage.removeItem('user');
+          sessionStorage.clear();
+          kabisigApi.setToken(null);
+          setLoginError('Your account is still pending approval by your Sangguniang Kabataan Chairperson. Please contact your SK Chairperson.');
+          setActiveTab('login');
+        }
         setIsLoggingIn(false);
         return;
       }
@@ -1044,17 +1058,21 @@ export default function PublicPages({
                           <select 
                             value={signUpBarangayId || ""}
                             onChange={(e) => setSignUpBarangayId(e.target.value)}
+                            disabled={availableBarangays.length === 0}
                             className="w-full pl-3.5 pr-10 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-300 focus:border-slate-300 transition-colors font-bold cursor-pointer appearance-none"
                           >
                             <option value="">Select a Barangay</option>
-                            {barangays.map(b => (
-                              <option key={b.id} value={b.id} disabled={!b.chairpersonUser || b.chairpersonUser.status !== 'active'}>
-                                {b.name} {!b.chairpersonUser || b.chairpersonUser.status !== 'active' ? '(No active Chairperson assigned)' : ''}
-                              </option>
+                            {availableBarangays.map(b => (
+                              <option key={b.id} value={b.id}>{b.name}</option>
                             ))}
                           </select>
                           <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                         </div>
+                        {availableBarangays.length === 0 && (
+                          <p className="mt-2 text-xs text-slate-500">
+                            Registration is currently closed for all barangays pending chairperson setup.
+                          </p>
+                        )}
                       </div>
 
                       {/* Rule #1: Split name fields */}

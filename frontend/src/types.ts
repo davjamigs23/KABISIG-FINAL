@@ -19,6 +19,7 @@ export interface BarangayTenant {
   name: string;
   chairperson: string;
   has_chairperson?: boolean;
+  is_registration_open?: boolean;
   chairpersonUser?: {
     id?: string;
     full_name: string;
