@@ -2589,7 +2589,7 @@ useEffect(() => {
               </button>
               </div>
             </div>
-            <form onSubmit={handleInviteOfficialSubmit} className="min-h-0 flex-1 overflow-y-auto p-6 space-y-4 text-left text-xs">
+            <form onSubmit={handleInviteOfficialSubmit} className="min-h-0 max-h-[80vh] flex-1 overflow-y-auto p-6 space-y-4 text-left text-xs">
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Target Barangay</label>
                 <select value={inviteOfficialBarangay?.id || ''}

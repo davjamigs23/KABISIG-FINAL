@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, MapPin, Mail, X, Loader2, Camera, Save, Edit2 } from 'lucide-react';
+import { User, MapPin, Mail, Phone, Calendar, VenusAndMars, X, Loader2, Camera, Save, Edit2 } from 'lucide-react';
 import { kabisigApi } from '../lib/api';
 import ImageCropModal from './ImageCropModal';
 
@@ -15,15 +15,23 @@ export default function ProfileSettings() {
 
   useEffect(() => {
     let cancelled = false;
-    kabisigApi.getCurrentUser().then(u => {
+    Promise.all([kabisigApi.getCurrentUser(), kabisigApi.getProfile()]).then(([u, profileResponse]) => {
       if (!cancelled) {
-        setUser(u);
+        const profile = profileResponse.success ? profileResponse.data as any : null;
+        const mergedUser = {
+          ...u,
+          phone: u?.phone || profile?.mobile || '',
+          birthdate: u?.birthdate || profile?.birthdate || '',
+          address: u?.address || profile?.address || '',
+          sex: u?.sex || profile?.sex || '',
+        };
+        setUser(mergedUser);
         setForm({
-          first_name: u?.first_name || '',
-          middle_name: u?.middle_name || '',
-          last_name: u?.last_name || '',
-          suffix: u?.suffix || '',
-          email: u?.email || ''
+          first_name: mergedUser.first_name || '',
+          middle_name: mergedUser.middle_name || '',
+          last_name: mergedUser.last_name || '',
+          suffix: mergedUser.suffix || '',
+          email: mergedUser.email || ''
         });
         setLoading(false);
       }
@@ -170,6 +178,23 @@ export default function ProfileSettings() {
           <div className="md:col-span-2">
             <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1.5"><Mail className="w-3.5 h-3.5" /> Email Address {Number(user?.role_id) === 1 && <span className="text-rose-500">(Locked)</span>}</label>
             {isEditing && Number(user?.role_id) === 1 ? <div className="flex flex-col"><input type="email" value={form.email} disabled className="w-full p-3 bg-slate-100 border border-slate-300 rounded-xl text-sm font-semibold text-slate-500 cursor-not-allowed" /><span className="text-[10px] text-slate-400 mt-1">Email changes require Super Admin authorization for accountability.</span></div> : <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800">{user?.email || '—'}</div>}
+          </div>
+
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1.5"><Phone className="w-3.5 h-3.5" /> Phone Number</label>
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800">{user?.phone || '—'}</div>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" /> Birthdate</label>
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800">{user?.birthdate || '—'}</div>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5" /> Address</label>
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800">{user?.address || '—'}</div>
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1.5"><VenusAndMars className="w-3.5 h-3.5" /> Biological Sex</label>
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800">{user?.sex || '—'}</div>
           </div>
           
           {Number(user?.role_id) !== 1 && (

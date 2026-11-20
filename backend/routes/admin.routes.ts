@@ -177,7 +177,7 @@ router.get('/all-officials', authenticateUser, requireRoles('SUPER_ADMIN'), asyn
     const { data: users, error: userErr } = await supabaseAdmin
       .from('users')
       .select('id, tenant_id, email, full_name, role_id, status, phone, avatar_url, setup_completed, official_role')
-      .or('role_id.in.(2,3),official_role.not.is.null')
+      .in('role_id', [2, 3])
       .not('tenant_id', 'is', null)
       .order('full_name', { ascending: true });
 

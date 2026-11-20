@@ -242,11 +242,11 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
             id: chairpersonUser.id,
             full_name: chairpersonUser.full_name,
             setup_completed: chairpersonUser.setup_completed,
+            status: chairpersonUser.status,
+            is_pending: chairpersonUser.is_pending,
             ...(canViewChairpersonContacts
               ? {
                   email: chairpersonUser.email,
-                  status: chairpersonUser.status,
-                  is_pending: chairpersonUser.is_pending,
                 }
               : {}),
           }

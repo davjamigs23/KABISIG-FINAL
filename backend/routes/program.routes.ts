@@ -229,7 +229,7 @@ router.post(
       } catch (err) { console.error('Pubmat upload error:', err); }
     }
     // --- END PUBMAT UPLOAD ---
-    const programData = parseResult.data;
+    const { override, ...programData } = parseResult.data;
 
     const tenantId = user.tenant_id;
     if (!tenantId) {
@@ -242,7 +242,7 @@ router.post(
       return;
     }
 
-    if (ACTIVE_PROGRAM_STATUSES.includes(programData.status) && !programData.override) {
+    if (ACTIVE_PROGRAM_STATUSES.includes(programData.status) && !override) {
       const { data: overlappingProgram, error: overlapError } = await findOverlappingProgram(
         tenantId,
         programData.start_date,
@@ -263,7 +263,6 @@ router.post(
       .insert([
         {
           ...programData,
-          override: undefined,
           image_url: imageUrl,
           tenant_id: tenantId,
           created_by: user.id,
