@@ -29,7 +29,8 @@ import PopupDialog, { PopupMessage } from './PopupDialog';
 const isPendingChair = (chair: any) =>
   !chair ? false
     : chair.status?.trim().toLowerCase() === 'pending'
-      || chair.setup_completed === false;
+      || chair.full_name?.trim() === 'SK Chairperson'
+      || chair.full_name?.trim() === 'Pending Invitation';
 
 interface SuperAdminPagesProps {
   barangays: BarangayTenant[];
@@ -399,8 +400,7 @@ useEffect(() => {
     ? 'Pending Invite'
     : (editingBarangay?.chairpersonUser?.full_name || 'Unassigned');
   const editingChairpersonIsActive =
-    editingBarangay?.chairpersonUser?.status?.trim().toLowerCase() === 'active'
-    && editingBarangay?.chairpersonUser?.setup_completed !== false;
+    editingBarangay?.chairpersonUser?.status?.trim().toLowerCase() === 'active';
   const [modalNotice, setModalNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [modalForm, setModalForm] = useState({
     name: '',
@@ -1545,7 +1545,9 @@ useEffect(() => {
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-xs font-medium text-slate-800">
-                                  {b.chairpersonUser?.full_name || 'Unassigned'}
+                                  {isPendingChair(b.chairpersonUser)
+                                    ? 'Pending Invite'
+                                    : (b.chairpersonUser?.full_name || 'Unassigned')}
                                 </span>
                                 {b.chairpersonUser && (
                                   <span className={`shrink-0 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
