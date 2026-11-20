@@ -10,7 +10,17 @@ import type { AuthRequest } from '../types/database.types.js';
 import { resolveName } from '../utils/name.js';
 
 async function sendInvitationEmail(email: string, role: string, setupLink: string): Promise<void> {
-  const htmlMsg = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;"><h1 style="color: #091d64; margin: 0 0 8px 0;">KABISIG</h1><p style="color: #64748b; font-size: 12px; margin: 0 0 24px 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p><h2 style="color: #091d64;">KABISIG secure access link</h2><p style="color: #334155; line-height: 1.6;">Use the secure link below to access KABISIG as ' + role + '. New invitees can complete account setup, and existing officials can sign in:</p><div style="text-align: center; margin: 24px 0;"><a href="' + setupLink + '" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Access KABISIG</a></div><p style="color: #94a3b8; font-size: 11px;">If the button does not work, copy this link: <a href="' + setupLink + '">' + setupLink + '</a></p></div>';
+  const htmlMsg = `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;">
+    <div style="text-align: center; margin-bottom: 20px;">
+      <img src="https://kabisig-naga.vercel.app/images/Kabisig_logo.png" alt="KABISIG Logo" width="120" style="display: block; margin: 0 auto; border-radius: 50%; border: 2px solid #091d64;" />
+    </div>
+    <h1 style="color: #091d64; margin: 0 0 8px 0;">KABISIG</h1>
+    <p style="color: #64748b; font-size: 12px; margin: 0 0 24px 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p>
+    <h2 style="color: #091d64;">KABISIG secure access link</h2>
+    <p style="color: #334155; line-height: 1.6;">Use the secure link below to access KABISIG as ${role}. New invitees can complete account setup, and existing officials can sign in:</p>
+    <div style="text-align: center; margin: 24px 0;"><a href="${setupLink}" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Access KABISIG</a></div>
+    <p style="color: #94a3b8; font-size: 11px;">If the button does not work, copy this link: <a href="${setupLink}">${setupLink}</a></p>
+  </div>`;
   await sendEmail(email, 'KABISIG Account Invitation', htmlMsg);
 }
 

@@ -2,6 +2,7 @@ import NotificationMenu from './NotificationMenu';
 import { formatPhilippineDate, formatPhilippineDateTime } from '../lib/dateUtils';
 /* PDF Export Available */ import { generateBudgetUtilizationReport } from '../lib/pdfReports';
 import { useEffect, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import ProfileSettings from './ProfileSettings';
 import { formatAuditDetails } from '../lib/auditFormatter';
 import { formatOfficialName } from '../lib/officialFormatting';
@@ -25,6 +26,7 @@ import { UserMenu } from './UserMenu';
 import ProgramTrendD3 from './charts/ProgramTrendD3';
 import { kabisigApi } from '../lib/api';
 import PopupDialog, { PopupMessage } from './PopupDialog';
+import { useRealtimeData } from '../hooks/useRealtimeData';
 
 const isPendingChair = (chair: any) =>
   !chair ? false
@@ -53,6 +55,27 @@ export default function SuperAdminPages({
   onLogout,
   userEmail
 }: SuperAdminPagesProps) {
+  const allOfficialsQuery = useQuery({
+    queryKey: ['all-officials'],
+    queryFn: async () => {
+      if (!kabisigApi.getToken()) {
+        throw new Error('Your session has expired. Please sign in again.');
+      }
+      const response = await kabisigApi.getAllOfficials();
+      if (!response.success || !Array.isArray(response.data)) {
+        throw new Error(response.message || 'Unable to load officials.');
+      }
+      return response.data;
+    },
+    enabled: Boolean(kabisigApi.getToken()),
+  });
+  useRealtimeData({
+    table: 'users',
+    queryKey: ['all-officials'],
+    filter: 'role_id=in.(2,3)',
+    enabled: Boolean(kabisigApi.getToken()),
+  });
+
   const toNumber = (value: number | string | null | undefined) => {
     const parsed = typeof value === 'number' ? value : Number(value ?? 0);
     return Number.isFinite(parsed) ? parsed : 0;
@@ -467,11 +490,8 @@ useEffect(() => {
       if (!kabisigApi.getToken()) {
         throw new Error('Your session has expired. Please sign in again.');
       }
-      const response = await kabisigApi.getAllOfficials();
-      if (!response.success || !Array.isArray(response.data)) {
-        throw new Error(response.message || 'Unable to load officials for this Barangay.');
-      }
-      const officialsForThisBarangay = response.data.filter(
+      const response = await allOfficialsQuery.refetch();
+      const officialsForThisBarangay = (response.data || []).filter(
         (official) => String(official.tenant_id) === String(barangay.id)
       );
       setOfficialsRoster(officialsForThisBarangay);
@@ -492,11 +512,8 @@ useEffect(() => {
       if (!kabisigApi.getToken()) {
         throw new Error('Your session has expired. Please sign in again.');
       }
-      const response = await kabisigApi.getAllOfficials();
-      if (!response.success || !Array.isArray(response.data)) {
-        throw new Error(response.message || 'Unable to load officials across all Barangays.');
-      }
-      setAllOfficialsRoster(response.data);
+      const response = await allOfficialsQuery.refetch();
+      setAllOfficialsRoster(response.data || []);
     } catch (error: any) {
       setAllOfficialsError(error?.message || 'Unable to load officials across all Barangays.');
     } finally {

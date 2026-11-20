@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { formatPhilippineDate, getPhilippineDateString } from '../lib/dateUtils';
 import { 
   Building2, 
@@ -50,6 +51,7 @@ import { KabisigLogo } from './PublicPages';
 import { kabisigApi, type PublicOfficialRosterEntry, type PublicOfficialsGroup } from '../lib/api';
 import { formatOfficialName } from '../lib/officialFormatting';
 import PopupDialog, { PopupMessage } from './PopupDialog';
+import { useRealtimeData } from '../hooks/useRealtimeData';
 
 interface ViewerPagesProps {
   tenants: BarangayTenant[];
@@ -77,17 +79,46 @@ export default function ViewerPages({
   tenants,
   programs,
   youthProfiles = [],
-  documents = [],
+  documents: initialDocuments = [],
   resolutions = [],
-  expenses = [],
+  expenses: initialExpenses = [],
   announcements = [],
   onLogout,
   onNavigateSignUp
 }: ViewerPagesProps) {
+  const [activeMenu, setActiveMenu] = useState<'home' | 'transparency' | 'announcements'>('home');
+  const publicExpensesQuery = useQuery({
+    queryKey: ['public-expenses'],
+    queryFn: () => kabisigApi.getPublicExpenses(),
+    initialData: initialExpenses,
+    enabled: activeMenu === 'transparency',
+  });
+  const publicDocumentsQuery = useQuery({
+    queryKey: ['public-documents'],
+    queryFn: () => kabisigApi.getPublicDocuments(),
+    initialData: initialDocuments,
+    enabled: activeMenu === 'transparency',
+  });
+  const expenses = publicExpensesQuery.data || [];
+  const documents = publicDocumentsQuery.data || [];
+  useRealtimeData({
+    table: 'expense',
+    queryKey: ['public-expenses'],
+    filter: 'status=eq.approved',
+    enabled: activeMenu === 'transparency',
+    updateCache: false,
+  });
+  useRealtimeData({
+    table: 'documents',
+    queryKey: ['public-documents'],
+    filter: 'status=eq.approved',
+    enabled: activeMenu === 'transparency',
+    updateCache: false,
+  });
+
   // Navigation: 'home' | 'transparency' | 'announcements'
   const [filterBarangay, setFilterBarangay] = useState<string>('All');
   const [filterCategory, setFilterCategory] = useState<string>('All');
-  const [activeMenu, setActiveMenu] = useState<'home' | 'transparency' | 'announcements'>('home');
   const [lightboxImg, setLightboxImg] = useState<string | null>(null);
 
   // Sub-tab inside Transparency

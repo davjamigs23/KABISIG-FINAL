@@ -29,6 +29,8 @@ import {
   UserRole
 } from './types';
 import { Settings, Info, RefreshCw, Layers, X } from 'lucide-react';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from './lib/queryClient';
 
 function normalizeDocumentCategory(raw: string): string {
   if (!raw) return 'Other';
@@ -72,7 +74,7 @@ function mapBackendProgram(program: any): Program {
   };
 }
 
-export default function App() {
+function AppContent() {
   // --- Client state synchronized with the backend ---
   const [tenants, setTenants] = useState<BarangayTenant[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
@@ -112,6 +114,7 @@ export default function App() {
       setRegistrations([]);
       return;
     }
+
     let cancelled = false;
     (async () => {
       const all: any[] = [];
@@ -124,9 +127,11 @@ export default function App() {
               programId: row.programId || row.program_id || programId,
             })));
           }
+
         } catch (error) {
           console.warn('Registration load failed for', programId, error);
         }
+
       }
       if (!cancelled) setRegistrations(all);
     })();
@@ -1591,5 +1596,13 @@ export default function App() {
           </div>
         </div>
       )}</div>
+  );
+}
+
+export default function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AppContent />
+    </QueryClientProvider>
   );
 }
