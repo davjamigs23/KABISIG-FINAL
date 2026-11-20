@@ -282,7 +282,21 @@ useEffect(() => {
         showPopup('The email history endpoint returned an invalid response.');
         return;
       }
-      setEmailHistoryList(res.data);
+      const validEmailHistory = res.data
+        .map((log: any) => {
+          let details = log?.details;
+          if (typeof details === 'string') {
+            try {
+              details = JSON.parse(details);
+            } catch {
+              return null;
+            }
+          }
+          if (!details || typeof details !== 'object' || !details.new_email) return null;
+          return { ...log, details };
+        })
+        .filter((log): log is any => Boolean(log));
+      setEmailHistoryList(validEmailHistory);
     } catch (error) {
       showPopup(error instanceof Error ? error.message : 'Unable to load email change history.');
     } finally {
@@ -3195,19 +3209,19 @@ useEffect(() => {
                   </div>
                 </div>
 
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 py-4 border-b border-slate-200">
-                  <div className="min-w-0 flex-1 flex flex-col items-start gap-1">
+                <div className="flex flex-col gap-4 w-full p-4 border border-slate-200 rounded-xl bg-slate-50">
+                  <div className="min-w-0 flex-1 pr-4">
                     <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 whitespace-nowrap">
                       SK CHAIRPERSON
                     </span>
                     <span className="block text-sm font-medium text-slate-800 break-words leading-tight">
-                      {editingChairpersonDisplayName}
+                      {editingBarangay?.chairpersonUser?.full_name || 'Unassigned'}
                     </span>
-                    <span className="block break-all text-sm text-slate-600 max-w-[200px]">
+                    <span className="block text-[10px] text-slate-500 truncate mt-1">
                       {editingBarangay?.chairpersonEmail || 'No email recorded'}
                     </span>
                   </div>
-                  <div className="flex flex-wrap gap-2 items-center">
+                  <div className="shrink-0 flex flex-wrap gap-2 justify-end w-full">
                     {editingChairpersonIsPending ? (
                       <>
                         <button
@@ -3232,17 +3246,6 @@ useEffect(() => {
                         >
                           Cancel Invitation
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const barangay = editingBarangay;
-                            setShowModal(false);
-                            if (barangay) handleOpenInviteOfficialModal(barangay, true);
-                          }}
-                          className="px-3 py-2 bg-[#091d64] hover:bg-[#102a83] text-white rounded-lg text-xs font-bold whitespace-nowrap"
-                        >
-                          Invite Official
-                        </button>
                       </>
                     ) : editingChairpersonIsActive ? (
                       <>
@@ -3256,17 +3259,6 @@ useEffect(() => {
                           className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold whitespace-nowrap"
                         >
                           Transfer Leadership
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const barangay = editingBarangay;
-                            setShowModal(false);
-                            if (barangay) handleOpenInviteOfficialModal(barangay, true);
-                          }}
-                          className="px-3 py-2 bg-[#091d64] hover:bg-[#102a83] text-white rounded-lg text-xs font-bold whitespace-nowrap"
-                        >
-                          Invite Official
                         </button>
                       </>
                     ) : (
@@ -3282,23 +3274,22 @@ useEffect(() => {
                         >
                           Assign Chairperson
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const barangay = editingBarangay;
-                            setShowModal(false);
-                            if (barangay) handleOpenInviteOfficialModal(barangay, true);
-                          }}
-                          className="px-3 py-2 bg-[#091d64] hover:bg-[#102a83] text-white rounded-lg text-xs font-bold whitespace-nowrap"
-                        >
-                          Invite Official
-                        </button>
                       </>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const barangay = editingBarangay;
+                        setShowModal(false);
+                        if (barangay) handleOpenInviteOfficialModal(barangay, true);
+                      }}
+                      className="px-3 py-2 bg-[#091d64] hover:bg-[#102a83] text-white rounded-lg text-xs font-bold whitespace-nowrap"
+                    >
+                      Invite Official
+                    </button>
                   </div>
                 </div>
-
-              </div>
+            </div>
             </div>
             <div className="flex justify-end gap-3 p-4 border-t bg-slate-50">
                 <button 
@@ -3485,7 +3476,7 @@ useEffect(() => {
                   ) : emailHistoryList.length === 0 ? (
                     <p className="text-center text-xs text-slate-500">No email changes recorded yet.</p>
                   ) : (
-                    <div className="max-h-60 overflow-y-auto border border-slate-200 rounded-lg">
+                    <div className="max-h-[60vh] overflow-y-auto border border-slate-200 rounded-lg">
                       <div className="w-full overflow-x-auto block">
                     <table className="w-full text-left border-collapse min-w-[600px]">
                       <thead>

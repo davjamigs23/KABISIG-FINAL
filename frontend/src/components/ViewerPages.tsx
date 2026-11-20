@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 
 const getImageUrl = (url: string | null | undefined): string => {
-  if (!url) return '/images/placeholder.png';
+  if (!url) return '/images/Kabisig_logo.png';
   const image = String(url);
   if (/^https?:\/\//i.test(image)) return image;
   const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -1258,18 +1258,27 @@ export default function ViewerPages({
                         {filteredExpenses.map(exp => (
                           <tr key={exp.id} className="hover:bg-slate-50">
                             <td className="px-5 py-3.5">
-                              <span className="font-bold text-slate-800 block">{exp.programTitle}</span>
-                              <span className="text-[10px] text-slate-400 font-mono block">ID: {exp.id}</span>
-                            </td>
-                            <td className="px-5 py-3.5 text-right font-mono text-slate-800">₱{Number(exp.amount || 0).toLocaleString()}</td>
-                            <td className="px-5 py-3.5 text-slate-600">{(exp as any).payee_name || exp.supplier || 'Various Suppliers'}</td>
-                            <td className="px-5 py-3.5 text-center">
-                              <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px] font-bold">
-                                {exp.taxType}
+                              <span className="font-bold text-slate-800 block">
+                                {(exp as any).description || (exp as any).title || 'N/A'}
                               </span>
                             </td>
-                            <td className="px-5 py-3.5 text-right font-mono text-slate-500">₱{(Number(exp.withholdingTax) || 0).toLocaleString()}</td>
-                            <td className="px-5 py-3.5 text-right font-mono text-[#091d64] font-bold">₱{(Number(exp.netAmount ?? exp.amount) || 0).toLocaleString()}</td>
+                            <td className="px-5 py-3.5 text-right font-mono text-slate-800">
+                              ₱{Number((exp as any).gross_amount ?? exp.amount ?? 0).toLocaleString()}
+                            </td>
+                            <td className="px-5 py-3.5 text-slate-600">
+                              {(exp as any).supplier_name || (exp as any).payee_name || exp.supplier || (exp as any).title || 'N/A'}
+                            </td>
+                            <td className="px-5 py-3.5 text-center">
+                              <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px] font-bold">
+                                {(exp as any).tax_type || exp.taxType || 'N/A'}
+                              </span>
+                            </td>
+                            <td className="px-5 py-3.5 text-right font-mono text-slate-500">
+                              ₱{Number((exp as any).tax_amount ?? exp.withholdingTax ?? 0).toLocaleString()}
+                            </td>
+                            <td className="px-5 py-3.5 text-right font-mono text-[#091d64] font-bold">
+                              ₱{Number((exp as any).net_amount ?? exp.netAmount ?? exp.amount ?? 0).toLocaleString()}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -1352,11 +1361,11 @@ export default function ViewerPages({
                         <p className="text-[10px] text-slate-500 font-bold">Brgy. {sortedTenants.find((t: any) => t.id === prog.barangayId)?.name || "Naga City"}</p>
                           <div key={`img-${prog.id}`} className="relative w-full h-48 mb-3 overflow-hidden rounded-lg bg-slate-100">
                             <img
-                              src={getImageUrl(prog.imageUrl || prog.image_url)}
+                              src={getImageUrl(prog.image_url || prog.banner_url)}
                               alt={prog.title || 'Program image'}
                               loading="lazy"
                               className="w-full h-full object-contain cursor-pointer transition-transform hover:scale-105"
-                              onClick={() => setLightboxImg(getImageUrl(prog.imageUrl || prog.image_url))}
+                              onClick={() => setLightboxImg(getImageUrl(prog.image_url || prog.banner_url))}
                             />
                           </div>
 
