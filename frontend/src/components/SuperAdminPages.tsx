@@ -97,6 +97,8 @@ export default function SuperAdminPages({
     if (role.includes('treasurer')) return 'SK Treasurer';
     return 'SK Kagawad';
   };
+  const isDisplayedOfficial = (official: any) =>
+    official?.status === 'active' && official?.setup_completed === true;
   const [activeMenu, setActiveMenu] = useState<string>('dashboard');
   const [popupMsg, setPopupMsg] = useState<PopupMessage | null>(null);
   const [confirmMsg, setConfirmMsg] = useState<PopupMessage | null>(null);
@@ -1755,12 +1757,12 @@ useEffect(() => {
                             {/* Assigned Chairperson (Name & Email) */}
                             <td className="py-3.5 px-4 whitespace-nowrap">
                               {isPendingChairperson ? (
-                                <div className="space-y-0.5">
-                                  <span className="inline-block rounded bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-600">
-                                    PENDING INVITATION
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-200">
+                                    ASSIGNED
                                   </span>
                                   {chairpersonEmail && (
-                                    <span className="mt-1 block text-sm text-slate-600 break-all">
+                                    <span className="block text-sm text-slate-500 break-all">
                                       {chairpersonEmail}
                                     </span>
                                   )}
@@ -2456,7 +2458,7 @@ useEffect(() => {
               )}
               {!officialsRosterLoading && !officialsRosterError && officialsRoster && (
                 (() => {
-                  const uniqueOfficials = dedupeOfficials(officialsRoster);
+                  const uniqueOfficials = dedupeOfficials(officialsRoster.filter(isDisplayedOfficial));
                   const groups = ['SK Chairperson', 'SK Kagawad', 'SK Secretary', 'SK Treasurer'].map((title) => ({
                     title,
                     members: uniqueOfficials.filter((official: any) => getOfficialGroup(official) === title),
@@ -2482,7 +2484,14 @@ useEffect(() => {
                                 </div>
                               )}
                               <div className="min-w-0">
-                                <p className="truncate text-sm font-bold text-slate-800">{formatOfficialName(person.full_name || 'Pending Invitation', person.sex, person.role_id, person.position || person.official_role)}</p>
+                                <p className="flex items-center gap-2 text-sm font-bold text-slate-800">
+                                  <span className="truncate">{formatOfficialName(person.full_name || 'Pending Invitation', person.sex, person.role_id, person.position || person.official_role)}</span>
+                                  {(!person.phone || !person.birthdate) && (
+                                    <span className="shrink-0 rounded bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-rose-700">
+                                      Incomplete
+                                    </span>
+                                  )}
+                                </p>
                                 <p className="truncate text-xs text-slate-500">{person.email || 'No email recorded'}</p>
                                 <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold capitalize ${statusBadge.className}`}>
                                   {statusBadge.label}
@@ -2550,6 +2559,7 @@ useEffect(() => {
                 if (!search || barangay.name.toLowerCase().includes(search)) return true;
                 return allOfficialsRoster.some((official) =>
                   String(official.tenant_id) === String(barangay.id)
+                  && isDisplayedOfficial(official)
                   && [official.full_name, official.email, official.official_role, official.position]
                     .some((value) => String(value || '').toLowerCase().includes(search))
                 );
@@ -2558,6 +2568,7 @@ useEffect(() => {
                 const barangayMatches = !search || barangay.name.toLowerCase().includes(search);
                 const members = dedupeOfficials(allOfficialsRoster.filter((official) =>
                   String(official.tenant_id) === String(barangay.id)
+                  && isDisplayedOfficial(official)
                   && (barangayMatches || [official.full_name, official.email, official.official_role, official.position]
                     .some((value) => String(value || '').toLowerCase().includes(search)))
                 ));
@@ -3178,14 +3189,14 @@ useEffect(() => {
                 </div>
 
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 py-4 border-b border-slate-200">
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 flex flex-col items-start gap-1">
                     <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 whitespace-nowrap">
                       SK CHAIRPERSON
                     </span>
                     <span className="block text-sm font-medium text-slate-800 break-words leading-tight">
                       {editingChairpersonDisplayName}
                     </span>
-                    <span className="block text-[10px] text-slate-500 break-all mt-1">
+                    <span className="block break-all text-sm text-slate-500">
                       {editingBarangay?.chairpersonEmail || 'No email recorded'}
                     </span>
                   </div>
@@ -3467,7 +3478,7 @@ useEffect(() => {
                   ) : emailHistoryList.length === 0 ? (
                     <p className="text-center text-xs text-slate-500">No email changes recorded yet.</p>
                   ) : (
-                    <div className="border border-slate-200 rounded-lg">
+                    <div className="max-h-60 overflow-y-auto border border-slate-200 rounded-lg">
                       <div className="w-full overflow-x-auto block">
                     <table className="w-full text-left border-collapse min-w-[600px]">
                       <thead>
@@ -3557,7 +3568,7 @@ useEffect(() => {
       {/* FIX USER TYPO MODAL */}
       {showFixTypoModal && (
         <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 max-w-[95vw] md:max-w-2xl lg:max-w-md max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full p-6 max-w-[95vw] md:max-w-4xl max-h-[90vh] overflow-y-auto">
             <h3 className="font-bold text-slate-800 text-lg mb-1">Manage User Credentials</h3>
             <p className="text-xs text-slate-500 mb-4">Correct a user&apos;s profile, contact info, or birthdate directly in the database. Leave fields blank to keep them unchanged.</p>
             
@@ -3618,7 +3629,7 @@ useEffect(() => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">First Name</label>
                   <input required type="text" value={typoFirstName} onChange={e => setTypoFirstName(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" />

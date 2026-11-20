@@ -38,8 +38,8 @@ function SetupForm() {
     const accessToken = params.get('access_token');
     const refreshToken = params.get('refresh_token');
     if (accessToken && refreshToken) {
-      sessionStorage.setItem('setup_access_token', accessToken);
-      sessionStorage.setItem('setup_refresh_token', refreshToken);
+      localStorage.setItem('setup_access_token', accessToken);
+      localStorage.setItem('setup_refresh_token', refreshToken);
     }
   }
 
@@ -89,13 +89,6 @@ function SetupForm() {
           setCachedSession(session);
           setIsCheckingSession(false);
           setError(null);
-          if (
-            session.user.user_metadata?.setup_completed === true ||
-            session.user.app_metadata?.setup_completed === true
-          ) {
-            router.replace('/');
-            return;
-          }
           const inviteEmail = queryParams.get('invite_email')?.trim().toLowerCase();
           if (inviteEmail && session.user.email?.toLowerCase() !== inviteEmail) {
             setInviteStatus('invalid');
@@ -117,11 +110,11 @@ function SetupForm() {
         }
         if (sessionResolved) return;
 
-        const storedAccessToken = sessionStorage.getItem('setup_access_token')
-          || sessionStorage.getItem('setup_token');
-        const storedRefreshToken = sessionStorage.getItem('setup_refresh_token');
-        if (storedAccessToken && !sessionStorage.getItem('setup_access_token')) {
-          sessionStorage.setItem('setup_access_token', storedAccessToken);
+        const storedAccessToken = localStorage.getItem('setup_access_token')
+          || localStorage.getItem('setup_token');
+        const storedRefreshToken = localStorage.getItem('setup_refresh_token');
+        if (storedAccessToken && !localStorage.getItem('setup_access_token')) {
+          localStorage.setItem('setup_access_token', storedAccessToken);
         }
         if (storedAccessToken && storedRefreshToken) {
           const { data: storedSessionData, error: storedSessionError } = await client.auth.setSession({
@@ -147,8 +140,8 @@ function SetupForm() {
           hashParams.get('error') || queryParams.get('error');
         const accessToken = hashParams.get('access_token');
         const refreshToken = hashParams.get('refresh_token');
-        if (accessToken) sessionStorage.setItem('setup_access_token', accessToken);
-        if (refreshToken) sessionStorage.setItem('setup_refresh_token', refreshToken);
+        if (accessToken) localStorage.setItem('setup_access_token', accessToken);
+        if (refreshToken) localStorage.setItem('setup_refresh_token', refreshToken);
         const recoveryAccessToken = accessToken || storedAccessToken;
         const recoveryRefreshToken = refreshToken || storedRefreshToken;
         if ((accessToken || refreshToken) && recoveryAccessToken && recoveryRefreshToken) {
@@ -177,7 +170,7 @@ function SetupForm() {
         if (sessionResolved) return;
         if (hashParams.get('error') === 'access_denied' || hashParams.get('error_code') === 'otp_expired') {
           sessionResolved = true;
-          const canRecoverSession = Boolean(window.location.hash || sessionStorage.getItem('setup_access_token') || sessionStorage.getItem('setup_token'));
+          const canRecoverSession = Boolean(window.location.hash || localStorage.getItem('setup_access_token') || localStorage.getItem('setup_token'));
           setError(
             canRecoverSession
               ? 'Unable to restore your invitation session. Please reopen the invitation link.'
@@ -200,7 +193,7 @@ function SetupForm() {
               }
               sessionResolved = true;
               setInviteStatus('invalid');
-              const hasRecoverableLink = Boolean(window.location.hash || sessionStorage.getItem('setup_access_token') || sessionStorage.getItem('setup_token'));
+              const hasRecoverableLink = Boolean(window.location.hash || localStorage.getItem('setup_access_token') || localStorage.getItem('setup_token'));
               setError(
                 !hasRecoverableLink
                   ? authError || INVALID_INVITE_MESSAGE
@@ -222,7 +215,7 @@ function SetupForm() {
           sessionResolved = true;
           setInviteStatus('invalid');
           setError(
-            !window.location.hash && !sessionStorage.getItem('setup_access_token') && !sessionStorage.getItem('setup_token')
+            !window.location.hash && !localStorage.getItem('setup_access_token') && !localStorage.getItem('setup_token')
               ? INVALID_INVITE_MESSAGE
               : verificationError instanceof Error
                 ? verificationError.message
@@ -314,21 +307,6 @@ function SetupForm() {
         return;
       }
       const sessionEmail = session.user.email?.trim().toLowerCase() || null;
-      if (
-        session.user.user_metadata?.setup_completed === true ||
-        session.user.app_metadata?.setup_completed === true
-      ) {
-        router.replace('/');
-        setError('This account has already completed setup. Please sign in.');
-        return;
-      }
-      if (
-        session.user.user_metadata?.setup_completed !== false ||
-        session.user.app_metadata?.setup_completed !== false
-      ) {
-        setError('This invitation is not pending setup. Please contact the Super Admin.');
-        return;
-      }
       if (!sessionEmail || sessionEmail !== cleanEmail) {
         setError('The email address must match the invitation.');
         return;
@@ -362,9 +340,9 @@ function SetupForm() {
         }
         return;
       }
-      sessionStorage.removeItem('setup_access_token');
-      sessionStorage.removeItem('setup_token');
-      sessionStorage.removeItem('setup_refresh_token');
+      localStorage.removeItem('setup_access_token');
+      localStorage.removeItem('setup_token');
+      localStorage.removeItem('setup_refresh_token');
       const loginRes = await kabisigApi.login(sessionEmail, password);
       if (!loginRes.success) {
         setError('Account configured. Please sign in manually with your new password.');

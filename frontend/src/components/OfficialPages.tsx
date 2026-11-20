@@ -64,6 +64,16 @@ import {
   Sparkles,
   ArrowRight
 , Loader2, AlertCircle} from 'lucide-react';
+
+const getProgramImageUrl = (program: any): string | null => {
+  const image = program?.imageUrl || program?.image_url;
+  if (!image) return null;
+  if (/^https?:\/\//i.test(image)) return image;
+  const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  return baseUrl
+    ? `${baseUrl}/storage/v1/object/public/program-pubmats/${String(image).split('/').map(encodeURIComponent).join('/')}`
+    : image;
+};
 import { QRCodeSVG } from 'qrcode.react';
 import { LiveCameraScanner } from './LiveCameraScanner';
 import { 
@@ -178,6 +188,16 @@ const hasProgramEnded = (endDate?: string | Date | null): boolean => {
   if (Number.isNaN(end.getTime())) return false;
   end.setHours(23, 59, 59, 999);
   return end < new Date();
+};
+
+const getResolutionClosingLabel = (endDate: string): string => {
+  const endDateKey = getPhilippineDateString(endDate);
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+  if (endDateKey === getPhilippineDateString(today)) return 'Closes Today';
+  if (endDateKey === getPhilippineDateString(tomorrow)) return 'Closes Tomorrow';
+  return `Closes: ${formatPhilippineDate(endDate)}`;
 };
 
 export default function OfficialPages({
@@ -2117,10 +2137,18 @@ export default function OfficialPages({
     const scoredProfiles = profileInsights.filter(
       (insight): insight is typeof insight & { engagementScore: number } => insight.engagementScore !== null
     );
+    const analyticsScores = (engagementAnalytics?.youth_scores || [])
+      .map(metric => Number((metric as any).engagement_score))
+      .filter((score): score is number => Number.isFinite(score));
+    const analyticsAverage = Number((engagementAnalytics as any)?.average_engagement_score);
 
     return {
       approvedYouthCount: profileInsights.length,
-      averageEngagementScore: scoredProfiles.length > 0
+      averageEngagementScore: Number.isFinite(analyticsAverage)
+        ? Math.round(analyticsAverage)
+        : analyticsScores.length > 0
+          ? Math.round(analyticsScores.reduce((total, score) => total + score, 0) / analyticsScores.length)
+          : scoredProfiles.length > 0
         ? Math.round(scoredProfiles.reduce((total, insight) => total + insight.engagementScore, 0) / scoredProfiles.length)
         : null,
       topRecommendation: recommendations[0] || null,
@@ -2361,7 +2389,7 @@ export default function OfficialPages({
                         </div>
                       )}
                       {(announcement.imageUrl || (announcement as any).image_url) && (
-                        <div className="flex justify-center md:col-span-5">
+                        <div className="flex justify-center items-center w-full md:col-span-5">
                           <img
                             src={announcement.imageUrl || (announcement as any).image_url}
                             alt={announcement.title}
@@ -3649,16 +3677,14 @@ export default function OfficialPages({
                           <span className="px-2 py-0.5 bg-green-50 text-green-700 rounded text-[9px] font-extrabold uppercase">{p.status}</span>
                         </div>
                         <h4 className="font-bold text-slate-800 text-sm">{formatProgramTitle(p.title)}</h4>
-                        {((p as any).image_url || p.imageUrl) && (
-                          <div className="w-full h-40 bg-slate-100 rounded-lg overflow-hidden">
-                            <img
-                              src={(p as any).image_url || p.imageUrl}
-                              alt={p.title}
-                              className="w-full h-full object-contain cursor-pointer transition-transform hover:scale-105"
-                              onClick={() => setLightboxImg((p as any).image_url || p.imageUrl || null)}
-                            />
-                          </div>
-                        )}
+                        <div className="w-full h-40 bg-slate-100 rounded-lg overflow-hidden">
+                          <img
+                            src={getProgramImageUrl(p) || '/placeholder.png'}
+                            alt={p.title}
+                            className="w-full h-full object-contain cursor-pointer transition-transform hover:scale-105"
+                            onClick={() => setLightboxImg(getProgramImageUrl(p))}
+                          />
+                        </div>
                         <p className="text-slate-500 text-xs line-clamp-3 leading-relaxed">{p.description}</p>
                       </div>
                       <div className="bg-slate-50 border-t border-slate-50 p-4 text-[11px] space-y-1 text-slate-500 font-medium">
@@ -4408,7 +4434,7 @@ export default function OfficialPages({
                             <td className="px-6 py-4 font-mono font-bold text-[#091d64] whitespace-nowrap">{r.resolutionNumber || r.number || ''}</td>
                             <td className="px-6 py-4 text-slate-800 leading-normal font-semibold max-w-sm whitespace-nowrap">
                               <div>{r.title}</div>
-                              {r.end_date && <span className="text-[10px] text-slate-400 font-medium">Closes: {formatPhilippineDate(r.end_date)}</span>}
+                              {r.end_date && <span className="text-[10px] text-slate-400 font-medium">{getResolutionClosingLabel(r.end_date)}</span>}
                             </td>
                             <td className="px-6 py-4 text-center font-mono font-bold text-emerald-600 whitespace-nowrap">
                               {r.votesSupport} Supporting

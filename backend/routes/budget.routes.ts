@@ -162,7 +162,7 @@ router.post(
   '/',
   authenticateUser,
   requireActiveUser,
-  requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'), requireTreasurerOnly,
+  requireRoles('SK_OFFICIAL', 'SUPER_ADMIN'), requireTreasurerOnly,
   async (req: Request, res: Response): Promise<void> => {
     const parseResult = CreateBudgetSchema.safeParse(req.body);
     if (!parseResult.success) {

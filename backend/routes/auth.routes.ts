@@ -1207,22 +1207,9 @@ router.post('/setup-chairperson-password', authenticateUser, async (req: Request
     );
     return;
   }
-  if (setupAuthUser.user_metadata?.setup_completed === true || setupAuthUser.app_metadata?.setup_completed === true) {
-    sendError(res, 'This link has already been used', 400);
-    return;
-  }
-  if (
-    setupAuthUser.user_metadata?.setup_completed !== false ||
-    setupAuthUser.app_metadata?.setup_completed !== false ||
-    Number(setupAuthUser.user_metadata?.role_id) !== ROLE_IDS.BARANGAY_ADMIN
-  ) {
-    sendError(res, 'This invitation is not valid for account setup.', 400);
-    return;
-  }
-
   const { data: existingUser } = await supabaseAdmin
     .from('users')
-    .select('id, tenant_id, role_id, full_name, first_name, middle_name, last_name, suffix, status, barangay(name)')
+    .select('id, tenant_id, role_id, full_name, first_name, middle_name, last_name, suffix, status, setup_completed, barangay(name)')
     .eq('email', normalizedEmail)
     .maybeSingle();
 
@@ -1235,6 +1222,16 @@ router.post('/setup-chairperson-password', authenticateUser, async (req: Request
     String(setupAuthUser.user_metadata?.tenant_id) !== String(tenantId)
   ) {
     sendError(res, 'No Chairperson invitation found for this email. Contact the SK Federation President.', 403);
+    return;
+  }
+  const isPendingChairpersonSetup =
+    ['pending', 'pending_invite'].includes(String(existingUser.status).toLowerCase())
+    || existingUser.setup_completed === false;
+  if (
+    Number(setupAuthUser.user_metadata?.role_id) !== ROLE_IDS.BARANGAY_ADMIN
+    || !isPendingChairpersonSetup
+  ) {
+    sendError(res, 'This invitation is not valid for account setup.', 400);
     return;
   }
   const userId = setupAuthUser.id;
@@ -1506,22 +1503,9 @@ router.post('/setup-official-password', async (req: Request, res: Response): Pro
     );
     return;
   }
-  if (setupAuthUser.user_metadata?.setup_completed === true || setupAuthUser.app_metadata?.setup_completed === true) {
-    sendError(res, 'This link has already been used', 400);
-    return;
-  }
-  if (
-    setupAuthUser.user_metadata?.setup_completed !== false ||
-    setupAuthUser.app_metadata?.setup_completed !== false ||
-    Number(setupAuthUser.user_metadata?.role_id) !== ROLE_IDS.SK_OFFICIAL
-  ) {
-    sendError(res, 'This invitation is not valid for account setup.', 400);
-    return;
-  }
-
   const { data: existingUser } = await supabaseAdmin
     .from('users')
-    .select('id, tenant_id, role_id, full_name, first_name, middle_name, last_name, suffix, status, barangay(name)')
+    .select('id, tenant_id, role_id, full_name, first_name, middle_name, last_name, suffix, status, setup_completed, barangay(name)')
     .eq('email', normalizedEmail)
     .maybeSingle();
 
@@ -1534,6 +1518,16 @@ router.post('/setup-official-password', async (req: Request, res: Response): Pro
     String(setupAuthUser.user_metadata?.tenant_id) !== String(tenantId)
   ) {
     sendError(res, 'No SK Official invitation found for this email. Please contact your SK Federation President.', 403);
+    return;
+  }
+  const isPendingOfficialSetup =
+    ['pending', 'pending_invite'].includes(String(existingUser.status).toLowerCase())
+    || existingUser.setup_completed === false;
+  if (
+    Number(setupAuthUser.user_metadata?.role_id) !== ROLE_IDS.SK_OFFICIAL
+    || !isPendingOfficialSetup
+  ) {
+    sendError(res, 'This invitation is not valid for account setup.', 400);
     return;
   }
   const userId = setupAuthUser.id;

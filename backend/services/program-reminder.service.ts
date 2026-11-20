@@ -26,26 +26,23 @@ export async function checkProgramReminders() {
       const target = targets.find(t => start.toDateString() === t.date.toDateString());
       if (!target) continue; // Skip if not a 7-3-1 day
 
-      // Get registered youths
+      // Reminders are only for registered Youth Constituents.
       const { data: regs } = await supabaseAdmin
         .from('program_registrations')
         .select('user_id')
         .eq('program_id', prog.id);
 
-      // Get SK Officials (Chairperson, Kagawad, Secretary, Treasurer)
-      const { data: officials } = await supabaseAdmin
+      const registeredUserIds = [...new Set((regs || []).map((registration) => registration.user_id))];
+      if (registeredUserIds.length === 0) continue;
+
+      const { data: youths } = await supabaseAdmin
         .from('users')
         .select('id')
         .eq('tenant_id', prog.tenant_id)
-        .in('role_id', [2, 3]); // Role 2 = Chair, Role 3 = Officials
+        .eq('role_id', 4)
+        .in('id', registeredUserIds);
 
-      const userIds = [
-        ...(regs?.map(r => r.user_id) || []),
-        ...(officials?.map(o => o.id) || [])
-      ];
-
-      // Use unique user IDs
-      const uniqueUserIds = [...new Set(userIds)];
+      const uniqueUserIds = youths?.map((youth) => youth.id) || [];
       
       // Create the notification type string for this specific day
       const nType = `PROGRAM_REMINDER_${prog.id}_${prog.start_date.split('T')[0]}_${target.days}D`;

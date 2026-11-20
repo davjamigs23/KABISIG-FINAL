@@ -41,7 +41,7 @@ async function inviteWithBrevo(
 ): Promise<{ data: any; error: any }> {
   const inviteOptions = {
     ...options,
-    expiresIn: 18000,
+    expiresIn: 60 * 60 * 24 * 30,
     data: {
       ...(options.data || {}),
       setup_completed: false,
@@ -295,10 +295,10 @@ router.post(
 
     const { data: chairperson, error: chairpersonError } = await supabaseAdmin
       .from('users')
-      .select('id, email, full_name, status')
+      .select('id, email, full_name, status, setup_completed')
       .eq('tenant_id', barangay_id)
       .eq('role_id', 2)
-      .in('status', ['active', 'pending'])
+      .in('status', ['active', 'pending', 'pending_invite'])
       .maybeSingle();
     if (chairpersonError) {
       sendError(res, `Failed to load the Barangay Chairperson: ${chairpersonError.message}`, 500);
@@ -315,9 +315,11 @@ router.post(
       return;
     }
 
-    const isFullyOnboarded =
+    const isPendingInvitation = ['pending', 'pending_invite'].includes(String(chairperson.status).toLowerCase());
+    const isFullyOnboarded = !isPendingInvitation && (
       authUserData.user.app_metadata?.setup_completed === true
-      || chairperson.status === 'active';
+      || chairperson.setup_completed === true
+    );
     if (isFullyOnboarded) {
       sendError(res, 'This official has already completed onboarding. Please use Transfer Leadership instead.', 400);
       return;
@@ -328,6 +330,7 @@ router.post(
       sendError(res, 'The Chairperson email does not match the linked authentication account.', 409);
       return;
     }
+
     const setupUrl = `${FRONTEND_URL}/chairperson-setup?invite_email=${encodeURIComponent(cleanEmail)}&role=chairperson&tenant_id=${barangay_id}`;
     let linkData: any = null;
     let linkError: unknown = null;
@@ -335,7 +338,7 @@ router.post(
       const generatedLink = await supabaseAdmin.auth.admin.generateLink({
         type: 'magiclink',
         email: cleanEmail,
-        options: { redirectTo: setupUrl, expiresIn: 18000 } as any,
+        options: { redirectTo: setupUrl, expiresIn: 60 * 60 * 24 * 30 } as any,
       });
       linkData = generatedLink.data;
       linkError = generatedLink.error;
@@ -361,6 +364,22 @@ router.post(
         502,
         { link_type: 'magiclink', action_link: actionLink, setup_url: setupUrl }
       );
+      return;
+    }
+
+    const { error: invitationLinkUpdateError } = await supabaseAdmin
+      .from('users')
+      .update({
+        invitation_status: 'email_sent',
+        invitation_method: 'email_invitation',
+        email_delivery: true,
+        link_type: 'magiclink',
+        setup_url: actionLink,
+        action_link: actionLink,
+      })
+      .eq('id', chairperson.id);
+    if (invitationLinkUpdateError) {
+      sendError(res, `Failed to save the refreshed invitation link: ${invitationLinkUpdateError.message}`, 500);
       return;
     }
 
@@ -811,6 +830,7 @@ router.post(
             suffix: (existingUser as any).suffix || null,
             email: cleanEmail,
             status: 'active',
+            setup_completed: false,
             approved_by: admin.id,
             updated_at: new Date().toISOString(),
           })
@@ -841,6 +861,7 @@ router.post(
             tenant_id: barangay_id,
             role_id: 2, // BARANGAY_ADMIN
             status: 'active',
+            setup_completed: false,
             approved_by: admin.id,
             updated_at: new Date().toISOString(),
             full_name: ensureHon(_preserveChair.full_name || existingUser.full_name || 'Pending Invitation'),
@@ -874,6 +895,7 @@ router.post(
           email: cleanEmail,
           phone: null,
           status: 'active',
+          setup_completed: false,
           approved_by: admin.id,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -931,6 +953,7 @@ router.post(
           email: cleanEmail,
           phone: null,
           status: 'active',
+          setup_completed: false,
           approved_by: admin.id,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -983,7 +1006,7 @@ router.post(
           email: cleanEmail,
           options: {
             redirectTo: `${FRONTEND_URL}/chairperson-setup?invite_email=${encodeURIComponent(cleanEmail)}&role=chairperson&tenant_id=${barangay_id}`,
-            expiresIn: 18000,
+            expiresIn: 60 * 60 * 24 * 30,
           } as any,
         });
         if (linkError) throw linkError;
@@ -1308,6 +1331,7 @@ router.post(
           suffix: resolvedA.suffix || null,
           email: cleanEmail,
           status: 'active',
+          setup_completed: false,
           approved_by: admin.id,
           updated_at: new Date().toISOString(),
         }).eq('email', cleanEmail);
@@ -1330,6 +1354,7 @@ router.post(
           tenant_id: barangay_id,
           role_id: 3,
           status: 'active',
+          setup_completed: false,
           approved_by: admin.id,
           updated_at: new Date().toISOString(),
           full_name: _preserveOff.full_name || existingUser.full_name || 'Pending Invitation',
@@ -1363,6 +1388,7 @@ router.post(
           email: cleanEmail,
           phone: null,
           status: 'active',
+          setup_completed: false,
           approved_by: admin.id,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -1424,6 +1450,7 @@ router.post(
         email: cleanEmail,
         phone: null,
         status: 'active',
+        setup_completed: false,
         approved_by: admin.id,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -1472,7 +1499,7 @@ router.post(
         const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
           type: 'magiclink',
           email: cleanEmail,
-          options: { redirectTo: redirectUrl, expiresIn: 18000 } as any,
+          options: { redirectTo: redirectUrl, expiresIn: 60 * 60 * 24 * 30 } as any,
         });
         if (linkError) throw linkError;
         actionLink = linkData?.properties?.action_link || '';
@@ -1813,7 +1840,7 @@ router.post(
             const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
               type: 'magiclink',
               email: cleanSuccessorEmail,
-              options: { redirectTo: redirectUrl, expiresIn: 18000 } as any,
+              options: { redirectTo: redirectUrl, expiresIn: 60 * 60 * 24 * 30 } as any,
             });
             if (linkError) throw linkError;
             if (linkData?.properties?.action_link) {
@@ -1958,7 +1985,7 @@ router.post(
       .select('id, email, full_name, first_name, last_name, role_id, status, setup_completed')
       .eq('tenant_id', barangay_id)
       .eq('role_id', 2)
-      .in('status', ['active', 'pending'])
+      .in('status', ['active', 'pending', 'pending_invite'])
       .maybeSingle();
 
     if (!pendingChair) {
@@ -1972,17 +1999,18 @@ router.post(
       return;
     }
 
-    const isFullyOnboarded =
+    const isPendingInvitation = ['pending', 'pending_invite'].includes(String(pendingChair.status).toLowerCase());
+    const isFullyOnboarded = !isPendingInvitation && (
       authUserData.user.app_metadata?.setup_completed === true
       || pendingChair.setup_completed === true
-      || pendingChair.status === 'active';
+    );
     if (isFullyOnboarded) {
       sendError(res, 'This official has already completed onboarding. Please use Transfer Leadership instead.', 400);
       return;
     }
 
     const isPendingInvite =
-      pendingChair.status === 'pending'
+      isPendingInvitation
       || pendingChair.setup_completed === false
       || pendingChair.full_name === 'Pending Invitation'
       || (!pendingChair.first_name && !pendingChair.last_name);

@@ -426,16 +426,29 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
     const userUpdates: Record<string, any> = {
       updated_at: new Date().toISOString(),
     };
-    if (body.name || body.full_name || body.first_name || body.last_name) {
+    if (
+      body.name !== undefined
+      || body.full_name !== undefined
+      || body.first_name !== undefined
+      || body.middle_name !== undefined
+      || body.last_name !== undefined
+      || body.suffix !== undefined
+    ) {
       const _resolvedProfile = resolveName({
         payload: {
-          first_name: body.first_name,
-          middle_name: body.middle_name,
-          last_name: body.last_name,
-          suffix: body.suffix,
-          full_name: body.full_name || body.name,
+          first_name: body.first_name !== undefined ? body.first_name : user.first_name,
+          middle_name: body.middle_name !== undefined ? body.middle_name : user.middle_name,
+          last_name: body.last_name !== undefined ? body.last_name : user.last_name,
+          suffix: body.suffix !== undefined ? body.suffix : user.suffix,
+          full_name: body.full_name !== undefined ? body.full_name : body.name,
         },
-        existing: { full_name: user.full_name || null },
+        existing: {
+          full_name: user.full_name || null,
+          first_name: user.first_name || null,
+          middle_name: user.middle_name || null,
+          last_name: user.last_name || null,
+          suffix: user.suffix || null,
+        },
       });
       userUpdates.full_name = _resolvedProfile.full_name;
       userUpdates.first_name = _resolvedProfile.first_name || null;
@@ -443,8 +456,9 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
       userUpdates.last_name = _resolvedProfile.last_name || null;
       userUpdates.suffix = _resolvedProfile.suffix || null;
     }
-    if (body.mobile || body.phone) {
-      userUpdates.phone = (body.mobile || body.phone).trim();
+    if (body.mobile !== undefined || body.phone !== undefined) {
+      const submittedPhone = body.mobile !== undefined ? body.mobile : body.phone;
+      userUpdates.phone = typeof submittedPhone === 'string' ? submittedPhone.trim() || null : null;
     }
     const { error: userUpdateError } = await supabaseAdmin.from('users').update(userUpdates).eq('id', userId);
     if (userUpdateError) {
@@ -459,7 +473,19 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
       .eq('id', userId)
       .single();
 
-    const tenantId = dbUser?.tenant_id || existingProfile?.tenant_id || authenticatedUser.tenant_id;
+    let tenantId = dbUser?.tenant_id || existingProfile?.tenant_id || authenticatedUser.tenant_id;
+    if (!tenantId && user.role_id === 1) {
+      const { data: fallbackTenant, error: fallbackTenantError } = await supabaseAdmin
+        .from('barangay')
+        .select('id')
+        .limit(1)
+        .maybeSingle();
+      if (fallbackTenantError) {
+        sendError(res, `Failed to resolve a profile tenant for Super Admin: ${fallbackTenantError.message}`, 500);
+        return;
+      }
+      tenantId = fallbackTenant?.id || null;
+    }
     const birthdate = body.birthdate || existingProfile?.birthdate || '2005-01-01';
     const sex = body.sex || existingProfile?.sex || 'Female';
     const address = body.address || existingProfile?.address || 'Naga City';
@@ -504,12 +530,17 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
       residentPayload.qr_code_url = body.qrCode || body.qr_code_url;
     }
 
-    const { error: profileUpsertErr } = await supabaseAdmin
-      .from('resident_profile')
-      .upsert(residentPayload, { onConflict: 'user_id' });
+    if (tenantId) {
+      const { error: profileUpsertErr } = await supabaseAdmin
+        .from('resident_profile')
+        .upsert(residentPayload, { onConflict: 'user_id' });
 
-    if (profileUpsertErr) {
-      sendError(res, `Failed to save resident profile: ${profileUpsertErr.message}`, 500);
+      if (profileUpsertErr) {
+        sendError(res, `Failed to save resident profile: ${profileUpsertErr.message}`, 500);
+        return;
+      }
+    } else if (user.role_id !== 1) {
+      sendError(res, 'A valid Barangay tenant is required to save this profile.', 400);
       return;
     }
 
@@ -1648,7 +1679,6 @@ router.get(
       .select('id, full_name, email, phone, status, tenant_id, avatar_url')
       .eq('tenant_id', user.tenant_id)
       .eq('role_id', 4)
-      .in('status', ['active', 'pending', 'rejected']);
 
     if (userErr) {
       sendError(res, 'Failed to load directory: ' + userErr.message, 500);

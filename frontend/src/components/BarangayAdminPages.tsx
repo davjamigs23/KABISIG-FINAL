@@ -912,7 +912,15 @@ export default function BarangayAdminPages({
         ? [calculateEngagementScore(attendanceCount, activeProgramCount).score]
         : [];
     });
-    const averageEngagementScore = engagementScores.length > 0
+    const analyticsScores = (engagementAnalytics?.youth_scores || [])
+      .map(metric => Number((metric as any).engagement_score))
+      .filter((score): score is number => Number.isFinite(score));
+    const analyticsAverage = Number((engagementAnalytics as any)?.average_engagement_score);
+    const averageEngagementScore = Number.isFinite(analyticsAverage)
+      ? Math.round(analyticsAverage)
+      : analyticsScores.length > 0
+      ? Math.round(analyticsScores.reduce((total, score) => total + score, 0) / analyticsScores.length)
+      : engagementScores.length > 0
       ? Math.round(engagementScores.reduce((total, score) => total + score, 0) / engagementScores.length)
       : null;
 

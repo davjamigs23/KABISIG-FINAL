@@ -26,6 +26,16 @@ import {
   Sparkles,
   ArrowRight
 } from 'lucide-react';
+
+const getProgramImageUrl = (program: any): string | null => {
+  const image = program?.imageUrl || program?.image_url;
+  if (!image) return null;
+  if (/^https?:\/\//i.test(image)) return image;
+  const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  return baseUrl
+    ? `${baseUrl}/storage/v1/object/public/program-pubmats/${String(image).split('/').map(encodeURIComponent).join('/')}`
+    : image;
+};
 import { 
   BarChart, 
   Bar, 
@@ -367,8 +377,9 @@ export default function ViewerPages({
 
   // Recharts Pie Chart F2: Category expense allocations
   const expenseCategoryTotals = expenses.reduce<Record<string, number>>((totals, exp) => {
-    const category = String(exp.category || (exp as any).tax_type || 'Uncategorized');
-    totals[category] = (totals[category] || 0) + (Number(exp.netAmount ?? exp.amount) || 0);
+    const category = String((exp as any).category || (exp as any).budget?.category || 'Uncategorized');
+    const netAmount = Number((exp as any).net_amount ?? exp.netAmount ?? exp.amount) || 0;
+    totals[category] = (totals[category] || 0) + netAmount;
     return totals;
   }, {});
   const expenseChartColors = ['#1a237e', '#d32f2f', '#fdd835', '#78909c', '#00897b', '#6a1b9a'];
@@ -1333,17 +1344,15 @@ export default function ViewerPages({
                           </span>
                         </div>
                         <p className="text-[10px] text-slate-500 font-bold">Brgy. {sortedTenants.find((t: any) => t.id === prog.barangayId)?.name || "Naga City"}</p>
-                          {((prog as any).imageUrl || (prog as any).image_url) && (
-                            <div key={`img-${prog.id}`} className="relative w-full h-48 mb-3 overflow-hidden rounded-lg bg-slate-100">
-                              <img
-                                src={(prog as any).imageUrl || (prog as any).image_url}
-                                alt={prog.title || 'Program image'}
-                                loading="lazy"
-                                className="w-full h-full object-contain cursor-pointer transition-transform hover:scale-105"
-                                onClick={() => setLightboxImg((prog as any).imageUrl || (prog as any).image_url || null)}
-                              />
-                            </div>
-                          )}
+                          <div key={`img-${prog.id}`} className="relative w-full h-48 mb-3 overflow-hidden rounded-lg bg-slate-100">
+                            <img
+                              src={getProgramImageUrl(prog) || '/placeholder.png'}
+                              alt={prog.title || 'Program image'}
+                              loading="lazy"
+                              className="w-full h-full object-contain cursor-pointer transition-transform hover:scale-105"
+                              onClick={() => setLightboxImg(getProgramImageUrl(prog))}
+                            />
+                          </div>
 
                         <div className="flex justify-between items-center text-[10px] text-slate-400 font-medium pt-1 border-t border-slate-100">
                           <span>{prog.location}</span>
