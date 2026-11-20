@@ -375,8 +375,8 @@ export default function PublicPages({
   };
 
   const handleSignUpSubmit = async () => {
-    if (!signUpForm.birthdate || calculateAgeFromISODate(signUpForm.birthdate) < 15 || calculateAgeFromISODate(signUpForm.birthdate) > 20) {
-      setCustomError('Youth constituents must be between 15 and 20 years old.');
+    if (!signUpForm.birthdate || calculateAgeFromISODate(signUpForm.birthdate) < 15 || calculateAgeFromISODate(signUpForm.birthdate) > 30) {
+      setCustomError('Youth constituents must be between 15 and 30 years old.');
       setSignUpStep(1);
       return;
     }
@@ -1153,7 +1153,7 @@ export default function PublicPages({
                             }}
                             onBlur={() => {
                               const age = calculateAgeFromISODate(signUpForm.birthdate);
-                              setBirthdateError(!signUpForm.birthdate || age < 15 || age > 20 ? 'Age must be between 15 and 20.' : '');
+                              setBirthdateError(!signUpForm.birthdate || age < 15 || age > 30 ? 'Age must be between 15 and 30.' : '');
                             }}
                             placeholder="YYYY-MM-DD"
                             aria-label="Birthdate"
@@ -1581,8 +1581,8 @@ export default function PublicPages({
                           if (!signUpForm.registeredRole) { showPopup('Please select your Desired KABISIG Role.'); return; }
                           if (!signUpForm.firstName.trim() || !signUpForm.lastName.trim()) { showPopup('First Name and Last Name are required.'); return; }
                           const age = calculateAgeFromISODate(signUpForm.birthdate);
-                          if (!signUpForm.birthdate || age < 15 || age > 20) {
-                            showPopup('Birthdate must be valid and the registrant must be between 15 and 20 years old.');
+                          if (!signUpForm.birthdate || age < 15 || age > 30) {
+                            showPopup('Birthdate must be valid and the registrant must be between 15 and 30 years old.');
                             return;
                           }
                           if (!signUpForm.sex) {
@@ -1604,7 +1604,7 @@ export default function PublicPages({
                         setSignUpStep(signUpStep + 1);
                       }}
                       disabled={
-                        (signUpStep === 1 && (!signUpForm.birthdate || calculateAgeFromISODate(signUpForm.birthdate) < 15 || calculateAgeFromISODate(signUpForm.birthdate) > 20))
+                        (signUpStep === 1 && (!signUpForm.birthdate || calculateAgeFromISODate(signUpForm.birthdate) < 15 || calculateAgeFromISODate(signUpForm.birthdate) > 30))
                         || (signUpStep === 3 && (!signUpForm.educational_status.trim() || !signUpForm.school.trim() || !signUpForm.employment_status.trim()))
                       }
                       className="w-full mt-4 py-3 bg-[#091d64] hover:bg-[#061344] text-white font-bold rounded-lg shadow-sm transition-all active:scale-[0.99] text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
