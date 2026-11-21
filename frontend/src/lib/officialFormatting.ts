@@ -7,13 +7,21 @@ export interface OfficialNameSource {
   position?: string | null;
 }
 
+export function formatOfficialName(user: OfficialNameSource): string;
 export function formatOfficialName(
   name: string | null | undefined,
   sex?: string | null,
   roleId?: number | string | null,
   position?: string | null
+): string;
+export function formatOfficialName(
+  nameOrUser: string | null | undefined | OfficialNameSource,
+  sex?: string | null,
+  roleId?: number | string | null,
+  position?: string | null
 ): string {
-  const rawName = String(name || '').trim();
+  const user = typeof nameOrUser === 'object' && nameOrUser !== null ? nameOrUser : null;
+  const rawName = String(user?.full_name ?? user?.name ?? nameOrUser ?? '').trim();
   if (!rawName) return 'Unknown';
 
   const normalizedName = rawName.toLowerCase();
@@ -23,10 +31,11 @@ export function formatOfficialName(
   }
 
   const cleanName = rawName.replace(/^(Mr\.\/Ms\.|Mr\.|Ms\.|Mrs\.|Hon\.)\s+/i, '').trim();
-  const gender = String(sex || '').toLowerCase();
-  const officialPosition = String(position || '').toLowerCase();
+  const gender = String(user?.sex ?? sex ?? '').toLowerCase();
+  const officialPosition = String(user?.official_role || user?.position || position || '').toLowerCase();
+  const effectiveRoleId = user?.role_id ?? roleId;
 
-  if (Number(roleId) === 1 || Number(roleId) === 2 || officialPosition.includes('kagawad')) {
+  if (Number(effectiveRoleId) === 1 || Number(effectiveRoleId) === 2 || officialPosition.includes('kagawad')) {
     return `Hon. ${cleanName || 'Unknown'}`;
   }
 
@@ -45,10 +54,5 @@ export function formatOfficialName(
 }
 
 export function getFormattedName(user: OfficialNameSource): string {
-  return formatOfficialName(
-    user.full_name ?? user.name,
-    user.sex,
-    user.role_id,
-    user.official_role || user.position
-  );
+  return formatOfficialName(user);
 }

@@ -834,7 +834,11 @@ function AppContent() {
           rating: f.sentiment === 'positive' ? 5 : f.sentiment === 'negative' ? 1 : 3,
           sentiment: f.sentiment,
           anonymous: f.is_anonymous || false,
-          status: f.status === 'resolved' ? 'Resolved' : f.status === 'under_review' ? 'Reviewed' : (f.status as any) === 'flagged' ? 'flagged' : (f.status as any) === 'dismissed' ? 'Dismissed' : 'Pending',
+          status: f.status === 'resolved' ? 'Resolved'
+            : f.status === 'under_review' ? 'Reviewed'
+              : f.status === 'dismissed' ? 'Dismissed'
+                : f.status === 'spam' || f.status === 'pending_review' || f.status === 'flagged' ? f.status
+                  : 'Pending',
           dateSubmitted: f.created_at ? getPhilippineDateString(f.created_at) : getPhilippineDateString(),
           submittedBy: f.is_anonymous ? 'Anonymous' : f.users?.full_name || 'Youth Constituent',
           response: f.response || '',

@@ -419,7 +419,7 @@ router.get('/users/lookup', authenticateUser, requireRoles('SUPER_ADMIN'), async
     // Use public.users as the source of truth; Auth records may be absent or incomplete.
     let userQuery = supabaseAdmin
       .from('users')
-      .select('id, email, full_name, first_name, middle_name, last_name, suffix, phone, role_id, tenant_id, status, resident_profile!resident_profile_user_id_fkey(birthdate, sex, address, is_registered_voter)');
+      .select('id, email, full_name, first_name, middle_name, last_name, suffix, phone, role_id, tenant_id, status');
     if (Number(caller.role_id) === 2 || Number(caller.role_id) === 3) {
       if (!caller.tenant_id) {
         sendError(res, 'A barangay tenant is required for this lookup.', 403);
@@ -448,15 +448,23 @@ router.get('/users/lookup', authenticateUser, requireRoles('SUPER_ADMIN'), async
       sendError(res, 'Failed to load authentication details: ' + authLookupError.message, 500);
       return;
     }
-    const joinedProfile = user.resident_profile;
-    const profile = Array.isArray(joinedProfile) ? joinedProfile[0] || null : joinedProfile || null;
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('resident_profile')
+      .select('birthdate, sex, address, is_registered_voter')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (profileError) {
+      sendError(res, 'Failed to load resident profile: ' + profileError.message, 500);
+      return;
+    }
 
     sendSuccess(res, {
       ...user,
-      email: user.email || authResult.user?.email || null,
-      birthdate: profile?.birthdate || null,
+      email: user.email || authResult?.user?.email || '',
+      phone: user.phone || '',
+      birthdate: profile?.birthdate || '',
       sex: profile?.sex || null,
-      address: profile?.address || null,
+      address: profile?.address || '',
       is_registered_voter: profile?.is_registered_voter === true,
       resident_profile: profile || null,
       has_profile: !!profile

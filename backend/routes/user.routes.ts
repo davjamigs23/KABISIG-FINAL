@@ -12,6 +12,15 @@ import { resolveName, splitFullName } from '../utils/name.js';
 
 const router = express.Router();
 
+function getFallbackDigitalYouthId(
+  userId: string,
+  user: { role_id?: number | null; is_demoted?: boolean | null }
+): string {
+  const isSkOfficial = user.role_id === 2 || user.role_id === 3 || user.is_demoted === true;
+  const prefix = isSkOfficial ? 'SK' : user.role_id === 4 ? 'KK' : 'SK';
+  return `${prefix}-2026-${userId.slice(0, 4)}`;
+}
+
 function isYouthProfileLocked(profile: {
   role_id: number;
   status: string | null;
@@ -567,7 +576,7 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
 
       updatedMetadata = {
         ...safePrevMeta,
-        id: body.id || prevMeta.id || residentPayload.digital_youth_id || `SK-2026-${userId.slice(0, 4)}`,
+        id: body.id || prevMeta.id || residentPayload.digital_youth_id || getFallbackDigitalYouthId(userId, user),
         name: body.name || body.full_name || prevMeta.name || userUpdates.full_name || user.full_name,
         sex: body.sex || prevMeta.sex || sex,
         birthdate: birthdate,
@@ -698,7 +707,7 @@ router.get('/profile', authenticateUser, async (req: Request, res: Response): Pr
     const resident = dbUser?.resident_profile || {};
 
     const fullProfile = {
-      id: meta.id || resident.digital_youth_id || `SK-2026-${userId.slice(0, 4)}`,
+      id: meta.id || resident.digital_youth_id || getFallbackDigitalYouthId(userId, dbUser || {}),
       name: dbUser?.full_name || meta.name || meta.full_name || '',
       sex: resident.sex || meta.sex || 'Female',
       birthdate: resident.birthdate || meta.birthdate || '2005-01-01',
@@ -828,7 +837,7 @@ router.get(
 
         return {
           userId: u.id,
-          id: meta.id || resident.digital_youth_id || `SK-2026-${u.id.slice(0, 4)}`,
+          id: meta.id || resident.digital_youth_id || getFallbackDigitalYouthId(u.id, u),
           name: u.full_name || meta.name || '',
           sex: resident.sex || meta.sex || 'Female',
           birthdate: resident.birthdate || meta.birthdate || '2005-01-01',

@@ -115,7 +115,7 @@ import kabisigApi from '../lib/api';
 import { openPrintableReport } from '../lib/reportGenerator';
 import { DEFAULT_BARANGAY_LOGOS } from '../data';
 import PopupDialog, { type PopupMessage } from './PopupDialog';
-import { getFormattedName } from '../lib/officialFormatting';
+import { formatOfficialName } from '../lib/officialFormatting';
 
 function getStandardCategory(cat: string): string {
   if (!cat) return 'Uncategorized';
@@ -1250,13 +1250,13 @@ export default function OfficialPages({
 
   const printOfficialReport = async (title: string, reportHtml: string) => {
     const barangayName = currentTenant?.name || 'Barangay';
-    const userName = getFormattedName({
+    const userName = formatOfficialName({
       ...currentUser,
       full_name: currentUser?.full_name || 'SK Official',
       official_role: currentUser?.official_role || currentUser?.position || currentRole || 'SK Official',
     });
     const userRole = currentRole || 'SK Official';
-    const chairpersonName = getFormattedName({
+    const chairpersonName = formatOfficialName({
       full_name: currentTenant?.chairperson || 'SK Chairperson',
       role_id: 2,
       official_role: 'SK Chairperson',
@@ -1692,6 +1692,11 @@ export default function OfficialPages({
 
   const handleActualScan = async (scannedText: string) => {
     const activeProgId = selectedProgIdRef.current;
+    if (!activeProgId) {
+      setQrMessage('Please select a program before scanning.');
+      showScanFeedback('error', 'Please select a program before scanning.');
+      return;
+    }
     if (isRecordingAttendance) {
       showScanFeedback('error', 'A check-in is already being processed. Please wait before scanning again.');
       return;
@@ -1710,18 +1715,6 @@ export default function OfficialPages({
       });
       setQrMessage('Cannot check in: this program has already ended.');
       showScanFeedback('error', 'Cannot check in: this program has already ended.');
-      return;
-    }
-    if (!activeProgId) {
-      setLastScanDetail({
-        rawCode: scannedText,
-        status: 'NOT_REGISTERED',
-        title: 'No Program Selected',
-        message: 'Please select an active program from the dropdown at the top of this tab before scanning.',
-        timestamp: formatPhilippineDateTime(new Date(), undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-      });
-      setQrMessage('Select an active program first.');
-      showScanFeedback('error', 'Select an active program first.');
       return;
     }
     const timeStr = formatPhilippineDateTime(new Date(), undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -2403,16 +2396,6 @@ export default function OfficialPages({
                           {announcement.when && <p><span className="font-bold text-slate-500">When:</span> {announcement.when}</p>}
                         </div>
                       )}
-                      {(announcement.imageUrl || (announcement as any).image_url) && (
-                        <div className="w-full flex justify-center items-center py-4 md:col-span-5">
-                          <img
-                            src={announcement.imageUrl || (announcement as any).image_url}
-                            alt={announcement.title}
-                            className="mx-auto object-contain max-h-[350px] rounded-lg shadow-sm block w-full max-w-md border border-slate-200 cursor-pointer transition-opacity hover:opacity-90"
-                            onClick={() => setLightboxImg(announcement.imageUrl || (announcement as any).image_url)}
-                          />
-                        </div>
-                      )}
                     </div>
                     {announcement.content && (
                       <p className="border-t border-slate-100 pt-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{announcement.content}</p>
@@ -2424,6 +2407,16 @@ export default function OfficialPages({
                             {tag.startsWith('#') ? tag : `#${tag}`}
                           </span>
                         ))}
+                      </div>
+                    )}
+                    {(announcement.imageUrl || (announcement as any).image_url) && (
+                      <div className="w-full flex justify-center items-center my-6">
+                        <img
+                          src={announcement.imageUrl || (announcement as any).image_url}
+                          alt={announcement.title}
+                          className="mx-auto object-contain max-h-[400px] w-auto rounded-xl shadow-sm"
+                          onClick={() => setLightboxImg(announcement.imageUrl || (announcement as any).image_url)}
+                        />
                       </div>
                     )}
                     <p className="border-t border-slate-100 pt-4 text-xs text-slate-400">
@@ -3834,6 +3827,11 @@ export default function OfficialPages({
                   </select>
                 </div>
               </div>
+              {!selectedProgId && (
+                <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">
+                  Please select a program before scanning.
+                </p>
+              )}
 
               {/* Attendance Analytics Stat Cards Grid */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -3891,7 +3889,7 @@ export default function OfficialPages({
                     </div>
                     <LiveCameraScanner 
                       selectedProgId={selectedProgId}
-                      disabled={isProgramEnded}
+                      disabled={!selectedProgId || isProgramEnded}
                       onScan={(decodedText) => handleActualScan(decodedText)}
                     />
 
@@ -3989,16 +3987,18 @@ export default function OfficialPages({
                           type="text"
                           value={manualQrInput}
                           onChange={(e) => setManualQrInput(e.target.value)}
+                          disabled={!selectedProgId}
                           placeholder="e.g. KABISIG-QR-PROG01-PART001"
                           className="flex-1 px-3 py-2 border border-slate-200 rounded-xl text-xs font-mono font-medium focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                         />
                         <button
+                          disabled={!selectedProgId}
                           onClick={() => {
                             if (!manualQrInput.trim()) return;
                             handleActualScan(manualQrInput.trim());
                             setManualQrInput('');
                           }}
-                          className="px-4 py-2 bg-[#091d64] text-white rounded-xl text-xs font-bold hover:bg-opacity-95 cursor-pointer whitespace-nowrap"
+                          className="px-4 py-2 bg-[#091d64] text-white rounded-xl text-xs font-bold hover:bg-opacity-95 cursor-pointer whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           Validate
                         </button>
@@ -4292,6 +4292,8 @@ export default function OfficialPages({
                       >
                         <option value="All">All Statuses</option>
                         <option value='flagged'>Flagged (Needs Review)</option>
+                        <option value="pending_review">Pending Manual Review</option>
+                        <option value="spam">Spam</option>
                         <option value="Pending">Pending</option>
                         <option value="Reviewed">Reviewed</option>
                         <option value="Resolved">Resolved</option>
@@ -4323,8 +4325,10 @@ export default function OfficialPages({
                               }`}>
                                 {fb.type}
                               </span>
-                              {fb.status === 'flagged' && (
-                                <span className="ml-1.5 bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-bold px-2 py-0.5 rounded-full inline-block align-middle">Flagged</span>
+                              {(fb.status === 'flagged' || fb.status === 'pending_review' || fb.status === 'spam') && (
+                                <span className="ml-1.5 inline-block rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-bold align-middle text-rose-700">
+                                  {fb.status === 'spam' ? 'Spam' : fb.status === 'pending_review' ? 'Pending Review' : 'Flagged'}
+                                </span>
                               )}
 
                               {/* Rule-Based Sentiment Classification Badge */}
@@ -4357,6 +4361,8 @@ export default function OfficialPages({
                               <span className={`px-2.5 py-0.5 rounded text-[10px] font-black uppercase ${
                                 fb.status === 'Pending' ? 'bg-amber-100 text-amber-800 animate-pulse' :
                                 fb.status === 'Reviewed' ? 'bg-blue-100 text-blue-800' :
+                                fb.status === 'spam' ? 'bg-rose-100 text-rose-800' :
+                                fb.status === 'pending_review' || fb.status === 'flagged' ? 'bg-amber-100 text-amber-800' :
                                 'bg-green-100 text-green-800'
                               }`}>
                                 {fb.status}
@@ -6418,7 +6424,8 @@ export default function OfficialPages({
                     <img
                       src={pubmatPreview}
                       alt="Program Pubmat Preview"
-                      className="max-h-48 max-w-full rounded-lg object-contain shadow-sm"
+                      onClick={() => window.open(pubmatPreview, '_blank', 'noopener,noreferrer')}
+                      className="max-h-48 max-w-full cursor-pointer rounded-lg object-contain shadow-sm"
                     />
                     <button
                       type="button"

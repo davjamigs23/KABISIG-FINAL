@@ -1472,16 +1472,6 @@ export default function ViewerPages({
                         </div>
 
                         <h4 className="text-sm font-black text-slate-900 leading-snug">{ann.title}</h4>
-                        {(ann.imageUrl || (ann as any).image_url) && (
-                          <div className="w-full flex justify-center items-center py-4">
-                            <img
-                              src={ann.imageUrl || (ann as any).image_url}
-                              alt={ann.title}
-                              className="mx-auto object-contain max-h-[350px] rounded-lg shadow-sm w-full cursor-pointer hover:opacity-90 transition-opacity"
-                              onClick={() => setLightboxImg(ann.imageUrl || (ann as any).image_url || null)}
-                            />
-                          </div>
-                        )}
                         <div className="space-y-1 text-xs text-slate-600">
                           {ann.what && <p><strong>What:</strong> {ann.what}</p>}
                           {ann.where && <p><strong>Where:</strong> {ann.where}</p>}
@@ -1490,6 +1480,16 @@ export default function ViewerPages({
                           <p className="line-clamp-3 leading-relaxed font-medium">{ann.content}</p>
                           {ann.hashtags && <p className="font-semibold text-blue-700">{ann.hashtags}</p>}
                         </div>
+                        {(ann.imageUrl || (ann as any).image_url) && (
+                          <div className="w-full flex justify-center items-center my-6">
+                            <img
+                              src={ann.imageUrl || (ann as any).image_url}
+                              alt={ann.title}
+                              className="mx-auto object-contain max-h-[400px] w-auto rounded-xl shadow-sm"
+                              onClick={() => setLightboxImg(ann.imageUrl || (ann as any).image_url || null)}
+                            />
+                          </div>
+                        )}
                       </div>
 
                       <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center text-xs font-semibold">
@@ -1588,7 +1588,7 @@ export default function ViewerPages({
                   <img
                     src={(readAnnounce as any).image_url || readAnnounce.imageUrl}
                     alt={readAnnounce.title}
-                    className="mx-auto max-h-[400px] w-auto rounded-lg shadow-md object-contain cursor-pointer transition-opacity hover:opacity-90"
+                    className="mx-auto object-contain max-h-[400px] w-auto rounded-xl shadow-sm"
                     onClick={() => setLightboxImg((readAnnounce as any).image_url || readAnnounce.imageUrl || null)}
                   />
                 </div>

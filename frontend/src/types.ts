@@ -206,7 +206,7 @@ export interface FeedbackRecord {
   rating: number; // 1 to 5
   sentiment?: 'positive' | 'neutral' | 'negative';
   anonymous?: boolean;
-  status: 'Pending' | 'Reviewed' | 'Resolved' | 'Dismissed' | 'flagged';
+  status: 'Pending' | 'Reviewed' | 'Resolved' | 'Dismissed' | 'flagged' | 'spam' | 'pending_review';
     suspension_reason?: string;
   response?: string;
   residentProfile?: {

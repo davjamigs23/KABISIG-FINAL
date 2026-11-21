@@ -1053,7 +1053,7 @@ class KabisigApiClient {
     throw new Error('The feedback endpoint returned an invalid response.');
   }
 
-  async submitFeedback(data: any): Promise<{ success: boolean; data?: any; message?: string }> {
+  async submitFeedback(data: any): Promise<{ success: boolean; status?: number; data?: any; message?: string }> {
     return await this.request('/feedback', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -1065,7 +1065,7 @@ class KabisigApiClient {
     response: string,
     status: 'under_review' | 'resolved' | 'dismissed' = 'resolved'
   ): Promise<{ success: boolean; data?: any; message?: string }> {
-    return await this.request(`/feedback/${encodeURIComponent(id)}/respond`, {
+    return await this.request(`/feedback/${encodeURIComponent(id)}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ response, status }),
     });

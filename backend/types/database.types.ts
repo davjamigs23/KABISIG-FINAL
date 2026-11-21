@@ -7,7 +7,7 @@ export type RoleName =
   | 'YOUTH_CONSTITUENT'
   | 'VIEWER';
 
-export type UserStatus = 'pending' | 'active' | 'suspended' | 'rejected';
+export type UserStatus = 'pending' | 'active' | 'suspended' | 'rejected' | 'banned';
 export type SexType = 'Male' | 'Female' | 'Other' | 'Prefer not to say';
 export type EducationalStatus =
   | 'Elementary'
@@ -31,7 +31,7 @@ export type DocumentType =
   | 'Other';
 export type DocumentStatus = 'draft' | 'pending_approval' | 'approved' | 'rejected' | 'archived';
 export type FeedbackSentiment = 'positive' | 'neutral' | 'negative';
-export type FeedbackStatus = 'submitted' | 'under_review' | 'resolved' | 'dismissed';
+export type FeedbackStatus = 'submitted' | 'under_review' | 'resolved' | 'dismissed' | 'flagged' | 'spam' | 'pending_review';
 
 export interface Barangay {
   id: string;

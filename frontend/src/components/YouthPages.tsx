@@ -1,5 +1,6 @@
 import { ShieldAlert } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import { formatBirthdate, getPhilippineDateString } from '../lib/dateUtils';
 import { 
   User, 
@@ -415,6 +416,7 @@ export default function YouthPages({
   const [localFeedback, setLocalFeedback] = useState<FeedbackRecord[]>(feedback);
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const [feedbackNotice, setFeedbackNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [showSpamSuspensionModal, setShowSpamSuspensionModal] = useState(false);
   useEffect(() => {
     setLocalFeedback(feedback);
   }, [feedback]);
@@ -432,7 +434,11 @@ export default function YouthPages({
           rating: feed.sentiment === 'positive' ? 5 : feed.sentiment === 'negative' ? 1 : 3,
           sentiment: feed.sentiment,
           anonymous: feed.is_anonymous || false,
-          status: feed.status === 'resolved' ? 'Resolved' : feed.status === 'under_review' ? 'Reviewed' : 'Pending',
+          status: feed.status === 'resolved' ? 'Resolved'
+            : feed.status === 'under_review' ? 'Reviewed'
+              : feed.status === 'dismissed' ? 'Dismissed'
+                : feed.status === 'spam' || feed.status === 'pending_review' || feed.status === 'flagged' ? feed.status
+                  : 'Pending',
           dateSubmitted: feed.created_at ? getPhilippineDateString(feed.created_at) : '',
           submittedBy: feed.is_anonymous ? 'Anonymous' : feed.users?.full_name || youth.name,
           response: feed.response || '',
@@ -744,6 +750,26 @@ export default function YouthPages({
         category: feedbackForm.type,
         is_anonymous: feedbackForm.anonymous,
       });
+      if (!result.success && result.status === 403 && result.message === 'Account suspended due to repeated spam.') {
+        setShowSpamSuspensionModal(true);
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+        if (!supabaseUrl || !supabaseAnonKey) {
+          console.error('Cannot sign out of Supabase: public URL or anon key is not configured.');
+        } else {
+          try {
+            const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+              auth: { persistSession: true, autoRefreshToken: true },
+            });
+            const { error: signOutError } = await supabase.auth.signOut();
+            if (signOutError) console.error('Supabase sign-out failed after spam suspension:', signOutError);
+          } catch (signOutError) {
+            console.error('Supabase sign-out failed after spam suspension:', signOutError);
+          }
+        }
+        kabisigApi.logout();
+        return;
+      }
       const saved = result.data?.feedback;
       if (!result.success || !saved) throw new Error(result.message || 'Feedback could not be saved.');
       const sentiment = result.data?.sentiment_analysis?.sentiment;
@@ -756,32 +782,29 @@ export default function YouthPages({
         rating: sentiment === 'positive' ? 5 : sentiment === 'negative' ? 1 : 3,
         sentiment,
         anonymous: (saved as any).is_anonymous ?? (saved as any).feedback?.is_anonymous ?? false,
-        status: 'Pending',
+        status: saved.status === 'spam' || saved.status === 'pending_review' || saved.status === 'flagged'
+          ? saved.status
+          : 'Pending',
         dateSubmitted: saved.created_at ? getPhilippineDateString(saved.created_at) : getPhilippineDateString(),
         submittedBy: ((saved as any).is_anonymous ?? (saved as any).feedback?.is_anonymous) ? 'Anonymous' : currentYouth.name,
       };
       onSubmitFeedback(newFeed);
       setLocalFeedback(previous => [newFeed, ...previous.filter(item => item.id !== newFeed.id)]);
       setFeedbackForm({ type: 'Suggestion', title: '', content: '', anonymous: false });
-      const wasFlagged = (saved as any).status === 'flagged';
+      const savedStatus = (saved as any).status;
+      const wasFlagged = savedStatus === 'flagged';
+      const needsReview = wasFlagged || savedStatus === 'pending_review' || savedStatus === 'spam';
       setFeedbackNotice({
-        type: wasFlagged ? 'error' : 'success',
-        text: wasFlagged
-          ? 'Feedback received, but it contains sensitive language and has been flagged for manual review by the SK Kagawad.'
+        type: needsReview ? 'error' : 'success',
+        text: needsReview
+          ? savedStatus === 'spam'
+            ? 'Feedback was recorded as spam and flagged for review by the SK Kagawad.'
+            : 'Feedback received and flagged for manual review by the SK Kagawad.'
           : 'Feedback saved. Sentiment analysis: ' + (sentiment || 'neutral') + '.',
       });
     } catch (error: any) {
       const _msg = error.message || 'Feedback could not be saved.';
       setFeedbackNotice({ type: 'error', text: _msg });
-      if (_msg.toLowerCase().includes('temporarily suspended') || _msg.toLowerCase().includes('permanently restricted')) {
-        setTimeout(() => {
-          try { kabisigApi.logout(); } catch (e) {
-        setIsLoadingStatus(false);}
-          try { localStorage.clear(); sessionStorage.clear(); } catch (e) {
-        setIsLoadingStatus(false);}
-          window.location.href = '/';
-        }, 3000);
-      }
     } finally {
       setIsSubmittingFeedback(false);
     }
@@ -3119,6 +3142,27 @@ export default function YouthPages({
             <h3 className="text-lg font-bold text-slate-800">{popupMsg.title}</h3>
             <p className="text-sm text-slate-600 mb-6">{popupMsg.text}</p>
             <button onClick={() => setPopupMsg(null)} className="w-full py-2 bg-[#091d64] text-white rounded-lg font-bold">Okay, I understand</button>
+          </div>
+        </div>
+      )}
+      {showSpamSuspensionModal && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/75 p-4" role="alertdialog" aria-modal="true" aria-labelledby="spam-suspension-title">
+          <div className="w-full max-w-lg rounded-2xl border-4 border-rose-600 bg-white p-8 text-center shadow-2xl">
+            <ShieldAlert className="mx-auto mb-4 h-16 w-16 text-rose-600" aria-hidden="true" />
+            <h2 id="spam-suspension-title" className="mb-3 text-2xl font-black text-rose-700">Account Suspended</h2>
+            <p className="mb-7 text-lg font-semibold leading-relaxed text-slate-800">
+              Your account has been suspended for violating community guidelines (Spam).
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setShowSpamSuspensionModal(false);
+                onLogout();
+              }}
+              className="w-full rounded-xl bg-rose-700 px-5 py-3 text-base font-bold text-white hover:bg-rose-800"
+            >
+              Return to Login
+            </button>
           </div>
         </div>
       )}

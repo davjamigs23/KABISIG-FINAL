@@ -2202,12 +2202,16 @@ return (
                         </div>
                       ) : (
                         dashboardAlerts.map((alert, i) => (
-                          <div key={i} role="button" tabIndex={0} onClick={() => navigateFromAlert('COMPLIANCE')} onKeyDown={(event) => {
+                          <div key={i} role="button" tabIndex={0} onClick={() => {
+                            if (alert.code === 'MISSING_BUDGET_DOCUMENT') setActiveMenu('documents');
+                            else navigateFromAlert('COMPLIANCE');
+                          }} onKeyDown={(event) => {
                             if (event.key === 'Enter' || event.key === ' ') {
                               event.preventDefault();
-                              navigateFromAlert('COMPLIANCE');
+                              if (alert.code === 'MISSING_BUDGET_DOCUMENT') setActiveMenu('documents');
+                              else navigateFromAlert('COMPLIANCE');
                             }
-                          }} className="flex items-start gap-2.5 p-3 rounded-lg bg-white border border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors group">
+                          }} className="flex items-start gap-2.5 p-3 rounded-lg bg-white border border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors group">
                             <span className="text-sm mt-0.5">{alert.level === 'Critical' ? '🚨' : '⚠️'}</span>
                             <div>
                               <p className="text-[11px] font-bold text-slate-800 leading-snug">{alert.message}</p>

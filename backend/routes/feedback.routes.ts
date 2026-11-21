@@ -136,6 +136,26 @@ const RespondFeedbackSchema = z.object({
   status: z.enum(['under_review', 'resolved', 'dismissed']).default('resolved'),
 });
 
+const PROFANITY_TERMS = [
+  'fuck', 'shit', 'bobo', 'tanginamo', 'tanga', 'gago', 'pakyu', 'putangina', 'tangina', 'ulol',
+];
+const TOXIC_TERMS = ['pangit', 'panget', 'basura', 'kupal', 'sex', 'sexual', 'porn', 'nude', 'nudes', 'xxx'];
+
+function normalizeModerationText(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '')
+    .replace(/(.)\1+/g, '$1');
+}
+
+function removeEducationalWhitelistPhrases(text: string): string {
+  return text
+    .replace(/\bsex[\s-]+education\b/gi, ' ')
+    .replace(/\breproductive[\s-]+health\b/gi, ' ');
+}
+
 router.post(
   '/',
   authenticateUser,
@@ -161,10 +181,17 @@ router.post(
     return;
   }
 
-  // P12: spam detection BEFORE accepting the submission
-  const spamResult = await detectSpam(user.id, user.tenant_id, subject, message);
+  const textToAnalyze = `${subject} ${message}`;
+  const normalizedText = normalizeModerationText(textToAnalyze);
+  const isProfanity = PROFANITY_TERMS.some(term => normalizedText.includes(normalizeModerationText(term)));
+  const normalizedToxicText = normalizeModerationText(removeEducationalWhitelistPhrases(textToAnalyze));
+  const containsToxicContent = TOXIC_TERMS.some(term => normalizedToxicText.includes(normalizeModerationText(term)));
+  const sentimentResult = analyzeSentiment(textToAnalyze);
 
-  if (spamResult.action === 'temp_suspend' || spamResult.action === 'permanent_ban') {
+  // Profanity submissions are recorded as strikes before any broader rate-limit action.
+  const spamResult = isProfanity ? null : await detectSpam(user.id, user.tenant_id, subject, message);
+
+  if (spamResult?.action === 'temp_suspend' || spamResult?.action === 'permanent_ban') {
     await applyRestriction({
       userId: user.id,
       tenantId: user.tenant_id,
@@ -183,7 +210,7 @@ router.post(
     return;
   }
 
-  if (spamResult.action === 'flag') {
+  if (spamResult?.action === 'flag') {
     await applyRestriction({
       userId: user.id,
       tenantId: user.tenant_id,
@@ -193,14 +220,13 @@ router.post(
       ipAddress: req.ip || null,
     });
   }
-  const textToAnalyze = `${subject} ${message}`;
-  const sentimentResult = analyzeSentiment(textToAnalyze);
-
-  // P12b: bad-word content filter for spam/toxic/sexual terms
-  const BAD_WORD_LEXICON = ['sex', 'fuck', 'shit', 'bobo', 'tanga', 'gago', 'pakyu', 'putangina', 'porn', 'scam', 'junket', 'bitch', 'asshole', 'kupal', 'ulol'];
-  const lowerSubject = (subject || '').toLowerCase();
-  const lowerMessage = (message || '').toLowerCase();
-  const containsBadWords = BAD_WORD_LEXICON.some(w => lowerSubject.includes(w) || lowerMessage.includes(w));
+  const feedbackStatus = isProfanity
+    ? 'spam'
+    : containsToxicContent
+      ? 'pending_review'
+      : spamResult?.action === 'flag'
+        ? 'flagged'
+        : 'submitted';
 
   const { data: newFeedback, error } = await supabaseAdmin
     .from('feedback')
@@ -213,7 +239,7 @@ router.post(
         message,
         category,
         sentiment: sentimentResult.sentiment,
-        status: containsBadWords ? 'flagged' : 'submitted',
+        status: feedbackStatus,
       },
     ])
     .select()
@@ -237,9 +263,44 @@ router.post(
     });
 
   if (analysisError) {
-    await supabaseAdmin.from('feedback').delete().eq('id', newFeedback.id);
-    console.error('Failed to persist sentiment analysis; feedback row rolled back:', analysisError);
-    sendError(res, `Failed to persist sentiment analysis: ${analysisError.message}`, 500);
+    console.error('Failed to persist sentiment analysis:', analysisError);
+    if (!isProfanity) {
+      await supabaseAdmin.from('feedback').delete().eq('id', newFeedback.id);
+      sendError(res, `Failed to persist sentiment analysis: ${analysisError.message}`, 500);
+      return;
+    }
+  }
+
+  if (isProfanity) {
+    const { count: spamCount, error: spamCountError } = await supabaseAdmin
+      .from('feedback')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('status', 'spam');
+
+    if (spamCountError) {
+      sendError(res, `Failed to count spam submissions: ${spamCountError.message}`, 500);
+      return;
+    }
+
+    if ((spamCount || 0) >= 3) {
+      const { error: suspensionError } = await supabaseAdmin
+        .from('users')
+        .update({ status: 'suspended', updated_at: new Date().toISOString() })
+        .eq('id', user.id);
+
+      if (suspensionError) {
+        sendError(res, `Failed to suspend account after repeated spam: ${suspensionError.message}`, 500);
+        return;
+      }
+
+      sendError(res, 'Account suspended due to repeated spam.', 403);
+      return;
+    }
+  }
+
+  if (analysisError) {
+    sendError(res, `Feedback was recorded as spam, but sentiment analysis failed: ${analysisError.message}`, 500);
     return;
   }
 
@@ -255,7 +316,11 @@ router.post(
         program_requests: sentimentResult.programRequests,
       },
     },
-    'Your voice has been heard! Feedback submitted to Boses ng Kabataan.'
+    feedbackStatus === 'spam'
+      ? 'Feedback was recorded as spam. Repeated spam submissions may suspend your account.'
+      : feedbackStatus === 'pending_review'
+        ? 'Feedback submitted for manual review by the SK Kagawad.'
+        : 'Your voice has been heard! Feedback submitted to Boses ng Kabataan.'
   );
   }
 );
@@ -325,12 +390,7 @@ router.get(
   }
 );
 
-router.patch(
-  '/:id/respond',
-  authenticateUser,
-  requireActiveUser,
-  requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'),
-  async (req: Request, res: Response): Promise<void> => {
+const handleFeedbackResponse = async (req: Request, res: Response): Promise<void> => {
     const id = String(req.params.id || '');
     const user = (req as AuthRequest).user!;
 
@@ -399,7 +459,15 @@ router.patch(
     }
 
     sendSuccess(res, updated, 'Official response recorded successfully.');
-  }
-);
+};
+
+const feedbackReviewMiddleware = [
+  authenticateUser,
+  requireActiveUser,
+  requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'),
+];
+
+router.patch('/:id/respond', ...feedbackReviewMiddleware, handleFeedbackResponse);
+router.patch('/:id/status', ...feedbackReviewMiddleware, handleFeedbackResponse);
 
 export default router;
