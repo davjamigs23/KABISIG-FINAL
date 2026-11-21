@@ -366,7 +366,7 @@ useEffect(() => {
   const roleCapacityOfficials = Array.isArray(roleCapacity?.officials)
     ? roleCapacity.officials.map((official: any) => ({
         ...official,
-        setup_completed: official.setup_completed === 'false' ? false : Boolean(official.setup_completed),
+        setup_completed: official.setup_completed === true,
         status: official.status || 'pending',
       }))
     : [];

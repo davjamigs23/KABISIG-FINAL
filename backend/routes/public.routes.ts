@@ -262,8 +262,7 @@ router.get('/programs', async (_req: Request, res: Response): Promise<void> => {
     .from('program')
     .select('id, tenant_id, title, description, category, location, start_date, end_date, total_slots, budget_allocation, aip_reference, image_url, status, barangay(name)')
     .in('status', ['active', 'approved', 'upcoming', 'ongoing'])
-    .order('start_date', { ascending: false })
-    .limit(100);
+    .order('created_at', { ascending: false });
 
   if (error) {
     sendError(res, 'Failed to load public programs: ' + error.message, 500);
@@ -296,7 +295,7 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
 
   const { data: officials, error } = await supabaseAdmin
     .from('users')
-    .select('id, tenant_id, full_name, role_id, avatar_url, official_role, setup_completed, resident_profile!resident_profile_user_id_fkey(sex)')
+    .select('id, tenant_id, full_name, role_id, avatar_url, official_role, setup_completed')
     .in('role_id', [2, 3])
     .eq('status', 'active')
     .not('tenant_id', 'is', null)
@@ -305,6 +304,20 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
   if (error) {
     sendError(res, `Failed to load public officials: ${error.message}`, 500);
     return;
+  }
+
+  const officialUserIds = (officials || []).map((official) => official.id);
+  const profileSexByUserId = new Map<string, string | null>();
+  if (officialUserIds.length > 0) {
+    const { data: profiles, error: profilesError } = await supabaseAdmin
+      .from('resident_profile')
+      .select('user_id, sex')
+      .in('user_id', officialUserIds);
+    if (profilesError) {
+      sendError(res, `Failed to load public official profile details: ${profilesError.message}`, 500);
+      return;
+    }
+    profiles?.forEach((profile) => profileSexByUserId.set(profile.user_id, profile.sex));
   }
 
   const groupedOfficials = new Map<string, {
@@ -324,36 +337,28 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
     groupedOfficials.set(barangay.id, { barangay_name: barangay.name, officials: [] });
   });
 
-  const resolvedOfficials = await Promise.all((officials || [])
-    .filter((official: any) => {
-      return official.setup_completed !== false
-        && !String(official.full_name || '').toLowerCase().includes('pending invitation');
-    })
-    .map(async (official: any) => {
-      const residentProfile = Array.isArray(official.resident_profile)
-        ? official.resident_profile[0]
-        : official.resident_profile;
-      const officialRole = String(
-        official.official_role
-        || (Number(official.role_id) === 3 ? 'SK Kagawad' : 'SK Chairperson')
-      );
-      return {
-        id: official.id,
-        tenant_id: official.tenant_id,
-        full_name: official.full_name || '',
-        role_id: Number(official.role_id),
-        official_role: officialRole,
-        position: officialRole,
-        gender_title: residentProfile?.sex === 'Male'
-          ? 'Mr.'
-          : residentProfile?.sex === 'Female'
-            ? 'Ms.'
-            : residentProfile?.sex === 'Other'
-              ? 'Mr./Ms.'
-              : '',
-        avatar_url: await resolveAvatarUrl(official.avatar_url),
-      };
-    }));
+  const resolvedOfficials = await Promise.all((officials || []).map(async (official: any) => {
+    const officialRole = String(
+      official.official_role
+      || (Number(official.role_id) === 3 ? 'SK Kagawad' : 'SK Chairperson')
+    );
+    return {
+      id: official.id,
+      tenant_id: official.tenant_id,
+      full_name: official.full_name || '',
+      role_id: Number(official.role_id),
+      official_role: officialRole,
+      position: officialRole,
+      gender_title: profileSexByUserId.get(official.id) === 'Male'
+        ? 'Mr.'
+        : profileSexByUserId.get(official.id) === 'Female'
+          ? 'Ms.'
+          : profileSexByUserId.get(official.id) === 'Other'
+            ? 'Mr./Ms.'
+            : '',
+      avatar_url: await resolveAvatarUrl(official.avatar_url),
+    };
+  }));
 
   resolvedOfficials.forEach((official: any) => {
     if (!official.tenant_id) return;

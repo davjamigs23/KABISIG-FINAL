@@ -143,7 +143,31 @@ export default function ViewerPages({
   const [expandedOfficialBarangay, setExpandedOfficialBarangay] = useState<string | null>(null);
   const [directorySearch, setDirectorySearch] = useState('');
   const normalizedDirectorySearch = directorySearch.trim().toLowerCase();
-  const filteredPublicOfficials = (publicOfficials || []).flatMap((group) => {
+  const synchronizedPublicOfficials = (publicOfficials || []).map((group) => {
+    const barangay = tenants.find((tenant) => tenant.name.toLowerCase() === group.barangay_name.toLowerCase());
+    if (!barangay) return group;
+
+    const chairperson = barangay.chairpersonUser;
+    const otherOfficials = group.officials.filter((official) => Number(official.role_id) !== 2);
+    if (!chairperson || chairperson.status?.trim().toLowerCase() !== 'active') {
+      return { ...group, officials: otherOfficials };
+    }
+    const chairpersonName = String(chairperson.full_name || '').trim();
+    if (!chairpersonName) return group;
+
+    const existingChairperson = group.officials.find((official) => Number(official.role_id) === 2);
+    const synchronizedChairperson: PublicOfficialRosterEntry = {
+      id: chairperson.id || existingChairperson?.id || `chairperson-${barangay.id}`,
+      full_name: chairpersonName,
+      role_id: 2,
+      official_role: 'SK Chairperson',
+      position: 'SK Chairperson',
+      gender_title: existingChairperson?.gender_title || '',
+      avatar_url: existingChairperson?.avatar_url || null,
+    };
+    return { ...group, officials: [synchronizedChairperson, ...otherOfficials] };
+  });
+  const filteredPublicOfficials = synchronizedPublicOfficials.flatMap((group) => {
     const barangayMatches = group.barangay_name.toLowerCase().includes(normalizedDirectorySearch);
     const matchingOfficials = group.officials.filter((official) =>
       [official.full_name, official.official_role, official.position]
@@ -1293,7 +1317,7 @@ export default function ViewerPages({
                           <tr key={exp.id} className="hover:bg-slate-50">
                             <td className="px-5 py-3.5">
                               <span className="block font-bold text-slate-800">
-                                {(exp as any).expense_category || 'Unnamed Transaction'}
+                                {(exp as any).expense_category || exp.title || 'Unnamed Transaction'}
                               </span>
                               <span className="block text-sm text-gray-500">
                                 {exp.barangay_name || 'Unknown Barangay'}
@@ -1387,7 +1411,7 @@ export default function ViewerPages({
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {programs.filter((prog: any) => { const st = String(prog.status || '').toLowerCase(); const isActive = st === 'upcoming' || st === 'ongoing'; const matchesBarangay = selectedBarangayId === 'All' || (tenants || []).find((t: any) => t.id === prog.barangayId)?.name === selectedBarangayId; return isActive && matchesBarangay; }).slice(0, 6).map((prog: any) => (
+                    {programs.filter((prog: any) => { const st = String(prog.status || '').toLowerCase(); const isActive = st === 'upcoming' || st === 'ongoing'; const matchesBarangay = selectedBarangayId === 'All' || (tenants || []).find((t: any) => t.id === prog.barangayId)?.name === selectedBarangayId; return isActive && matchesBarangay; }).map((prog: any) => (
                       <div key={prog.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
                         <div key={`img-${prog.id}`} className="relative w-full h-48 overflow-hidden bg-slate-100">
                             {prog.image_url || prog.imageUrl || prog.banner_url ? (
