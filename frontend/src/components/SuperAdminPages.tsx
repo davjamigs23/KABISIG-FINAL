@@ -363,17 +363,20 @@ useEffect(() => {
   const [allOfficialsSearch, setAllOfficialsSearch] = useState('');
 
   const normalizedInviteOfficialEmail = inviteOfficialEmail.trim().toLowerCase();
-  const pendingOfficialInvites = Array.isArray(roleCapacity?.officials)
-    ? roleCapacity.officials.filter((official: any) =>
+  const roleCapacityOfficials = Array.isArray(roleCapacity?.officials)
+    ? roleCapacity.officials.map((official: any) => ({
+        ...official,
+        setup_completed: official.setup_completed === 'false' ? false : Boolean(official.setup_completed),
+        status: official.status || 'pending',
+      }))
+    : [];
+  const pendingOfficialInvites = roleCapacityOfficials.filter((official: any) =>
         official.setup_completed === false
         || official.setup_completed === 'false'
         || String(official.status || '').toLowerCase() === 'pending'
         || String(official.full_name || '').toLowerCase().includes('pending invitation')
-      )
-    : [];
-  const completedOfficialRoster = Array.isArray(roleCapacity?.officials)
-    ? roleCapacity.officials.filter((official: any) => !pendingOfficialInvites.some((pending: any) => pending.id === official.id))
-    : [];
+      );
+  const completedOfficialRoster = roleCapacityOfficials.filter((official: any) => !pendingOfficialInvites.some((pending: any) => pending.id === official.id));
   const isPendingInviteForEmail = (email: string): boolean => {
     const normalizedEmail = email.trim().toLowerCase();
     return Boolean(normalizedEmail && pendingOfficialInvites.some(
@@ -602,7 +605,7 @@ useEffect(() => {
     if (!official?.email) {
       return { label: 'Unassigned', className: 'bg-slate-200 text-slate-600' };
     }
-    return { label: 'Unknown', className: 'bg-slate-100 text-slate-600' };
+    return { label: 'Pending', className: 'bg-amber-100 text-amber-800' };
   };
 
   const getInitial = (name: string) => {
@@ -624,9 +627,9 @@ useEffect(() => {
   };
 
   const getOfficialStatusBadge = (official: { status?: string | null } | null | undefined) => {
-    const status = official?.status;
+    const status = String(official?.status || 'pending').toLowerCase();
     const isPending = status === 'pending';
-    const label = status ? `${status.charAt(0).toUpperCase()}${status.slice(1)}` : 'Unknown';
+    const label = `${status.charAt(0).toUpperCase()}${status.slice(1)}`;
 
     if (isPending) {
       return { label: 'Pending', className: 'bg-amber-100 text-amber-800' };
