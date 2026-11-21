@@ -266,6 +266,7 @@ router.get('/demographics', async (_req: Request, res: Response): Promise<void> 
     return;
   }
 
+  res.setHeader('Cache-Control', 'public, max-age=60');
   sendSuccess(
     res,
     {

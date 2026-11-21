@@ -179,7 +179,20 @@ useEffect(() => {
       const res = await kabisigApi.lookupUser(searchValue.trim());
       if (res.success && res.data) {
         if (Array.isArray(res.data.matches)) {
-          setTypoSearchResults(res.data.matches);
+          if (res.data.matches.length === 1) {
+            const matchedUserId = res.data.matches[0]?.id;
+            if (!matchedUserId) {
+              showPopup('The lookup response did not contain a user ID.');
+              return;
+            }
+            await handleLookupUser(matchedUserId);
+            return;
+          }
+          if (res.data.matches.length > 1) {
+            setTypoSearchResults(res.data.matches);
+            return;
+          }
+          showPopup('User not found.');
           return;
         }
         const user = res.data.user || res.data;
@@ -3676,7 +3689,7 @@ useEffect(() => {
                     {isSearching ? '...' : 'Search'}
                   </button>
                 </div>
-                {typoSearchResults.length > 0 && (
+                {typoSearchResults.length > 1 && (
                   <div className="mt-2 max-h-48 space-y-1 overflow-y-auto rounded-lg border border-slate-200 bg-white p-2">
                     <p className="px-2 py-1 text-[10px] font-bold uppercase text-slate-400">Select an account</p>
                     {typoSearchResults.map((user: any) => (

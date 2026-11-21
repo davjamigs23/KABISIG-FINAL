@@ -419,9 +419,27 @@ router.get(
         return;
       }
       totalRegisteredYouth = count ?? totalRegisteredYouth;
+      const youthWithoutTenant = (youthPage || [])
+        .filter((youth) => !youth.tenant_id)
+        .map((youth) => youth.id);
+      const residentTenantByUserId = new Map<string, string>();
+      if (youthWithoutTenant.length > 0) {
+        const { data: youthProfiles, error: youthProfilesError } = await supabaseAdmin
+          .from('resident_profile')
+          .select('user_id, tenant_id')
+          .in('user_id', youthWithoutTenant);
+        if (youthProfilesError) {
+          sendError(res, `Failed to map youth constituents to Barangays: ${youthProfilesError.message}`, 500);
+          return;
+        }
+        youthProfiles?.forEach((profile) => {
+          if (profile.tenant_id) residentTenantByUserId.set(profile.user_id, profile.tenant_id);
+        });
+      }
       for (const youth of youthPage || []) {
-        if (youth.tenant_id) {
-          youthPerBarangay[youth.tenant_id] = (youthPerBarangay[youth.tenant_id] || 0) + 1;
+        const tenantId = youth.tenant_id || residentTenantByUserId.get(youth.id);
+        if (tenantId) {
+          youthPerBarangay[tenantId] = (youthPerBarangay[tenantId] || 0) + 1;
         }
       }
       if (!youthPage || youthPage.length < youthPageSize) break;
@@ -451,38 +469,34 @@ router.get(
     }
 
     const budgetPerBarangay: Record<string, { allocated: number; spent: number }> = {};
+    for (const barangay of barangays || []) {
+      budgetPerBarangay[barangay.id] = {
+        allocated: Number(barangay.allocated_budget) || 0,
+        spent: 0,
+      };
+    }
     const budgetByCategory: Record<string, number> = {};
-    const budgetTenantMap = new Map<string, string>();
-    let cityTotalAllocated = 0;
+    const cityTotalAllocated = (barangays || []).reduce(
+      (sum, barangay) => sum + (Number(barangay.allocated_budget) || 0),
+      0
+    );
     let cityTotalSpent = 0;
 
-    const seenBudgetIds = new Set<string>();
     allBudgets?.forEach((b) => {
-      if (seenBudgetIds.has(b.id) || b.category === 'General Youth Development Fund') return;
-      seenBudgetIds.add(b.id);
+      if (b.category === 'General Youth Development Fund') return;
       const allocated = Number(b.allocated_amount) || 0;
-      cityTotalAllocated += allocated;
       budgetByCategory[b.category] = (budgetByCategory[b.category] || 0) + allocated;
-
-      const current = budgetPerBarangay[b.tenant_id] || { allocated: 0, spent: 0 };
-      budgetPerBarangay[b.tenant_id] = {
-        allocated: current.allocated + allocated,
-        spent: current.spent,
-      };
-      budgetTenantMap.set(b.id, b.tenant_id);
     });
 
     const expensePageSize = 1000;
-    const budgetIds = [...budgetTenantMap.keys()];
-    const budgetIdPageSize = 200;
-    for (let budgetOffset = 0; budgetOffset < budgetIds.length; budgetOffset += budgetIdPageSize) {
-      const budgetIdBatch = budgetIds.slice(budgetOffset, budgetOffset + budgetIdPageSize);
+    const barangayIds = (barangays || []).map((barangay) => barangay.id);
+    if (barangayIds.length > 0) {
       for (let offset = 0; ; offset += expensePageSize) {
         const { data: expenseRows, error: expenseError } = await supabaseAdmin
           .from('expense')
-          .select('id, tenant_id, budget_id, net_amount')
+          .select('id, tenant_id, net_amount')
           .eq('status', 'approved')
-          .in('budget_id', budgetIdBatch)
+          .in('tenant_id', barangayIds)
           .order('expense_date', { ascending: true })
           .order('id', { ascending: true })
           .range(offset, offset + expensePageSize - 1);
@@ -492,14 +506,11 @@ router.get(
         }
 
         for (const expense of expenseRows || []) {
-          const linkedTenantId = budgetTenantMap.get(expense.budget_id);
-          if (!linkedTenantId || expense.tenant_id !== linkedTenantId) {
-            sendError(res, 'An approved expense is linked to a budget from a different Barangay.', 500);
-            return;
-          }
-          const current = budgetPerBarangay[linkedTenantId] || { allocated: 0, spent: 0 };
+          const tenantId = expense.tenant_id;
+          if (!tenantId) continue;
+          const current = budgetPerBarangay[tenantId] || { allocated: 0, spent: 0 };
           const spent = Number(expense.net_amount) || 0;
-          budgetPerBarangay[linkedTenantId] = { ...current, spent: current.spent + spent };
+          budgetPerBarangay[tenantId] = { ...current, spent: current.spent + spent };
           cityTotalSpent += spent;
         }
         if (!expenseRows || expenseRows.length < expensePageSize) break;

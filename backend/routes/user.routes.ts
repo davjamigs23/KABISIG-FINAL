@@ -786,9 +786,11 @@ router.get(
       .from('users')
       .select('*, resident_profile!resident_profile_user_id_fkey(*)')
       .eq('role_id', 4)
-      .eq('status', 'active');
+      .in('status', ['active', 'pending']);
 
-    if (tenantFilterId) {
+    if (!isSuperAdmin) {
+      query = query.eq('tenant_id', user.tenant_id);
+    } else if (tenantFilterId) {
       query = query.eq('tenant_id', tenantFilterId);
     }
 

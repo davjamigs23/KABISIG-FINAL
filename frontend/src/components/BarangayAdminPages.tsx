@@ -795,7 +795,7 @@ export default function BarangayAdminPages({
     const status = String(profile.status || '').toLowerCase();
     const verificationStatus = String(profile.verificationStatus || '').toLowerCase();
     return status !== 'rejected'
-      && (status === 'pending' || status === 'submitted' || verificationStatus === 'submitted');
+      && (status === 'pending' || status === 'submitted' || verificationStatus === 'pending' || verificationStatus === 'submitted');
   };
 
   const pendingRegistrations = youthProfiles.filter(profile => isPendingYouthReview(profile) && isMatchBarangay(profile));
@@ -2792,15 +2792,16 @@ return (
                       const amount = Number.parseFloat(totalForm.amount.replace(/,/g, ''));
                       if (!Number.isFinite(amount) || amount <= 0) { setTotalFormError('Amount must be greater than zero.'); return; }
                       if (!currentBarangay?.id) { setTotalFormError('No Barangay selected.'); return; }
+                      const currentFiscalYear = new Date().getFullYear();
                       setIsSavingTotal(true);
                       try {
                         const res = await kabisigApi.setSkTotalBudget(currentBarangay.id, {
                           allocated_budget: amount,
-                          fiscal_year: Number(totalForm.fiscalYear),
+                          fiscal_year: currentFiscalYear,
                         });
                         if (!res.success) { setTotalFormError(res.message || 'Total budget save failed.'); return; }
                         const savedAmount = Number(res.data?.allocated_budget);
-                        const savedFiscalYear = Number(res.data?.fiscal_year ?? totalForm.fiscalYear);
+                        const savedFiscalYear = Number(res.data?.fiscal_year ?? currentFiscalYear);
                         if (!Number.isFinite(savedAmount) || savedAmount <= 0) {
                           setTotalFormError('The server did not return the saved total budget. Please refresh and verify before continuing.');
                           return;
@@ -2838,7 +2839,12 @@ return (
                       <button type="button" onClick={() => setShowSetTotal(false)} className="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close total budget form"><X className="h-4 w-4" /></button>
                     </div>
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Fiscal year
-                      <input required type="number" min="2020" max="2050" value={totalForm.fiscalYear} onChange={(event) => setTotalForm((previous) => ({ ...previous, fiscalYear: event.target.value }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800" />
+                      <input
+                        type="text"
+                        value={new Date().getFullYear()}
+                        readOnly
+                        className="mt-1 w-full p-2.5 border border-slate-200 rounded-xl bg-slate-100 text-slate-700 font-medium cursor-not-allowed"
+                      />
                     </label>
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Total SK budget for the year
                       <input required type="text" inputMode="decimal" value={totalForm.amount} onChange={(event) => setTotalForm((previous) => ({ ...previous, amount: formatCurrencyInput(event.target.value) }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800" placeholder="0.00" />
@@ -2939,7 +2945,7 @@ return (
                   </div>
                 </div>
                 <div className="flex w-full shrink-0 justify-end gap-2 sm:w-auto">
-                  <button type="button" onClick={() => { setTotalFormError(''); setTotalForm(prev => ({ ...prev, fiscalYear: budgetYear })); setShowSetTotal(true); }} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-amber-400 px-3 py-2.5 text-center text-xs font-bold text-amber-950 hover:bg-amber-300">
+                  <button type="button" onClick={() => { setTotalFormError(''); setTotalForm(prev => ({ ...prev, fiscalYear: String(new Date().getFullYear()) })); setShowSetTotal(true); }} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-amber-400 px-3 py-2.5 text-center text-xs font-bold text-amber-950 hover:bg-amber-300">
                     <Coins className="h-4 w-4 shrink-0" /> <span>Set Total SK Budget</span>
                   </button>
                 </div>

@@ -274,14 +274,21 @@ export default function PublicPages({
         return;
       }
 
-      const dbUser = await kabisigApi.getCurrentUser();
-      if (!dbUser) {
+      const currentUser = await kabisigApi.getCurrentUser();
+      if (!currentUser) {
         kabisigApi.logout();
         setLoginError('Your account signed in, but its role profile could not be loaded. Please try again.');
         return;
       }
 
-      const finalRole = resolveUserRole(dbUser);
+      const dbUser = {
+        ...currentUser,
+        role_id: res.user?.role_id ?? currentUser.role_id,
+        tenant_id: res.user?.tenant_id ?? currentUser.tenant_id,
+        status: res.user?.status ?? currentUser.status,
+      };
+      const loginRoleId = Number(res.user?.role_id ?? dbUser.role_id);
+      const finalRole = loginRoleId === 4 ? 'Youth Constituent' : resolveUserRole(dbUser);
       if (!finalRole) {
         kabisigApi.logout();
         setLoginError('Your account role or SK Official position is not configured. Please contact your SK Federation President.');

@@ -114,7 +114,7 @@ router.get(
   const user = (req as AuthRequest).user!;
   const { fiscal_year, tenant_id } = req.query;
 
-  let query = supabaseAdmin.from('budget').select('*, barangay(name), program:program_id(aip_reference)');
+  let query = supabaseAdmin.from('budget').select('*');
 
   if (user.role !== 'SUPER_ADMIN') {
     if (!user.tenant_id) {
@@ -137,19 +137,61 @@ router.get(
     return;
   }
 
-  const budgetsWithAipReference = (budgets || []).map((budget: any) => ({
-    ...budget,
-    aip_reference: budget.program?.aip_reference || null,
-  }));
+  let barangayQuery = supabaseAdmin
+    .from('barangay')
+    .select('id, name, allocated_budget, active_fiscal_year');
+  if (user.role !== 'SUPER_ADMIN') {
+    barangayQuery = barangayQuery.eq('id', user.tenant_id!);
+  } else if (tenant_id && typeof tenant_id === 'string') {
+    barangayQuery = barangayQuery.eq('id', tenant_id);
+  }
+  const { data: barangays, error: barangayError } = await barangayQuery;
+  if (barangayError) {
+    sendError(res, `Failed to retrieve Barangay budget ceilings: ${barangayError.message}`, 500);
+    return;
+  }
+
+  const programIds = [...new Set((budgets || [])
+    .map((budget) => budget.program_id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0))];
+  const programById = new Map<string, { aip_reference: string | null }>();
+  if (programIds.length > 0) {
+    const { data: programs, error: programsError } = await supabaseAdmin
+      .from('program')
+      .select('id, aip_reference')
+      .in('id', programIds);
+    if (programsError) {
+      sendError(res, `Failed to retrieve budget program references: ${programsError.message}`, 500);
+      return;
+    }
+    programs?.forEach((program) => programById.set(program.id, program));
+  }
+
+  const barangayById = new Map((barangays || []).map((barangay) => [barangay.id, barangay]));
+  const budgetsWithAipReference = (budgets || []).map((budget) => {
+    const program = budget.program_id ? programById.get(budget.program_id) : undefined;
+    const barangay = budget.tenant_id ? barangayById.get(budget.tenant_id) : undefined;
+    return {
+      ...budget,
+      barangay: barangay ? { name: barangay.name } : null,
+      program: program ? { aip_reference: program.aip_reference } : null,
+      aip_reference: program?.aip_reference || null,
+    };
+  });
   const totalAllocated = budgets?.reduce((acc, b) => acc + Number(b.allocated_amount), 0) || 0;
   const totalRemaining = budgets?.reduce((acc, b) => acc + Number(b.remaining_amount), 0) || 0;
   const totalSpent = totalAllocated - totalRemaining;
   const utilizationRate = totalAllocated > 0 ? round2((totalSpent / totalAllocated) * 100) : 0;
+  const totalBudgetLimit = (barangays || []).reduce((sum, barangay) => {
+    if (fiscal_year && Number(barangay.active_fiscal_year) !== Number(fiscal_year)) return sum;
+    return sum + (Number(barangay.allocated_budget) || 0);
+  }, 0);
 
   sendSuccess(
     res,
     {
       summary: {
+        total_budget_limit: round2(totalBudgetLimit),
         total_allocated: round2(totalAllocated),
         total_remaining: round2(totalRemaining),
         total_spent: round2(totalSpent),

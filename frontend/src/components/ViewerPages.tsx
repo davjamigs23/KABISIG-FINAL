@@ -230,6 +230,7 @@ export default function ViewerPages({
   const [selectedBarangayId, setSelectedBarangayId] = useState('All');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [announcementSearch, setAnnouncementSearch] = useState('');
+  const [visiblePrograms, setVisiblePrograms] = useState(6);
 
   const downloadPublicCOAPDF = () => {
     const printWindow = window.open('', '_blank');
@@ -347,6 +348,13 @@ export default function ViewerPages({
   const sortedPrograms = [...programs].sort(
     (a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
   );
+  const featuredActivePrograms = sortedPrograms.filter((prog: any) => {
+    const status = String(prog.status || '').toLowerCase();
+    const isActive = status === 'upcoming' || status === 'ongoing';
+    const matchesBarangay = selectedBarangayId === 'All'
+      || (tenants || []).find((tenant: any) => tenant.id === prog.barangayId)?.name === selectedBarangayId;
+    return isActive && matchesBarangay;
+  });
 
   // FIXED: Options match actual tax_type values in DB (VAT, EXEMPT)
   const publicExpenseCategoryOptions: string[] = ['VAT', 'EXEMPT', 'NON_VAT'];
@@ -1427,8 +1435,8 @@ export default function ViewerPages({
                     <span className="text-xs text-slate-400 font-medium">Community Impact Projects</span>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {sortedPrograms.filter((prog: any) => { const st = String(prog.status || '').toLowerCase(); const isActive = st === 'upcoming' || st === 'ongoing'; const matchesBarangay = selectedBarangayId === 'All' || (tenants || []).find((t: any) => t.id === prog.barangayId)?.name === selectedBarangayId; return isActive && matchesBarangay; }).map((prog: any) => (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {featuredActivePrograms.slice(0, visiblePrograms).map((prog: any) => (
                       <div key={prog.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
                         <div key={`img-${prog.id}`} className="relative w-full h-48 overflow-hidden bg-slate-100">
                             {prog.image_url || prog.imageUrl || prog.banner_url ? (
@@ -1507,6 +1515,16 @@ export default function ViewerPages({
                       </div>
                     ))}
                   </div>
+                  {featuredActivePrograms.length > visiblePrograms && (
+                    <div className="flex justify-center mt-6">
+                      <button
+                        onClick={() => setVisiblePrograms((prev) => prev + 6)}
+                        className="px-6 py-2 bg-[#091d64] text-white rounded-lg font-bold text-sm hover:bg-[#102a83]"
+                      >
+                        Load More Programs
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Announcement Cards Feed */}

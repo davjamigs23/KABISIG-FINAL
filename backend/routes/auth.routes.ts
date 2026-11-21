@@ -547,7 +547,7 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
     {
       id: userId,
       tenant_id: barangay_id,
-      role_id: ROLE_IDS.YOUTH_CONSTITUENT, // Integer ID (4)
+      role_id: 4,
       full_name: resolvedName.full_name,
       first_name: resolvedName.first_name || null,
       middle_name: resolvedName.middle_name || null,
@@ -980,14 +980,24 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
   }
 
   // Block suspended users from logging in
-  const { data: userStatus } = await supabaseAdmin
+  const { data: publicUser, error: userStatusError } = await supabaseAdmin
     .from('users')
-    .select('status, suspension_reason')
+    .select('id, role_id, tenant_id, status, suspension_reason')
     .eq('id', data.user.id)
     .single();
 
-  if (userStatus?.status === 'suspended') {
-    sendError(res, `Your account is suspended. Reason: ${userStatus.suspension_reason || 'Violation of guidelines'}. Please contact the SK Chairperson to appeal.`, 403);
+  if (userStatusError || !publicUser) {
+    sendError(res, `Failed to verify account status: ${userStatusError?.message || 'User profile not found.'}`, 500);
+    return;
+  }
+
+  if (String(publicUser.status || '').toLowerCase() === 'pending') {
+    sendError(res, 'Your account is pending approval.', 403);
+    return;
+  }
+
+  if (publicUser.status === 'suspended') {
+    sendError(res, `Your account is suspended. Reason: ${publicUser.suspension_reason || 'Violation of guidelines'}. Please contact the SK Chairperson to appeal.`, 403);
     return;
   }
 
@@ -1013,6 +1023,9 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
   }
   const enrichedUser = {
     ...(profile || data.user),
+    role_id: publicUser.role_id,
+    tenant_id: publicUser.tenant_id,
+    status: publicUser.status,
     user_metadata: userMeta,
   };
 
