@@ -463,16 +463,17 @@ export function getComplianceIssues(
     });
   }
 
-  // Check D: Require an approved annual budget resolution before clearing the statutory notice.
-  const hasApprovedBudgetResolution = documents.some(doc =>
-    doc.status.toLowerCase() === 'approved' &&
-    /\b(?:annual\s+)?budget\s+resolution\b/i.test(`${doc.title} ${doc.description}`)
-  );
-  if (!hasApprovedBudgetResolution) {
+  // Check D: Require an approved financial report or budget document before clearing the statutory notice.
+  const hasApprovedFinancialDocument = documents.some(doc => {
+    const documentType = String((doc as typeof doc & { document_type?: string }).document_type || '').toLowerCase();
+    return String(doc.status || '').toLowerCase() === 'approved'
+      && (documentType === 'financial reports' || String(doc.title || '').toLowerCase().includes('budget'));
+  });
+  if (!hasApprovedFinancialDocument) {
     issues.push({
       level: 'Urgent',
       code: 'MISSING_BUDGET_DOCUMENT',
-      message: `Absolute Statutory Notice: No active Annual budget resolution (.pdf) is archived in your compliance folder.`,
+      message: `Absolute Statutory Notice: No approved financial report or budget document is archived in your compliance folder.`,
       action: 'Upload official SK Annual Budget Resolution'
     });
   }

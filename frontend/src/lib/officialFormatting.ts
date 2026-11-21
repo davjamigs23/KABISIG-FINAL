@@ -1,3 +1,12 @@
+export interface OfficialNameSource {
+  full_name?: string | null;
+  name?: string | null;
+  sex?: string | null;
+  role_id?: number | string | null;
+  official_role?: string | null;
+  position?: string | null;
+}
+
 export function formatOfficialName(
   name: string | null | undefined,
   sex?: string | null,
@@ -17,7 +26,7 @@ export function formatOfficialName(
   const gender = String(sex || '').toLowerCase();
   const officialPosition = String(position || '').toLowerCase();
 
-  if (Number(roleId) === 2 || officialPosition.includes('kagawad')) {
+  if (Number(roleId) === 1 || Number(roleId) === 2 || officialPosition.includes('kagawad')) {
     return `Hon. ${cleanName || 'Unknown'}`;
   }
 
@@ -33,4 +42,13 @@ export function formatOfficialName(
   }
 
   return cleanName || 'Unknown';
+}
+
+export function getFormattedName(user: OfficialNameSource): string {
+  return formatOfficialName(
+    user.full_name ?? user.name,
+    user.sex,
+    user.role_id,
+    user.official_role || user.position
+  );
 }

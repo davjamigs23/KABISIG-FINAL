@@ -1,5 +1,5 @@
 import { formatCurrencyInput } from '../lib/utils';
-import { formatOfficialName } from '../lib/officialFormatting';
+import { formatOfficialName, getFormattedName } from '../lib/officialFormatting';
 import { formatBirthdate, formatPhilippineDate, formatPhilippineDateTime, getPhilippineDateString } from '../lib/dateUtils';
 import { generateBudgetUtilizationReport } from '../lib/pdfReports';
 import ProfileSettings from './ProfileSettings';
@@ -318,9 +318,17 @@ export default function BarangayAdminPages({
         ]),
         {
           barangay: currentBarangay?.name,
-          preparedByName: formatOfficialName(currentUser?.full_name || 'SK Chairperson', currentUser?.sex, 2, 'SK Chairperson'),
+          preparedByName: getFormattedName({
+            ...currentUser,
+            full_name: currentUser?.full_name || 'SK Chairperson',
+            role_id: currentUser?.role_id ?? 2,
+            official_role: currentUser?.official_role || currentUser?.position || 'SK Chairperson',
+          }),
           preparedByTitle: 'SK Chairperson',
-          approvedByName: federationPresidentName || 'SK Federation President',
+          approvedByName: getFormattedName({
+            full_name: federationPresidentName || 'SK Federation President',
+            role_id: 1,
+          }),
           approvedByTitle: 'SK Federation President'
         }
       );
@@ -462,11 +470,19 @@ export default function BarangayAdminPages({
 
         <div class="footer">
           <div class="sign-box">
-            <div class="sign-line"><strong>${escapeHtml(formatOfficialName(currentUser?.full_name || currentBarangay?.chairperson || 'SK Chairperson', currentUser?.sex, 2, 'SK Chairperson'))}</strong></div>
+            <div class="sign-line"><strong>${escapeHtml(getFormattedName({
+              ...currentUser,
+              full_name: currentUser?.full_name || currentBarangay?.chairperson || 'SK Chairperson',
+              role_id: currentUser?.role_id ?? 2,
+              official_role: currentUser?.official_role || currentUser?.position || 'SK Chairperson',
+            }))}</strong></div>
             <div class="sign-title">Prepared by · SK Chairperson</div>
           </div>
           <div class="sign-box">
-            <div class="sign-line"><strong>${escapeHtml(federationPresidentName || 'SK Federation President')}</strong></div>
+            <div class="sign-line"><strong>${escapeHtml(getFormattedName({
+              full_name: federationPresidentName || 'SK Federation President',
+              role_id: 1,
+            }))}</strong></div>
             <div class="sign-title">Approved by · SK Federation President</div>
           </div>
         </div>
@@ -2335,34 +2351,43 @@ return (
               </div>
 
                 <div className="border border-slate-100 rounded-lg">
-                  <div className="w-full overflow-x-auto block">
-                  <table className="w-full text-left text-xs text-slate-600 min-w-[800px]">
+                  <table className="w-full table-fixed text-left text-xs text-slate-600">
+                    <colgroup>
+                      <col style={{ width: '24%' }} />
+                      <col style={{ width: '11%' }} />
+                      <col style={{ width: '19%' }} />
+                      <col style={{ width: '20%' }} />
+                      <col style={{ width: '10%' }} />
+                      <col style={{ width: '16%' }} />
+                    </colgroup>
                     <thead className="bg-slate-50 text-[10px] text-slate-500 font-extrabold uppercase border-b border-slate-100">
                       <tr>
-                        <th className="px-6 py-3 whitespace-nowrap">Applicant Profile</th>
-                        <th className="px-6 py-3 whitespace-nowrap">Age / Sex</th>
-                        <th className="px-6 py-3 whitespace-nowrap">Residency Address</th>
-                        <th className="px-6 py-3 whitespace-nowrap">Education & Scholarship</th>
-                        <th className="px-6 py-3 text-center whitespace-nowrap">Status</th>
-                        <th className="px-6 py-3 text-center whitespace-nowrap">Desk Validation</th>
+                        <th className="px-2 py-3 break-words">Applicant Profile</th>
+                        <th className="px-2 py-3 break-words">Age / Sex</th>
+                        <th className="px-2 py-3 break-words">Residency Address</th>
+                        <th className="px-2 py-3 break-words">Education & Scholarship</th>
+                        <th className="px-2 py-3 text-center break-words">Status</th>
+                        <th className="px-2 py-3 text-center break-words">Desk Validation</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium text-slate-700">{!youthProfilesLoading && !youthProfilesError && filteredProfiles.map(p => (
                         <tr key={p.id} className="hover:bg-slate-50/50">
-                          <td className="px-6 py-4 font-extrabold text-slate-800 flex items-center gap-3 whitespace-nowrap">
-                            <ProfileAvatar name={p.name} src={p.profilePic} alt={p.name} className="w-8 h-8 rounded-full border border-slate-100" />
-                            <div>
-                              <span className="block font-bold">{p.name}</span>
-                              <span className="text-[9px] text-slate-400 font-mono font-bold block mt-0.5">{p.id}</span>
+                          <td className="px-2 py-3 align-top font-extrabold text-slate-800">
+                            <div className="flex items-start gap-2 min-w-0">
+                              <ProfileAvatar name={p.name} src={p.profilePic} alt={p.name} className="w-7 h-7 shrink-0 rounded-full border border-slate-100" />
+                              <div className="min-w-0">
+                                <span className="block break-words font-bold">{p.name}</span>
+                                <span className="mt-0.5 block break-all font-mono text-[9px] font-bold text-slate-400">{p.id}</span>
+                              </div>
                             </div>
                           </td>
-                          <td className="px-6 py-4 font-bold whitespace-nowrap">
+                          <td className="px-2 py-3 align-top font-bold break-words">
                             {p.age} yrs / <span className="text-slate-500 font-semibold">{p.sex}</span>
                           </td>
-                          <td className="px-6 py-4 font-semibold text-slate-500 whitespace-nowrap">
+                          <td className="px-2 py-3 align-top font-semibold text-slate-500 break-words">
                             {p.address} ({p.zone || 'Not Specified'})
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
+                          <td className="px-2 py-3 align-top break-words">
                             <span className="block font-bold text-slate-700">{p.educationalLevel}</span>
                             {p.scholarStatus === 'Scholar' || p.scholarStatus === 'Yes' ? (
                               <span className="mt-1 inline-block rounded bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
@@ -2372,7 +2397,7 @@ return (
                               <span className="mt-1 inline-block rounded bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-600">Non-Scholar</span>
                             )}
                           </td>
-                          <td className="px-6 py-4 text-center truncate whitespace-nowrap">
+                          <td className="px-2 py-3 text-center align-top">
                             <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
                               isPendingYouthReview(p) ? 'bg-amber-100 text-amber-800' :
                               p.status === 'Approved' ? 'bg-green-100 text-green-800' :
@@ -2381,41 +2406,15 @@ return (
                               {isPendingYouthReview(p) ? 'Pending' : p.status}
                             </span>
                           </td>
-                          <td className="px-6 py-4 text-center truncate whitespace-nowrap">
-                            <div className="flex items-center justify-center gap-1.5">
+                          <td className="px-2 py-3 text-center align-top">
+                            <div className="flex flex-wrap items-center justify-center gap-1.5">
                               <button
                                 onClick={() => { setInspectProfile(null); setTimeout(() => setInspectProfile({...p}), 10); }}
-                                className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-extrabold rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                                className="px-2 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 text-[10px] font-extrabold rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
                               >
                                 <Eye className="w-3.5 h-3.5 text-slate-500" />
                                 Inspect
                               </button>
-                              {isPendingYouthReview(p) && (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => onApproveYouth(p.userId || p.id)}
-                                    className="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 cursor-pointer"
-                                    aria-label={`Approve ${p.name}`}
-                                    title="Approve youth registration"
-                                  >
-                                    <Check className="h-4 w-4" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setRejectionReason('');
-                                      setShowRejectField(true);
-                                      setInspectProfile({ ...p });
-                                    }}
-                                    className="p-1.5 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 cursor-pointer"
-                                    aria-label={`Reject ${p.name}`}
-                                    title="Reject youth registration"
-                                  >
-                                    <X className="h-4 w-4" />
-                                  </button>
-                                </>
-                              )}
                             </div>
                           </td>
                         </tr>
@@ -2461,8 +2460,7 @@ return (
                         </tr>
                       )}
                     </tbody>
-                  </table>
-                </div>
+                </table>
                 </div>
               </div>
             </div>
@@ -3757,7 +3755,7 @@ return (
                 </div>
               </div>
 
-              <div className="grid sm:grid-cols-2 gap-4 text-xs font-bold text-slate-600 max-w-md whitespace-normal break-words">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs font-bold text-slate-600 whitespace-normal break-words">
                 <div>
                   <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Birthdate</span>
                   <span className="text-slate-800 block">{formatBirthdate(inspectProfile.birthdate) || 'Not provided'}</span>
@@ -3776,7 +3774,7 @@ return (
                 </div>
                 <div>
                   <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Education</span>
-                  <span className="text-slate-800 block">{inspectProfile.educationalLevel || 'Not provided'} {inspectProfile.course ? ` · ${inspectProfile.course}` : ''} {inspectProfile.school ? ` · ${inspectProfile.school}` : ''}</span>
+                  <span className="text-slate-800 block break-words">{inspectProfile.educationalLevel || 'Not provided'} {inspectProfile.course ? ` · ${inspectProfile.course}` : ''} {inspectProfile.school ? ` · ${inspectProfile.school}` : ''}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Employment Status</span>
@@ -3819,14 +3817,10 @@ return (
                     {[inspectProfile.isPwd ? 'PWD' : null, inspectProfile.isSoloParent ? 'Solo Parent' : null].filter(Boolean).join(' / ') || 'None'}
                   </span>
                 </div>
-                <div className="sm:col-span-2 flex flex-wrap gap-5">
-                  <label className="flex items-center gap-2 text-slate-700">
-                    <input type="checkbox" checked={inspectProfile.is_registered_voter === true} readOnly disabled />
+                <div className="md:col-span-2">
+                  <label className="flex items-center gap-2 text-slate-800 font-semibold">
+                    <input type="checkbox" checked={inspectProfile.is_registered_voter === true} readOnly className="pointer-events-none h-4 w-4 border-2 border-slate-500 accent-[#091d64]" />
                     Registered Voter
-                  </label>
-                  <label className="flex items-center gap-2 text-slate-700">
-                    <input type="checkbox" checked={inspectProfile.privacy_consent === true} readOnly disabled />
-                    Privacy Consent
                   </label>
                 </div>
               </div>

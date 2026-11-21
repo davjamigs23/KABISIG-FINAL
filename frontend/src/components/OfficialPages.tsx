@@ -115,6 +115,7 @@ import kabisigApi from '../lib/api';
 import { openPrintableReport } from '../lib/reportGenerator';
 import { DEFAULT_BARANGAY_LOGOS } from '../data';
 import PopupDialog, { type PopupMessage } from './PopupDialog';
+import { getFormattedName } from '../lib/officialFormatting';
 
 function getStandardCategory(cat: string): string {
   if (!cat) return 'Uncategorized';
@@ -1249,9 +1250,17 @@ export default function OfficialPages({
 
   const printOfficialReport = async (title: string, reportHtml: string) => {
     const barangayName = currentTenant?.name || 'Barangay';
-    const userName = currentUser?.full_name || 'SK Official';
+    const userName = getFormattedName({
+      ...currentUser,
+      full_name: currentUser?.full_name || 'SK Official',
+      official_role: currentUser?.official_role || currentUser?.position || currentRole || 'SK Official',
+    });
     const userRole = currentRole || 'SK Official';
-    const chairpersonName = currentTenant?.chairperson || 'SK Chairperson';
+    const chairpersonName = getFormattedName({
+      full_name: currentTenant?.chairperson || 'SK Chairperson',
+      role_id: 2,
+      official_role: 'SK Chairperson',
+    });
     const now = new Date();
     const dateStr = formatPhilippineDate(now, 'en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
     const timeStr = formatPhilippineDateTime(now, 'en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -2783,44 +2792,52 @@ export default function OfficialPages({
                       {/* Visual & Detailed Breakdown */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
                         {/* Interactive Donut with Center Data Callout */}
-                        <div className="relative h-60 w-full flex items-center justify-center">
+                        <div className={`h-60 w-full ${localDocs.length > 0 ? 'relative flex items-center justify-center' : 'flex flex-col items-center justify-center gap-2 text-center'}`}>
                           {localDocs.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%">
-                              <PieChart margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
-                                <Pie
-                                  data={[
-                                    { name: 'Resolutions & Ordinances', value: localDocs.filter(d => getNormalizedDocumentType(d) === 'Resolutions').length, color: '#091d64' },
-                                    { name: 'Meeting Minutes', value: localDocs.filter(d => getNormalizedDocumentType(d) === 'Minutes').length, color: '#2563eb' },
-                                    { name: 'Financial & Accomplishment Reports', value: localDocs.filter(d => getNormalizedDocumentType(d) === 'Reports').length, color: '#10b981' },
-                                    { name: 'Vouchers & Transmittals', value: localDocs.filter(d => getNormalizedDocumentType(d) === 'Vouchers').length, color: '#f59e0b' }
-                                  ]}
-                                  dataKey="value"
-                                  cx="50%"
-                                  cy="50%"
-                                  innerRadius={55}
-                                  outerRadius={85}
-                                  paddingAngle={4}
-                                >
-                                  <Cell fill="#091d64" />
-                                  <Cell fill="#2563eb" />
-                                  <Cell fill="#10b981" />
-                                  <Cell fill="#f59e0b" />
-                                </Pie>
-                                <Tooltip
-                                  formatter={(value: any, name: any) => [`${value} Records (${((Number(value) / localDocs.length) * 100).toFixed(0)}%)`, name]}
-                                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '12px' }}
-                                  itemStyle={{ color: '#ffffff' }}
-                                  labelStyle={{ color: '#cbd5e1' }}
-                                />
-                              </PieChart>
-                            </ResponsiveContainer>
+                            <>
+                              <ResponsiveContainer width="100%" height="100%">
+                                <PieChart margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                                  <Pie
+                                    data={[
+                                      { name: 'Resolutions & Ordinances', value: localDocs.filter(d => getNormalizedDocumentType(d) === 'Resolutions').length, color: '#091d64' },
+                                      { name: 'Meeting Minutes', value: localDocs.filter(d => getNormalizedDocumentType(d) === 'Minutes').length, color: '#2563eb' },
+                                      { name: 'Financial & Accomplishment Reports', value: localDocs.filter(d => getNormalizedDocumentType(d) === 'Reports').length, color: '#10b981' },
+                                      { name: 'Vouchers & Transmittals', value: localDocs.filter(d => getNormalizedDocumentType(d) === 'Vouchers').length, color: '#f59e0b' }
+                                    ]}
+                                    dataKey="value"
+                                    cx="50%"
+                                    cy="50%"
+                                    innerRadius={55}
+                                    outerRadius={85}
+                                    paddingAngle={4}
+                                  >
+                                    <Cell fill="#091d64" />
+                                    <Cell fill="#2563eb" />
+                                    <Cell fill="#10b981" />
+                                    <Cell fill="#f59e0b" />
+                                  </Pie>
+                                  <Tooltip
+                                    formatter={(value: any, name: any) => [`${value} Records (${((Number(value) / localDocs.length) * 100).toFixed(0)}%)`, name]}
+                                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '12px' }}
+                                    itemStyle={{ color: '#ffffff' }}
+                                    labelStyle={{ color: '#cbd5e1' }}
+                                  />
+                                </PieChart>
+                              </ResponsiveContainer>
+                              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                <span className="text-2xl font-black">{localDocs.length}</span>
+                                <span className="text-xs text-slate-500">ARCHIVED</span>
+                              </div>
+                            </>
                           ) : (
-                            <p className="text-sm text-slate-500">No documents available to chart.</p>
+                            <>
+                              <p className="text-sm text-slate-500">No documents available to chart.</p>
+                              <div className="flex flex-col items-center justify-center">
+                                <span className="text-2xl font-black">0</span>
+                                <span className="text-xs text-slate-500">ARCHIVED</span>
+                              </div>
+                            </>
                           )}
-                          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                            <span className="text-2xl font-black">{localDocs.length}</span>
-                            <span className="text-xs text-slate-500">ARCHIVED</span>
-                          </div>
                         </div>
 
                         {/* Detailed Category Data Cards */}
@@ -2972,7 +2989,7 @@ export default function OfficialPages({
                             Compliance Monitor
                           </h4>
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${complianceIssues.length ? 'text-amber-800 bg-amber-50' : 'text-emerald-700 bg-emerald-50'}`}>
-                            {complianceIssues.length ? `${complianceIssues.length} issue${complianceIssues.length === 1 ? '' : 's'}` : 'No issues'}
+                            {complianceIssues.length ? `${complianceIssues.length} issue${complianceIssues.length === 1 ? '' : 's'}` : 'Compliant'}
                           </span>
                         </div>
 
@@ -7111,35 +7128,43 @@ export default function OfficialPages({
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Scholarship Status</label>
-                  <select disabled 
-                    value={youthEditForm.scholarStatus} 
-                    onChange={(e) => setYouthEditForm({ ...youthEditForm, scholarStatus: e.target.value as any })} 
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Scholarship</label>
+                  <input
+                    readOnly
+                    type="text"
+                    value={
+                      selectedYouthProfile.scholarshipSource
+                      || (selectedYouthProfile as any).scholarship_source
+                      || selectedYouthProfile.scholarshipType
+                      || (selectedYouthProfile as any).scholarship_type
+                      || selectedYouthProfile.scholarStatus
+                      || 'Not specified'
+                    }
                     className="w-full p-2 border border-slate-200 rounded text-xs"
-                  >
-                    <option value="Scholar">Scholar Grantee</option>
-                    <option value="Non-Scholar">Non-Scholar</option>
-                  </select>
+                  />
                 </div>
               </div>
 
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">School / University</label>
-                <input readOnly 
-                  type="text" 
-                  value={youthEditForm.school} 
-                  onChange={(e) => setYouthEditForm({ ...youthEditForm, school: e.target.value })} 
-                  className="w-full p-2 border border-slate-200 rounded text-xs" 
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Scholarship Source</label>
-                <input
-                  readOnly
-                  type="text"
-                  value={`${selectedYouthProfile.scholarshipSource || (selectedYouthProfile.scholarStatus === 'Scholar' || selectedYouthProfile.scholarStatus === 'Yes' ? 'Not specified' : 'N/A')}${selectedYouthProfile.scholarshipSourceDetail ? ` (${selectedYouthProfile.scholarshipSourceDetail})` : ''}`}
-                  className="w-full p-2 border border-slate-200 rounded text-xs"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">School / University</label>
+                  <input
+                    readOnly
+                    type="text"
+                    value={youthEditForm.school}
+                    onChange={(e) => setYouthEditForm({ ...youthEditForm, school: e.target.value })}
+                    className="w-full p-2 border border-slate-200 rounded text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Registered Voter</label>
+                  <input
+                    readOnly
+                    type="text"
+                    value={selectedYouthProfile.is_registered_voter === true ? 'Yes' : 'No'}
+                    className="w-full p-2 border border-slate-200 rounded text-xs"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
