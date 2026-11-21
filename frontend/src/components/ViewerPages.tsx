@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { formatPhilippineDate, getPhilippineDateString } from '../lib/dateUtils';
 import { 
@@ -101,7 +101,7 @@ export default function ViewerPages({
   const publicExpensesQuery = useQuery({
     queryKey: ['public-expenses'],
     queryFn: () => kabisigApi.getPublicExpenses(),
-    initialData: initialExpenses,
+    initialData: initialExpenses.length > 0 ? initialExpenses : undefined,
     enabled: activeMenu === 'transparency',
   });
   const publicDocumentsQuery = useQuery({
@@ -111,6 +111,7 @@ export default function ViewerPages({
     enabled: activeMenu === 'transparency',
   });
   const expenses = publicExpensesQuery.data || [];
+  const isLoadingPublicExpenses = publicExpensesQuery.isLoading;
   const documents = publicDocumentsQuery.data || [];
   useRealtimeData({
     table: 'expense',
@@ -306,7 +307,7 @@ export default function ViewerPages({
 
   // FIXED: Options match actual tax_type values in DB (VAT, EXEMPT)
   const publicExpenseCategoryOptions: string[] = ['VAT', 'EXEMPT', 'NON_VAT'];
-  const filteredExpenses = expenses.filter(expense => {
+  const filteredExpenses = useMemo(() => expenses.filter(expense => {
     const selectedTenantId = selectedBarangayId === 'All'
       ? null
       : (tenants || []).find(tenant => tenant.name.toLowerCase().trim() === selectedBarangayId.toLowerCase().trim())?.id;
@@ -318,7 +319,7 @@ export default function ViewerPages({
     const taxType = String((expense as any).tax_type || (expense as any).taxType || '').toUpperCase().trim();
     const matchesCategory = selectedCategory === 'All' || taxType === selectedCategory.toUpperCase() || expenseCategory === selectedCategory;
     return matchesBarangay && matchesCategory;
-  });
+  }), [expenses, selectedBarangayId, selectedCategory, tenants]);
 
   // Calculate city wide transparency aggregate statistics
   const totalBudget = tenants.reduce((acc, curr) => acc + curr.totalBudget, 0);
@@ -375,18 +376,18 @@ export default function ViewerPages({
   const hasCityWideBudgetData = cityWideBarData.some(entry => entry.budget > 0 || entry.spent > 0);
 
   // Recharts Pie Chart F2: Category expense allocations
-  const expenseCategoryTotals = expenses.reduce<Record<string, number>>((totals, exp) => {
+  const expenseCategoryTotals = useMemo(() => expenses.reduce<Record<string, number>>((totals, exp) => {
     const category = String((exp as any).category || (exp as any).budget?.category || 'Uncategorized');
     const netAmount = Number((exp as any).net_amount ?? exp.netAmount ?? exp.amount) || 0;
     totals[category] = (totals[category] || 0) + netAmount;
     return totals;
-  }, {});
+  }, {}), [expenses]);
   const expenseChartColors = ['#1a237e', '#d32f2f', '#fdd835', '#78909c', '#00897b', '#6a1b9a'];
-  const expenseCategoriesData = Object.entries(expenseCategoryTotals).map(([name, value], index) => ({
+  const expenseCategoriesData = useMemo(() => Object.entries(expenseCategoryTotals).map(([name, value], index) => ({
     name,
     value,
     color: expenseChartColors[index % expenseChartColors.length],
-  })).filter(entry => entry.value > 0);
+  })).filter(entry => entry.value > 0), [expenseCategoryTotals]);
 
   // FPD Compliance Documents list from live documents
   const fpdDocuments = documents.length > 0 ? documents.filter(d => d.status?.toLowerCase() === "approved").map(d => ({
@@ -1022,7 +1023,13 @@ export default function ViewerPages({
                         <PieChartIcon className="w-4 h-4 text-rose-600" />
                         Federation Expense Categories Distribution
                       </h4>
-                      {expenseCategoriesData.length > 0 ? (
+                      {isLoadingPublicExpenses ? (
+                        <div
+                          className="h-56 w-full animate-pulse rounded-lg bg-slate-100"
+                          role="status"
+                          aria-label="Loading expense categories"
+                        />
+                      ) : expenseCategoriesData.length > 0 ? (
                         <div className="h-56 w-full min-w-0 flex justify-center overflow-hidden">
                           <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
                             <PieChart>
@@ -1256,7 +1263,21 @@ export default function ViewerPages({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 font-medium">
-                        {filteredExpenses.map(exp => (
+                        {isLoadingPublicExpenses ? (
+                          <tr>
+                            <td colSpan={6} className="px-5 py-8 text-center text-slate-400">
+                              <div className="mx-auto h-8 max-w-sm animate-pulse rounded bg-slate-100" role="status">
+                                Loading public expense records...
+                              </div>
+                            </td>
+                          </tr>
+                        ) : filteredExpenses.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="px-5 py-8 text-center text-slate-400">
+                              No public expense records available.
+                            </td>
+                          </tr>
+                        ) : filteredExpenses.map(exp => (
                           <tr key={exp.id} className="hover:bg-slate-50">
                             <td className="px-5 py-3.5">
                               <span className={`block font-bold ${exp.title || (exp as any).description ? 'text-slate-800' : 'text-slate-400 italic'}`}>

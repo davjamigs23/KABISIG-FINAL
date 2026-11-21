@@ -214,7 +214,7 @@ export default function PublicPages({
     scholarshipSourceDetail: '',
     password: '',
     confirmPassword: '',
-    agreeTerms: false,
+    privacy_consent: false,
     profilePic: undefined,
     registeredRole: 'Youth Constituent' as any,
     idType: 'Student ID' as string,
@@ -226,8 +226,20 @@ export default function PublicPages({
     scholar_status: 'Non-Scholar',
     is_pwd: false,
     is_solo_parent: false,
+    is_registered_voter: false,
         civil_status: 'Single' as NonNullable<YouthProfile['civilStatus']>,
   });
+  const [idImagePreviewUrls, setIdImagePreviewUrls] = useState({ front: '', back: '' });
+
+  useEffect(() => {
+    const front = signUpForm.idFrontFile ? URL.createObjectURL(signUpForm.idFrontFile) : '';
+    const back = signUpForm.idBackFile ? URL.createObjectURL(signUpForm.idBackFile) : '';
+    setIdImagePreviewUrls({ front, back });
+    return () => {
+      if (front) URL.revokeObjectURL(front);
+      if (back) URL.revokeObjectURL(back);
+    };
+  }, [signUpForm.idFrontFile, signUpForm.idBackFile]);
 
   // Rule #1: compose display name from split fields
     // Rule #1: compose display name from split fields
@@ -433,7 +445,7 @@ export default function PublicPages({
       showPopup('Please enter your KABISIG email address.');
       return;
     }
-    if (!signUpForm.agreeTerms) {
+    if (!signUpForm.privacy_consent) {
       showPopup('Please consent to the Data Privacy guidelines before proceeding.');
       return;
     }
@@ -565,7 +577,8 @@ export default function PublicPages({
           marital_status: signUpForm.civil_status || 'Single',
           is_pwd: signUpForm.is_pwd || false,
           is_solo_parent: signUpForm.is_solo_parent || false,
-          is_registered_voter: true,
+          is_registered_voter: signUpForm.is_registered_voter,
+          privacy_consent: signUpForm.privacy_consent,
           id_type: signUpForm.idFrontFile ? signUpForm.idType : undefined,
           id_number: signUpForm.idFrontFile ? signUpForm.idNumber.trim() : undefined,
           youth_sector: signUpForm.youthSector || (educationalStatus === 'Out of School Youth' ? 'Out-of-School Youth' : 'In-School Youth'),
@@ -1343,7 +1356,7 @@ export default function PublicPages({
         placeholder="e.g., Barangay-funded sports scholarship"
         value={signUpForm.scholarshipSourceDetail}
         onChange={(e) => setSignUpForm({ ...signUpForm, scholarshipSourceDetail: e.target.value })}
-        className="w-full p-3 border border-slate-200 rounded-lg mt-2"
+        className="w-full px-4 py-3 border border-slate-200 rounded-lg text-sm mt-2"
         required
       />
     )}
@@ -1366,6 +1379,10 @@ export default function PublicPages({
   <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
     <input type="checkbox" checked={signUpForm.is_solo_parent || false} onChange={e => setSignUpForm({...signUpForm, is_solo_parent: e.target.checked})} className="w-4 h-4 rounded border-slate-300 text-[#091d64] focus:ring-[#091d64]" />
     Solo Parent
+  </label>
+  <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+    <input type="checkbox" checked={signUpForm.is_registered_voter} onChange={e => setSignUpForm({...signUpForm, is_registered_voter: e.target.checked})} className="w-4 h-4 rounded border-slate-300 text-[#091d64] focus:ring-[#091d64]" />
+    Registered Voter
   </label>
 </div>
                       </div>
@@ -1553,7 +1570,19 @@ export default function PublicPages({
                             className="w-full text-xs file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-[11px] file:font-bold file:bg-[#091d64] file:text-white hover:file:bg-[#102a83] file:cursor-pointer"
                           />
                           {signUpForm.idFrontFile && (
-                            <p className="mt-1 text-[10px] text-slate-500">Front: <strong>{signUpForm.idFrontFile.name}</strong></p>
+                            <div className="mt-2 flex items-center gap-3">
+                              <p className="text-[10px] text-slate-500">Front: <strong>{signUpForm.idFrontFile.name}</strong></p>
+                              {idImagePreviewUrls.front && (
+                                <button
+                                  type="button"
+                                  onClick={() => window.open(idImagePreviewUrls.front, '_blank', 'noopener,noreferrer')}
+                                  aria-label="Open front side ID preview in a new tab"
+                                  className="cursor-zoom-in"
+                                >
+                                  <img src={idImagePreviewUrls.front} alt="Uploaded front side ID preview" className="h-14 w-20 rounded border border-slate-200 object-cover" />
+                                </button>
+                              )}
+                            </div>
                           )}
                         </div>
                         <div>
@@ -1573,7 +1602,19 @@ export default function PublicPages({
                             className="w-full text-xs file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-[11px] file:font-bold file:bg-[#091d64] file:text-white hover:file:bg-[#102a83] file:cursor-pointer"
                           />
                           {signUpForm.idBackFile && (
-                            <p className="mt-1 text-[10px] text-slate-500">Back: <strong>{signUpForm.idBackFile.name}</strong></p>
+                            <div className="mt-2 flex items-center gap-3">
+                              <p className="text-[10px] text-slate-500">Back: <strong>{signUpForm.idBackFile.name}</strong></p>
+                              {idImagePreviewUrls.back && (
+                                <button
+                                  type="button"
+                                  onClick={() => window.open(idImagePreviewUrls.back, '_blank', 'noopener,noreferrer')}
+                                  aria-label="Open back side ID preview in a new tab"
+                                  className="cursor-zoom-in"
+                                >
+                                  <img src={idImagePreviewUrls.back} alt="Uploaded back side ID preview" className="h-14 w-20 rounded border border-slate-200 object-cover" />
+                                </button>
+                              )}
+                            </div>
                           )}
                         </div>
                       </div>
@@ -1583,12 +1624,12 @@ export default function PublicPages({
                         <input 
                           type="checkbox" 
                           id="privacy-consent" 
-                          checked={signUpForm.agreeTerms} 
-                          onChange={(e) => setSignUpForm({...signUpForm, agreeTerms: e.target.checked})} 
+                          checked={signUpForm.privacy_consent}
+                          onChange={(e) => setSignUpForm({...signUpForm, privacy_consent: e.target.checked})}
                           className="mt-0.5 h-4 w-4 rounded border border-slate-300 bg-slate-200 accent-[#091d64] checked:bg-[#091d64] checked:border-[#091d64] focus:ring-0" 
                         />
                         <label htmlFor="privacy-consent" className="cursor-pointer select-none">
-                          I voluntarily consent to the secure collection and processing of my profiling data per <a href="/docs/privacy-consent.pdf" target="_blank" rel="noopener noreferrer" className="text-[#091d64] font-bold underline hover:text-blue-700">RA 10173 Privacy guidelines</a>.
+                          I voluntarily consent to the secure collection and processing of my profiling data per <a href="/privacy-consent.html" target="_blank" rel="noopener noreferrer" className="text-[#091d64] font-bold underline hover:text-blue-700">RA 10173 Privacy guidelines</a>.
                         </label>
                       </div>
                     </div>
@@ -1639,10 +1680,10 @@ export default function PublicPages({
                   </div>) : (
                     <button
                       type="button"
-                      disabled={isSubmittingSignUp || !signUpForm.agreeTerms}
+                      disabled={isSubmittingSignUp || !signUpForm.privacy_consent}
                       onClick={handleSignUpSubmit}
                       className={`w-full mt-4 py-3 font-bold rounded-lg shadow-sm transition-all active:scale-[0.99] text-xs uppercase tracking-wider flex items-center justify-center gap-2 ${
-                        signUpForm.agreeTerms
+                        signUpForm.privacy_consent
                           ? 'bg-[#091d64] hover:bg-[#061344] text-white cursor-pointer'
                           : 'bg-slate-300 text-slate-500 cursor-not-allowed'
                       }`}

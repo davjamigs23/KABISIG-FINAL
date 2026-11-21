@@ -337,6 +337,12 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
     }
 
     const body = req.body || {};
+    for (const field of ['is_registered_voter', 'privacy_consent'] as const) {
+      if (body[field] !== undefined && typeof body[field] !== 'boolean') {
+        sendError(res, `${field} must be a boolean.`, 400);
+        return;
+      }
+    }
     const scholarshipSource = body.scholarshipSource ?? body.scholarship_source;
     const scholarshipSourceDetail = body.scholarshipSourceDetail ?? body.scholarship_source_detail;
     const scholarshipStatus = body.scholarStatus ?? body.scholar_status;
@@ -519,6 +525,12 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
       youth_sector: body.youthSector ?? body.youth_sector ?? undefined,
       scholar_status: body.scholarStatus ?? body.scholar_status ?? undefined,
     };
+    if (body.is_registered_voter !== undefined) {
+      residentPayload.is_registered_voter = body.is_registered_voter;
+    }
+    if (body.privacy_consent !== undefined) {
+      residentPayload.privacy_consent = body.privacy_consent;
+    }
     if (scholarshipSource !== undefined) {
       residentPayload.scholarship_source = scholarshipSource || null;
     }
@@ -708,6 +720,8 @@ router.get('/profile', authenticateUser, async (req: Request, res: Response): Pr
       youthSector: meta.youthSector || 'In-School Youth',
           isPwd: (resident as any).is_pwd || false,
           isSoloParent: (resident as any).is_solo_parent || false,
+          is_registered_voter: resident.is_registered_voter === true,
+          privacy_consent: resident.privacy_consent === true,
           verificationStatus: (resident as any).verification_status || 'pending',
       guardianName: resident.guardian_name || meta.guardianName || '',
       guardianContact: resident.guardian_contact || meta.guardianContact || '',
@@ -739,22 +753,45 @@ router.get(
     const user = (req as AuthRequest).user!;
     const isSuperAdmin = user.role === 'SUPER_ADMIN';
     const allTenantsRequested = req.query.scope === 'all';
+    const requestedTenantId = String(req.query.tenant_id || '').trim();
+    const canLoadAllTenants = isSuperAdmin && allTenantsRequested && !requestedTenantId;
 
-    if (!user.tenant_id && !(isSuperAdmin && allTenantsRequested)) {
+    if (!user.tenant_id && !canLoadAllTenants && !requestedTenantId) {
       sendError(res, 'A barangay tenant context is required to load youth constituents.', 403);
       return;
+    }
+    if (!isSuperAdmin && requestedTenantId && requestedTenantId !== user.tenant_id) {
+      sendError(res, 'You cannot load youth constituents from another Barangay.', 403);
+      return;
+    }
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.info('DIAGNOSTIC - Fetching youth for tenant:', user.tenant_id, 'Role:', user.role);
     }
 
     let query = supabaseAdmin
       .from('users')
       .select('*, resident_profile!resident_profile_user_id_fkey(*)')
-      .eq('role_id', 4);
+      .eq('role_id', 4)
+      .in('status', ['active', 'pending', 'rejected', 'submitted']);
 
-    if (!(isSuperAdmin && allTenantsRequested)) {
-      query = query.eq('tenant_id', user.tenant_id);
+    if (!canLoadAllTenants) {
+      query = query.eq('tenant_id', isSuperAdmin ? requestedTenantId : user.tenant_id);
     }
 
     const { data: users, error } = await query;
+    if (process.env.NODE_ENV !== 'production') {
+      const statusSummary = (users || []).reduce<Record<string, number>>((summary, youth) => {
+        const status = String(youth.status || 'unknown').toLowerCase();
+        const joinedProfile = youth.resident_profile;
+        const profile = Array.isArray(joinedProfile) ? joinedProfile[0] : joinedProfile;
+        const verificationStatus = String((profile as any)?.verification_status || 'unknown').toLowerCase();
+        summary[`user:${status}`] = (summary[`user:${status}`] || 0) + 1;
+        summary[`verification:${verificationStatus}`] = (summary[`verification:${verificationStatus}`] || 0) + 1;
+        return summary;
+      }, {});
+      console.info('DIAGNOSTIC - Youth query result:', users?.length ?? 'NULL', statusSummary, error?.code || null);
+    }
     if (error) {
       sendError(res, `Failed to load youth constituents: ${error.message}`, 500);
       return;
@@ -770,7 +807,12 @@ router.get(
           // Ignore
         }
 
-        const resident = u.resident_profile || {};
+        const joinedProfile = u.resident_profile;
+        const resident = (Array.isArray(joinedProfile) ? joinedProfile[0] : joinedProfile) || {};
+        const verificationStatus = (resident as any).verification_status || 'pending';
+        const normalizedUserStatus = String(u.status || '').toLowerCase();
+        const isPendingSubmission = normalizedUserStatus !== 'rejected'
+          && (normalizedUserStatus === 'submitted' || String(verificationStatus).toLowerCase() === 'submitted');
         const registeredRole = u.role_id === 3
           ? ({
               'SK_KAGAWAD': 'SK Kagawad',
@@ -808,12 +850,22 @@ router.get(
           youthSector: meta.youthSector || 'In-School Youth',
           isPwd: (resident as any).is_pwd || false,
           isSoloParent: (resident as any).is_solo_parent || false,
-          verificationStatus: (resident as any).verification_status || 'pending',
+          is_registered_voter: resident.is_registered_voter === true,
+          privacy_consent: resident.privacy_consent === true,
+          verificationStatus,
           guardianName: resident.guardian_name || meta.guardianName || '',
           guardianContact: resident.guardian_contact || meta.guardianContact || '',
           profilePic: await resolveAvatarUrl(u.avatar_url) || meta.profilePic || '',
           qrCode: resident.qr_code_url || meta.qrCode || resident.digital_youth_id || '',
-          status: u.status === 'active' ? 'Approved' : (u.status === 'rejected' ? 'Rejected' : u.status === 'suspended' ? 'suspended' : 'Pending'),
+          status: isPendingSubmission
+            ? 'Pending'
+            : normalizedUserStatus === 'active'
+              ? 'Approved'
+              : normalizedUserStatus === 'rejected'
+                ? 'Rejected'
+                : normalizedUserStatus === 'suspended'
+                  ? 'suspended'
+                  : 'Pending',
           suspension_reason: (u as any).suspension_reason || null,
           barangayId: u.tenant_id || meta.barangayId || '',
           dateRegistered: u.created_at?.split('T')[0] || meta.dateRegistered || new Date().toISOString().split('T')[0],
@@ -907,6 +959,20 @@ router.put(
         residentPayload.guardian_name = String(body.guardianName ?? body.guardian_name ?? '').trim() || null;
       if (body.guardianContact !== undefined || body.guardian_contact !== undefined)
         residentPayload.guardian_contact = String(body.guardianContact ?? body.guardian_contact ?? '').trim() || null;
+      if (body.is_registered_voter !== undefined) {
+        if (typeof body.is_registered_voter !== 'boolean') {
+          sendError(res, 'is_registered_voter must be a boolean.', 400);
+          return;
+        }
+        residentPayload.is_registered_voter = body.is_registered_voter;
+      }
+      if (body.privacy_consent !== undefined) {
+        if (typeof body.privacy_consent !== 'boolean') {
+          sendError(res, 'privacy_consent must be a boolean.', 400);
+          return;
+        }
+        residentPayload.privacy_consent = body.privacy_consent;
+      }
 
       const { error: profileErr } = await supabaseAdmin
         .from('resident_profile')

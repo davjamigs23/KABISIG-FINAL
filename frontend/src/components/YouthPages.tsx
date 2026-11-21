@@ -2842,6 +2842,26 @@ export default function YouthPages({
                         <option value="Indigenous Youth">Indigenous Youth</option>
                       </select>
                     </div>
+                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={editForm.is_registered_voter === true}
+                        disabled={isProfileLocked}
+                        onChange={(e) => setEditForm({ ...editForm, is_registered_voter: e.target.checked })}
+                        className="h-4 w-4 rounded border-slate-300 text-[#091d64] focus:ring-[#091d64]"
+                      />
+                      Registered Voter
+                    </label>
+                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={editForm.privacy_consent === true}
+                        disabled={isProfileLocked}
+                        onChange={(e) => setEditForm({ ...editForm, privacy_consent: e.target.checked })}
+                        className="h-4 w-4 rounded border-slate-300 text-[#091d64] focus:ring-[#091d64]"
+                      />
+                      Privacy Consent
+                    </label>
                   </div>
                 </div>
                 {/* FORM BUTTONS */}

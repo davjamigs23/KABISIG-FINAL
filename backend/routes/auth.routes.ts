@@ -199,6 +199,7 @@ const RegisterYouthSchema = z.object({
   guardian_name: z.string().max(200).optional().nullable(),
   guardian_contact: z.string().max(50).optional().nullable(),
   is_registered_voter: z.boolean().default(false),
+  privacy_consent: z.boolean().default(false),
   scholar_status: z.string().optional(),
   scholarship_source: z.enum(['Government', 'Private', 'Academic', 'NGO', 'Other']).optional(),
   scholarship_source_detail: z.string().max(250).optional(),
@@ -215,6 +216,13 @@ const RegisterYouthSchema = z.object({
   id_back_document_mime: z.string().regex(/^image\/(jpeg|png|webp)$/).optional(),
   id_back_document_base64: z.string().min(20).optional(),
 }).superRefine((data, context) => {
+  if (!data.privacy_consent) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['privacy_consent'],
+      message: 'Privacy consent is required to register.',
+    });
+  }
   if (data.scholar_status === 'Scholar'
     && data.scholarship_source === 'Other'
     && !data.scholarship_source_detail?.trim()) {
@@ -273,6 +281,7 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
     course,
     year,
     is_registered_voter,
+    privacy_consent,
     id_type,
     id_number,
     id_document_name,
@@ -453,6 +462,8 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
         scholarship_source: scholarship_source || (scholar_status === 'Scholar' ? 'Other' : null),
         is_pwd: is_pwd || false,
         is_solo_parent: is_solo_parent || false,
+        is_registered_voter,
+        privacy_consent,
         guardian_name: guardian_name || null,
         guardian_contact: guardian_contact || null,
         ...(frontPath ? { id_document_path: frontPath } : {}),
@@ -583,6 +594,7 @@ router.post('/register-youth', async (req: Request, res: Response): Promise<void
       year_level: year || null,
       youth_sector: educational_status === 'Out of School Youth' ? 'Out-of-School Youth' : 'In-School Youth',
       is_registered_voter,
+      privacy_consent,
       guardian_name: guardian_name || null,
       guardian_contact: guardian_contact || null,
       civil_status: civil_status || marital_status || 'Single',

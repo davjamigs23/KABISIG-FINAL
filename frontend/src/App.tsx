@@ -472,6 +472,8 @@ function AppContent() {
               school: resident.school || meta.school || '',
               course: resident.course || meta.course || '',
               youthSector: (resident as any).youth_sector || '',
+              is_registered_voter: resident.is_registered_voter === true,
+              privacy_consent: resident.privacy_consent === true,
               profilePic: user.avatar_url || meta.profilePic || '',
               year: resident.year_level || meta.year || '',
               employmentStatus: resident.employment_status || meta.employmentStatus || '',
@@ -742,12 +744,13 @@ function AppContent() {
 
     let isMounted = true;
     let hasLoaded = false;
+    const youthProfileTenantId = currentUser?.tenant_id || currentTenant?.id;
     const refreshYouthProfiles = () => {
       if (!hasLoaded) {
         setYouthProfilesLoading(true);
         setYouthProfilesError(null);
       }
-      kabisigApi.getYouthProfiles(false, 'all').then(({ data, error }) => {
+      kabisigApi.getYouthProfiles(false, undefined, youthProfileTenantId).then(({ data, error }) => {
         if (!isMounted) return;
         if (error || data === null) {
           setYouthProfilesError(error || 'Unable to load youth profiles.');
@@ -781,7 +784,7 @@ function AppContent() {
       window.removeEventListener('focus', refreshYouthProfiles);
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
-  }, [currentRole, currentTenant?.id, currentUser?.id, youthProfilesRetryCount]);
+  }, [currentRole, currentTenant?.id, currentUser?.id, currentUser?.tenant_id, youthProfilesRetryCount]);
 
   useEffect(() => {
     if (!currentRole || currentRole === 'Viewer' || !currentUser?.id || !kabisigApi.getToken()) {
@@ -969,6 +972,8 @@ function AppContent() {
           school: resident.school || meta.school || matchedProfile?.school || '',
           course: resident.course || meta.course || matchedProfile?.course || '',
           youthSector: (resident as any).youth_sector || matchedProfile?.youthSector || '',
+          is_registered_voter: resident.is_registered_voter === true,
+          privacy_consent: resident.privacy_consent === true,
           year: resident.year_level || meta.year || matchedProfile?.year || '',
           employmentStatus: resident.employment_status || meta.employmentStatus || matchedProfile?.employmentStatus || '',
           scholarStatus: resident.scholar_status || meta.scholarStatus || matchedProfile?.scholarStatus || '',
@@ -1043,9 +1048,10 @@ function AppContent() {
     const approvedAtTime = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
     // Update youth profile state
-    setYouthProfiles(prev => prev.map(p => p.id === id ? { 
+    setYouthProfiles(prev => prev.map(p => p.id === id || p.userId === id ? {
       ...p, 
       status: 'Approved',
+      verificationStatus: 'verified',
       approvedBy: approvedByName,
       approvedAt: approvedAtTime
     } : p));
@@ -1091,7 +1097,7 @@ function AppContent() {
     const approvedByName = currentTenant ? currentTenant.chairperson : 'SK Chairperson';
     const approvedAtTime = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
-    setYouthProfiles(prev => prev.map(p => p.id === id ? { ...p, status: 'Rejected', rejectionReason: reason } : p));
+    setYouthProfiles(prev => prev.map(p => p.id === id || p.userId === id ? { ...p, status: 'Rejected', rejectionReason: reason } : p));
     setRegistrations(prev => prev.map(r => r.participantId === id ? { ...r, status: 'Rejected' } : r));
     
     if (matchedYouth) {

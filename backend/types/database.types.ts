@@ -79,6 +79,7 @@ export interface ResidentProfile {
   educational_status: EducationalStatus | null;
   employment_status: EmploymentStatus | null;
   is_registered_voter: boolean;
+  privacy_consent: boolean;
   digital_youth_id: string | null;
   qr_code_url: string | null;
   created_at?: string;

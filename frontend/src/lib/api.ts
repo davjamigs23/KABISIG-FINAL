@@ -588,6 +588,7 @@ class KabisigApiClient {
     is_pwd?: boolean;
     is_solo_parent?: boolean;
     is_registered_voter?: boolean;
+    privacy_consent?: boolean;
     id_type?: string;
     id_number?: string;
     id_document_name?: string;
@@ -650,7 +651,7 @@ class KabisigApiClient {
     return this.request<any>(`/admin/users/lookup?identifier=${encodeURIComponent(identifier)}`, { method: 'GET' });
   }
 
-  async updateUserName(userId: string, payload: { full_name: string; first_name?: string; middle_name?: string; last_name?: string; suffix?: string; email?: string; phone?: string; birthdate?: string; address?: string; sex?: string; reason?: string }): Promise<{ success: boolean; data?: any; message?: string }> {
+  async updateUserName(userId: string, payload: { full_name: string; first_name?: string; middle_name?: string; last_name?: string; suffix?: string; email?: string; phone?: string; birthdate?: string; address?: string; sex?: string; is_registered_voter?: boolean; reason?: string }): Promise<{ success: boolean; data?: any; message?: string }> {
     return await this.request(`/admin/users/${encodeURIComponent(userId)}/update-name`, { method: 'PUT', body: JSON.stringify(payload) });
   }
 
@@ -1099,10 +1100,11 @@ class KabisigApiClient {
     return await this.request<{ full_name: string }>('/users/federation-president', { method: 'GET' });
   }
 
-  async getYouthProfiles(includeOfficials = false, scope?: 'all'): Promise<{ data: YouthProfile[] | null; error: string | null }> {
+  async getYouthProfiles(includeOfficials = false, scope?: 'all', tenantId?: string): Promise<{ data: YouthProfile[] | null; error: string | null }> {
     const params = new URLSearchParams();
     if (includeOfficials) params.set('include_officials', 'true');
     if (scope) params.set('scope', scope);
+    if (tenantId) params.set('tenant_id', tenantId);
     const query = params.toString();
     const url = query ? `/users/youth-profiles?${query}` : '/users/youth-profiles';
     const res = await this.request<YouthProfile[]>(url, { method: 'GET' });

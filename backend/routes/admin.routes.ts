@@ -375,7 +375,6 @@ router.post(
         email_delivery: true,
         link_type: 'magiclink',
         setup_url: actionLink,
-        action_link: actionLink,
       })
       .eq('id', chairperson.id);
     if (invitationLinkUpdateError) {
@@ -420,7 +419,7 @@ router.get('/users/lookup', authenticateUser, requireRoles('SUPER_ADMIN'), async
     // Use public.users as the source of truth; Auth records may be absent or incomplete.
     let userQuery = supabaseAdmin
       .from('users')
-      .select('id, email, full_name, first_name, middle_name, last_name, suffix, phone, role_id, tenant_id, status');
+      .select('id, email, full_name, first_name, middle_name, last_name, suffix, phone, role_id, tenant_id, status, resident_profile!resident_profile_user_id_fkey(birthdate, sex, address, is_registered_voter)');
     if (Number(caller.role_id) === 2 || Number(caller.role_id) === 3) {
       if (!caller.tenant_id) {
         sendError(res, 'A barangay tenant is required for this lookup.', 403);
@@ -444,22 +443,21 @@ router.get('/users/lookup', authenticateUser, requireRoles('SUPER_ADMIN'), async
     const user = matchingUsers[0];
     if (!user) { sendError(res, 'User not found.', 404); return; }
 
-    // Profile is optional — only youth constituents have it.
-    const { data: profile, error: profileErr } = await supabaseAdmin
-      .from('resident_profile')
-      .select('birthdate, sex, address')
-      .eq('user_id', user.id)
-      .maybeSingle();
-    if (profileErr) {
-      sendError(res, 'Failed to load user profile: ' + profileErr.message, 500);
+    const { data: authResult, error: authLookupError } = await supabaseAdmin.auth.admin.getUserById(user.id);
+    if (authLookupError && authLookupError.status !== 404) {
+      sendError(res, 'Failed to load authentication details: ' + authLookupError.message, 500);
       return;
     }
+    const joinedProfile = user.resident_profile;
+    const profile = Array.isArray(joinedProfile) ? joinedProfile[0] || null : joinedProfile || null;
 
     sendSuccess(res, {
       ...user,
+      email: user.email || authResult.user?.email || null,
       birthdate: profile?.birthdate || null,
       sex: profile?.sex || null,
       address: profile?.address || null,
+      is_registered_voter: profile?.is_registered_voter === true,
       resident_profile: profile || null,
       has_profile: !!profile
     }, 'User found.');
@@ -472,8 +470,12 @@ router.put('/users/:userId/update-name', authenticateUser, requireRoles('SUPER_A
   try {
     const authUser = (req as AuthRequest).user!;
     const rawId = String(req.params.userId || '').trim();
-    const { full_name, first_name, middle_name, last_name, suffix, email, phone, birthdate, address, sex, reason } = req.body;
+    const { full_name, first_name, middle_name, last_name, suffix, email, phone, birthdate, address, sex, is_registered_voter, reason } = req.body;
     if (!full_name) { sendError(res, 'Full name is required.', 400); return; }
+    if (is_registered_voter !== undefined && typeof is_registered_voter !== 'boolean') {
+      sendError(res, 'is_registered_voter must be a boolean.', 400);
+      return;
+    }
 
     // --- Resolve UUID from Email or use as-is if already a UUID ---
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -502,7 +504,19 @@ router.put('/users/:userId/update-name', authenticateUser, requireRoles('SUPER_A
 
     // --- Fetch old data for diff ---
     const { data: oldUser } = await supabaseAdmin.from('users').select('full_name, first_name, middle_name, last_name, email, phone').eq('id', userId).single();
-    const { data: oldProfile } = await supabaseAdmin.from('resident_profile').select('birthdate, address, sex').eq('user_id', userId).single();
+    const { data: oldProfile, error: oldProfileError } = await supabaseAdmin
+      .from('resident_profile')
+      .select('birthdate, address, sex, is_registered_voter')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (oldProfileError) {
+      sendError(res, 'Failed to load the user profile: ' + oldProfileError.message, 500);
+      return;
+    }
+    if (is_registered_voter !== undefined && !oldProfile) {
+      sendError(res, 'Voter status cannot be updated because this user has no resident profile.', 409);
+      return;
+    }
 
     // --- Fetch target's barangay for audit trail ---
     const { data: _targetBgy } = await supabaseAdmin.from('users').select('barangay(name)').eq('id', userId).maybeSingle();
@@ -533,13 +547,17 @@ router.put('/users/:userId/update-name', authenticateUser, requireRoles('SUPER_A
     if (authError) { sendError(res, 'Auth update failed: ' + authError.message, 500); return; }
 
     // --- Update resident_profile ---
-    if (birthdate || address !== undefined || sex !== undefined) {
-      const profileUpdate: Record<string, string | null> = {};
+    if (birthdate || address !== undefined || sex !== undefined || is_registered_voter !== undefined) {
+      const profileUpdate: Record<string, string | boolean | null> = {};
       if (birthdate) profileUpdate.birthdate = birthdate;
       if (address !== undefined) profileUpdate.address = address?.trim() || null;
       if (sex !== undefined) profileUpdate.sex = sex || null;
+      if (is_registered_voter !== undefined) profileUpdate.is_registered_voter = is_registered_voter;
       const { error: profileError } = await supabaseAdmin.from('resident_profile').update(profileUpdate).eq('user_id', userId);
-      if (profileError) { console.warn('Profile update failed:', profileError.message); }
+      if (profileError) {
+        sendError(res, 'Failed to update resident profile: ' + profileError.message, 500);
+        return;
+      }
     }
 
         // --- Send Professional Email Alert with Full Change Log ---
@@ -550,6 +568,9 @@ router.put('/users/:userId/update-name', authenticateUser, requireRoles('SUPER_A
     if (oldProfile?.birthdate !== birthdate && birthdate) changesList.push(`Birthdate: ${oldProfile?.birthdate || 'None'} &rarr; ${birthdate}`);
     if (oldProfile?.address !== address && address !== undefined) changesList.push(`Address: ${oldProfile?.address || 'None'} &rarr; ${address || 'None'}`);
     if (oldProfile?.sex !== sex && sex !== undefined) changesList.push(`Biological sex: ${oldProfile?.sex || 'None'} &rarr; ${sex || 'None'}`);
+    if (oldProfile?.is_registered_voter !== is_registered_voter && is_registered_voter !== undefined) {
+      changesList.push(`Registered voter: ${oldProfile?.is_registered_voter ? 'Yes' : 'No'} &rarr; ${is_registered_voter ? 'Yes' : 'No'}`);
+    }
 
     if (changesList.length > 0) {
       const emailSubject = 'Security Alert: Your KABISIG Account Was Updated';
@@ -611,7 +632,10 @@ router.put('/users/:userId/update-name', authenticateUser, requireRoles('SUPER_A
           last_name: (oldUser?.last_name || '') !== (last_name || '') ? { old: oldUser?.last_name || '', new: last_name || '' } : undefined,
           email: oldUser?.email !== email && email ? { old: oldUser?.email, new: email } : undefined,
           phone: oldUser?.phone !== phone ? { old: oldUser?.phone, new: phone } : undefined,
-          birthdate: oldProfile?.birthdate !== birthdate && birthdate ? { old: oldProfile?.birthdate, new: birthdate } : undefined
+          birthdate: oldProfile?.birthdate !== birthdate && birthdate ? { old: oldProfile?.birthdate, new: birthdate } : undefined,
+          is_registered_voter: oldProfile?.is_registered_voter !== is_registered_voter && is_registered_voter !== undefined
+            ? { old: oldProfile?.is_registered_voter ?? false, new: is_registered_voter }
+            : undefined
         }
       },
       ipAddress: req.ip || null

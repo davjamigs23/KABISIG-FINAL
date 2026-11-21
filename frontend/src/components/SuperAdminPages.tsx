@@ -136,9 +136,15 @@ useEffect(() => {
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showFixTypoModal, setShowFixTypoModal] = useState(false);
   const [typoUserId, setTypoUserId] = useState('');
+  const [typoTargetUserId, setTypoTargetUserId] = useState('');
+  const [typoHasProfile, setTypoHasProfile] = useState(false);
+  const [typoUserProfile, setTypoUserProfile] = useState<{ is_registered_voter: boolean } | null>(null);
 
   const handleLookupUser = async () => {
     if (!typoUserId.trim()) return;
+    setTypoTargetUserId('');
+    setTypoHasProfile(false);
+    setTypoUserProfile(null);
     setIsSearching(true);
     try {
       const searchValue = typoUserId.trim().toLowerCase();
@@ -158,6 +164,13 @@ useEffect(() => {
       const res = await kabisigApi.lookupUser(lookupIdentifier);
       if (res.success && res.data) {
         const user = res.data;
+        const joinedProfile = user.resident_profile;
+        const profile = Array.isArray(joinedProfile) ? joinedProfile[0] || null : joinedProfile || null;
+        setTypoTargetUserId(user.id || '');
+        setTypoHasProfile(Boolean(profile || user.has_profile));
+        setTypoUserProfile({
+          is_registered_voter: profile?.is_registered_voter === true || user.is_registered_voter === true,
+        });
         // If split name fields are missing, parse from full_name
         const _fullName = (user.full_name || '').trim();
         const _nameParts = _fullName.split(/\s+/);
@@ -188,10 +201,10 @@ useEffect(() => {
 
         setTypoEmail(user.email || '');
         setTypoPhone(String(user.phone || ''));
-        const birthdate = user.birthdate || user.resident_profile?.birthdate;
+        const birthdate = user.birthdate || profile?.birthdate;
         setTypoBirthdate(typeof birthdate === 'string' ? birthdate.slice(0, 10) : '');
-        setTypoAddress(user.address || user.resident_profile?.address || '');
-        setTypoSex(user.sex || user.resident_profile?.sex || '');
+        setTypoAddress(user.address || profile?.address || '');
+        setTypoSex(user.sex || profile?.sex || '');
         setTypoFullName(_fullName);
 
         // Notify user if profile is missing (SK Officials, Chairpersons)
@@ -245,7 +258,7 @@ useEffect(() => {
   const [copiedLink, setCopiedLink] = useState(false);
   const [chairpersonSetupLink, setChairpersonSetupLink] = useState('');
   const [districtFilter, setDistrictFilter] = useState<'All' | 'North' | 'South' | 'West' | 'East'>('All');
-  const [chairpersonFilter, setChairpersonFilter] = useState<'All' | 'Assigned' | 'Unassigned'>('All');
+  const [chairpersonFilter, setChairpersonFilter] = useState<'All' | 'Assigned' | 'Pending' | 'Unassigned'>('All');
   // Panel rec #9: Transfer Leadership modal state
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [historyBarangay, setHistoryBarangay] = useState<any>(null);
@@ -688,9 +701,12 @@ useEffect(() => {
                           b.chairperson.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           (b.chairpersonEmail && b.chairpersonEmail.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesDistrict = districtFilter === 'All' || bgyDistrict === districtFilter;
-    const isAssigned = hasAssignedChairperson(b);
+    const isPending = isPendingChair(b.chairpersonUser);
+    const isAssigned = hasAssignedChairperson(b) && !isPending;
     const matchesChairperson = chairpersonFilter === 'All'
-      || (chairpersonFilter === 'Assigned' ? isAssigned : !isAssigned);
+      || (chairpersonFilter === 'Assigned' && isAssigned)
+      || (chairpersonFilter === 'Pending' && isPending)
+      || (chairpersonFilter === 'Unassigned' && !hasAssignedChairperson(b));
     return matchesSearch && matchesDistrict && matchesChairperson;
   });
 
@@ -1689,6 +1705,7 @@ useEffect(() => {
                   >
                     <option value="All">All Chairperson statuses</option>
                     <option value="Assigned">Chairperson assigned</option>
+                    <option value="Pending">Pending Chairperson</option>
                     <option value="Unassigned">No Chairperson assigned</option>
                   </select>
 
@@ -3584,14 +3601,14 @@ useEffect(() => {
             
             <form onSubmit={async (e) => {
               e.preventDefault();
-              if (!typoUserId || !typoFullName) { showPopup('Both fields are required.'); return; }
+              if (!typoTargetUserId || !typoFullName) { showPopup('Search for a user before updating credentials.'); return; }
               if (typoPhone && !/^09\d{9}$/.test(typoPhone)) { showPopup('Phone number must be exactly 11 digits and start with 09 (e.g., 09171234567).'); return; }
               setIsUpdating(true);
               try {
                 const combinedName = [typoFirstName.trim(), typoMiddleName.trim(), typoLastName.trim(), typoSuffix.trim()].filter(Boolean).join(' ');
                 if (!combinedName) { showPopup('Please enter at least a First or Last name.'); setIsUpdating(false); return; }
                 
-                const res = await kabisigApi.updateUserName(typoUserId, { 
+                const res = await kabisigApi.updateUserName(typoTargetUserId, {
                   full_name: combinedName,
                   first_name: typoFirstName.trim() || undefined,
                   middle_name: typoMiddleName.trim() || undefined,
@@ -3602,12 +3619,14 @@ useEffect(() => {
                   birthdate: typoBirthdate || undefined,
                   address: typoAddress.trim() || undefined,
                   sex: typoSex || undefined,
+                  is_registered_voter: typoHasProfile ? Boolean(typoUserProfile?.is_registered_voter) : undefined,
                   reason: typoReason.trim() || undefined
                 });
                 if (res.success) {
                   showPopup('User credentials updated successfully!', 'success');
                   setShowFixTypoModal(false);
                   setTypoUserId('');
+                  setTypoTargetUserId('');
                   setTypoFullName('');
                   setTypoFirstName('');
                   setTypoMiddleName('');
@@ -3616,8 +3635,10 @@ useEffect(() => {
                   setTypoEmail('');
                   setTypoPhone('');
                   setTypoBirthdate('');
-                  setTypoReason('');
-                  setTypoBirthdate('');
+                  setTypoAddress('');
+                  setTypoSex('');
+                  setTypoHasProfile(false);
+                  setTypoUserProfile(null);
                   setTypoReason('');
                 } else {
                   showPopup(res.message || 'Failed to update.');
@@ -3687,6 +3708,22 @@ useEffect(() => {
                   <option value="Other">Other</option>
                   <option value="Prefer not to say">Prefer not to say</option>
                 </select>
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={typoUserProfile?.is_registered_voter || false}
+                    disabled={!typoHasProfile || isUpdating}
+                    onChange={(e) => setTypoUserProfile({ is_registered_voter: e.target.checked })}
+                    className="h-4 w-4 rounded border-slate-300 text-[#091d64] focus:ring-[#091d64]"
+                  />
+                  Registered voter
+                </label>
+                {!typoHasProfile && (
+                  <p className="mt-1 text-[10px] text-slate-400">This user has no resident profile to store voter status.</p>
+                )}
               </div>
 
               <div>

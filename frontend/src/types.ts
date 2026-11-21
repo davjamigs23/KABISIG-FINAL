@@ -64,6 +64,8 @@ export interface YouthProfile {
   civilStatus?: 'Single' | 'Married' | 'Widowed' | 'Separated' | 'Single Parent'; // Civil Status (Required)
   isPwd?: boolean;
   isSoloParent?: boolean;
+  is_registered_voter?: boolean;
+  privacy_consent?: boolean;
   address: string; // Complete residential address (Required)
   zone: string; // Zone/Purok (Required)
   mobile: string; // Contact Number (Required)

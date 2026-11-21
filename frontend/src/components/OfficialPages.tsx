@@ -381,6 +381,12 @@ export default function OfficialPages({
   useEffect(() => {
     setLocalYouthProfiles(youthProfiles || []);
   }, [youthProfiles]);
+  const isPendingYouthReview = (profile: YouthProfile) => {
+    const status = String(profile.status || '').toLowerCase();
+    const verificationStatus = String(profile.verificationStatus || '').toLowerCase();
+    return status !== 'rejected'
+      && (status === 'pending' || status === 'submitted' || verificationStatus === 'submitted');
+  };
 
   const [secYouthTab, setSecYouthTab] = useState<'verified' | 'pending'>('verified');
   const [selectedYouthProfile, setSelectedYouthProfile] = useState<YouthProfile | null>(null);
@@ -5599,7 +5605,7 @@ export default function OfficialPages({
                   onClick={() => setSecYouthTab('pending')}
                   className={`px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${secYouthTab === 'pending' ? 'bg-[#091d64] text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
                 >
-                  <Clock className="w-4 h-4" /> Applicant Verification ({localYouthProfiles.filter(p => p.status === 'Pending').length})
+                  <Clock className="w-4 h-4" /> Applicant Verification ({localYouthProfiles.filter(isPendingYouthReview).length})
                 </button>
               </div>
 
@@ -5645,7 +5651,7 @@ export default function OfficialPages({
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs font-medium bg-white">
                     {localYouthProfiles
-                      .filter(y => secYouthTab === 'verified' ? (y.status === 'Approved' || y.status?.toLowerCase() === 'suspended') : y.status === 'Pending')
+                      .filter(y => secYouthTab === 'verified' ? (y.status === 'Approved' || y.status?.toLowerCase() === 'suspended') : isPendingYouthReview(y))
                       .filter(y => {
                         const matchSearch = y.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           y.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -5777,7 +5783,7 @@ export default function OfficialPages({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs font-medium bg-white">
-                    {localYouthProfiles.filter(p => p.status === 'Pending').map(y => (
+                    {localYouthProfiles.filter(isPendingYouthReview).map(y => (
                       <tr key={y.id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center gap-3">
@@ -5808,7 +5814,7 @@ export default function OfficialPages({
                         </td>
                       </tr>
                     ))}
-                    {localYouthProfiles.filter(p => p.status === 'Pending').length === 0 && (
+                    {localYouthProfiles.filter(isPendingYouthReview).length === 0 && (
                       <tr>
                         <td colSpan={5} className="text-center py-6 text-slate-400 font-bold whitespace-nowrap">No pending validation requests found.</td>
                       </tr>
