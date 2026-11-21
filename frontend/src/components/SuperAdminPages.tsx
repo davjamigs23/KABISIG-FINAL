@@ -147,23 +147,13 @@ useEffect(() => {
     setTypoUserProfile(null);
     setIsSearching(true);
     try {
-      const searchValue = typoUserId.trim().toLowerCase();
-      let lookupIdentifier = typoUserId.trim();
-      if (!searchValue.includes('@')) {
-        const officialsResponse = await kabisigApi.getAllOfficials();
-        const matchingOfficials = (officialsResponse.data || []).filter((official: any) =>
-          String(official.email || '').toLowerCase().includes(searchValue)
-          || String(official.full_name || '').toLowerCase().includes(searchValue)
-        );
-        if (matchingOfficials.length > 1) {
-          showPopup('Multiple officials match this search. Enter a more specific email or full name.');
+      const res = await kabisigApi.lookupUser(typoUserId.trim());
+      if (res.success && res.data) {
+        const user = res.data.user || res.data;
+        if (!user.id) {
+          showPopup('The lookup response did not contain a user record.');
           return;
         }
-        if (matchingOfficials[0]?.id) lookupIdentifier = matchingOfficials[0].id;
-      }
-      const res = await kabisigApi.lookupUser(lookupIdentifier);
-      if (res.success && res.data) {
-        const user = res.data;
         const joinedProfile = user.resident_profile;
         const profile = Array.isArray(joinedProfile) ? joinedProfile[0] || null : joinedProfile || null;
         setTypoTargetUserId(user.id || '');
@@ -171,33 +161,17 @@ useEffect(() => {
         setTypoUserProfile({
           is_registered_voter: profile?.is_registered_voter === true || user.is_registered_voter === true,
         });
-        // If split name fields are missing, parse from full_name
-        const _fullName = (user.full_name || '').trim();
-        const _nameParts = _fullName.split(/\s+/);
-        const _hasSplit = (user.first_name && user.first_name.trim()) || (user.last_name && user.last_name.trim());
+        const fullName = String(user.full_name || '').trim();
+        const nameParts = fullName.split(/\s+/).filter(Boolean);
+        const firstName = String(user.first_name || nameParts[0] || '').trim();
+        const middleName = String(user.middle_name || (nameParts.length > 2 ? nameParts.slice(1, -1).join(' ') : '')).trim();
+        const lastName = String(user.last_name || (nameParts.length > 1 ? nameParts[nameParts.length - 1] : '')).trim();
+        const suffix = String(user.suffix || '').trim();
 
-        if (_hasSplit) {
-          setTypoFirstName(user.first_name || '');
-          setTypoMiddleName(user.middle_name || '');
-          setTypoLastName(user.last_name || '');
-          setTypoSuffix(user.suffix || '');
-        } else {
-          // Parse from full_name
-          if (_nameParts.length === 1) {
-            setTypoFirstName(_nameParts[0] || '');
-            setTypoMiddleName('');
-            setTypoLastName('');
-          } else if (_nameParts.length === 2) {
-            setTypoFirstName(_nameParts[0] || '');
-            setTypoMiddleName('');
-            setTypoLastName(_nameParts[1] || '');
-          } else {
-            setTypoFirstName(_nameParts[0] || '');
-            setTypoMiddleName(_nameParts.slice(1, -1).join(' ') || '');
-            setTypoLastName(_nameParts[_nameParts.length - 1] || '');
-          }
-          setTypoSuffix('');
-        }
+        setTypoFirstName(firstName);
+        setTypoMiddleName(middleName);
+        setTypoLastName(lastName);
+        setTypoSuffix(suffix);
 
         setTypoEmail(user.email || '');
         setTypoPhone(String(user.phone || ''));
@@ -205,12 +179,7 @@ useEffect(() => {
         setTypoBirthdate(typeof birthdate === 'string' ? birthdate.slice(0, 10) : '');
         setTypoAddress(user.address || profile?.address || '');
         setTypoSex(user.sex || profile?.sex || '');
-        setTypoFullName(_fullName);
-
-        // Notify user if profile is missing (SK Officials, Chairpersons)
-        if (!user.resident_profile) {
-          // Silently populate the rest — birthdate stays empty
-        }
+        setTypoFullName(fullName || [firstName, middleName, lastName, suffix].filter(Boolean).join(' '));
       } else {
         showPopup(res.message || 'User not found.');
       }
@@ -3651,9 +3620,9 @@ useEffect(() => {
             }} className="space-y-4">
               
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Email</label>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Email or User ID</label>
                 <div className="flex gap-2">
-                  <input required type="text" value={typoUserId} onChange={e => setTypoUserId(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); handleLookupUser(); } }} className="flex-1 border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="user@example.com" />
+                  <input required type="text" value={typoUserId} onChange={e => setTypoUserId(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); handleLookupUser(); } }} className="flex-1 border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="user@example.com or user ID" />
                   <button type="button" onClick={(e) => { e.preventDefault(); handleLookupUser(); }} disabled={isSearching} className="px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-lg border border-slate-200 transition-colors disabled:opacity-50">
                     {isSearching ? '...' : 'Search'}
                   </button>
