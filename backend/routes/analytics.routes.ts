@@ -176,7 +176,8 @@ router.get('/barangay', authenticateUser, requireRoles('BARANGAY_ADMIN', 'SK_OFF
     .from('resident_profile')
     .select('user_id, birthdate, sex, educational_status, employment_status, is_registered_voter, users!resident_profile_user_id_fkey!inner(role_id, status)')
     .eq('tenant_id', tenantId)
-    .eq('users.role_id', 4);
+    .eq('users.role_id', 4)
+    .eq('users.status', 'active');
   if (profilesError) {
     sendError(res, `Failed to load registered youth profiles: ${profilesError.message}`, 500);
     return;

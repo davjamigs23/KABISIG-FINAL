@@ -1914,7 +1914,7 @@ router.get(
     });
 
     // Format the data with ALL fields for Admin review
-    const formatted = users.map((u: any) => {
+    const formatted = await Promise.all(users.map(async (u: any) => {
       const prof = profileMap.get(u.id) || {};
       return {
         id: u.id,
@@ -1945,10 +1945,10 @@ router.get(
         idNumber: prof.id_number || '',
         idDocumentPath: prof.id_document_path || '',
         verificationStatus: prof.verification_status || 'not_submitted',
-        profilePic: u.avatar_url || '',
+        profilePic: await resolveAvatarUrl(u.avatar_url) || '',
         programs: programMap.get(u.id) || [],
       };
-    });
+    }));
 
     sendSuccess(res, formatted, 'Directory retrieved.');
   }

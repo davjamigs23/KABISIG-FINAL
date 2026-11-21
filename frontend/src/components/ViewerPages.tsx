@@ -256,17 +256,29 @@ export default function ViewerPages({
             </tr>
           </thead>
           <tbody>
-            ${expenses.slice(0, 10).map(e => `
-              <tr>
-                <td><strong>${e.voucherNumber || 'DV-2026-001'}</strong></td>
-                <td>Barangay ${tenants.find(t=>t.id===e.barangayId)?.name || 'Barangay'}</td>
-                <td>${e.supplier || e.title || e.description || e.payee || 'N/A'}</td>
-                <td>${e.aipCode || 'AIP-2026-SPT-01'}</td>
-                <td class="text-right">₱${Number(e.gross_amount ?? e.amount ?? 0).toLocaleString()}</td>
-                <td class="text-right">₱${Number(e.tax_amount ?? e.vatAmount ?? 0).toLocaleString()}</td>
-                <td class="text-center"><span class="badge">Verified</span></td>
-              </tr>
-            `).join('')}
+            ${expenses.slice(0, 10).map((e: any) => {
+              const rawBarangayName = String(e.barangay_name || tenants.find(t => t.id === (e.tenant_id || e.barangayId))?.name || '').trim();
+              const barangayLabel = rawBarangayName
+                ? (/^barangay(?:\s|$)/i.test(rawBarangayName) ? rawBarangayName : `Barangay ${rawBarangayName}`)
+                : 'N/A';
+              const voucherNumber = e.voucher_number || e.id || e.voucherNumber || 'N/A';
+              const aipReference = e.aip_reference || e.program?.aip_reference || e.aipCode || 'N/A';
+              const verificationStatus = String(e.status || 'Unknown')
+                .replace(/_/g, ' ')
+                .replace(/\b\w/g, character => character.toUpperCase());
+              const payee = e.payee_name || e.payee || e.supplier || e.title || e.description || 'N/A';
+              return `
+                <tr>
+                  <td><strong>${voucherNumber}</strong></td>
+                  <td>${barangayLabel}</td>
+                  <td>${payee}</td>
+                  <td>${aipReference}</td>
+                  <td class="text-right">\u20B1${Number(e.gross_amount ?? e.amount ?? 0).toLocaleString()}</td>
+                  <td class="text-right">\u20B1${Number(e.tax_amount ?? e.vatAmount ?? 0).toLocaleString()}</td>
+                  <td class="text-center"><span class="badge">${verificationStatus}</span></td>
+                </tr>
+              `;
+            }).join('')}
           </tbody>
         </table>
 
@@ -324,16 +336,16 @@ export default function ViewerPages({
   // Calculate city wide transparency aggregate statistics
   const totalBudget = tenants.reduce((acc, curr) => acc + curr.totalBudget, 0);
   const totalDisbursed = tenants.reduce((acc, curr) => acc + curr.spentBudget, 0);
-  const totalCityYouth = tenants.reduce((acc, curr) => acc + curr.youthPopulation, 0);
+  const _demoRaw = (publicDemographics as any)?.data?.data
+    ?? (publicDemographics as any)?.data
+    ?? publicDemographics;
+  const totalCityYouth = Number(_demoRaw?.total_youth || 0);
 
   // Demographics aggregation
   const maleCount = youthProfiles.filter(p => p.sex === 'Male').length;
   const femaleCount = youthProfiles.filter(p => p.sex === 'Female').length;
   const scholarCount = youthProfiles.filter(p => p.scholarStatus === 'Scholar').length;
 
-  const _demoRaw = (publicDemographics as any)?.data?.data
-    ?? (publicDemographics as any)?.data
-    ?? publicDemographics;
   const _genderSource = _demoRaw?.sex_distribution ?? _demoRaw?.sexCounts;
   const _genderMap = _genderSource && typeof _genderSource === 'object' && !Array.isArray(_genderSource)
     ? _genderSource
@@ -603,7 +615,7 @@ export default function ViewerPages({
               </span>
             </div>
             <span className="text-[11px] text-slate-400 font-sans tracking-wide font-semibold mt-1">
-              Kabataang Bagong Sistema para sa Inklusibong Gobyerno — Naga City
+              Kabataang Bagong Sistema para sa Inklusibong Gobyerno {'\u2014'} Naga City
             </span>
           </div>
 
@@ -719,7 +731,7 @@ export default function ViewerPages({
                 <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Federation Budget</span>
-                    <h4 className="text-2xl font-black text-slate-800 mt-1">₱{Number(totalBudget || 0).toLocaleString()}</h4>
+                    <h4 className="text-2xl font-black text-slate-800 mt-1">{'\u20B1'}{Number(totalBudget || 0).toLocaleString()}</h4>
                     <span className="text-[10px] text-amber-600 font-bold block mt-0.5">Allocated Annual Fund</span>
                   </div>
                   <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
@@ -972,7 +984,7 @@ export default function ViewerPages({
                     <div className="bg-white rounded-xl shadow-xs border-l-4 border-amber-500 p-5 flex items-center justify-between">
                       <div>
                         <span className="text-[10px] font-bold text-slate-400 uppercase block tracking-wider">Total Federation Budget</span>
-                        <h3 className="text-2xl font-black text-slate-800 mt-1">₱{Number(totalBudget || 0).toLocaleString()}</h3>
+                        <h3 className="text-2xl font-black text-slate-800 mt-1">{'\u20B1'}{Number(totalBudget || 0).toLocaleString()}</h3>
                         <span className="text-[10px] text-emerald-600 font-bold block mt-1">Shared municipal funding</span>
                       </div>
                       <div className="p-3 bg-amber-50 text-amber-600 rounded-lg">
@@ -983,7 +995,7 @@ export default function ViewerPages({
                     <div className="bg-white rounded-xl shadow-xs border-l-4 border-rose-500 p-5 flex items-center justify-between">
                       <div>
                         <span className="text-[10px] font-bold text-slate-400 uppercase block tracking-wider">Total Disbursed Funds</span>
-                        <h3 className="text-2xl font-black text-slate-800 mt-1">₱{Number(totalDisbursed || 0).toLocaleString()}</h3>
+                        <h3 className="text-2xl font-black text-slate-800 mt-1">{'\u20B1'}{Number(totalDisbursed || 0).toLocaleString()}</h3>
                         <span className="text-[10px] text-rose-600 font-bold block mt-1">Utilization: {totalBudget > 0 ? ((totalDisbursed / totalBudget) * 100).toFixed(1) : "0.0"}%</span>
                       </div>
                       <div className="p-3 bg-rose-50 text-rose-600 rounded-lg">
@@ -1280,15 +1292,15 @@ export default function ViewerPages({
                         ) : filteredExpenses.map(exp => (
                           <tr key={exp.id} className="hover:bg-slate-50">
                             <td className="px-5 py-3.5">
-                              <span className={`block font-bold ${exp.title || (exp as any).description ? 'text-slate-800' : 'text-slate-400 italic'}`}>
-                                {exp.title || (exp as any).description || 'Unnamed Transaction'}
+                              <span className="block font-bold text-slate-800">
+                                {(exp as any).expense_category || 'Unnamed Transaction'}
                               </span>
                               <span className="block text-sm text-gray-500">
                                 {exp.barangay_name || 'Unknown Barangay'}
                               </span>
                             </td>
                             <td className="px-5 py-3.5 text-right font-mono text-slate-800">
-                              ₱{Number(exp.gross_amount ?? exp.amount ?? 0).toLocaleString()}
+                              {'\u20B1'}{Number(exp.gross_amount ?? exp.amount ?? 0).toLocaleString()}
                             </td>
                             <td className={`px-5 py-3.5 ${exp.title ? 'text-slate-600' : 'text-slate-400 italic'}`}>
                               {exp.title || 'Unspecified'}
@@ -1299,10 +1311,10 @@ export default function ViewerPages({
                               </span>
                             </td>
                             <td className="px-5 py-3.5 text-right font-mono text-slate-500">
-                              ₱{Number(exp.tax_amount ?? exp.vatAmount ?? exp.withholdingTax ?? 0).toLocaleString()}
+                              {'\u20B1'}{Number(exp.tax_amount ?? exp.vatAmount ?? exp.withholdingTax ?? 0).toLocaleString()}
                             </td>
                             <td className="px-5 py-3.5 text-right font-mono text-[#091d64] font-bold">
-                              ₱{Number(exp.net_amount ?? exp.netAmount ?? exp.amount ?? 0).toLocaleString()}
+                              {'\u20B1'}{Number(exp.net_amount ?? exp.netAmount ?? exp.amount ?? 0).toLocaleString()}
                             </td>
                           </tr>
                         ))}
@@ -1374,23 +1386,16 @@ export default function ViewerPages({
                     <span className="text-xs text-slate-400 font-medium">Community Impact Projects</span>
                   </div>
 
-                  <div className="space-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {programs.filter((prog: any) => { const st = String(prog.status || '').toLowerCase(); const isActive = st === 'upcoming' || st === 'ongoing'; const matchesBarangay = selectedBarangayId === 'All' || (tenants || []).find((t: any) => t.id === prog.barangayId)?.name === selectedBarangayId; return isActive && matchesBarangay; }).slice(0, 6).map((prog: any) => (
-                      <div key={prog.id} className="p-3.5 bg-slate-50 rounded-xl border border-slate-100 space-y-2 overflow-hidden">
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="font-bold text-slate-800">{prog.title}</span>
-                          <span className="text-[10px] bg-emerald-100 text-emerald-800 font-extrabold px-2 py-0.5 rounded">
-                            {prog.status}
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-slate-500 font-bold">Brgy. {sortedTenants.find((t: any) => t.id === prog.barangayId)?.name || "Naga City"}</p>
-                          <div key={`img-${prog.id}`} className="relative w-full h-48 mb-3 overflow-hidden rounded-lg bg-slate-100">
+                      <div key={prog.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                        <div key={`img-${prog.id}`} className="relative w-full h-48 overflow-hidden bg-slate-100">
                             {prog.image_url || prog.imageUrl || prog.banner_url ? (
                               <img
                                 src={getImageUrl(prog.image_url || prog.imageUrl || prog.banner_url)}
                                 alt={prog.title || 'Program image'}
                                 loading="lazy"
-                                className="w-full h-48 object-cover rounded-t-lg cursor-pointer transition-transform hover:scale-105"
+                                className="w-full h-48 object-cover cursor-pointer"
                                 onClick={() => setLightboxImg(getImageUrl(prog.image_url || prog.imageUrl || prog.banner_url))}
                               />
                             ) : (
@@ -1400,10 +1405,18 @@ export default function ViewerPages({
                               </div>
                             )}
                           </div>
-
-                        <div className="flex justify-between items-center text-[10px] text-slate-400 font-medium pt-1 border-t border-slate-100">
-                          <span>{prog.location}</span>
-                          <span className="font-mono font-bold text-[#091d64]">₱{Number(prog.budgetAllocation || 0).toLocaleString()}</span>
+                        <div className="p-4 space-y-2">
+                          <div className="flex justify-between items-center gap-2 text-xs">
+                            <span className="font-bold text-slate-800">{prog.title}</span>
+                            <span className="shrink-0 text-[10px] bg-emerald-100 text-emerald-800 font-extrabold px-2 py-0.5 rounded">
+                              {prog.status}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-500 font-bold">Brgy. {sortedTenants.find((t: any) => t.id === prog.barangayId)?.name || "Naga City"}</p>
+                          <div className="flex justify-between items-center text-[10px] text-slate-400 font-medium pt-1 border-t border-slate-100">
+                            <span>{prog.location}</span>
+                            <span className="font-mono font-bold text-[#091d64]">{'\u20B1'}{Number(prog.budgetAllocation || 0).toLocaleString()}</span>
+                          </div>
                         </div>
                         <button
                           type="button"
@@ -1420,7 +1433,7 @@ export default function ViewerPages({
                                 {(Array.isArray(budgetCache[prog.id]?.expenses) ? budgetCache[prog.id].expenses : []).map((e: any) => (
                                   <tr key={e.id} className="border-b border-slate-100 last:border-0">
                                     <td className="py-1 text-slate-700 font-medium">{e.title}</td>
-                                    <td className="py-1 text-right font-mono text-slate-800">₱{Number(e.gross_amount || 0).toLocaleString()}</td>
+                                    <td className="py-1 text-right font-mono text-slate-800">{'\u20B1'}{Number(e.gross_amount || 0).toLocaleString()}</td>
                                     <td className="py-1 pl-2 text-right text-[9px] uppercase font-bold">
                                       <span className={e.status === "approved" ? "text-emerald-600" : "text-amber-600"}>{e.status}</span>
                                     </td>
@@ -1432,15 +1445,15 @@ export default function ViewerPages({
                             <div className="pt-2 border-t border-slate-200 space-y-1">
                               <div className="flex justify-between font-semibold text-slate-700">
                                 <span>Total Allocation</span>
-                                <span className="font-mono">₱{Number(budgetCache[prog.id].summary.total_allocated || 0).toLocaleString()}</span>
+                                <span className="font-mono">{'\u20B1'}{Number(budgetCache[prog.id].summary.total_allocated || 0).toLocaleString()}</span>
                               </div>
                               <div className="flex justify-between font-semibold text-slate-700">
                                 <span>Total Spent</span>
-                                <span className="font-mono text-rose-600">₱{Number(budgetCache[prog.id].summary.total_spent || 0).toLocaleString()}</span>
+                                <span className="font-mono text-rose-600">{'\u20B1'}{Number(budgetCache[prog.id].summary.total_spent || 0).toLocaleString()}</span>
                               </div>
                               <div className="flex justify-between font-semibold text-slate-700">
                                 <span>Remaining</span>
-                                <span className="font-mono text-emerald-600">₱{Number(budgetCache[prog.id].summary.remaining_balance || 0).toLocaleString()}</span>
+                                <span className="font-mono text-emerald-600">{'\u20B1'}{Number(budgetCache[prog.id].summary.remaining_balance || 0).toLocaleString()}</span>
                               </div>
                               <div className="flex justify-between font-bold text-[#091d64] pt-1 border-t border-slate-200">
                                 <span>Utilization</span>
@@ -1531,9 +1544,9 @@ export default function ViewerPages({
                           <span className="text-[10px] text-slate-400">Closes: {formatPhilippineDate(res.end_date)}</span>
                         )}
                         <div className="flex items-center gap-4 text-[10px] font-bold text-slate-500 pt-2 border-t border-slate-200/60">
-                          <span className="text-emerald-700">👍 Support: {res.votesSupport}</span>
-                          <span className="text-rose-600">👎 Oppose: {res.votesOppose}</span>
-                          <span className="text-slate-400">⚪ Abstain: {res.votesAbstain}</span>
+                          <span className="text-emerald-700">&#128077; Support: {res.votesSupport}</span>
+                          <span className="text-rose-600">&#128078; Oppose: {res.votesOppose}</span>
+                          <span className="text-slate-400">&#9898; Abstain: {res.votesAbstain}</span>
                         </div>
                       </div>
                     ))}
@@ -1669,7 +1682,7 @@ export default function ViewerPages({
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
                 <h2 id="request-copy-title" className="text-lg font-bold text-slate-900">Request a document copy</h2>
-                <p className="mt-1 text-sm text-slate-500">{requestCopyDocument.title} · {requestCopyDocument.barangay}</p>
+                <p className="mt-1 text-sm text-slate-500">{requestCopyDocument.title} &middot; {requestCopyDocument.barangay}</p>
               </div>
               <button
                 type="button"
@@ -1732,7 +1745,7 @@ export default function ViewerPages({
                   disabled={isRequestCopySubmitting}
                   className="w-full rounded-lg bg-[#091d64] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#122878] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {isRequestCopySubmitting ? 'Sending request…' : 'Send request'}
+                  {isRequestCopySubmitting ? 'Sending request...' : 'Send request'}
                 </button>
               </form>
             )}

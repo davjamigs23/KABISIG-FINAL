@@ -108,6 +108,14 @@ function canSeeBarangayContacts(req: Request, barangayId: string): boolean {
   if (viewer.role && CONTACT_VISIBLE_ROLES.includes(viewer.role)) return true;
   return Boolean(viewer.tenant_id) && viewer.tenant_id === barangayId;
 }
+function canViewSignatorySex(req: Request, barangayId: string): boolean {
+  const viewer = (req as unknown as { user?: { role?: string; tenant_id?: string | null } }).user;
+  return Boolean(
+    viewer
+    && ['BARANGAY_ADMIN', 'SK_OFFICIAL'].includes(viewer.role || '')
+    && viewer.tenant_id === barangayId
+  );
+}
 // GET /api/barangays - Public/Authenticated: List all 27 Naga City permanently seeded barangays
 router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): Promise<void> => {
   try {
@@ -140,7 +148,7 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
     // Include pending officials, but exclude rejected records from the roster.
     const { data: allUsers, error: usersError } = await supabaseAdmin
       .from('users')
-      .select('id, tenant_id, role_id, full_name, email, status, setup_completed')
+      .select('id, tenant_id, role_id, full_name, email, status, setup_completed, resident_profile!resident_profile_user_id_fkey(sex)')
       .in('role_id', [2, 3])
       .neq('status', 'rejected');
     if (usersError) {
@@ -155,6 +163,7 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
       status: string | null;
       is_pending: boolean;
       setup_completed: boolean | null;
+      sex: string | null;
     }>();
     allUsers?.forEach((c) => {
       if (Number(c.role_id) === 2 && c.tenant_id) {
@@ -169,6 +178,7 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
           status: c.status,
           is_pending: c.status === 'pending',
           setup_completed: typeof c.setup_completed === 'boolean' ? c.setup_completed : null,
+          sex: c.resident_profile[0]?.sex || null,
         });
       }
     });
@@ -265,6 +275,7 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
                   email: chairpersonUser.email,
                 }
               : {}),
+            ...(canViewSignatorySex(req, b.id) ? { sex: chairpersonUser.sex } : {}),
           }
         : null;
       const budget = budgetMap.get(b.id) || { allocated: 0, spent: 0 };

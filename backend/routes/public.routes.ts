@@ -109,7 +109,7 @@ router.get('/expenses', async (_req: Request, res: Response): Promise<void> => {
     for (let offset = 0; ; offset += pageSize) {
       const { data, error } = await supabaseAdmin
         .from('expense')
-        .select('id, tenant_id, budget_id, program_id, title, description, gross_amount, tax_type, tax_rate, tax_amount, net_amount, expense_date, status, budget:budget_id(category), program:program_id(title)')
+        .select('id, tenant_id, budget_id, program_id, title, description, gross_amount, tax_type, tax_rate, tax_amount, net_amount, expense_date, status, budget:budget_id(category), program:program_id(title,aip_reference)')
         .in('budget_id', budgetIdBatch)
         .order('expense_date', { ascending: false })
         .order('id', { ascending: true })
@@ -128,6 +128,8 @@ router.get('/expenses', async (_req: Request, res: Response): Promise<void> => {
         allExpenses.push({
           ...expense,
           category: (expense as any).budget?.category || budget.category || 'Uncategorized',
+          expense_category: (expense as any).budget?.category || budget.category || null,
+          aip_reference: (expense as any).program?.aip_reference || null,
           barangay_name: barangayNames.get(budget.tenant_id) || null,
           payee_name: expense.title || 'N/A',
           budget,
@@ -190,10 +192,16 @@ router.get('/demographics', async (_req: Request, res: Response): Promise<void> 
   }
 
   const [
+    { count: youthCount, error: youthCountError },
     { count: attendeeCount, error: attendanceError },
     { count: scholarCount, error: scholarError },
     { count: resolutionCount, error: resolutionError },
   ] = await Promise.all([
+    supabaseAdmin
+      .from('users')
+      .select('*', { count: 'exact', head: true })
+      .eq('role_id', 4)
+      .eq('status', 'active'),
     supabaseAdmin.from('program_attendance').select('user_id', { count: 'exact', head: true }),
     supabaseAdmin
       .from('resident_profile')
@@ -207,6 +215,10 @@ router.get('/demographics', async (_req: Request, res: Response): Promise<void> 
       .eq('document_type', 'Resolution')
       .eq('status', 'approved'),
   ]);
+  if (youthCountError) {
+    sendError(res, `Failed to count youth constituents: ${youthCountError.message}`, 500);
+    return;
+  }
   if (attendanceError) {
     sendError(res, `Failed to count program attendees: ${attendanceError.message}`, 500);
     return;
@@ -223,7 +235,7 @@ router.get('/demographics', async (_req: Request, res: Response): Promise<void> 
   sendSuccess(
     res,
     {
-      total_youth: list.length,
+      total_youth: youthCount ?? list.length,
       sex_distribution: sexCounts,
       pwd_count: pwdCount,
       solo_parent_count: soloParentCount,

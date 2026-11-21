@@ -362,7 +362,7 @@ export function monitorBudgets(
   if (totalAllocated > tenant.totalBudget) {
     alerts.push({
       level: 'Critical',
-      message: `Critical Deficit: Total programmatic allocations (₱${totalAllocated.toLocaleString()}) exceed your general fund allotment (₱${tenant.totalBudget.toLocaleString()}) by ₱${(totalAllocated - tenant.totalBudget).toLocaleString()}.`,
+      message: `Critical Deficit: Total programmatic allocations (\u20B1${totalAllocated.toLocaleString()}) exceed your general fund allotment (\u20B1${tenant.totalBudget.toLocaleString()}) by \u20B1${(totalAllocated - tenant.totalBudget).toLocaleString()}.`,
       code: 'ALLOCATION_EXCEEDED'
     });
   }
@@ -375,13 +375,13 @@ export function monitorBudgets(
     if (actualSpent > prog.budgetAllocation) {
       alerts.push({
         level: 'Critical',
-        message: `Deficit Alert: Expense itemizations for "${prog.title}" (₱${actualSpent.toLocaleString()}) exceed approved program budget allocation (₱${prog.budgetAllocation.toLocaleString()}).`,
+        message: `Deficit Alert: Expense itemizations for "${prog.title}" (\u20B1${actualSpent.toLocaleString()}) exceed approved program budget allocation (\u20B1${prog.budgetAllocation.toLocaleString()}).`,
         code: `PROG_OVERSPENT_${prog.id}`
       });
     } else if (actualSpent >= prog.budgetAllocation * 0.9) {
       alerts.push({
         level: 'Warning',
-        message: `Budget Cap reached: Program "${prog.title}" has consumed ${prog.budgetAllocation > 0 ? Math.round((actualSpent / prog.budgetAllocation) * 100) : (actualSpent > 0 ? 100 : 0)}% of its ₱${prog.budgetAllocation.toLocaleString()} limit.`,
+        message: `Budget Cap reached: Program "${prog.title}" has consumed ${prog.budgetAllocation > 0 ? Math.round((actualSpent / prog.budgetAllocation) * 100) : (actualSpent > 0 ? 100 : 0)}% of its \u20B1${prog.budgetAllocation.toLocaleString()} limit.`,
         code: `PROG_HIGH_SPENT_${prog.id}`
       });
     }
@@ -391,7 +391,7 @@ export function monitorBudgets(
       if (exp.amount > prog.budgetAllocation * 0.5) {
         alerts.push({
           level: 'Info',
-          message: `Outsized Invoice: Single expense of ₱${exp.amount.toLocaleString()} for "${exp.supplier}" represents over 50% of the entire program budget for "${prog.title}".`,
+          message: `Outsized Invoice: Single expense of \u20B1${exp.amount.toLocaleString()} for "${exp.supplier}" represents over 50% of the entire program budget for "${prog.title}".`,
           code: `OUTSIZED_EXPENSE_${exp.id}`
         });
       }

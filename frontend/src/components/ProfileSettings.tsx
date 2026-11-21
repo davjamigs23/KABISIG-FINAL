@@ -163,9 +163,12 @@ export default function ProfileSettings() {
                 <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handlePhotoChange} disabled={isUploadingPhoto} />
               </label>
             </div>
-            <div>
-              <h2 className="text-2xl font-black text-slate-800">{getName()}</h2>
-              <div className="flex items-center gap-2 mt-1">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-xl md:text-2xl font-bold break-words text-slate-800">{getName()}</h2>
+                <span className="shrink-0 rounded bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-500">READ-ONLY</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 mt-1">
                 <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-blue-50 text-[#091d64] border border-blue-200">{getRole()}</span>
               </div>
             </div>

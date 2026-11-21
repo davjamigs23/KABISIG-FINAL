@@ -275,7 +275,7 @@ function AppContent() {
         id: e.id,
         programId: e.program_id || '',
         programTitle: e.program?.title || e.title || 'General',
-        category: e.budget?.category || 'Supplies',
+        category: e.expense_category || e.budget?.category || 'Supplies',
         amount: Number(e.gross_amount) || 0,
         gross_amount: Number(e.gross_amount) || 0,
         supplier: e.payee_name || e.payee || e.supplier || 'Various Suppliers',
@@ -289,8 +289,9 @@ function AppContent() {
         description: e.description || '',
         date: e.expense_date || '',
         dateLogged: e.expense_date || '',
-        voucherNumber: 'DV-' + String(e.id).slice(0, 6).toUpperCase(),
-        status: 'Approved',
+        voucherNumber: e.voucher_number || 'DV-' + String(e.id).slice(0, 6).toUpperCase(),
+        aipCode: e.aip_reference || e.program?.aip_reference || '',
+        status: e.status || 'Unknown',
         barangayId: e.tenant_id,
       })));
     }).catch((e: any) => console.warn('Public expenses failed:', e?.message));
@@ -311,7 +312,7 @@ function AppContent() {
       setCurrentTenant(null);
       setCurrentYouth(null);
       setCurrentEmail('');
-      setPublicView('login');
+      setPublicView('landing');
     };
     window.addEventListener('kabisig:auth-invalid', invalidateSession);
 
@@ -321,7 +322,6 @@ function AppContent() {
 
   useEffect(() => {
     const storedToken = kabisigApi.getToken();
-    if (!storedToken) setPublicView('login');
     kabisigApi.getBarangays().then((data) => {
       const sortedBarangays = data
         .map(barangay => ({
@@ -1190,7 +1190,7 @@ function AppContent() {
     const newAnn: AnnouncementRecord = {
       id: `ann-${Date.now().toString().slice(-3)}`,
       title: `Registration Open: ${newP.title}`,
-      content: `${newP.description}\nLocation: ${newP.location}\nBudget Allocation: ₱${newP.budgetAllocation.toLocaleString()}\nSlots available: ${newP.maxParticipants}. Under the AIP framework, registration is free for KK validated members.`,
+      content: `${newP.description}\nLocation: ${newP.location}\nBudget Allocation: \u20B1${newP.budgetAllocation.toLocaleString()}\nSlots available: ${newP.maxParticipants}. Under the AIP framework, registration is free for KK validated members.`,
       author: authorName,
       barangay: currentTenant?.name || 'City-Wide',
       datePosted: getPhilippineDateString(),
@@ -1372,7 +1372,7 @@ function AppContent() {
       
       {/* 1. PUBLIC LANDING / LOGIN / SIGN-UP VIEW */}
       {!authReady && (
-        <div className="flex-1 flex items-center justify-center text-slate-500 font-semibold">Checking your session…</div>
+        <div className="flex-1 flex items-center justify-center text-slate-500 font-semibold">Checking your session...</div>
       )}
       {authReady && currentRole === null && publicView === 'landing' && (
         <LandingPage

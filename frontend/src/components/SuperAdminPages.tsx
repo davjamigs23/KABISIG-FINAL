@@ -154,19 +154,34 @@ useEffect(() => {
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showFixTypoModal, setShowFixTypoModal] = useState(false);
   const [typoUserId, setTypoUserId] = useState('');
+  const [typoSearchResults, setTypoSearchResults] = useState<any[]>([]);
   const [typoTargetUserId, setTypoTargetUserId] = useState('');
   const [typoHasProfile, setTypoHasProfile] = useState(false);
   const [typoUserProfile, setTypoUserProfile] = useState<{ is_registered_voter: boolean } | null>(null);
 
-  const handleLookupUser = async () => {
-    if (!typoUserId.trim()) return;
+  const getTypoSearchRoleLabel = (user: any): string => {
+    const roleId = Number(user.role_id);
+    if (roleId === 1) return 'Super Admin';
+    if (roleId === 2) return 'Barangay Admin';
+    if (roleId === 3) return user.official_role || 'SK Official';
+    if (roleId === 4) return 'Youth Constituent';
+    return `Role ${roleId || 'Unknown'}`;
+  };
+
+  const handleLookupUser = async (searchValue = typoUserId) => {
+    if (!searchValue.trim()) return;
     setTypoTargetUserId('');
     setTypoHasProfile(false);
     setTypoUserProfile(null);
+    setTypoSearchResults([]);
     setIsSearching(true);
     try {
-      const res = await kabisigApi.lookupUser(typoUserId.trim());
+      const res = await kabisigApi.lookupUser(searchValue.trim());
       if (res.success && res.data) {
+        if (Array.isArray(res.data.matches)) {
+          setTypoSearchResults(res.data.matches);
+          return;
+        }
         const user = res.data.user || res.data;
         if (!user.id) {
           showPopup('The lookup response did not contain a user record.');
@@ -1170,12 +1185,12 @@ useEffect(() => {
     }[character] || character));
     const rows = sortedBarangays.map(barangay => {
       const liveRow = federationRows.find((row: any) => row.id === barangay.id);
-      return `<tr><td>${escapeHtml(barangay.name)}</td><td>${toNumber(liveRow?.registered_youth ?? barangay.youthPopulation)}</td><td>₱${Number(toNumber(liveRow?.budget_allocated ?? barangay.totalBudget) || 0).toLocaleString()}</td><td>₱${Number(toNumber(liveRow?.budget_spent ?? barangay.spentBudget) || 0).toLocaleString()}</td><td>${toNumber(liveRow?.active_programs ?? barangay.activePrograms)}</td></tr>`;
+      return `<tr><td>${escapeHtml(barangay.name)}</td><td>${toNumber(liveRow?.registered_youth ?? barangay.youthPopulation)}</td><td>\u20B1${Number(toNumber(liveRow?.budget_allocated ?? barangay.totalBudget) || 0).toLocaleString()}</td><td>\u20B1${Number(toNumber(liveRow?.budget_spent ?? barangay.spentBudget) || 0).toLocaleString()}</td><td>${toNumber(liveRow?.active_programs ?? barangay.activePrograms)}</td></tr>`;
     }).join('');
 
     reportWindow.document.write(`<!doctype html><html><head><title>Naga City LYDP ${new Date().getFullYear()}</title><style>
       body{font:12px Arial,sans-serif;color:#172033;margin:36px}h1{font-size:22px;margin:0 0 6px;color:#091d64}h2{font-size:15px;margin:24px 0 8px;color:#091d64}p{line-height:1.5}.meta{color:#586174}table{width:100%;border-collapse:collapse;margin-top:12px}th,td{border:1px solid #cbd5e1;padding:7px;text-align:left}th{background:#f1f5f9} .summary{display:flex;gap:20px;margin:20px 0}.summary div{border:1px solid #cbd5e1;padding:12px;flex:1}.summary b{display:block;font-size:16px;margin-top:4px}@media print{body{margin:15mm}}
-      </style></head><body><h1>Naga City SK Federation</h1><p class="meta">Local Youth Development Plan Report • Generated ${formatPhilippineDate(new Date())}</p><h2>Citywide Summary</h2><p>This report summarizes current registry, budget, and active program figures available to KABISIG. It does not create or modify database records.</p><div class="summary"><div>Barangays<b>${barangays.length}</b></div><div>Registered youth<b>${Number(totalYouthPop || 0).toLocaleString()}</b></div><div>Allocated budget<b>₱${Number(totalCityBudget || 0).toLocaleString()}</b></div><div>Active programs<b>${Number(totalActivePrograms || 0)}</b></div></div><h2>Barangay Indicators</h2><table><thead><tr><th>Barangay</th><th>Registered youth</th><th>Allocated budget</th><th>Spent</th><th>Active programs</th></tr></thead><tbody>${rows}</tbody></table></body></html>`);
+      </style></head><body><h1>Naga City SK Federation</h1><p class="meta">Local Youth Development Plan Report • Generated ${formatPhilippineDate(new Date())}</p><h2>Citywide Summary</h2><p>This report summarizes current registry, budget, and active program figures available to KABISIG. It does not create or modify database records.</p><div class="summary"><div>Barangays<b>${barangays.length}</b></div><div>Registered youth<b>${Number(totalYouthPop || 0).toLocaleString()}</b></div><div>Allocated budget<b>\u20B1${Number(totalCityBudget || 0).toLocaleString()}</b></div><div>Active programs<b>${Number(totalActivePrograms || 0)}</b></div></div><h2>Barangay Indicators</h2><table><thead><tr><th>Barangay</th><th>Registered youth</th><th>Allocated budget</th><th>Spent</th><th>Active programs</th></tr></thead><tbody>${rows}</tbody></table></body></html>`);
     reportWindow.document.close();
     reportWindow.focus();
     reportWindow.print();
@@ -1417,10 +1432,10 @@ useEffect(() => {
                     </div>
                   </div>
                   <span className="text-3xl font-black text-emerald-600 block">
-                    {totalCityBudget > 0 ? `₱${Number(totalCityBudget || 0).toLocaleString('en-US')}` : '₱0'}
+                    {totalCityBudget > 0 ? `\u20B1${Number(totalCityBudget || 0).toLocaleString('en-US')}` : '\u20B10'}
                   </span>
                   <p className="text-[11px] text-slate-400 font-medium">
-                    {totalCitySpent > 0 ? `₱${Number(totalCitySpent || 0).toLocaleString('en-US')} Spent (${avgBudgetUtilization}%)` : '₱0 Spent (0%)'}
+                    {totalCitySpent > 0 ? `\u20B1${Number(totalCitySpent || 0).toLocaleString('en-US')} Spent (${avgBudgetUtilization}%)` : '\u20B10 Spent (0%)'}
                   </p>
                 </div>
 
@@ -1528,7 +1543,7 @@ useEffect(() => {
                   {pieBudgetData.length === 0 ? (
                     <div className="h-52 w-full flex flex-col items-center justify-center text-center p-4">
                       <div className="w-12 h-12 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-400 mb-2 font-bold text-lg">
-                        ₱0
+                        {'\u20B1'}0
                       </div>
                       <p className="text-xs font-bold text-slate-700">No Budget Allocation Data</p>
                       <p className="text-[11px] text-slate-400 mt-0.5">No positive current-year allocations are available.</p>
@@ -1542,7 +1557,7 @@ useEffect(() => {
                               <Cell key={`cell-${index}`} fill={entry.color} />
                             ))}
                           </Pie>
-                          <Tooltip formatter={(value: number) => `₱${Number(value || 0).toLocaleString('en-US')}`} />
+                          <Tooltip formatter={(value: number) => `\u20B1${Number(value || 0).toLocaleString('en-US')}`} />
                         </PieChart>
                       </ResponsiveContainer>
                     </div>
@@ -1555,7 +1570,7 @@ useEffect(() => {
                           <span className="text-slate-600 max-w-md whitespace-normal break-words truncate max-w-[140px]">{item.name}</span>
                         </div>
                         <span className="font-bold text-slate-900">
-                          {item.value > 0 ? `₱${Number(item.value || 0).toLocaleString('en-US')}` : '₱0'}
+                          {item.value > 0 ? `\u20B1${Number(item.value || 0).toLocaleString('en-US')}` : '\u20B10'}
                         </span>
                       </div>
                     ))}
@@ -1632,8 +1647,8 @@ useEffect(() => {
                               </div>
                             </td>
                             <td className="p-3 font-mono whitespace-nowrap">{Number(registeredYouth || 0).toLocaleString()}</td>
-                            <td className="p-3 font-mono font-bold text-slate-800 whitespace-nowrap">₱{Number(totalBudget || 0).toLocaleString()}</td>
-                            <td className="p-3 font-mono text-emerald-700 whitespace-nowrap">₱{Number(spent || 0).toLocaleString()}</td>
+                            <td className="p-3 font-mono font-bold text-slate-800 whitespace-nowrap">{'\u20B1'}{Number(totalBudget || 0).toLocaleString()}</td>
+                            <td className="p-3 font-mono text-emerald-700 whitespace-nowrap">{'\u20B1'}{Number(spent || 0).toLocaleString()}</td>
                             <td className="p-3 whitespace-nowrap">
                               <div className="flex items-center gap-2">
                                 <div className="w-16 h-2 bg-slate-200 rounded-full overflow-hidden">
@@ -1974,8 +1989,8 @@ useEffect(() => {
                       <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
                         <BarChart data={analyticsChartData}>
                           <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} />
-                          <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(value: number) => `₱${Number(value || 0).toLocaleString('en-US')}`} />
-                          <Tooltip formatter={(value: number) => `₱${Number(value || 0).toLocaleString('en-US')}`} />
+                          <YAxis stroke="#94a3b8" fontSize={10} tickFormatter={(value: number) => `\u20B1${Number(value || 0).toLocaleString('en-US')}`} />
+                          <Tooltip formatter={(value: number) => `\u20B1${Number(value || 0).toLocaleString('en-US')}`} />
                           <Legend />
                           <Bar dataKey="budget" fill="#059669" name="Total AIP Budget" radius={[4, 4, 0, 0]} />
                           <Bar dataKey="spent" fill="#10b981" name="Actual Spent" radius={[4, 4, 0, 0]} />
@@ -2037,8 +2052,8 @@ useEffect(() => {
                                 : formatOfficialName(chairpersonName, b.chairpersonUser?.sex, 2, 'SK Chairperson')}
                             </td>
                             <td className="p-3 font-mono whitespace-nowrap">{Number(registeredYouth || 0).toLocaleString()}</td>
-                            <td className="p-3 font-mono font-bold text-slate-800 whitespace-nowrap">₱{Number(totalBudget || 0).toLocaleString()}</td>
-                            <td className="p-3 font-mono text-emerald-700 whitespace-nowrap">₱{Number(spentBudget || 0).toLocaleString()}</td>
+                            <td className="p-3 font-mono font-bold text-slate-800 whitespace-nowrap">{'\u20B1'}{Number(totalBudget || 0).toLocaleString()}</td>
+                            <td className="p-3 font-mono text-emerald-700 whitespace-nowrap">{'\u20B1'}{Number(spentBudget || 0).toLocaleString()}</td>
                             <td className="p-3 font-bold text-emerald-800 whitespace-nowrap">{rate}%</td>
                             <td className="p-3 font-mono whitespace-nowrap">{activePrograms} Programs</td>
                           </tr>
@@ -3651,13 +3666,32 @@ useEffect(() => {
             }} className="space-y-4">
               
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Email or User ID</label>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Search by Name, Email, Role, or User ID</label>
                 <div className="flex gap-2">
-                  <input required type="text" value={typoUserId} onChange={e => setTypoUserId(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); handleLookupUser(); } }} className="flex-1 border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="user@example.com or user ID" />
+                  <input required type="text" value={typoUserId} onChange={e => { setTypoUserId(e.target.value); setTypoSearchResults([]); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); handleLookupUser(); } }} className="flex-1 border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Name, email, role (e.g. Youth Constituent), or user ID" />
                   <button type="button" onClick={(e) => { e.preventDefault(); handleLookupUser(); }} disabled={isSearching} className="px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-lg border border-slate-200 transition-colors disabled:opacity-50">
                     {isSearching ? '...' : 'Search'}
                   </button>
                 </div>
+                {typoSearchResults.length > 0 && (
+                  <div className="mt-2 max-h-48 space-y-1 overflow-y-auto rounded-lg border border-slate-200 bg-white p-2">
+                    <p className="px-2 py-1 text-[10px] font-bold uppercase text-slate-400">Select an account</p>
+                    {typoSearchResults.map((user: any) => (
+                      <button
+                        key={user.id}
+                        type="button"
+                        onClick={() => { void handleLookupUser(user.id); }}
+                        className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-2 text-left hover:bg-slate-50"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate text-xs font-bold text-slate-800">{user.full_name || user.email || user.id}</span>
+                          <span className="block truncate text-[10px] text-slate-500">{user.email || 'No email recorded'}</span>
+                        </span>
+                        <span className="shrink-0 rounded bg-blue-50 px-2 py-1 text-[9px] font-bold text-blue-700">{getTypoSearchRoleLabel(user)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">

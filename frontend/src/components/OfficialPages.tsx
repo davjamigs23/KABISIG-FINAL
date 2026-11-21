@@ -66,7 +66,7 @@ import {
 , Loader2, AlertCircle} from 'lucide-react';
 
 const getProgramImageUrl = (program: any): string | null => {
-  const image = program?.imageUrl || program?.image_url;
+  const image = program?.imageUrl || program?.image_url || program?.pubmat_url || program?.pubmatUrl;
   if (!image) return null;
   if (/^https?:\/\//i.test(image)) return image;
   const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -581,6 +581,12 @@ export default function OfficialPages({
   const [docForm, setDocForm] = useState({
     title: '', description: '', category: '' as any, fileName: '', resolutionNumber: '', designatedApprover: ''
   });
+  const resetDocumentUploadForm = () => {
+    setShowDocModal(false);
+    setSelectedDocumentFile(null);
+    setDocumentUploadError('');
+    setDocForm({ title: '', description: '', category: '', fileName: '', resolutionNumber: '', designatedApprover: '' });
+  };
   const [expenseForm, setExpenseForm] = useState({
     programId: '', budgetId: '', amount: '', supplier: '', taxType: '' as any, category: '' as any
   });
@@ -609,7 +615,12 @@ export default function OfficialPages({
   };
 
   const [showAllocateProgram, setShowAllocateProgram] = useState(false);
-  const [allocateForm, setAllocateForm] = useState({ category: '', allocatedAmount: '', description: '', fiscalYear: String(new Date().getFullYear()) });
+  const [allocateForm, setAllocateForm] = useState({ category: '', allocatedAmount: '', description: '', fiscalYear: String(currentTenant?.active_fiscal_year || new Date().getFullYear()) });
+  useEffect(() => {
+    if (currentTenant?.active_fiscal_year) {
+      setAllocateForm(previous => ({ ...previous, fiscalYear: String(currentTenant.active_fiscal_year) }));
+    }
+  }, [currentTenant?.active_fiscal_year]);
   const [allocateError, setAllocateError] = useState('');
   const [isSavingAllocate, setIsSavingAllocate] = useState(false);
   const [allocateNotice, setAllocateNotice] = useState('');  const [expenseSaveError, setExpenseSaveError] = useState('');
@@ -723,13 +734,13 @@ export default function OfficialPages({
     }
     let isMounted = true;
 
-    // Cache hit â†’ instant
+    // Cache hit: instant
     if (regCacheRef.current[selectedProgId]) {
       setSelectedProgramRegistrations(regCacheRef.current[selectedProgId]);
       return;
     }
 
-    // Cache miss â†’ use in-flight promise if exists, else start new fetch
+    // Cache miss: use in-flight promise if exists, else start new fetch
     const _promise = regFetchingRef.current[selectedProgId] || (async () => {
       try {
         const rows = await kabisigApi.getProgramRegistrations(selectedProgId);
@@ -1000,9 +1011,21 @@ export default function OfficialPages({
     (sum, program) => sum + (program.registeredCount || (registrations || []).filter(registration => registration.programId === program.id).length),
     0
   );
-  const totalBarangayBudget = Number(currentTenant?.allocated_budget ?? 0);
-  const totalSpentExpenses = expenses.reduce((sum: number, expense: any) =>
-    sum + Number(expense.net_amount ?? expense.netAmount ?? 0), 0);
+  const treasurerActiveFiscalYear = Number(currentTenant?.active_fiscal_year || new Date().getFullYear());
+  const totalBarangayBudget = Number(treasurerBudgetYear) === treasurerActiveFiscalYear
+    ? Number(currentTenant?.allocated_budget ?? 0)
+    : 0;
+  const hasTotalSkBudget = Number.isFinite(totalBarangayBudget)
+    && totalBarangayBudget > 0
+    && Number(treasurerBudgetYear) === treasurerActiveFiscalYear
+    && Number(allocateForm.fiscalYear) === treasurerActiveFiscalYear;
+  const totalSpentExpenses = expenses
+    .filter((expense: any) => {
+      const expenseDate = expense.expense_date || expense.created_at || expense.date;
+      return expenseDate && new Date(expenseDate).getFullYear() === Number(treasurerBudgetYear);
+    })
+    .reduce((sum: number, expense: any) =>
+      sum + Number(expense.net_amount ?? expense.netAmount ?? 0), 0);
   const remainingCash = totalBarangayBudget - totalSpentExpenses;
   const budgetUtilizationRate = totalBarangayBudget > 0
     ? (totalSpentExpenses / totalBarangayBudget) * 100
@@ -1171,7 +1194,7 @@ export default function OfficialPages({
       : docForm.category === 'Minutes'
         ? 'Minutes'
         : docForm.category === 'Vouchers'
-          ? 'Vouchers'
+          ? 'Other'
           : 'Financial Report';
 
     setIsUploadingDocument(true);
@@ -1208,9 +1231,7 @@ export default function OfficialPages({
 
       setLocalDocs(prev => [newDocument, ...prev]);
       onAddDocument(newDocument);
-      setShowDocModal(false);
-      setSelectedDocumentFile(null);
-      setDocForm({ title: '', description: '', category: '', fileName: '', resolutionNumber: '', designatedApprover: '' });
+      resetDocumentUploadForm();
     } catch (error: any) {
       setDocumentUploadError(error.message || 'Document upload failed.');
     } finally {
@@ -1248,19 +1269,31 @@ export default function OfficialPages({
 
 
 
+  const formatSignatoryName = (name: string, sex?: string | null, role?: string | null) => {
+    const cleanName = name.replace(/^(Hon\.|Ms\.|Mr\.)\s+/i, '').trim();
+    if (!cleanName) return '_________________';
+    const roleLower = (role || '').toLowerCase();
+    if (roleLower.includes('chairperson') || roleLower.includes('kagawad')) {
+      return `Hon. ${cleanName}`;
+    }
+    const prefix = sex?.toLowerCase() === 'female' ? 'Ms.' : 'Mr.';
+    return `${prefix} ${cleanName}`;
+  };
+
   const printOfficialReport = async (title: string, reportHtml: string) => {
     const barangayName = currentTenant?.name || 'Barangay';
-    const userName = formatOfficialName({
-      ...currentUser,
-      full_name: currentUser?.full_name || 'SK Official',
-      official_role: currentUser?.official_role || currentUser?.position || currentRole || 'SK Official',
-    });
+    const userName = formatSignatoryName(
+      currentUser?.full_name || '',
+      currentUser?.resident_profile?.sex || currentUser?.sex,
+      currentRole
+    );
     const userRole = currentRole || 'SK Official';
-    const chairpersonName = formatOfficialName({
-      full_name: currentTenant?.chairperson || 'SK Chairperson',
-      role_id: 2,
-      official_role: 'SK Chairperson',
-    });
+    const chairpersonName = formatSignatoryName(
+      currentTenant?.chairpersonUser?.full_name
+        || (currentTenant?.chairperson && currentTenant.chairperson !== 'Unassigned' ? currentTenant.chairperson : ''),
+      currentTenant?.chairpersonUser?.sex,
+      'SK Chairperson'
+    );
     const now = new Date();
     const dateStr = formatPhilippineDate(now, 'en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
     const timeStr = formatPhilippineDateTime(now, 'en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -1335,7 +1368,7 @@ export default function OfficialPages({
       "'": '&#39;',
     };
     const escapeHtml = (value: unknown) => String(value ?? '—').replace(/[&<>"']/g, character => htmlEntities[character] || character);
-    const money = (value: unknown) => `₱${Number(value || 0).toLocaleString('en-PH')}`;
+    const money = (value: unknown) => `\u20B1${Number(value || 0).toLocaleString('en-PH')}`;
     let title: string;
     let headers: string[];
     let rows: string[][];
@@ -2173,6 +2206,12 @@ export default function OfficialPages({
           <div className="h-10 px-1.5 rounded-lg bg-white shadow-md ring-1 ring-white/30 flex items-center justify-center overflow-hidden flex-shrink-0">
             <img src="/images/Kabisig_logo.png" alt="KABISIG" className="h-9 w-auto object-contain" />
           </div>
+          <img
+            src={currentTenant?.logo || "/icon.png"}
+            alt={`${currentTenant?.name || 'Barangay'} Seal`}
+            className="h-9 w-auto object-contain ml-2"
+            onError={(e) => { e.currentTarget.src = '/icon.png'; }}
+          />
           <span className="text-[10px] font-bold bg-[#1e3a8a] px-2 py-0.5 rounded text-amber-300 truncate">{currentRole}</span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -2605,7 +2644,7 @@ export default function OfficialPages({
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Program Allocations</span>
                           <span className="hidden sm:inline text-[9px] font-bold bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded">Current Year</span>
                         </div>
-                        <h3 className="text-base sm:text-xl font-black text-[#091d64] mt-0.5">₱{Number(totalBarangayBudget || 0).toLocaleString()}</h3>
+                        <h3 className="text-base sm:text-xl font-black text-[#091d64] mt-0.5">{'\u20B1'}{Number(totalBarangayBudget || 0).toLocaleString()}</h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">From saved SK programs</p>
                       </div>
                     </div>
@@ -2619,7 +2658,7 @@ export default function OfficialPages({
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Disbursed Ledger</span>
                           <span className="hidden sm:inline text-[9px] font-bold bg-rose-50 text-rose-700 px-1.5 py-0.2 rounded">COA Audited</span>
                         </div>
-                        <h3 className="text-base sm:text-xl font-black text-rose-600 mt-0.5">₱{Number(totalSpentExpenses || 0).toLocaleString()}</h3>
+                        <h3 className="text-base sm:text-xl font-black text-rose-600 mt-0.5">{'\u20B1'}{Number(totalSpentExpenses || 0).toLocaleString()}</h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">VAT / Non-VAT Expenses</p>
                       </div>
                     </div>
@@ -2633,7 +2672,7 @@ export default function OfficialPages({
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Cash Balance</span>
                           <span className="hidden sm:inline text-[9px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded">{((remainingCash / (totalBarangayBudget || 1))*100).toFixed(1)}% Left</span>
                         </div>
-                        <h3 className="text-base sm:text-xl font-black text-emerald-600 mt-0.5">₱{Number(remainingCash || 0).toLocaleString()}</h3>
+                        <h3 className="text-base sm:text-xl font-black text-emerald-600 mt-0.5">{'\u20B1'}{Number(remainingCash || 0).toLocaleString()}</h3>
                         <p className="text-[10px] text-slate-500 truncate mt-0.5">Net Unexpended Funds</p>
                       </div>
                     </div>
@@ -2691,8 +2730,8 @@ export default function OfficialPages({
                           <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase">Program Allocations</span>
                           <span className="hidden sm:inline text-[9px] font-bold bg-amber-50 text-amber-700 px-1.5 py-0.2 rounded">Current Year</span>
                         </div>
-                        <h3 className="text-base sm:text-xl font-black text-amber-600 mt-0.5">₱{Number(totalBarangayBudget || 0).toLocaleString()}</h3>
-                        <p className="text-[10px] text-slate-500 truncate mt-0.5">₱{Number(remainingCash || 0).toLocaleString()} Cash Balance</p>
+                        <h3 className="text-base sm:text-xl font-black text-amber-600 mt-0.5">{'\u20B1'}{Number(totalBarangayBudget || 0).toLocaleString()}</h3>
+                        <p className="text-[10px] text-slate-500 truncate mt-0.5">{'\u20B1'}{Number(remainingCash || 0).toLocaleString()} Cash Balance</p>
                       </div>
                     </div>
                     <div className="bg-white rounded-xl border border-slate-100 p-3.5 sm:p-5 flex items-center gap-2.5 sm:gap-4 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-default group">
@@ -3409,7 +3448,7 @@ export default function OfficialPages({
                           <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={treasurerProgramsBudget} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
                             <XAxis dataKey="program" stroke="#64748b" tick={{ fontSize: 10, fill: '#475569' }} tickLine={false} interval={0} angle={0} textAnchor="middle" height={60} tickFormatter={(value) => { const s = String(value || ''); return s.length > 12 ? `${s.substring(0, 12)}...` : s; }} />
-                              <YAxis stroke="#64748b" tick={{ fontSize: 12, fill: '#64748b' }} tickLine={false} tickFormatter={(val) => `₱${(val/1000).toFixed(0)}k`} />
+                              <YAxis stroke="#64748b" tick={{ fontSize: 12, fill: '#64748b' }} tickLine={false} tickFormatter={(val) => `\u20B1${(val/1000).toFixed(0)}k`} />
                               <Tooltip 
                                 content={({ active, payload }) => {
                                   if (active && payload && payload.length) {
@@ -3418,8 +3457,8 @@ export default function OfficialPages({
                                     return (
                                       <div className="bg-slate-900 text-white p-3 rounded-lg shadow-lg text-xs space-y-1">
                                         <p className="font-bold uppercase tracking-wider text-amber-400">{data.program}</p>
-                                        <p className="text-slate-300">Budget Limit: <span className="font-mono font-bold text-blue-300">₱{Number(data.allocated || 0).toLocaleString()}</span></p>
-                                        <p className="text-slate-300">Actual Expenditure: <span className="font-mono font-bold text-green-300">₱{Number(data.actual || 0).toLocaleString()}</span></p>
+                                        <p className="text-slate-300">Budget Limit: <span className="font-mono font-bold text-blue-300">{'\u20B1'}{Number(data.allocated || 0).toLocaleString()}</span></p>
+                                        <p className="text-slate-300">Actual Expenditure: <span className="font-mono font-bold text-green-300">{'\u20B1'}{Number(data.actual || 0).toLocaleString()}</span></p>
                                         <p className="text-slate-300">Utilization %: <span className="font-mono font-bold text-emerald-400">{util}%</span></p>
                                       </div>
                                     );
@@ -3466,9 +3505,9 @@ export default function OfficialPages({
                                   <tr key={exp.id} className="hover:bg-slate-50/80">
                                     <td className="px-3 py-2 font-mono font-bold text-[#091d64] whitespace-nowrap">{exp.voucherNumber || 'DV-2026-001'}</td>
                                     <td className="px-3 py-2 text-slate-700 font-semibold truncate max-w-xs whitespace-nowrap">{(exp as any).payee || exp.supplier || exp.title || exp.description || 'N/A'}</td>
-                                    <td className="px-3 py-2 font-mono font-bold text-slate-800 whitespace-nowrap">₱{Number(gross || 0).toLocaleString()}</td>
+                                    <td className="px-3 py-2 font-mono font-bold text-slate-800 whitespace-nowrap">{'\u20B1'}{Number(gross || 0).toLocaleString()}</td>
                                     <td className="px-3 py-2 font-mono text-xs text-amber-700 whitespace-nowrap">
-                                      {exp.isVat ? `₱${Number(vat || 0).toLocaleString()} (5% VAT)` : 'Non-VAT Exempt'}
+                                      {exp.isVat ? `\u20B1${Number(vat || 0).toLocaleString()} (5% VAT)` : 'Non-VAT Exempt'}
                                     </td>
                                     <td className="px-3 py-2 text-center whitespace-nowrap">
                                       <span className="px-2 py-0.5 rounded text-[9px] font-extrabold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -3695,10 +3734,14 @@ export default function OfficialPages({
                         <h4 className="font-bold text-slate-800 text-sm">{formatProgramTitle(p.title)}</h4>
                         <div className="w-full h-40 bg-slate-100 rounded-lg overflow-hidden">
                           <img
-                            src={getProgramImageUrl(p) || '/placeholder.png'}
+                            src={getProgramImageUrl(p) || '/images/placeholder.png'}
                             alt={p.title}
                             className="w-full h-full object-contain cursor-pointer transition-transform hover:scale-105"
                             onClick={() => setLightboxImg(getProgramImageUrl(p))}
+                            onError={(e) => {
+                              e.currentTarget.onerror = null;
+                              e.currentTarget.src = '/images/placeholder.png';
+                            }}
                           />
                         </div>
                         <p className="text-slate-500 text-xs line-clamp-3 leading-relaxed">{p.description}</p>
@@ -3706,7 +3749,7 @@ export default function OfficialPages({
                       <div className="bg-slate-50 border-t border-slate-50 p-4 text-[11px] space-y-1 text-slate-500 font-medium">
                         <div className="flex justify-between"><span>Location:</span><span className="text-slate-800 font-bold">{p.location}</span></div>
                         <div className="flex justify-between"><span>Date:</span><span className="text-slate-800 font-bold">{p.startDate} - {p.endDate}</span></div>
-                        <div className="flex justify-between"><span>Allocated Budget:</span><span className="text-slate-800 font-bold">₱{Number(p.budgetAllocation || 0).toLocaleString()}</span></div>
+                        <div className="flex justify-between"><span>Allocated Budget:</span><span className="text-slate-800 font-bold">{'\u20B1'}{Number(p.budgetAllocation || 0).toLocaleString()}</span></div>
                         <div className="flex justify-between"><span>Registered Youth:</span><span className="text-slate-800 font-bold">{p.registeredCount} / {p.maxParticipants} slots</span></div>
                         {currentRole === 'SK Kagawad' && (
                           <div className="flex justify-end gap-2 pt-2">
@@ -3752,7 +3795,7 @@ export default function OfficialPages({
                           <td className="px-6 py-4 font-bold text-slate-800 whitespace-nowrap">{formatProgramTitle(p.title)}</td>
                           <td className="px-6 py-4 text-slate-500 whitespace-nowrap">{p.location}</td>
                           <td className="px-6 py-4 font-mono text-slate-500 whitespace-nowrap">{p.startDate} - {p.endDate}</td>
-                          <td className="px-6 py-4 text-right font-mono text-slate-800 whitespace-nowrap">₱{Number(p.budgetAllocation || 0).toLocaleString()}</td>
+                          <td className="px-6 py-4 text-right font-mono text-slate-800 whitespace-nowrap">{'\u20B1'}{Number(p.budgetAllocation || 0).toLocaleString()}</td>
                           <td className="px-6 py-4 text-center font-mono text-slate-800 whitespace-nowrap">{p.registeredCount} / {p.maxParticipants}</td>
                           {currentRole === 'SK Kagawad' && (
                             <td className="px-6 py-4 text-center whitespace-nowrap">
@@ -4561,7 +4604,7 @@ export default function OfficialPages({
                         <span className="text-[10px] font-bold uppercase tracking-wider">Annual SK 10% Fund</span>
                         <Coins className="w-4 h-4 text-[#091d64]" />
                       </div>
-                      <h4 className="text-xl font-black text-[#091d64]">₱{Number(totalBarangayBudget || 0).toLocaleString()}</h4>
+                      <h4 className="text-xl font-black text-[#091d64]">{'\u20B1'}{Number(totalBarangayBudget || 0).toLocaleString()}</h4>
                       <p className="text-[10px] text-slate-500">Statutory allocation under RA 10742</p>
                     </div>
 
@@ -4570,7 +4613,7 @@ export default function OfficialPages({
                         <span className="text-[10px] font-bold uppercase tracking-wider">Disbursed Expenditures</span>
                         <DollarSign className="w-4 h-4 text-rose-600" />
                       </div>
-                      <h4 className="text-xl font-black text-rose-600">₱{Number(totalSpentExpenses || 0).toLocaleString()}</h4>
+                      <h4 className="text-xl font-black text-rose-600">{'\u20B1'}{Number(totalSpentExpenses || 0).toLocaleString()}</h4>
                       <p className="text-[10px] text-slate-500">{budgetUtilizationRate.toFixed(1)}% total fund utilization rate</p>
                     </div>
 
@@ -4579,7 +4622,7 @@ export default function OfficialPages({
                         <span className="text-[10px] font-bold uppercase tracking-wider">Unliquidated / Cash Balance</span>
                         <RefreshCw className="w-4 h-4 text-emerald-600" />
                       </div>
-                      <h4 className="text-xl font-black text-emerald-600">₱{Number(remainingCash || 0).toLocaleString()}</h4>
+                      <h4 className="text-xl font-black text-emerald-600">{'\u20B1'}{Number(remainingCash || 0).toLocaleString()}</h4>
                       <p className="text-[10px] text-slate-500">Current available fiscal surplus</p>
                     </div>
 
@@ -4588,7 +4631,7 @@ export default function OfficialPages({
                         <span className="text-[10px] font-bold uppercase tracking-wider">BIR Tax Withholdings</span>
                         <Tag className="w-4 h-4 text-amber-600" />
                       </div>
-                      <h4 className="text-xl font-black text-amber-700">₱{Number(totalWithheld || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</h4>
+                      <h4 className="text-xl font-black text-amber-700">{'\u20B1'}{Number(totalWithheld || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</h4>
                       <p className="text-[10px] text-slate-500">Audited deductions for BIR remittance</p>
                     </div>
                   </div>
@@ -4653,9 +4696,9 @@ export default function OfficialPages({
                   <div key={cat.key} className="p-6 rounded-2xl border border-slate-100 bg-white shadow-sm hover:shadow-md transition-all group">
                     <div className="flex justify-between items-start mb-4">
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">{cat.label}</span>
-                      <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#091d64] flex items-center justify-center font-bold text-xs group-hover:scale-110 transition-transform">₱</div>
+                      <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#091d64] flex items-center justify-center font-bold text-xs group-hover:scale-110 transition-transform">{'\u20B1'}</div>
                     </div>
-                    <h4 className="text-2xl font-black text-[#091d64] mt-1 tracking-tight">₱{Number(stats.alloc || 0).toLocaleString()}</h4>
+                    <h4 className="text-2xl font-black text-[#091d64] mt-1 tracking-tight">{'\u20B1'}{Number(stats.alloc || 0).toLocaleString()}</h4>
                     <div className="mt-4">
                       <div className="flex justify-between text-[10px] font-bold mb-1.5">
                         <span className="text-slate-400 uppercase">Utilization</span>
@@ -4686,7 +4729,7 @@ export default function OfficialPages({
                           <h4 className="font-bold text-slate-800 text-sm">Program Budget Limits vs. Actual Expenditures</h4>
                           <p className="text-xs text-slate-400 mt-0.5">Visual comparison across all Sangguniang Kabataan initiatives and projects.</p>
                         </div>
-                        <span className="text-xs text-slate-400 italic">Values in Philippine Peso (₱)</span>
+                        <span className="text-xs text-slate-400 italic">Values in Philippine Peso ({'\u20B1'})</span>
                       </div>
 
                       {/* Interactive Bar Chart */}
@@ -4716,7 +4759,7 @@ export default function OfficialPages({
                                   stroke="#64748b" 
                                   tick={{ fontSize: 12, fill: '#64748b' }}
                                   tickLine={false} 
-                                  tickFormatter={(val) => `₱${(val/1000).toFixed(0)}k`}
+                                  tickFormatter={(val) => `\u20B1${(val/1000).toFixed(0)}k`}
                                 />
                                 <Tooltip 
                                   content={({ active, payload }) => {
@@ -4726,8 +4769,8 @@ export default function OfficialPages({
                                       return (
                                         <div className="bg-slate-900 text-white p-3 rounded-lg shadow-lg text-xs space-y-1">
                                           <p className="font-bold uppercase tracking-wider text-amber-400">{data.program}</p>
-                                          <p className="text-slate-300">Budget Limit: <span className="font-mono font-bold text-blue-300">₱{Number(data.allocated || 0).toLocaleString()}</span></p>
-                                          <p className="text-slate-300">Actual Expenditure: <span className="font-mono font-bold text-green-300">₱{Number(data.actual || 0).toLocaleString()}</span></p>
+                                          <p className="text-slate-300">Budget Limit: <span className="font-mono font-bold text-blue-300">{'\u20B1'}{Number(data.allocated || 0).toLocaleString()}</span></p>
+                                          <p className="text-slate-300">Actual Expenditure: <span className="font-mono font-bold text-green-300">{'\u20B1'}{Number(data.actual || 0).toLocaleString()}</span></p>
                                           <p className="text-slate-300">Utilization %: <span className="font-mono font-bold text-emerald-400">{util}%</span></p>
                                         </div>
                                       );
@@ -4782,9 +4825,9 @@ export default function OfficialPages({
                                 return (
                                   <tr key={idx} className="hover:bg-slate-50">
                                     <td className="px-5 py-3 font-bold text-slate-800 whitespace-nowrap">{p.program}</td>
-                                    <td className="px-5 py-3 text-right font-mono text-slate-800 whitespace-nowrap">₱{Number(p.allocated || 0).toLocaleString()}</td>
-                                    <td className="px-5 py-3 text-right font-mono font-bold text-emerald-600 whitespace-nowrap">₱{Number(p.actual || 0).toLocaleString()}</td>
-                                    <td className="px-5 py-3 text-right font-mono text-slate-500 whitespace-nowrap">₱{Number(rem || 0).toLocaleString()}</td>
+                                    <td className="px-5 py-3 text-right font-mono text-slate-800 whitespace-nowrap">{'\u20B1'}{Number(p.allocated || 0).toLocaleString()}</td>
+                                    <td className="px-5 py-3 text-right font-mono font-bold text-emerald-600 whitespace-nowrap">{'\u20B1'}{Number(p.actual || 0).toLocaleString()}</td>
+                                    <td className="px-5 py-3 text-right font-mono text-slate-500 whitespace-nowrap">{'\u20B1'}{Number(rem || 0).toLocaleString()}</td>
                                     <td className={`whitespace-nowrap ${`px-5 py-3 text-right font-mono font-bold ${Number(util) > 0 ? 'text-emerald-600' : 'text-slate-400'}`}`}>{util}%</td>
                                     <td className="px-5 py-3 text-center whitespace-nowrap">
                                       <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 font-extrabold text-[9px] rounded uppercase">Within Limit</span>
@@ -4815,17 +4858,17 @@ export default function OfficialPages({
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div className="p-4 rounded-xl border border-slate-100 bg-white space-y-1">
                           <span className="text-[10px] font-bold text-slate-400 uppercase">Gross Invoice Disbursements</span>
-                          <h4 className="text-xl font-black text-slate-800">₱{Number(expenses.reduce((a,c)=>a + (Number(c.amount) || 0), 0) || 0).toLocaleString()}</h4>
+                          <h4 className="text-xl font-black text-slate-800">{'\u20B1'}{Number(expenses.reduce((a,c)=>a + (Number(c.amount) || 0), 0) || 0).toLocaleString()}</h4>
                           <p className="text-[10px] text-slate-500">Total payments issued</p>
                         </div>
                         <div className="p-4 rounded-xl border border-rose-100 bg-rose-50/30 space-y-1">
                           <span className="text-[10px] font-bold text-rose-600 uppercase">Total Tax Withheld (BIR)</span>
-                          <h4 className="text-xl font-black text-rose-600">₱{Number(totalWithheld || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</h4>
+                          <h4 className="text-xl font-black text-rose-600">{'\u20B1'}{Number(totalWithheld || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</h4>
                           <p className="text-[10px] text-slate-500">Government withholding compliance</p>
                         </div>
                         <div className="p-4 rounded-xl border border-emerald-100 bg-emerald-50/30 space-y-1">
                           <span className="text-[10px] font-bold text-emerald-700 uppercase">Net Payables Remitted</span>
-                          <h4 className="text-xl font-black text-emerald-700">₱{Number(totalNetPayable || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</h4>
+                          <h4 className="text-xl font-black text-emerald-700">{'\u20B1'}{Number(totalNetPayable || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</h4>
                           <p className="text-[10px] text-slate-500">Net disbursed to suppliers</p>
                         </div>
                       </div>
@@ -4851,11 +4894,11 @@ export default function OfficialPages({
                               return (
                               <tr key={exp.id} className="hover:bg-slate-50">
                                 <td className="px-5 py-3.5 font-bold text-slate-800 whitespace-nowrap">{exp.programTitle}</td>
-                                <td className="px-5 py-3.5 text-right font-mono text-slate-800 font-bold whitespace-nowrap">₱{Number(exp.amount || 0).toLocaleString()}</td>
+                                <td className="px-5 py-3.5 text-right font-mono text-slate-800 font-bold whitespace-nowrap">{'\u20B1'}{Number(exp.amount || 0).toLocaleString()}</td>
                                 <td className="px-5 py-3.5 text-slate-600 font-semibold whitespace-nowrap">{exp.supplier}</td>
                                 <td className="px-5 py-3.5 text-center whitespace-nowrap"><span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[10px] font-black">{exp.taxType}</span></td>
-                                <td className="px-5 py-3.5 text-right font-mono text-rose-600 font-bold whitespace-nowrap">-₱{Number(withholdingTax || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                                <td className="px-5 py-3.5 text-right font-mono text-[#091d64] font-black text-sm whitespace-nowrap">₱{Number(getNetPayable(exp) || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                                <td className="px-5 py-3.5 text-right font-mono text-rose-600 font-bold whitespace-nowrap">-{'\u20B1'}{Number(withholdingTax || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                                <td className="px-5 py-3.5 text-right font-mono text-[#091d64] font-black text-sm whitespace-nowrap">{'\u20B1'}{Number(getNetPayable(exp) || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                                 <td className="px-5 py-3.5 font-mono text-[11px] text-slate-400 text-center whitespace-nowrap">{exp.dateLogged}</td>
                               </tr>
                               );
@@ -4896,8 +4939,8 @@ export default function OfficialPages({
                               <th className="px-5 py-3 whitespace-nowrap">#</th>
                               <th className="px-5 py-3 whitespace-nowrap">Barangay Name</th>
                               <th className="px-5 py-3 whitespace-nowrap">SK Chairperson</th>
-                              <th className="px-5 py-3 text-right whitespace-nowrap">Allocated Fund (₱)</th>
-                              <th className="px-5 py-3 text-right whitespace-nowrap">Actual Expenditures (₱)</th>
+                              <th className="px-5 py-3 text-right whitespace-nowrap">Allocated Fund ({'\u20B1'})</th>
+                              <th className="px-5 py-3 text-right whitespace-nowrap">Actual Expenditures ({'\u20B1'})</th>
                               <th className="px-5 py-3 text-right whitespace-nowrap">Utilization %</th>
                               <th className="px-5 py-3 text-center whitespace-nowrap">Status</th>
                             </tr>
@@ -4922,8 +4965,8 @@ export default function OfficialPages({
                                       {isCurrent && <span className="px-1.5 py-0.5 bg-[#091d64] text-white rounded text-[8px] uppercase">Your Barangay</span>}
                                     </td>
                                     <td className="px-5 py-3 text-slate-600 whitespace-nowrap">{bg.chairperson}</td>
-                                    <td className="px-5 py-3 text-right font-mono text-slate-800 whitespace-nowrap">₱{Number(bg.allocated || 0).toLocaleString()}</td>
-                                    <td className="px-5 py-3 text-right font-mono text-emerald-600 font-bold whitespace-nowrap">₱{Number(bg.actual || 0).toLocaleString()}</td>
+                                    <td className="px-5 py-3 text-right font-mono text-slate-800 whitespace-nowrap">{'\u20B1'}{Number(bg.allocated || 0).toLocaleString()}</td>
+                                    <td className="px-5 py-3 text-right font-mono text-emerald-600 font-bold whitespace-nowrap">{'\u20B1'}{Number(bg.actual || 0).toLocaleString()}</td>
                                     <td className="px-5 py-3 text-right font-mono font-black text-[#091d64] whitespace-nowrap">{util}%</td>
                                     <td className="px-5 py-3 text-center whitespace-nowrap">
                                       <span className={`px-2 py-0.5 rounded font-bold text-xs ${status.color}`}>
@@ -4948,7 +4991,7 @@ export default function OfficialPages({
                           <h4 className="font-bold text-slate-800 text-sm">SK Council Properties, Physical Assets & Inventory Valuation</h4>
                           <p className="text-xs text-slate-400 mt-0.5">Asset registry and condition auditing for year-end inventory reporting.</p>
                         </div>
-                        <span className="text-xs font-bold text-[#091d64]">Total Asset Value: ₱{Number(inventory.reduce((a,c)=>a + (Number(c.cost) || 0) * (Number(c.quantity) || 0), 0) || 0).toLocaleString()}</span>
+                        <span className="text-xs font-bold text-[#091d64]">Total Asset Value: {'\u20B1'}{Number(inventory.reduce((a,c)=>a + (Number(c.cost) || 0) * (Number(c.quantity) || 0), 0) || 0).toLocaleString()}</span>
                       </div>
 
                       {/* Inventory Valuation Table */}
@@ -4977,8 +5020,8 @@ export default function OfficialPages({
                                     {item.condition}
                                   </span>
                                 </td>
-                                <td className="px-5 py-3.5 text-right font-mono text-slate-800 whitespace-nowrap">₱{Number(item.cost || 0).toLocaleString()}</td>
-                                <td className="px-5 py-3.5 text-right font-mono font-bold text-[#091d64] whitespace-nowrap">₱{Number((item.cost || 0) * (item.quantity || 0)).toLocaleString()}</td>
+                                <td className="px-5 py-3.5 text-right font-mono text-slate-800 whitespace-nowrap">{'\u20B1'}{Number(item.cost || 0).toLocaleString()}</td>
+                                <td className="px-5 py-3.5 text-right font-mono font-bold text-[#091d64] whitespace-nowrap">{'\u20B1'}{Number((item.cost || 0) * (item.quantity || 0)).toLocaleString()}</td>
                                 <td className="px-5 py-3.5 text-slate-600 font-medium whitespace-nowrap">{item.location}</td>
                               </tr>
                             ))}
@@ -5005,12 +5048,13 @@ export default function OfficialPages({
                       <button 
                         onClick={() => {
                           if (reportModuleCategory === 'attendance') {
-                            const selProg = programs.find(p => p.id === selectedProgramForReport) || programs[0];
-                            const progAtt = localAttendance.filter(a => a.programId === selProg?.id);
+                            const selProg = programs.find(p => p.id === selectedProgramForReport);
+                            const programTitle = selProg?.title || 'No Program Selected';
+                            const progAtt = selProg ? localAttendance.filter(a => a.programId === selProg.id) : [];
                             const rowsHtml = progAtt.map((a, i) => `<tr><td style="text-align:center">${i+1}</td><td><strong>${a.participantName}</strong></td><td>${a.status}</td><td>${formatPhilippineDateTime(a.checkInTime)}</td><td style="border-bottom:1px solid #000; height:24px;"></td></tr>`).join('');
-                            printOfficialReport(`Official Attendance Sheet - ${selProg?.title}`, `
-                              <h4>Program Title: ${selProg?.title}</h4>
-                              <p style="font-size:11px;">Location: ${selProg?.location} | Date: ${selProg?.startDate}</p>
+                            printOfficialReport(`Official Attendance Sheet - ${programTitle}`, `
+                              <h4>Program Title: ${programTitle}</h4>
+                              <p style="font-size:11px;">Location: ${selProg?.location || 'N/A'} | Date: ${selProg?.startDate || 'N/A'}</p>
                               <table>
                                 <thead><tr><th style="width:30px">#</th><th>Participant Name</th><th>Check-in Status</th><th>Timestamp</th><th style="width:120px">Signature</th></tr></thead>
                                 <tbody>${rowsHtml || '<tr><td colSpan="5">No checked-in participants recorded.</td></tr>'}</tbody>
@@ -5033,7 +5077,7 @@ export default function OfficialPages({
                               <table>
                                 <thead><tr><th>Program Name</th><th>Category</th><th>Target Beneficiaries</th><th>Actual Attendance</th><th>Allocated Budget</th><th>Disbursed</th></tr></thead>
                                 <tbody>
-                                  ${accomplishmentPrograms.map(p => `<tr><td><strong>${p.title}</strong></td><td>${p.category}</td><td>${p.maxParticipants}</td><td>${p.registeredCount || 0}</td><td>₱${Number(p.budgetAllocation || 0).toLocaleString()}</td><td>₱${Number(expenses.filter(expense => expense.programId === p.id).reduce((sum, expense) => sum + (Number(expense.netAmount) || 0), 0) || 0).toLocaleString()}</td></tr>`).join('')}
+                                  ${accomplishmentPrograms.map(p => `<tr><td><strong>${p.title}</strong></td><td>${p.category}</td><td>${p.maxParticipants}</td><td>${p.registeredCount || 0}</td><td>\u20B1${Number(p.budgetAllocation || 0).toLocaleString()}</td><td>\u20B1${Number(expenses.filter(expense => expense.programId === p.id).reduce((sum, expense) => sum + (Number(expense.netAmount) || 0), 0) || 0).toLocaleString()}</td></tr>`).join('')}
                                 </tbody>
                               </table>
                             `);
@@ -5317,8 +5361,8 @@ export default function OfficialPages({
                                 <td className="px-5 py-3 font-bold text-slate-800 whitespace-nowrap">{p.title}</td>
                                 <td className="px-5 py-3 font-bold text-slate-600 whitespace-nowrap">{p.category}</td>
                                 <td className="px-5 py-3 text-center font-bold text-[#091d64] whitespace-nowrap">{p.registeredCount || filteredRegistrations.filter(registration => registration.programId === p.id).length} / {p.maxParticipants}</td>
-                                <td className="px-5 py-3 text-right font-mono text-slate-700 whitespace-nowrap">₱{Number(p.budgetAllocation || 0).toLocaleString()}</td>
-                                <td className="px-5 py-3 text-right font-mono font-bold text-emerald-600 whitespace-nowrap">₱{Number(expenses.filter(expense => expense.programId === p.id).reduce((sum, expense) => sum + (Number(expense.netAmount) || 0), 0) || 0).toLocaleString()}</td>
+                                <td className="px-5 py-3 text-right font-mono text-slate-700 whitespace-nowrap">{'\u20B1'}{Number(p.budgetAllocation || 0).toLocaleString()}</td>
+                                <td className="px-5 py-3 text-right font-mono font-bold text-emerald-600 whitespace-nowrap">{'\u20B1'}{Number(expenses.filter(expense => expense.programId === p.id).reduce((sum, expense) => sum + (Number(expense.netAmount) || 0), 0) || 0).toLocaleString()}</td>
                                 <td className="px-5 py-3 text-center whitespace-nowrap">
                                   <span className="px-2 py-0.5 bg-blue-50 text-[#091d64] rounded text-[9px] font-bold uppercase">{p.category}</span>
                                 </td>
@@ -5874,6 +5918,11 @@ export default function OfficialPages({
                   {budgetMutationError}
                 </div>
               )}
+              {!hasTotalSkBudget && (
+                <div role="status" className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-900">
+                  No Total SK Budget Set. Ask the SK Chairperson to set it before allocating funds.
+                </div>
+              )}
               {showAllocateProgram && (
                 <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4">
                   <form
@@ -5884,6 +5933,7 @@ export default function OfficialPages({
                       const amount = Number(allocateForm.allocatedAmount.replace(/[^0-9.]/g, ''));
                       if (!amount || amount <= 0) { setAllocateError('Amount must be greater than zero.'); return; }
                       if (!currentTenant?.id) { setAllocateError('No Barangay selected.'); return; }
+                      if (!hasTotalSkBudget) { setAllocateError('The SK Chairperson must set the total SK budget before allocations can be made.'); return; }
                       setIsSavingAllocate(true);
                       try {
                         const res = await kabisigApi.allocateBudget({
@@ -5895,7 +5945,7 @@ export default function OfficialPages({
                         });
                         if (!res.success) { setAllocateError(res.message || 'Budget allocation failed.'); return; }
                         setShowAllocateProgram(false);
-                        setAllocateForm({ category: '', allocatedAmount: '', description: '', fiscalYear: String(new Date().getFullYear()) });
+                        setAllocateForm({ category: '', allocatedAmount: '', description: '', fiscalYear: String(currentTenant?.active_fiscal_year || new Date().getFullYear()) });
                         setAllocateNotice('Budget allocation saved.');
                         window.setTimeout(() => setAllocateNotice(''), 5000);
                         const rows = await kabisigApi.getBudgets(currentTenant.id, Number(allocateForm.fiscalYear));
@@ -5933,7 +5983,7 @@ export default function OfficialPages({
                     {allocateError && <p role="alert" className="text-xs font-semibold text-rose-700">{allocateError}</p>}
                     <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
                       <button type="button" disabled={isSavingAllocate} onClick={() => setShowAllocateProgram(false)} className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 disabled:opacity-50">Close</button>
-<button type="submit" disabled={isSavingAllocate} className="rounded-lg bg-[#091d64] px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{isSavingAllocate ? 'Saving...' : 'Save allocation'}</button>
+                      <button type="submit" disabled={isSavingAllocate || !hasTotalSkBudget} className="rounded-lg bg-[#091d64] px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{isSavingAllocate ? 'Saving...' : 'Save allocation'}</button>
                     </div>
                   </form>
                 </div>
@@ -5976,7 +6026,7 @@ export default function OfficialPages({
                   <h3 className="font-sans font-bold text-slate-800 text-base">Annual Investment Plan (AIP) & Program Budget Allocation</h3>
                   <p className="text-xs text-slate-400 mt-1">Review allocations, monitor overspending alerts, fund reversions, and active expenditures of Barangay {currentTenant?.name || 'Barangay'}.</p>
                 </div>
-                <button type="button" onClick={() => { setAllocateError(''); setShowAllocateProgram(true); }} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#091d64] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#122878]">
+                <button type="button" disabled={!hasTotalSkBudget} onClick={() => { setAllocateError(''); setShowAllocateProgram(true); }} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#091d64] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#122878] disabled:cursor-not-allowed disabled:opacity-50">
                   <Plus className="h-4 w-4" /> Allocate to program
                 </button>
               </div>
@@ -5985,25 +6035,25 @@ export default function OfficialPages({
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="p-5 rounded-xl border border-slate-100 bg-white">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Total SK Budget</span>
-                  <h4 className="text-xl font-black text-[#091d64] mt-1">₱{Number(totalBarangayBudget || 0).toLocaleString()}</h4>
+                  <h4 className="text-xl font-black text-[#091d64] mt-1">{'\u20B1'}{Number(totalBarangayBudget || 0).toLocaleString()}</h4>
                   <p className="text-[10px] text-slate-400 mt-0.5">Annual 10% Fund ceiling</p>
                 </div>
                 <div className="p-5 rounded-xl border border-blue-100 bg-blue-50/30">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 block">Allocated to Programs</span>
                   <div className="mt-1 flex flex-wrap items-center gap-2">
-                    <h4 className="text-xl font-black text-blue-700">₱{Number(allocatedToPrograms || 0).toLocaleString()}</h4>
+                    <h4 className="text-xl font-black text-blue-700">{'\u20B1'}{Number(allocatedToPrograms || 0).toLocaleString()}</h4>
                     {allocatedToPrograms > totalBarangayBudget && <span className="text-xs text-rose-600">OVER-ALLOCATED</span>}
                   </div>
                   <p className="text-[10px] text-slate-400 mt-0.5">Sum of program allocations</p>
                 </div>
                 <div className="p-5 rounded-xl border border-rose-100 bg-rose-50/30">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-rose-600 block">Total Spent</span>
-                  <h4 className="text-xl font-black text-rose-700 mt-1">₱{Number(totalSpentExpenses || 0).toLocaleString()}</h4>
+                  <h4 className="text-xl font-black text-rose-700 mt-1">{'\u20B1'}{Number(totalSpentExpenses || 0).toLocaleString()}</h4>
                   <p className="text-[10px] text-slate-400 mt-0.5">{budgetUtilizationRate.toFixed(1)}% utilized</p>
                 </div>
                 <div className="p-5 rounded-xl border border-emerald-100 bg-emerald-50/30">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 block">Remaining Balance</span>
-                  <h4 className={`text-xl font-black mt-1 ${remainingCash < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>₱{Number(remainingCash || 0).toLocaleString()}</h4>
+                  <h4 className={`text-xl font-black mt-1 ${remainingCash < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{'\u20B1'}{Number(remainingCash || 0).toLocaleString()}</h4>
                   <p className="text-[10px] text-slate-400 mt-0.5">Available to spend</p>
                 </div>
               </div>
@@ -6051,8 +6101,8 @@ export default function OfficialPages({
                               <td className="px-5 py-4 font-mono text-[11px] text-slate-400 whitespace-nowrap">{aipReference || 'No AIP reference'}</td>
                               <td className="px-5 py-4 font-bold text-slate-800 whitespace-nowrap">{title}</td>
                               <td className="px-5 py-4 whitespace-nowrap"><span className="px-2 py-0.5 bg-blue-50 text-[#091d64] rounded text-[9px] font-bold uppercase">{category}</span></td>
-                              <td className="px-5 py-4 text-right font-mono font-bold text-slate-800 whitespace-nowrap">₱{Number(allocatedAmount || 0).toLocaleString()}</td>
-                              <td className="px-5 py-4 text-right font-mono text-slate-600 font-semibold whitespace-nowrap">₱{Number(spent || 0).toLocaleString()}</td>
+                              <td className="px-5 py-4 text-right font-mono font-bold text-slate-800 whitespace-nowrap">{'\u20B1'}{Number(allocatedAmount || 0).toLocaleString()}</td>
+                              <td className="px-5 py-4 text-right font-mono text-slate-600 font-semibold whitespace-nowrap">{'\u20B1'}{Number(spent || 0).toLocaleString()}</td>
                               <td className="px-5 py-4 text-center whitespace-nowrap">
                                 <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${isOver ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>
                                   {isOver ? 'Over Budget' : 'Within Limit'}
@@ -6124,11 +6174,11 @@ export default function OfficialPages({
                         return (
                         <tr key={exp.id} className="hover:bg-slate-50 transition-colors">
                           <td className="px-5 py-4 font-bold text-slate-800 tracking-tight whitespace-nowrap">{exp.programTitle}</td>
-                          <td className="px-5 py-4 text-right font-mono text-slate-800 font-bold whitespace-nowrap">₱{Number(exp.amount || 0).toLocaleString()}</td>
+                          <td className="px-5 py-4 text-right font-mono text-slate-800 font-bold whitespace-nowrap">{'\u20B1'}{Number(exp.amount || 0).toLocaleString()}</td>
                           <td className="px-5 py-4 text-slate-600 font-semibold whitespace-nowrap">{exp.supplier}</td>
                           <td className="px-5 py-4 text-center whitespace-nowrap"><span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-[10px] font-black">{exp.taxType}</span></td>
-                          <td className="px-5 py-4 text-right font-mono text-rose-600 font-bold whitespace-nowrap">-₱{Number(withholdingTax || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                          <td className="px-5 py-4 text-right font-mono text-[#091d64] font-black text-sm whitespace-nowrap">₱{Number(getNetPayable(exp) || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                          <td className="px-5 py-4 text-right font-mono text-rose-600 font-bold whitespace-nowrap">-{'\u20B1'}{Number(withholdingTax || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                          <td className="px-5 py-4 text-right font-mono text-[#091d64] font-black text-sm whitespace-nowrap">{'\u20B1'}{Number(getNetPayable(exp) || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                           <td className="px-5 py-4 font-mono text-[11px] text-slate-400 text-center font-bold italic whitespace-nowrap">{exp.dateLogged}</td>
                           <td className="px-5 py-4 text-center whitespace-nowrap">
                             <div className="inline-flex items-center gap-2">
@@ -6203,7 +6253,7 @@ export default function OfficialPages({
                             {item.condition}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-right font-mono text-slate-800 font-bold whitespace-nowrap">₱{Number(item.cost || 0).toLocaleString()}</td>
+                        <td className="px-6 py-4 text-right font-mono text-slate-800 font-bold whitespace-nowrap">{'\u20B1'}{Number(item.cost || 0).toLocaleString()}</td>
                         <td className="px-6 py-4 text-slate-600 font-bold whitespace-nowrap">{item.location}</td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center gap-1">
@@ -6360,6 +6410,16 @@ export default function OfficialPages({
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Program Title *</label>
                 <input type="text" value={progForm.title} onChange={(e)=>setProgForm({...progForm, title: e.target.value})} placeholder="e.g. SK Basketball League 2026" className="w-full p-2 border rounded text-xs sm:text-sm focus:ring-1 focus:ring-[#091d64]" required />
               </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Program Description</label>
+                <textarea
+                  className="w-full p-2 border rounded text-xs sm:text-sm focus:ring-1 focus:ring-[#091d64]"
+                  placeholder="What is this program about? Who can join?"
+                  value={progForm.description || ''}
+                  onChange={(e) => setProgForm({ ...progForm, description: e.target.value })}
+                  rows={3}
+                />
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">AIP Reference Code</label>
@@ -6382,7 +6442,7 @@ export default function OfficialPages({
                 {currentRole !== 'SK Kagawad' && (
                   <>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Budget Allocation (₱)</label>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Budget Allocation ({'\u20B1'})</label>
                     <input type="number" value={progForm.budgetAllocation} onChange={(e)=>setProgForm({...progForm, budgetAllocation: parseInt(e.target.value)||0})} className="w-full p-2 border rounded text-xs sm:text-sm font-mono" />
                   </div>
                   </>
@@ -6467,7 +6527,7 @@ export default function OfficialPages({
                 <input type="text" value={docForm.title} onChange={(e)=>setDocForm({...docForm, title: e.target.value})} placeholder="e.g. Resolution No. 2026-005: Youth Sports Allocation" className="w-full p-2 border rounded text-xs" required />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Resolution / Tracking No. (Optional)</label>
                   <input type="text" value={docForm.resolutionNumber} onChange={(e)=>setDocForm({...docForm, resolutionNumber: e.target.value})} placeholder="Auto-generated if empty (e.g. RES-2026-005)" className="w-full p-2 border rounded text-xs font-mono" />
@@ -6539,7 +6599,7 @@ export default function OfficialPages({
               </div>
               {documentUploadError && <p role="alert" className="text-[11px] font-semibold text-rose-700">{documentUploadError}</p>}
               <div className="flex justify-end gap-2 border-t pt-4">
-                <button disabled={isUploadingDocument} onClick={()=>setShowDocModal(false)} className="px-4 py-2 border rounded text-xs disabled:opacity-50">Close</button>
+                <button disabled={isUploadingDocument} onClick={resetDocumentUploadForm} className="px-4 py-2 border rounded text-xs disabled:opacity-50">Close</button>
                 <button disabled={isUploadingDocument} onClick={handleUploadDocumentSubmit} className="px-5 py-2 bg-[#091d64] text-white rounded font-bold text-xs disabled:opacity-50">
                   {isUploadingDocument ? 'Uploading...' : 'Submit Document'}
                 </button>
@@ -6573,7 +6633,7 @@ export default function OfficialPages({
               <div>
                 <div className="mb-3 p-3 rounded-lg bg-blue-50/50 border border-blue-100">
                   <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Total SK Budget (Chairperson)</span>
-                  <span className="text-sm font-black text-[#091d64] mt-0.5 block">₱{Number(totalBarangayBudget || 0).toLocaleString()}</span>
+                  <span className="text-sm font-black text-[#091d64] mt-0.5 block">{'\u20B1'}{Number(totalBarangayBudget || 0).toLocaleString()}</span>
                   <span className="text-[10px] text-slate-400 block mt-0.5">Pick a program allocation below to deduct from</span>
                 </div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Program Budget Allocation *</label>
@@ -6634,10 +6694,10 @@ export default function OfficialPages({
               {/* Automated withholding math */}
               <div className="bg-slate-50 border p-4 rounded-lg space-y-1.5 text-xs font-semibold">
                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Automated Treasurer Deductions</span>
-                <div className="flex justify-between"><span>Gross Invoice Amount:</span><span className="font-mono">₱{Number(String(expenseForm.amount).replace(/,/g, '') || 0).toLocaleString()}</span></div>
-                <div className="flex justify-between"><span>Input VAT Base:</span><span className="font-mono text-slate-600">₱{Number(calcVat || 0).toLocaleString()}</span></div>
-                <div className="flex justify-between text-rose-600"><span>Withholding Tax:</span><span className="font-mono font-bold">-₱{Number(calcWithholding || 0).toLocaleString()}</span></div>
-                <div className="flex justify-between border-t pt-1.5 text-[#091d64] text-sm font-bold"><span>Net Payable Amount:</span><span className="font-mono text-base">₱{Number(calcNet || 0).toLocaleString()}</span></div>
+                <div className="flex justify-between"><span>Gross Invoice Amount:</span><span className="font-mono">{'\u20B1'}{Number(String(expenseForm.amount).replace(/,/g, '') || 0).toLocaleString()}</span></div>
+                <div className="flex justify-between"><span>Input VAT Base:</span><span className="font-mono text-slate-600">{'\u20B1'}{Number(calcVat || 0).toLocaleString()}</span></div>
+                <div className="flex justify-between text-rose-600"><span>Withholding Tax:</span><span className="font-mono font-bold">-{'\u20B1'}{Number(calcWithholding || 0).toLocaleString()}</span></div>
+                <div className="flex justify-between border-t pt-1.5 text-[#091d64] text-sm font-bold"><span>Net Payable Amount:</span><span className="font-mono text-base">{'\u20B1'}{Number(calcNet || 0).toLocaleString()}</span></div>
               </div>
 
               <div className="flex justify-end gap-2 border-t pt-4">
@@ -6709,10 +6769,12 @@ export default function OfficialPages({
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Category Group</label>
                   <select required value={invForm.category} onChange={(e)=>setInvForm({...invForm, category: e.target.value})} className="w-full p-2 border rounded text-xs">
                     <option value="" disabled>Select a Category</option>
-                    <option value="Office IT Equipment">Office IT Equipment</option>
-                    <option value="Sports Equipment">Sports Equipment</option>
                     <option value="Furniture">Furniture</option>
-                    <option value="Vehicles">Vehicles</option>
+                    <option value="IT Equipment">IT Equipment</option>
+                    <option value="Sports Equipment">Sports Equipment</option>
+                    <option value="Event Materials">Event Materials</option>
+                    <option value="Sound System">Sound System</option>
+                    <option value="Office Supplies">Office Supplies</option>
                     <option value="Others">Others</option>
                   </select>
                 </div>
@@ -6734,7 +6796,7 @@ export default function OfficialPages({
                   <input type="number" value={invForm.quantity} onChange={(e)=>setInvForm({...invForm, quantity: parseInt(e.target.value)||1})} className="w-full p-2 border rounded text-xs font-bold font-mono" />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Unit purchase Cost (₱)</label>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Unit purchase Cost ({'\u20B1'})</label>
                   <input type="number" value={invForm.cost} onChange={(e)=>setInvForm({...invForm, cost: parseInt(e.target.value)||0})} className="w-full p-2 border rounded text-xs font-bold font-mono" />
                 </div>
               </div>
@@ -7317,7 +7379,7 @@ export default function OfficialPages({
 
             <div className="p-6 space-y-6 text-xs text-slate-600 max-h-[75vh] overflow-y-auto">
               {/* KPI Summary Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
                 <div className="p-4 bg-blue-50/60 border border-blue-100 rounded-xl space-y-1">
                   <span className="text-[10px] font-bold text-[#091d64] uppercase block">Total Verified Youth</span>
                   <h4 className="text-2xl font-black text-[#091d64]">{localYouthProfiles.filter(p => (p.status === 'Approved' || p.status?.toLowerCase() === 'suspended')).length}</h4>
@@ -7337,6 +7399,11 @@ export default function OfficialPages({
                   <span className="text-[10px] font-bold text-violet-800 uppercase block">Zones Covered</span>
                   <h4 className="text-2xl font-black text-violet-900">{new Set(localYouthProfiles.map(profile => profile.zone).filter(Boolean)).size}</h4>
                   <span className="text-[10px] text-slate-400 block">Registered zones</span>
+                </div>
+                <div className="p-4 bg-amber-50/60 border border-amber-100 rounded-xl space-y-1">
+                  <span className="text-[10px] font-bold text-amber-800 uppercase block">Registered Voters</span>
+                  <h4 className="text-2xl font-black text-amber-900">{localYouthProfiles.filter(profile => profile.is_registered_voter === true).length}</h4>
+                  <span className="text-[10px] text-slate-400 block">Resident profiles marked registered</span>
                 </div>
               </div>
 
@@ -7426,7 +7493,7 @@ export default function OfficialPages({
             </button>
           );
         })}
-        {menuConfig[currentRole] && menuConfig[currentRole].length > 4 && (
+        {false && menuConfig[currentRole] && menuConfig[currentRole].length > 4 && (
           <button
             onClick={() => setIsMobileMenuOpen(true)}
             className="flex flex-col items-center justify-center py-1 px-2.5 rounded-xl text-slate-400 font-medium hover:text-slate-600 cursor-pointer"

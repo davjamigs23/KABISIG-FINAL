@@ -196,9 +196,9 @@ export default function YouthPages({
   // Local copy of profile for real-time editing & persistence
   const [youth, setYouth] = useState<YouthProfile>(currentYouth);
   const profileFullName = String((youth as any).full_name || youth.name || '').trim();
-  const profileFirstName = String((youth as any).first_name || profileFullName.split(/\s+/)[0] || '—').trim();
-  const profileLastName = String((youth as any).last_name || profileFullName.split(/\s+/).slice(-1)[0] || '—').trim();
-  const profileMiddleName = String((youth as any).middle_name || profileFullName.split(/\s+/).slice(profileFirstName.split(/\s+/).length, profileFullName.split(/\s+/).length - profileLastName.split(/\s+/).length).join(' ') || '—').trim();
+  const profileFirstName = String((youth as any).first_name || profileFullName.split(/\s+/)[0] || '\u2014').trim();
+  const profileLastName = String((youth as any).last_name || profileFullName.split(/\s+/).slice(-1)[0] || '\u2014').trim();
+  const profileMiddleName = String((youth as any).middle_name || profileFullName.split(/\s+/).slice(profileFirstName.split(/\s+/).length, profileFullName.split(/\s+/).length - profileLastName.split(/\s+/).length).join(' ') || '\u2014').trim();
   const [isUploadingProfilePicture, setIsUploadingProfilePicture] = useState(false);
   const [profilePictureNotice, setProfilePictureNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -376,10 +376,6 @@ export default function YouthPages({
   const [cropImage, setCropImage] = useState<string | null>(null);
 
   const handleProfilePictureChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (isProfileLocked) {
-      event.target.value = '';
-      return;
-    }
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
@@ -398,7 +394,6 @@ export default function YouthPages({
   };
 
   const handleCropConfirm = async (croppedBase64: string, mime: string) => {
-    if (isProfileLocked) return;
     setCropImage(null);
     setIsUploadingProfilePicture(true);
     setProfilePictureNotice(null);
@@ -509,7 +504,7 @@ export default function YouthPages({
   const ensureSplitName = (profile: YouthProfile): YouthProfile => {
     const scholarshipSource = profile.scholarshipSource || (profile as YouthProfile & { scholarship_source?: string }).scholarship_source || '';
     const scholarshipSourceDetail = profile.scholarshipSourceDetail || (profile as YouthProfile & { scholarship_source_detail?: string }).scholarship_source_detail || '';
-    if ((profile.first_name && profile.first_name.trim()) || (profile.last_name && profile.last_name.trim())) {
+    if (profile.first_name?.trim() && profile.last_name?.trim()) {
       return { ...profile, scholarshipSource, scholarshipSourceDetail };
     }
     const parts = splitFullName(profile.name || '');
@@ -631,7 +626,7 @@ export default function YouthPages({
     if (isProfileLocked) return;
     setIsSavingProfile(true);
 
-    // Validation: demoted users get only ONE edit — force completeness
+    // Validation: demoted users get only ONE edit - force completeness
     if (currentYouth?.is_demoted === true) {
       const _missing: string[] = [];
       const _checkField = (label: string, val: any, placeholders: string[] = ['Not specified', 'Not provided', 'N/A', '']) => {
@@ -714,8 +709,8 @@ export default function YouthPages({
         return {
           id: row.id,
           name: u?.full_name || row.participantName || 'Youth',
-          zone: rp?.zone || '—',
-          email: u?.email || '—'
+          zone: rp?.zone || '\u2014',
+          email: u?.email || '\u2014'
         };
       });
       setProgramParticipants(mapped);
@@ -1240,7 +1235,7 @@ export default function YouthPages({
                           BARANGAY {resolvedTenant?.name || 'UNASSIGNED'}
                         </h4>
                         <span className="text-[8px] text-slate-500 block font-mono font-bold mt-1 uppercase tracking-[0.15em]">
-                          Katipunan ng Kabataan Registry • Naga City
+                          Katipunan ng Kabataan Registry {'\u2022'} Naga City
                         </span>
                       </div>
                     </div>
@@ -1296,7 +1291,7 @@ export default function YouthPages({
                     <div>
                       <span className="text-[10px] font-bold text-slate-400 tracking-wider uppercase block">Youth in this barangay</span>
                       <h4 className="text-2xl font-extrabold text-[#091d64] leading-none mt-1">
-                        {resolvedTenant?.youthPopulationAvailable ? resolvedTenant.youthPopulation : '—'}
+                        {resolvedTenant?.youthPopulationAvailable ? resolvedTenant.youthPopulation : '\u2014'}
                       </h4>
                       <p className="text-[10px] text-slate-400 font-semibold mt-1">
                         {resolvedTenant?.youthPopulationAvailable
@@ -1356,7 +1351,7 @@ export default function YouthPages({
                   <div className="flex items-start gap-3">
                     <div className="flex flex-col gap-1">
                       <span className="text-xs font-bold text-slate-600">
-                        Engagement Score: <span className="text-[#091d64] font-black">{myEngagement?.score ?? '—'}</span>/100
+                        Engagement Score: <span className="text-[#091d64] font-black">{myEngagement?.score ?? '\u2014'}</span>/100
                       </span>
                       <span className="text-[10px] text-slate-400 font-medium">
                         How to increase: Join programs, attend events, and participate in surveys.
@@ -1433,7 +1428,7 @@ export default function YouthPages({
                                   onClick={() => handleRegisterProgramClick(rec.program.id)}
                                   className="text-[10px] bg-red-600 hover:bg-red-700 text-white font-extrabold px-2.5 py-1 rounded transition-colors disabled:opacity-60"
                                 >
-                                  {registeringProgramId === rec.program.id ? <Loader2 className="w-3 h-3 inline animate-spin" /> : 'Instantly Register →'}
+                                  {registeringProgramId === rec.program.id ? <Loader2 className="w-3 h-3 inline animate-spin" /> : 'Instantly Register \u2192'}
                                 </button>
                               ) : (
                                 <span className="text-[10px] text-slate-900 font-extrabold">Slot Confirmed</span>
@@ -1571,12 +1566,12 @@ export default function YouthPages({
                       accept="image/jpeg,image/png,image/webp"
                       className="sr-only"
                       onChange={handleProfilePictureChange}
-                      disabled={isUploadingProfilePicture || isProfileLocked}
+                      disabled={isUploadingProfilePicture}
                     />
                     <button
                       type="button"
                       onClick={() => document.getElementById('youth-profile-picture-input')?.click()}
-                      disabled={isUploadingProfilePicture || isProfileLocked}
+                      disabled={isUploadingProfilePicture}
                       className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wide text-[#091d64] transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {isUploadingProfilePicture ? 'Uploading...' : 'Upload Photo'}
@@ -1940,7 +1935,7 @@ export default function YouthPages({
                                   {budgetCache[p.id].expenses.map((e: any) => (
                                     <tr key={e.id} className="border-b border-slate-100 last:border-0">
                                       <td className="py-1 text-slate-700 font-medium">{e.title}</td>
-                                      <td className="py-1 text-right font-mono text-slate-800">₱{Number(e.gross_amount).toLocaleString()}</td>
+                                      <td className="py-1 text-right font-mono text-slate-800">{'\u20B1'}{Number(e.gross_amount).toLocaleString()}</td>
                                       <td className="py-1 pl-2 text-right text-[9px] uppercase font-bold">
                                         <span className={e.status === "approved" ? "text-slate-900" : "text-slate-900"}>{e.status}</span>
                                       </td>
@@ -1951,15 +1946,15 @@ export default function YouthPages({
                               <div className="pt-2 border-t border-slate-200 space-y-1">
                                 <div className="flex justify-between font-semibold text-slate-700">
                                   <span>Total Allocation</span>
-                                  <span className="font-mono">₱{Number(budgetCache[p.id].summary.total_allocated).toLocaleString()}</span>
+                                  <span className="font-mono">{'\u20B1'}{Number(budgetCache[p.id].summary.total_allocated).toLocaleString()}</span>
                                 </div>
                                 <div className="flex justify-between font-semibold text-slate-700">
                                   <span>Total Spent</span>
-                                  <span className="font-mono text-rose-600">₱{Number(budgetCache[p.id].summary.total_spent).toLocaleString()}</span>
+                                  <span className="font-mono text-rose-600">{'\u20B1'}{Number(budgetCache[p.id].summary.total_spent).toLocaleString()}</span>
                                 </div>
                                 <div className="flex justify-between font-semibold text-slate-700">
                                   <span>Remaining</span>
-                                  <span className="font-mono text-slate-900">₱{Number(budgetCache[p.id].summary.remaining_balance).toLocaleString()}</span>
+                                  <span className="font-mono text-slate-900">{'\u20B1'}{Number(budgetCache[p.id].summary.remaining_balance).toLocaleString()}</span>
                                 </div>
                                 <div className="flex justify-between font-bold text-[#091d64] pt-1 border-t border-slate-200">
                                   <span>Utilization</span>
@@ -2277,7 +2272,7 @@ export default function YouthPages({
                       {announcement.hashtags && <p className="mt-3 border-t border-slate-100 pt-3 text-xs font-semibold text-blue-700">{announcement.hashtags}</p>}
                       <div className="mt-3 border-t border-slate-100 pt-3 text-[10px] font-bold text-slate-400">
                         Published by <span className="text-[#091d64]">{announcement.author}</span>
-                        {announcement.barangay && <span> · {announcement.barangay}</span>}
+                        {announcement.barangay && <span> &middot; {announcement.barangay}</span>}
                       </div>
                     </article>
                   ))}
@@ -2619,7 +2614,7 @@ export default function YouthPages({
                         </div>
                       </div>
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Upload Front of ID <span className="text-rose-500">*</span> <span className="text-slate-400 font-normal">(JPG / PNG / WEBP, ≤ 3 MB)</span></label>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Upload Front of ID <span className="text-rose-500">*</span> <span className="text-slate-400 font-normal">(JPG / PNG / WEBP, &le; 3 MB)</span></label>
                         <input
                           type="file"
                           accept="image/jpeg,image/png,image/webp"
@@ -2635,7 +2630,7 @@ export default function YouthPages({
                         )}
                       </div>
                       <div>
-                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Upload Back of ID <span className="text-rose-500">*</span> <span className="text-slate-400 font-normal">(JPG / PNG / WEBP, ≤ 3 MB)</span></label>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-1">Upload Back of ID <span className="text-rose-500">*</span> <span className="text-slate-400 font-normal">(JPG / PNG / WEBP, &le; 3 MB)</span></label>
                         <input
                           type="file"
                           accept="image/jpeg,image/png,image/webp"
@@ -2946,7 +2941,7 @@ export default function YouthPages({
         )}
         {/* FOOTER */}
         <footer className="h-12 border-t border-slate-100 bg-white flex items-center justify-center text-[11px] text-slate-400 font-sans tracking-wide flex-shrink-0">
-          © {new Date().getFullYear()} SK Federation Naga City. All rights reserved.
+          &copy; {new Date().getFullYear()} SK Federation Naga City. All rights reserved.
         </footer>
       </div>
       {/* MOBILE BOTTOM NAVIGATION BAR */}
@@ -3031,7 +3026,7 @@ export default function YouthPages({
                 <label className="block font-bold text-slate-700 mb-1">Front Image (Required)</label>
                 <label className="flex items-center justify-center w-full px-4 py-3 bg-slate-50 hover:bg-slate-100 border-2 border-dashed border-slate-300 rounded-lg cursor-pointer transition-colors">
                   <span className="text-xs font-bold text-slate-600 truncate max-w-[200px]">
-                    {frontFile ? frontFile.name : "📁 Choose Front Image"}
+                    {frontFile ? frontFile.name : '\uD83D\uDCC1 Choose Front Image'}
                   </span>
                   <input type="file" accept="image/*" className="hidden" onChange={e => setFrontFile(e.target.files?.[0] || null)} />
                 </label>
@@ -3041,7 +3036,7 @@ export default function YouthPages({
                 <label className="block font-bold text-slate-700 mb-1">Back Image (Optional)</label>
                 <label className="flex items-center justify-center w-full px-4 py-3 bg-slate-50 hover:bg-slate-100 border-2 border-dashed border-slate-300 rounded-lg cursor-pointer transition-colors">
                   <span className="text-xs font-bold text-slate-600 truncate max-w-[200px]">
-                    {backFile ? backFile.name : "📁 Choose Back Image"}
+                    {backFile ? backFile.name : '\uD83D\uDCC1 Choose Back Image'}
                   </span>
                   <input type="file" accept="image/*" className="hidden" onChange={e => setBackFile(e.target.files?.[0] || null)} />
                 </label>
@@ -3147,8 +3142,8 @@ export default function YouthPages({
                     {programParticipants.map((pt, idx) => (
                       <tr key={idx}>
                         <td className="px-3 py-2 font-bold text-slate-800">{pt.name}</td>
-                        <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{pt.zone || "—"}</td>
-                        <td className="px-3 py-2 text-right text-slate-500 font-mono text-[10px]">{pt.email || "—"}</td>
+                        <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{pt.zone || "\u2014"}</td>
+                        <td className="px-3 py-2 text-right text-slate-500 font-mono text-[10px]">{pt.email || "\u2014"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -3162,7 +3157,7 @@ export default function YouthPages({
         <div className="fixed inset-0 z-[9999] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-6 text-center shadow-2xl">
             <div className={`w-12 h-12 rounded-full mx-auto flex items-center justify-center mb-4 ${popupMsg.type === 'success' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'}`}>
-              {popupMsg.type === 'success' ? '✓' : '!'}
+              {popupMsg.type === 'success' ? '\u2713' : '!'}
             </div>
             <h3 className="text-lg font-bold text-slate-800">{popupMsg.title}</h3>
             <p className="text-sm text-slate-600 mb-6">{popupMsg.text}</p>

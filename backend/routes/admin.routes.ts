@@ -408,36 +408,54 @@ router.post(
 // GET /api/admin/users/lookup/:identifier - SA only
 router.get('/users/lookup', authenticateUser, requireRoles('SUPER_ADMIN'), async (req: Request, res: Response): Promise<void> => {
   try {
-    const caller = (req as AuthRequest).user!;
     const identifier = String(req.query.identifier || '').trim();
     if (!identifier) { sendError(res, 'Identifier is required.', 400); return; }
 
-    // Detect UUID format to avoid PostgreSQL type cast errors
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const isUuid = uuidRegex.test(identifier);
+    const normalizedSearch = identifier
+      .replace(/[%,()"]/g, ' ')
+      .replace(/\\/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+    if (!normalizedSearch) { sendError(res, 'Enter a name, email, role, or user ID to search.', 400); return; }
 
-    // Use public.users as the source of truth; Auth records may be absent or incomplete.
+    const roleSearchTerms: Record<number, string[]> = {
+      1: ['1', 'role 1', 'super admin', 'super administrator', 'federation president'],
+      2: ['2', 'role 2', 'barangay admin', 'sk chairperson', 'chairperson'],
+      3: ['3', 'role 3', 'sk official', 'kagawad', 'secretary', 'treasurer'],
+      4: ['4', 'role 4', 'youth constituent', 'registered youth', 'youth'],
+    };
     let userQuery = supabaseAdmin
       .from('users')
-      .select('id, email, full_name, first_name, middle_name, last_name, suffix, phone, role_id, tenant_id, status');
-    if (Number(caller.role_id) === 2 || Number(caller.role_id) === 3) {
-      if (!caller.tenant_id) {
-        sendError(res, 'A barangay tenant is required for this lookup.', 403);
-        return;
-      }
-      userQuery = userQuery.eq('tenant_id', caller.tenant_id);
-    }
+      .select('id, email, full_name, first_name, middle_name, last_name, suffix, phone, role_id, tenant_id, status, official_role');
     if (isUuid) {
       userQuery = userQuery.eq('id', identifier);
     } else {
-      userQuery = userQuery.ilike('email', '%' + identifier.toLowerCase() + '%');
+      const searchPattern = `%${normalizedSearch}%`;
+      const searchFilters = [
+        `email.ilike.${searchPattern}`,
+        `full_name.ilike.${searchPattern}`,
+        `first_name.ilike.${searchPattern}`,
+        `middle_name.ilike.${searchPattern}`,
+        `last_name.ilike.${searchPattern}`,
+        `official_role.ilike.${searchPattern}`,
+      ];
+      const matchingRoleIds = Object.entries(roleSearchTerms)
+        .filter(([, terms]) => terms.some(term => term.includes(normalizedSearch) || normalizedSearch.includes(term)))
+        .map(([roleId]) => Number(roleId));
+      searchFilters.push(...matchingRoleIds.map(roleId => `role_id.eq.${roleId}`));
+      userQuery = userQuery.or(searchFilters.join(','));
     }
 
-    const { data: matchingUsers, error: userErr } = await userQuery.limit(2);
+    const { data: matchingUsers, error: userErr } = await userQuery
+      .order('full_name', { ascending: true })
+      .limit(isUuid ? 2 : 1000);
     if (userErr) { sendError(res, 'Lookup failed: ' + userErr.message, 500); return; }
     if (!matchingUsers?.length) { sendError(res, 'User not found.', 404); return; }
     if (matchingUsers.length > 1) {
-      sendError(res, 'Multiple users match this email. Enter a more specific email address.', 409);
+      sendSuccess(res, { matches: matchingUsers }, 'Select an account to continue.');
       return;
     }
     const user = matchingUsers[0];

@@ -312,9 +312,9 @@ export default function BarangayAdminPages({
         ['Category', 'Allocated', 'Spent', 'Remaining'],
         (budgetAllocations || []).map(b => [
           b.category || 'General',
-          `₱${(Number(b.allocated_amount || 0) || 0).toLocaleString()}`,
-          `₱${(Number(b.spent_amount || 0) || 0).toLocaleString()}`,
-          `₱${(Number(b.remaining_amount || 0) || 0).toLocaleString()}`
+          `\u20B1${(Number(b.allocated_amount || 0) || 0).toLocaleString()}`,
+          `\u20B1${(Number(b.spent_amount || 0) || 0).toLocaleString()}`,
+          `\u20B1${(Number(b.remaining_amount || 0) || 0).toLocaleString()}`
         ]),
         {
           barangay: currentBarangay?.name,
@@ -520,7 +520,7 @@ export default function BarangayAdminPages({
           });
           const spent = programExpenses.reduce((sum, expense) => sum + (Number(expense.netAmount) || 0), 0);
           totalAmount += spent;
-          return [program.title, program.category, program.status, program.registeredCount, `₱${Number(spent || 0).toLocaleString()}`];
+          return [program.title, program.category, program.status, program.registeredCount, `\u20B1${Number(spent || 0).toLocaleString()}`];
         });
         break;
       case 'beneficiaries':
@@ -557,7 +557,7 @@ export default function BarangayAdminPages({
           const spent = programExpenses.reduce((sum, expense) => sum + (Number(expense.netAmount) || 0), 0);
           const allocated = Number(program.budgetAllocation) || 0;
           totalAmount += spent;
-          return [program.title, `₱${Number(allocated || 0).toLocaleString()}`, `₱${Number(spent || 0).toLocaleString()}`, `₱${Number(allocated - spent || 0).toLocaleString()}`];
+          return [program.title, `\u20B1${Number(allocated || 0).toLocaleString()}`, `\u20B1${Number(spent || 0).toLocaleString()}`, `\u20B1${Number(allocated - spent || 0).toLocaleString()}`];
         });
         break;
       case 'executive':
@@ -567,7 +567,7 @@ export default function BarangayAdminPages({
         records = programs.map(program => {
           const allocated = Number(program.budgetAllocation) || 0;
           totalAmount += allocated;
-          return [program.title, program.category, program.status, program.registeredCount, `₱${Number(allocated || 0).toLocaleString()}`];
+          return [program.title, program.category, program.status, program.registeredCount, `\u20B1${Number(allocated || 0).toLocaleString()}`];
         });
     }
 
@@ -578,7 +578,7 @@ export default function BarangayAdminPages({
       <div class="stat-grid">
         <div class="stat-box"><div class="stat-label">Report Records</div><div class="stat-value">${Number(records.length || 0).toLocaleString()}</div></div>
         <div class="stat-box"><div class="stat-label">Barangay</div><div class="stat-value">${escapeHtml(currentBarangay?.name || 'Not specified')}</div></div>
-        ${totalAmount > 0 ? `<div class="stat-box"><div class="stat-label">Total Amount</div><div class="stat-value">₱${Number(totalAmount || 0).toLocaleString()}</div></div>` : ''}
+        ${totalAmount > 0 ? `<div class="stat-box"><div class="stat-label">Total Amount</div><div class="stat-value">\u20B1${Number(totalAmount || 0).toLocaleString()}</div></div>` : ''}
       </div>
     `;
     openDynamicPrintPDF(
@@ -619,6 +619,7 @@ export default function BarangayAdminPages({
 
   const [showCreateProgDrawer, setShowCreateProgDrawer] = useState(false);
   const [progListFilter, setProgListFilter] = useState<'List' | 'Calendar'>('List');
+  const [programStatusFilter, setProgramStatusFilter] = useState<'All' | 'Active' | 'Completed'>('All');
   const [calendarMonth, setCalendarMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [editingProgram, setEditingProgram] = useState<Program | null>(null);
   const [viewingProgram, setViewingProgram] = useState<Program | null>(null);
@@ -731,7 +732,7 @@ export default function BarangayAdminPages({
       return;
     }
     if (amount > Number(budget.remaining_amount || 0)) {
-      setExpenseFormError(`This amount exceeds the category balance of ₱${Number(budget.remaining_amount || 0).toLocaleString()}.`);
+      setExpenseFormError(`This amount exceeds the category balance of \u20B1${Number(budget.remaining_amount || 0).toLocaleString()}.`);
       return;
     }
 
@@ -877,12 +878,10 @@ export default function BarangayAdminPages({
   const generalFundBudget = budgetAllocations.find((budget: any) =>
     String(budget.category || '').trim().toLowerCase() === 'general youth development fund'
   );
-  const selectedYearBudget = savedTotalBudgetForYear
-    ?? (Number(generalFundBudget?.allocated_amount) || (
-      Number(currentBarangay.active_fiscal_year) === Number(budgetYear)
-        ? Number(currentBarangay.allocated_budget ?? currentBarangay.allocatedBudget ?? 0)
-        : 0
-    ));
+  const selectedYearIsActive = Number(currentBarangay.active_fiscal_year) === Number(budgetYear);
+  const selectedYearBudget = selectedYearIsActive
+    ? Number(currentBarangay.allocated_budget ?? currentBarangay.allocatedBudget ?? 0)
+    : savedTotalBudgetForYear ?? (Number(generalFundBudget?.allocated_amount) || 0);
   const selectedYearSpent = _filterExpenses.reduce((sum, expense: any) =>
     sum + Number(expense.netAmount ?? expense.net_amount ?? expense.amount ?? 0), 0
   );
@@ -1397,13 +1396,14 @@ export default function BarangayAdminPages({
   });
   const totalBudget = selectedYearBudget;
   const totalSpent = selectedYearSpent;
+  const hasTotalBudget = totalBudget > 0;
   const allocatedToPrograms = budgetAllocations
     .filter((budget: any) =>
       budget.category !== 'General Youth Development Fund'
       && !['heha', 'aaaa'].includes(String(budget.category || '').trim().toLowerCase())
     )
     .reduce((sum: number, budget: any) => sum + Number(budget.allocated_amount || 0), 0);
-  const remainingBalance = totalBudget - totalSpent;
+  const remainingBalance = hasTotalBudget ? totalBudget - totalSpent : 0;
   const utilizationRate = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
 
   const budgetUtilizationTable = [
@@ -1543,7 +1543,13 @@ export default function BarangayAdminPages({
     const day = index - calendarOffset + 1;
     return day > 0 && day <= calendarDays ? new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day) : null;
   });
-  const programsForDay = (day: Date) => programs.filter(program => {
+  const filteredPrograms = programs.filter(program => {
+    const status = String(program.status || '').trim().toLowerCase();
+    if (programStatusFilter === 'All') return true;
+    if (programStatusFilter === 'Completed') return status === 'completed';
+    return status === 'upcoming' || status === 'ongoing';
+  });
+  const programsForDay = (day: Date) => filteredPrograms.filter(program => {
     const start = new Date(program.startDate);
     const end = new Date(program.endDate || program.startDate);
     const current = new Date(day.getFullYear(), day.getMonth(), day.getDate());
@@ -1621,7 +1627,7 @@ return (
                 </div>
                 <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-100">
                   <span className="text-[10px] font-bold text-emerald-600 uppercase block">Budget Allocation</span>
-                  <span className="font-bold text-emerald-800 font-mono">₱{(Number(viewingProgram.budgetAllocation) || 0).toLocaleString()}</span>
+                  <span className="font-bold text-emerald-800 font-mono">{'\u20B1'}{(Number(viewingProgram.budgetAllocation) || 0).toLocaleString()}</span>
                 </div>
                 <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
                   <span className="text-[10px] font-bold text-blue-600 uppercase block">Max Slots</span>
@@ -1721,6 +1727,12 @@ return (
         <div className="flex items-center gap-2.5">
           <div className="h-10 px-1.5 rounded-lg bg-white shadow-md ring-1 ring-white/30 flex items-center justify-center overflow-hidden flex-shrink-0">
             <img src="/images/Kabisig_logo.png" alt="KABISIG" className="h-9 w-auto object-contain" />
+            <img
+              src={currentBarangay?.logo || "/icon.png"}
+              alt={`${currentBarangay?.name || 'Barangay'} Seal`}
+              className="h-8 w-auto object-contain ml-2"
+              onError={(e) => { e.currentTarget.src = '/icon.png'; }}
+            />
           </div>
           <span className="text-[10px] font-bold bg-[#1e3a8a] px-2 py-0.5 rounded text-sky-200">Brgy. {currentBarangay?.name}</span>
         </div>
@@ -1751,8 +1763,8 @@ return (
       {/* MOBILE DRAWER */}
       {isMobileMenuOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 lg:hidden flex flex-col justify-between p-6 animate-in fade-in duration-200">
-          <div className="space-y-6 overflow-y-auto">
-            <div className="flex justify-between items-center border-b border-white/10 pb-4">
+          <div className="relative z-50 space-y-6 overflow-y-auto">
+            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-white/10">
               <div className="flex items-center gap-3">
                 <KabisigLogo className="scale-90" />
               </div>
@@ -1765,7 +1777,7 @@ return (
             </div>
 
             <nav className="space-y-2">
-              <div className="text-[10px] font-black text-slate-300 uppercase tracking-wider mb-2">
+              <div className="text-[10px] font-black text-slate-300 uppercase tracking-wider mb-2 truncate">
                 Executive SK Console — Brgy. {currentBarangay?.name}
               </div>
               <button
@@ -2053,7 +2065,7 @@ return (
                 ...overspentBudgetPrograms.map(row => ({
                   id: `overspending-${row.program}`,
                   title: `Overspending in ${row.program}`,
-                  message: `₱${Number(row.spent - row.allocated || 0).toLocaleString()} over the allocated budget.`,
+                  message: `\u20B1${Number(row.spent - row.allocated || 0).toLocaleString()} over the allocated budget.`,
                   is_read: false,
                 })),
                 ...(pendingRegistrations.length === 0 ? [{ id: 'no-pending-validations', title: 'No pending validations', message: 'There are no registration requests waiting for review.', is_read: true, countInBadge: false }] : []),
@@ -2121,7 +2133,7 @@ return (
                 <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-xs flex justify-between items-center">
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Budget</span>
-                    <span className="text-2xl font-black text-slate-800 mt-1 block">₱{Number(totalBudget || 0).toLocaleString()}</span>
+                    <span className="text-2xl font-black text-slate-800 mt-1 block">{'\u20B1'}{Number(totalBudget || 0).toLocaleString()}</span>
                     <span className="text-[10px] text-slate-500 font-medium block mt-1">FY {budgetYear} Budget</span>
                   </div>
                   <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center">
@@ -2202,14 +2214,10 @@ return (
                         </div>
                       ) : (
                         dashboardAlerts.map((alert, i) => (
-                          <div key={i} role="button" tabIndex={0} onClick={() => {
-                            if (alert.code === 'MISSING_BUDGET_DOCUMENT') setActiveMenu('documents');
-                            else navigateFromAlert('COMPLIANCE');
-                          }} onKeyDown={(event) => {
+                          <div key={i} role="button" tabIndex={0} onClick={() => navigateFromAlert(alert.code)} onKeyDown={(event) => {
                             if (event.key === 'Enter' || event.key === ' ') {
                               event.preventDefault();
-                              if (alert.code === 'MISSING_BUDGET_DOCUMENT') setActiveMenu('documents');
-                              else navigateFromAlert('COMPLIANCE');
+                              navigateFromAlert(alert.code);
                             }
                           }} className="flex items-start gap-2.5 p-3 rounded-lg bg-white border border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors group">
                             <span className="text-sm mt-0.5">{alert.level === 'Critical' ? '🚨' : '⚠️'}</span>
@@ -2309,15 +2317,15 @@ return (
 
               {/* BENEFICIARY DISTRIBUTION AUDIT */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-                <div className="bg-white p-5 rounded-xl border border-amber-100 shadow-xs">
-                  <div className="flex items-center gap-2 mb-2">
+                <div className="bg-white p-4 md:p-5 rounded-xl border border-amber-100 shadow-xs">
+                  <div className="flex items-center gap-3 md:gap-2 mb-2">
                     <ShieldAlert className="w-4 h-4 text-amber-600" />
                     <h4 className="font-extrabold text-slate-800 text-sm">Underserved Youth</h4>
                     <span className="ml-auto text-[10px] font-extrabold bg-amber-50 text-amber-800 px-2 py-0.5 rounded-full">
                       {underservedYouth.length} Never Participated
                     </span>
                   </div>
-                  <p className="text-[10px] text-slate-400 mb-3">Approved youth with zero program registrations. Prioritize these for outreach to ensure equitable distribution.</p>
+                  <p className="text-xs md:text-[10px] text-slate-400 mb-3">Approved youth with zero program registrations. Prioritize these for outreach to ensure equitable distribution.</p>
                   <div className="space-y-1 max-h-48 overflow-y-auto">
                     {underservedYouth.slice(0, 8).map(y => (
                       <div key={y.id} className="flex justify-between items-center text-xs py-1.5 border-b border-slate-50">
@@ -2331,8 +2339,8 @@ return (
                   </div>
                 </div>
 
-                <div className="bg-white p-5 rounded-xl border border-rose-100 shadow-xs">
-                  <div className="flex items-center gap-2 mb-2">
+                <div className="bg-white p-4 md:p-5 rounded-xl border border-rose-100 shadow-xs">
+                  <div className="flex items-center gap-3 md:gap-2 mb-2">
                     <AlertTriangle className="w-4 h-4 text-rose-600" />
                     <h4 className="font-extrabold text-slate-800 text-sm">Duplicate Assistance Flag</h4>
                     <span className="ml-auto text-[10px] font-extrabold bg-rose-50 text-rose-800 px-2 py-0.5 rounded-full">
@@ -2354,8 +2362,8 @@ return (
                 </div>
               </div>
 
-                <div className="border border-slate-100 rounded-lg">
-                  <table className="w-full table-fixed text-left text-xs text-slate-600">
+                <div className="border border-slate-100 rounded-lg overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
+                  <table className="w-full table-fixed text-left text-xs text-slate-600 min-w-[720px] md:min-w-0">
                     <colgroup>
                       <col style={{ width: '24%' }} />
                       <col style={{ width: '11%' }} />
@@ -2366,7 +2374,7 @@ return (
                     </colgroup>
                     <thead className="bg-slate-50 text-[10px] text-slate-500 font-extrabold uppercase border-b border-slate-100">
                       <tr>
-                        <th className="px-2 py-3 break-words">Applicant Profile</th>
+                        <th className="px-2 py-3 break-words min-w-[140px] md:min-w-0">Applicant Profile</th>
                         <th className="px-2 py-3 break-words">Age / Sex</th>
                         <th className="px-2 py-3 break-words">Residency Address</th>
                         <th className="px-2 py-3 break-words">Education & Scholarship</th>
@@ -2381,7 +2389,7 @@ return (
                               <ProfileAvatar name={p.name} src={p.profilePic} alt={p.name} className="w-7 h-7 shrink-0 rounded-full border border-slate-100" />
                               <div className="min-w-0">
                                 <span className="block break-words font-bold">{p.name}</span>
-                                <span className="mt-0.5 block break-all font-mono text-[9px] font-bold text-slate-400">{p.id}</span>
+                                <span className="mt-0.5 block break-all font-mono text-[9px] font-bold text-slate-400 max-md:whitespace-nowrap">{p.id}</span>
                               </div>
                             </div>
                           </td>
@@ -2475,12 +2483,12 @@ return (
             <div className="space-y-6">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                  <h3 className="text-xl font-extrabold text-[#091d64]">Manage Programs</h3>
+                  <h3 className="text-xl font-extrabold text-[#091d64] break-words">Manage Programs</h3>
                   <p className="text-xs text-slate-400 mt-1">View, manage, and track all programs and initiatives.</p>
                 </div>
                 
-                <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
-                  <div className="bg-slate-100 p-0.5 rounded-lg flex items-center border border-slate-100">
+                <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3 w-full md:w-auto justify-between md:justify-end">
+                  <div className="bg-slate-100 p-0.5 rounded-lg flex flex-wrap items-center border border-slate-100 w-full md:w-auto">
                     <button 
                       onClick={() => setProgListFilter('List')}
                       className={`px-3 py-1.5 text-xs font-bold rounded-md flex items-center gap-1.5 transition-all cursor-pointer ${
@@ -2503,12 +2511,30 @@ return (
                   
                   <button 
                     onClick={() => openProgramEditor()}
-                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-xs flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-xs flex items-center gap-2 shadow-xs transition-colors cursor-pointer w-full md:w-auto justify-center"
                   >
                     <Plus className="w-4 h-4" />
                     Create New Program
                   </button>
                 </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2" role="group" aria-label="Filter programs by status">
+                {(['All', 'Active', 'Completed'] as const).map(status => (
+                  <button
+                    key={status}
+                    type="button"
+                    aria-pressed={programStatusFilter === status}
+                    onClick={() => setProgramStatusFilter(status)}
+                    className={`rounded-lg px-3 py-2 text-xs font-bold transition-colors ${
+                      programStatusFilter === status
+                        ? 'bg-[#091d64] text-white'
+                        : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {status}
+                  </button>
+                ))}
               </div>
 
               <div className="space-y-4">
@@ -2565,7 +2591,7 @@ return (
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {programs.map(program => (
+                          {filteredPrograms.map(program => (
                             <tr
                               key={program.id}
                               role="button"
@@ -2589,7 +2615,7 @@ return (
                                 <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-bold text-blue-700">{program.status}</span>
                               </td>
                               <td className="px-5 py-4 text-right font-mono font-semibold whitespace-nowrap">
-                                ₱{(Number(program.budgetAllocation) || 0).toLocaleString()}
+                                {'\u20B1'}{(Number(program.budgetAllocation) || 0).toLocaleString()}
                               </td>
                               <td className="px-5 py-4">
                                 <div className="flex justify-center gap-2">
@@ -2635,9 +2661,11 @@ return (
                       </table>
                     </div>
                   )}
-                  {programs.length === 0 && (
+                  {filteredPrograms.length === 0 && (
                     <div className="bg-white p-12 text-center rounded-xl border border-slate-100 text-slate-400 font-bold text-xs">
-                      No programs created yet. Click "Create New Program" to publish one.
+                      {programs.length === 0
+                        ? 'No programs created yet. Click "Create New Program" to publish one.'
+                        : `No ${programStatusFilter.toLowerCase()} programs match this filter.`}
                     </div>
                   )}
                 </div>
@@ -2912,10 +2940,16 @@ return (
                 </div>
                 <div className="flex w-full shrink-0 justify-end gap-2 sm:w-auto">
                   <button type="button" onClick={() => { setTotalFormError(''); setTotalForm(prev => ({ ...prev, fiscalYear: budgetYear })); setShowSetTotal(true); }} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-amber-400 px-3 py-2.5 text-center text-xs font-bold text-amber-950 hover:bg-amber-300">
-                    <Coins className="h-4 w-4 shrink-0" /> <span>Set total SK budget</span>
+                    <Coins className="h-4 w-4 shrink-0" /> <span>Set Total SK Budget</span>
                   </button>
                 </div>
               </div>
+
+              {!hasTotalBudget && (
+                <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">
+                  No Total Budget Set. Please click 'Set Total SK Budget' before allocating funds.
+                </div>
+              )}
 
               {false && showRecordExpense && (
                 <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4">
@@ -2941,7 +2975,7 @@ return (
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Select Program (Budget)
                       <select required value={expenseForm.budgetId} onChange={event => setExpenseForm(previous => ({ ...previous, budgetId: event.target.value }))} className="mt-1 block w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800">
                         <option value="">Select a Program to charge this expense to...</option>
-                        {budgetAllocations.map(allocation => <option key={allocation.id} value={allocation.id} disabled={Number(allocation.remaining_amount) <= 0}>{allocation.category} · ₱{Number(allocation.remaining_amount || 0).toLocaleString()} remaining</option>)}
+                        {budgetAllocations.map(allocation => <option key={allocation.id} value={allocation.id} disabled={Number(allocation.remaining_amount) <= 0}>{allocation.category} · {'\u20B1'}{Number(allocation.remaining_amount || 0).toLocaleString()} remaining</option>)}
                       </select>
                     </label>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -2968,24 +3002,28 @@ return (
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
                       <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-2xs">
                         <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Total budget</span>
-                        <p className="mt-3 text-2xl font-extrabold text-slate-800">₱{Number(totalBudget || 0).toLocaleString()}</p>
+                        <p className="mt-3 text-2xl font-extrabold text-slate-800">{'\u20B1'}{Number(totalBudget || 0).toLocaleString()}</p>
                       </div>
-                      <div className="rounded-xl border border-blue-100 bg-blue-50/30 p-5 shadow-2xs">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-blue-600">Allocated to programs</span>
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
-                          <p className="text-2xl font-extrabold text-blue-700">₱{Number(allocatedToPrograms || 0).toLocaleString()}</p>
-                          {allocatedToPrograms > totalBudget && <span className="text-xs text-rose-600">OVER-ALLOCATED</span>}
-                        </div>
-                      </div>
-                      <div className="rounded-xl border border-rose-100 bg-rose-50/30 p-5 shadow-2xs">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-rose-600">Total spent</span>
-                        <p className="mt-3 text-2xl font-extrabold text-rose-700">₱{Number(totalSpent || 0).toLocaleString()}</p>
-                        <span className="text-xs text-slate-500">{utilizationRate.toFixed(1)}% utilization</span>
-                      </div>
-                      <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-2xs">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{remainingBalance < 0 ? 'Over Budget (Deficit)' : 'Remaining Balance'}</span>
-                        <p className={`mt-3 text-2xl font-extrabold ${remainingBalance < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>₱{Number(remainingBalance || 0).toLocaleString()}</p>
-                      </div>
+                      {hasTotalBudget && (
+                        <>
+                          <div className="rounded-xl border border-blue-100 bg-blue-50/30 p-5 shadow-2xs">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-blue-600">Allocated to programs</span>
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              <p className="text-2xl font-extrabold text-blue-700">{'\u20B1'}{Number(allocatedToPrograms || 0).toLocaleString()}</p>
+                              {allocatedToPrograms > totalBudget && <span className="text-xs text-rose-600">OVER-ALLOCATED</span>}
+                            </div>
+                          </div>
+                          <div className="rounded-xl border border-rose-100 bg-rose-50/30 p-5 shadow-2xs">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-rose-600">Total spent</span>
+                            <p className="mt-3 text-2xl font-extrabold text-rose-700">{'\u20B1'}{Number(totalSpent || 0).toLocaleString()}</p>
+                            <span className="text-xs text-slate-500">{utilizationRate.toFixed(1)}% utilization</span>
+                          </div>
+                          <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-2xs">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{remainingBalance < 0 ? 'Over Budget (Deficit)' : 'Remaining Balance'}</span>
+                            <p className={`mt-3 text-2xl font-extrabold ${remainingBalance < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{'\u20B1'}{Number(remainingBalance || 0).toLocaleString()}</p>
+                          </div>
+                        </>
+                      )}
                     </div>
 
                     <div className="rounded-xl border border-slate-100 bg-white p-5 shadow-2xs">
@@ -2995,9 +3033,9 @@ return (
                         return (
                           <tr key={row.program}>
                             <td className={`px-3 py-3 font-bold whitespace-nowrap ${isOverAllocated ? 'text-rose-600' : 'text-slate-700'}`}>{row.program}</td>
-                            <td className={`px-3 py-3 text-right whitespace-nowrap ${isOverAllocated ? 'text-rose-600' : ''}`}>₱{Number(row.allocated || 0).toLocaleString()}</td>
-                            <td className="px-3 py-3 text-right whitespace-nowrap">₱{Number(row.spent || 0).toLocaleString()}</td>
-                            <td className={`px-3 py-3 text-right whitespace-nowrap ${isOverAllocated ? 'text-rose-600' : ''}`}>₱{Number(row.remaining || 0).toLocaleString()}</td>
+                            <td className={`px-3 py-3 text-right whitespace-nowrap ${isOverAllocated ? 'text-rose-600' : ''}`}>{'\u20B1'}{Number(row.allocated || 0).toLocaleString()}</td>
+                            <td className="px-3 py-3 text-right whitespace-nowrap">{'\u20B1'}{Number(row.spent || 0).toLocaleString()}</td>
+                            <td className={`px-3 py-3 text-right whitespace-nowrap ${isOverAllocated ? 'text-rose-600' : ''}`}>{'\u20B1'}{Number(row.remaining || 0).toLocaleString()}</td>
                             <td className={`px-3 py-3 text-right font-bold whitespace-nowrap ${row.rate > 100 || isOverAllocated ? 'text-rose-600' : 'text-slate-700'}`}>{isOverAllocated ? 'Over-Allocated' : `${row.rate.toFixed(1)}%`}</td>
                           </tr>
                         );
@@ -3271,7 +3309,7 @@ return (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="p-5 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1"><div className="flex justify-between items-center text-slate-400"><span className="text-[10px] font-bold uppercase tracking-wider">Registered Youth</span><Users className="w-4 h-4 text-[#091d64]" /></div><h4 className="text-xl font-black text-[#091d64]">{Number(youthProfiles.length || 0).toLocaleString()}</h4><p className="text-[10px] text-slate-500">KK roster</p></div>
                   <div className="p-5 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1"><div className="flex justify-between items-center text-slate-400"><span className="text-[10px] font-bold uppercase tracking-wider">Active Programs</span><ClipboardList className="w-4 h-4 text-blue-600" /></div><h4 className="text-xl font-black text-blue-600">{programs.filter(p => p.status === 'Upcoming' || p.status === 'Ongoing').length}</h4><p className="text-[10px] text-slate-500">Upcoming & ongoing</p></div>
-                  <div className="p-5 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1"><div className="flex justify-between items-center text-slate-400"><span className="text-[10px] font-bold uppercase tracking-wider">Total Allocated</span><Coins className="w-4 h-4 text-emerald-600" /></div><h4 className="text-xl font-black text-emerald-600">₱{Number(programs.reduce((s, p) => s + (Number(p.budgetAllocation) || 0), 0) || 0).toLocaleString()}</h4><p className="text-[10px] text-slate-500">Program budget</p></div>
+                  <div className="p-5 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1"><div className="flex justify-between items-center text-slate-400"><span className="text-[10px] font-bold uppercase tracking-wider">Total Allocated</span><Coins className="w-4 h-4 text-emerald-600" /></div><h4 className="text-xl font-black text-emerald-600">{'\u20B1'}{Number(programs.reduce((s, p) => s + (Number(p.budgetAllocation) || 0), 0) || 0).toLocaleString()}</h4><p className="text-[10px] text-slate-500">Program budget</p></div>
                   <div className="p-5 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1"><div className="flex justify-between items-center text-slate-400"><span className="text-[10px] font-bold uppercase tracking-wider">Documents</span><Folder className="w-4 h-4 text-amber-600" /></div><h4 className="text-xl font-black text-amber-600">{documents.length}</h4><p className="text-[10px] text-slate-500">Repository records</p></div>
                 </div>
 
@@ -3376,7 +3414,7 @@ return (
                   </div>
                 )}
                 {reportSubTab === 'financial' && (<div className="border border-slate-100 rounded-xl">
-                  <div className="w-full overflow-x-auto block"><table className="w-full text-left text-xs min-w-[600px]"><thead className="bg-[#091d64] text-white text-[10px] font-bold uppercase"><tr><th className="px-4 py-3 whitespace-nowrap">Program</th><th className="px-4 py-3 text-right whitespace-nowrap">Allocated</th></tr></thead><tbody className="divide-y divide-slate-100">{programs.map(p => { const alloc = Number(p.budgetAllocation) || 0; return <tr key={p.id}><td className="px-4 py-3 font-bold whitespace-nowrap">{p.title}</td><td className="px-4 py-3 text-right font-mono whitespace-nowrap">₱{Number(alloc || 0).toLocaleString()}</td></tr>; })}</tbody></table></div>
+                  <div className="w-full overflow-x-auto block"><table className="w-full text-left text-xs min-w-[600px]"><thead className="bg-[#091d64] text-white text-[10px] font-bold uppercase"><tr><th className="px-4 py-3 whitespace-nowrap">Program</th><th className="px-4 py-3 text-right whitespace-nowrap">Allocated</th></tr></thead><tbody className="divide-y divide-slate-100">{programs.map(p => { const alloc = Number(p.budgetAllocation) || 0; return <tr key={p.id}><td className="px-4 py-3 font-bold whitespace-nowrap">{p.title}</td><td className="px-4 py-3 text-right font-mono whitespace-nowrap">{'\u20B1'}{Number(alloc || 0).toLocaleString()}</td></tr>; })}</tbody></table></div>
                 </div>)}
               </div>
             </div>
@@ -3663,13 +3701,13 @@ return (
             <div className="space-y-6">
               <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-xs space-y-4">
                 <h3 className="text-lg font-extrabold text-[#091d64]">Barangay Official Activity & Audit Log</h3>
-                <div className="w-full overflow-x-auto rounded-xl border border-slate-100">
-                  <table className="w-full table-fixed text-left text-xs font-semibold text-slate-600">
+                <div className="w-full overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 rounded-xl border border-slate-100">
+                  <table className="w-full table-fixed text-left text-xs font-semibold text-slate-600 min-w-[720px] md:min-w-0">
                     <thead className="bg-slate-50 text-[10px] text-slate-500 font-extrabold uppercase border-b border-slate-100">
                       <tr>
-                        <th className="w-[22%] p-3.5">Timestamp</th>
+                        <th className="w-[22%] p-3.5 whitespace-nowrap">Timestamp</th>
                         <th className="w-[24%] p-3.5">Official Name & Role</th>
-                        <th className="w-[18%] p-3.5">Action Code</th>
+                        <th className="w-[18%] p-3.5 whitespace-nowrap font-mono text-[10px]">Action Code</th>
                         <th className="w-[36%] p-3.5">Activity Details</th>
                       </tr>
                     </thead>
@@ -3678,11 +3716,11 @@ return (
                           <td className="p-3.5 font-mono text-slate-400 text-[11px] whitespace-nowrap align-top">
                             {formatPhilippineDateTime(log.timestamp, undefined, { dateStyle: 'short', timeStyle: 'short' })}
                           </td>
-                          <td className="p-3.5 font-bold text-slate-800 whitespace-normal break-words align-top">
+                          <td className="p-3.5 font-bold text-slate-800 whitespace-normal break-words align-top min-w-[140px]">
                             {log.user} ({log.role})
                           </td>
-                          <td className="p-3.5 font-mono text-[10px] whitespace-normal break-words align-top">{log.action}</td>
-                          <td className="p-3.5 align-top">
+                          <td className="p-3.5 font-mono text-[10px] whitespace-nowrap align-top">{log.action.replace(/_/g, ' ')}</td>
+                          <td className="p-3.5 align-top max-w-[300px] break-words">
                             <div className="max-w-md whitespace-normal break-words text-xs text-slate-600">
                               {formatAuditDetails(log.action, log.details)}
                             </div>
