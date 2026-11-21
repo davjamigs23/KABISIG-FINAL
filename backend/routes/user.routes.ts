@@ -786,7 +786,7 @@ router.get(
       .from('users')
       .select('*, resident_profile!resident_profile_user_id_fkey(*)')
       .eq('role_id', 4)
-      .in('status', ['active', 'pending', 'rejected', 'submitted']);
+      .eq('status', 'active');
 
     if (tenantFilterId) {
       query = query.eq('tenant_id', tenantFilterId);

@@ -290,7 +290,8 @@ router.get('/programs', async (_req: Request, res: Response): Promise<void> => {
     .from('program')
     .select('id, tenant_id, title, description, category, location, start_date, end_date, total_slots, budget_allocation, aip_reference, image_url, status, barangay(name)')
     .in('status', ['active', 'approved', 'upcoming', 'ongoing'])
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(10);
 
   if (error) {
     sendError(res, 'Failed to load public programs: ' + error.message, 500);
@@ -323,7 +324,7 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
 
   const { data: officials, error } = await supabaseAdmin
     .from('users')
-    .select('id, tenant_id, full_name, role_id, avatar_url, official_role, setup_completed')
+    .select('id, tenant_id, full_name, role_id, avatar_url, official_role, setup_completed, barangay(name)')
     .in('role_id', [2, 3])
     .eq('status', 'active')
     .not('tenant_id', 'is', null)
@@ -334,7 +335,10 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
     return;
   }
 
-  const officialUserIds = (officials || []).map((official) => official.id);
+  const displayedOfficials = (officials || []).filter((official) =>
+    official.setup_completed === true || Number(official.role_id) === 3
+  );
+  const officialUserIds = displayedOfficials.map((official) => official.id);
   const profileSexByUserId = new Map<string, string | null>();
   if (officialUserIds.length > 0) {
     const { data: profiles, error: profilesError } = await supabaseAdmin
@@ -365,7 +369,10 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
     groupedOfficials.set(barangay.id, { barangay_name: barangay.name, officials: [] });
   });
 
-  const resolvedOfficials = await Promise.all((officials || []).map(async (official: any) => {
+  const resolvedOfficials = await Promise.all(displayedOfficials.map(async (official: any) => {
+    const joinedBarangay = Array.isArray(official.barangay)
+      ? official.barangay[0]
+      : official.barangay;
     const officialRole = String(
       official.official_role
       || (Number(official.role_id) === 3 ? 'SK Kagawad' : 'SK Chairperson')
@@ -373,6 +380,7 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
     return {
       id: official.id,
       tenant_id: official.tenant_id,
+      barangay_name: joinedBarangay?.name || '',
       full_name: official.full_name || '',
       role_id: Number(official.role_id),
       official_role: officialRole,
@@ -393,6 +401,9 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
     const group = groupedOfficials.get(official.tenant_id);
     if (!group) return;
 
+    if (official.barangay_name) {
+      group.barangay_name = official.barangay_name;
+    }
     group.officials.push({
       id: official.id,
       full_name: official.full_name || '',

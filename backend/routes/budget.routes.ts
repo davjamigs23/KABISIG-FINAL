@@ -114,7 +114,7 @@ router.get(
   const user = (req as AuthRequest).user!;
   const { fiscal_year, tenant_id } = req.query;
 
-  let query = supabaseAdmin.from('budget').select('*, barangay(name)');
+  let query = supabaseAdmin.from('budget').select('*, barangay(name), program:program_id(aip_reference)');
 
   if (user.role !== 'SUPER_ADMIN') {
     if (!user.tenant_id) {
@@ -137,6 +137,10 @@ router.get(
     return;
   }
 
+  const budgetsWithAipReference = (budgets || []).map((budget: any) => ({
+    ...budget,
+    aip_reference: budget.program?.aip_reference || null,
+  }));
   const totalAllocated = budgets?.reduce((acc, b) => acc + Number(b.allocated_amount), 0) || 0;
   const totalRemaining = budgets?.reduce((acc, b) => acc + Number(b.remaining_amount), 0) || 0;
   const totalSpent = totalAllocated - totalRemaining;
@@ -151,7 +155,7 @@ router.get(
         total_spent: round2(totalSpent),
         utilization_rate_pct: utilizationRate,
       },
-      budgets,
+      budgets: budgetsWithAipReference,
     },
     'Budget allocations retrieved.'
   );

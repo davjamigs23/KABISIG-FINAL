@@ -2106,7 +2106,7 @@ export default function OfficialPages({
           program,
           id: program?.id || budget.program_id || budget.programId || budget.id,
           title: program?.title || budget.category || 'Unassigned Program',
-          aipReference: program?.aipReference || '',
+          aipReference: program?.aipReference || budget.aip_reference || budget.program?.aip_reference || '',
           category: program?.category || budget.category || 'Unclassified',
         };
       })
