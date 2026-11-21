@@ -764,12 +764,17 @@ router.get(
     const requestedTenantId = String(req.query.tenant_id || '').trim();
     const canLoadAllTenants = isSuperAdmin && allTenantsRequested && !requestedTenantId;
 
-    if (!user.tenant_id && !canLoadAllTenants && !requestedTenantId) {
-      sendError(res, 'A barangay tenant context is required to load youth constituents.', 403);
-      return;
-    }
     if (!isSuperAdmin && requestedTenantId && requestedTenantId !== user.tenant_id) {
       sendError(res, 'You cannot load youth constituents from another Barangay.', 403);
+      return;
+    }
+    const tenantFilterId = canLoadAllTenants
+      ? null
+      : isSuperAdmin
+        ? requestedTenantId || user.tenant_id
+        : user.tenant_id;
+    if (!canLoadAllTenants && !tenantFilterId) {
+      sendError(res, 'A barangay tenant context is required to load youth constituents.', 403);
       return;
     }
 
@@ -783,13 +788,16 @@ router.get(
       .eq('role_id', 4)
       .in('status', ['active', 'pending', 'rejected', 'submitted']);
 
-    if (!canLoadAllTenants) {
-      query = query.eq('tenant_id', isSuperAdmin ? requestedTenantId : user.tenant_id);
+    if (tenantFilterId) {
+      query = query.eq('tenant_id', tenantFilterId);
     }
 
     const { data: users, error } = await query;
+    const scopedUsers = canLoadAllTenants
+      ? users || []
+      : (users || []).filter((youth) => youth.tenant_id === tenantFilterId);
     if (process.env.NODE_ENV !== 'production') {
-      const statusSummary = (users || []).reduce<Record<string, number>>((summary, youth) => {
+      const statusSummary = scopedUsers.reduce<Record<string, number>>((summary, youth) => {
         const status = String(youth.status || 'unknown').toLowerCase();
         const joinedProfile = youth.resident_profile;
         const profile = Array.isArray(joinedProfile) ? joinedProfile[0] : joinedProfile;
@@ -798,7 +806,7 @@ router.get(
         summary[`verification:${verificationStatus}`] = (summary[`verification:${verificationStatus}`] || 0) + 1;
         return summary;
       }, {});
-      console.info('DIAGNOSTIC - Youth query result:', users?.length ?? 'NULL', statusSummary, error?.code || null);
+      console.info('DIAGNOSTIC - Youth query result:', scopedUsers.length, statusSummary, error?.code || null);
     }
     if (error) {
       sendError(res, `Failed to load youth constituents: ${error.message}`, 500);
@@ -806,7 +814,7 @@ router.get(
     }
 
     const profiles = await Promise.all(
-      (users || []).map(async (u) => {
+      scopedUsers.map(async (u) => {
         let meta: Record<string, any> = {};
         try {
           const { data: authData } = await supabaseAdmin.auth.admin.getUserById(u.id);

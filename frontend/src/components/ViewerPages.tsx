@@ -395,7 +395,7 @@ export default function ViewerPages({
     ? _educationSource
     : {};
   const educationDemographicData = Object.entries(_educationMap)
-    .map(([name, count]) => ({ name, value: Number(count) }))
+    .map(([name, count]) => ({ name: String(name || '').trim() || 'Not Specified', value: Number(count) }))
     .filter(entry => Number.isFinite(entry.value) && entry.value >= 0);
   const hasGenderDemographicData = genderDemographicData.some(entry => entry.value > 0);
   const hasEducationDemographicData = educationDemographicData.some(entry => entry.value > 0);
