@@ -440,8 +440,13 @@ class KabisigApiClient {
 
   async getPublicExpenses(): Promise<any[]> {
     const res = await this.request<any[]>('/public/expenses', { method: 'GET' });
-    if (!res.success || !res.data) return [];
-    return Array.isArray(res.data) ? res.data : [];
+    if (!res.success) {
+      throw new Error(res.message || 'Failed to load public expense records.');
+    }
+    if (!Array.isArray(res.data)) {
+      throw new Error('The public expense response was invalid.');
+    }
+    return res.data;
   }
 
   async inviteSkOfficial(barangayId: string, email: string, officialRole: string, name?: { first_name?: string | null; middle_name?: string | null; last_name?: string | null; suffix?: string | null }): Promise<{ success: boolean; message?: string; data?: any; error?: any; details?: any }> {

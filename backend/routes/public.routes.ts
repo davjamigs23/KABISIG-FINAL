@@ -77,74 +77,102 @@ router.get('/announcements', async (_req: Request, res: Response): Promise<void>
 
 // GET /api/public/expenses — public financial records without receipt or personal data
 router.get('/expenses', async (_req: Request, res: Response): Promise<void> => {
-  const currentYear = new Date().getFullYear();
   const pageSize = 1000;
-  const { data: budgets, error: budgetError } = await supabaseAdmin
-    .from('budget')
-    .select('id, tenant_id, category, fiscal_year')
-    .eq('fiscal_year', currentYear);
-  if (budgetError) {
-    sendError(res, `Failed to load public budget categories: ${budgetError.message}`, 500);
-    return;
-  }
-  const budgetById = new Map((budgets || []).map((budget) => [
-    budget.id,
-    { tenant_id: budget.tenant_id, category: budget.category, fiscal_year: budget.fiscal_year },
-  ]));
-  const tenantIds = [...new Set((budgets || []).map((budget) => budget.tenant_id).filter(Boolean))];
-  const { data: barangays, error: barangayError } = await supabaseAdmin
-    .from('barangay')
-    .select('id, name')
-    .in('id', tenantIds);
-  if (barangayError) {
-    sendError(res, `Failed to load public Barangay names: ${barangayError.message}`, 500);
-    return;
-  }
-  const barangayNames = new Map((barangays || []).map((barangay) => [barangay.id, barangay.name]));
-  const budgetIds = [...budgetById.keys()];
   const allExpenses: any[] = [];
-  const budgetIdPageSize = 200;
-  for (let budgetOffset = 0; budgetOffset < budgetIds.length; budgetOffset += budgetIdPageSize) {
-    const budgetIdBatch = budgetIds.slice(budgetOffset, budgetOffset + budgetIdPageSize);
-    for (let offset = 0; ; offset += pageSize) {
-      const { data, error } = await supabaseAdmin
-        .from('expense')
-        .select('id, tenant_id, budget_id, program_id, title, description, gross_amount, tax_type, tax_rate, tax_amount, net_amount, expense_date, status, budget:budget_id(category,program:program_id(aip_reference)), program:program_id(title,aip_reference)')
-        .in('budget_id', budgetIdBatch)
-        .order('expense_date', { ascending: false })
-        .order('id', { ascending: true })
-        .range(offset, offset + pageSize - 1);
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabaseAdmin
+      .from('expense')
+      .select('id, tenant_id, budget_id, program_id, title, description, gross_amount, tax_type, tax_rate, tax_amount, net_amount, expense_date, status')
+      .order('expense_date', { ascending: false })
+      .order('id', { ascending: true })
+      .range(offset, offset + pageSize - 1);
 
-      if (error) {
-        sendError(res, `Failed to load public expenses: ${error.message}`, 500);
-        return;
-      }
-      for (const expense of data || []) {
-        const budget = budgetById.get(expense.budget_id);
-        if (!budget || expense.tenant_id !== budget.tenant_id) {
-          sendError(res, 'An approved expense is linked to a budget from a different Barangay.', 500);
-          return;
-        }
-        const expenseCategory = (expense as any).budget?.category
-          || budget.category
-          || (expense as any).program?.title
-          || 'Uncategorized';
-        allExpenses.push({
-          ...expense,
-          category: expenseCategory,
-          expense_category: expenseCategory,
-          aip_reference: (expense as any).program?.aip_reference
-            || (expense as any).budget?.program?.aip_reference
-            || null,
-          barangay_name: barangayNames.get(budget.tenant_id) || null,
-          payee_name: expense.title || 'N/A',
-          budget,
-        });
-      }
-      if (!data || data.length < pageSize) break;
+    if (error) {
+      sendError(res, `Failed to load public expenses: ${error.message}`, 500);
+      return;
+    }
+    allExpenses.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+  }
+  if (allExpenses.length === 0) {
+    sendSuccess(res, [], 'Public expenses retrieved.');
+    return;
+  }
+
+  const budgetIds = [...new Set(allExpenses
+    .map((expense) => expense.budget_id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0))];
+  const budgetById = new Map<string, any>();
+  const relatedIdPageSize = 200;
+  for (let offset = 0; offset < budgetIds.length; offset += relatedIdPageSize) {
+    const { data: budgets, error: budgetError } = await supabaseAdmin
+      .from('budget')
+      .select('id, tenant_id, category, fiscal_year')
+      .in('id', budgetIds.slice(offset, offset + relatedIdPageSize));
+    if (budgetError) {
+      sendError(res, `Failed to load public budget categories: ${budgetError.message}`, 500);
+      return;
+    }
+    budgets?.forEach((budget) => budgetById.set(budget.id, budget));
+  }
+
+  const programIds = [...new Set(allExpenses
+    .map((expense) => expense.program_id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0))];
+  const programById = new Map<string, any>();
+  for (let offset = 0; offset < programIds.length; offset += relatedIdPageSize) {
+    const { data: programs, error: programError } = await supabaseAdmin
+      .from('program')
+      .select('id, title, aip_reference')
+      .in('id', programIds.slice(offset, offset + relatedIdPageSize));
+    if (programError) {
+      sendError(res, `Failed to load public expense program details: ${programError.message}`, 500);
+      return;
+    }
+    programs?.forEach((program) => programById.set(program.id, program));
+  }
+
+  const tenantIds = new Set<string>();
+  for (const expense of allExpenses) {
+    if (expense.tenant_id) tenantIds.add(expense.tenant_id);
+    const budget = expense.budget_id ? budgetById.get(expense.budget_id) : null;
+    if (budget?.tenant_id) tenantIds.add(budget.tenant_id);
+    if (budget?.tenant_id && expense.tenant_id && expense.tenant_id !== budget.tenant_id) {
+      sendError(res, 'An expense is linked to a budget from a different Barangay.', 500);
+      return;
     }
   }
-  sendSuccess(res, allExpenses, 'Public expenses retrieved.');
+
+  const barangayNames = new Map<string, string>();
+  if (tenantIds.size > 0) {
+    const { data: barangays, error: barangayError } = await supabaseAdmin
+      .from('barangay')
+      .select('id, name')
+      .in('id', [...tenantIds]);
+    if (barangayError) {
+      sendError(res, `Failed to load public Barangay names: ${barangayError.message}`, 500);
+      return;
+    }
+    barangays?.forEach((barangay) => barangayNames.set(barangay.id, barangay.name));
+  }
+
+  const publicExpenses = allExpenses.map((expense) => {
+    const budget = expense.budget_id ? budgetById.get(expense.budget_id) : null;
+    const program = expense.program_id ? programById.get(expense.program_id) : null;
+    const tenantId = expense.tenant_id || budget?.tenant_id;
+    const expenseCategory = budget?.category || 'Uncategorized';
+    return {
+      ...expense,
+      category: expenseCategory,
+      expense_category: expenseCategory,
+      aip_reference: program?.aip_reference || null,
+      barangay_name: tenantId ? barangayNames.get(tenantId) || null : null,
+      payee_name: expense.title || 'N/A',
+      budget,
+      program: program ? { title: program.title, aip_reference: program.aip_reference } : null,
+    };
+  });
+  sendSuccess(res, publicExpenses, 'Public expenses retrieved.');
 });
 
 // GET /api/public/demographics — anonymized aggregate only, no PII

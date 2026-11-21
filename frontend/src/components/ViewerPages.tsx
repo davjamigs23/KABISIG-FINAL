@@ -102,7 +102,8 @@ export default function ViewerPages({
     queryKey: ['public-expenses'],
     queryFn: () => kabisigApi.getPublicExpenses(),
     initialData: initialExpenses.length > 0 ? initialExpenses : undefined,
-    enabled: activeMenu === 'transparency',
+    enabled: true,
+    refetchOnMount: 'always',
   });
   const publicDocumentsQuery = useQuery({
     queryKey: ['public-documents'],
@@ -111,7 +112,10 @@ export default function ViewerPages({
     enabled: activeMenu === 'transparency',
   });
   const expenses = publicExpensesQuery.data || [];
-  const isLoadingPublicExpenses = publicExpensesQuery.isLoading;
+  const isLoadingPublicExpenses = publicExpensesQuery.isFetching && !publicExpensesQuery.data;
+  const publicExpensesError = publicExpensesQuery.error instanceof Error
+    ? publicExpensesQuery.error.message
+    : 'Public expense records could not be loaded.';
   const documents = publicDocumentsQuery.data || [];
   useRealtimeData({
     table: 'expense',
@@ -413,9 +417,9 @@ export default function ViewerPages({
 
   // Recharts Pie Chart F2: Category expense allocations
   const expenseCategoryTotals = useMemo(() => expenses.reduce<Record<string, number>>((totals, exp) => {
-    const category = String((exp as any).category || (exp as any).budget?.category || 'Uncategorized');
-    const netAmount = Number((exp as any).net_amount ?? exp.netAmount ?? exp.amount) || 0;
-    totals[category] = (totals[category] || 0) + netAmount;
+    const category = String((exp as any).expense_category || exp.category || 'Uncategorized').trim() || 'Uncategorized';
+    const grossAmount = Number((exp as any).gross_amount ?? exp.amount) || 0;
+    totals[category] = (totals[category] || 0) + grossAmount;
     return totals;
   }, {}), [expenses]);
   const expenseChartColors = ['#1a237e', '#d32f2f', '#fdd835', '#78909c', '#00897b', '#6a1b9a'];
@@ -1065,6 +1069,10 @@ export default function ViewerPages({
                           role="status"
                           aria-label="Loading expense categories"
                         />
+                      ) : publicExpensesQuery.isError && !publicExpensesQuery.data ? (
+                        <div role="alert" className="h-56 flex items-center justify-center text-sm text-rose-600">
+                          {publicExpensesError}
+                        </div>
                       ) : expenseCategoriesData.length > 0 ? (
                         <div className="h-56 w-full min-w-0 flex justify-center overflow-hidden">
                           <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
@@ -1307,6 +1315,12 @@ export default function ViewerPages({
                               </div>
                             </td>
                           </tr>
+                        ) : publicExpensesQuery.isError && !publicExpensesQuery.data ? (
+                          <tr>
+                            <td colSpan={6} className="px-5 py-8 text-center text-rose-600" role="alert">
+                              {publicExpensesError}
+                            </td>
+                          </tr>
                         ) : filteredExpenses.length === 0 ? (
                           <tr>
                             <td colSpan={6} className="px-5 py-8 text-center text-slate-400">
@@ -1317,7 +1331,7 @@ export default function ViewerPages({
                           <tr key={exp.id} className="hover:bg-slate-50">
                             <td className="px-5 py-3.5">
                               <span className="block font-bold text-slate-800">
-                                {(exp as any).expense_category || exp.title || 'Unnamed Transaction'}
+                                {(exp as any).expense_category || exp.category || 'Uncategorized'}
                               </span>
                               <span className="block text-sm text-gray-500">
                                 {exp.barangay_name || 'Unknown Barangay'}
