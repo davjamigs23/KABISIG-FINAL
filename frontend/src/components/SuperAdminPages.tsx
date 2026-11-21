@@ -35,6 +35,23 @@ const isPendingChair = (chair: any) =>
       || chair.full_name?.trim() === 'SK Chairperson'
       || chair.full_name?.trim() === 'Pending Invitation';
 
+function parseFullName(fullName: string): { first: string; middle: string; last: string } {
+  if (!fullName) return { first: '', middle: '', last: '' };
+
+  const cleaned = fullName.replace(/^(Hon\.|Mr\.|Ms\.|Mrs\.|Dr\.|Engr\.)\s+/i, '').trim();
+  const parts = cleaned ? cleaned.split(/\s+/) : [];
+
+  if (parts.length === 0) return { first: '', middle: '', last: '' };
+  if (parts.length === 1) return { first: parts[0] || '', middle: '', last: '' };
+  if (parts.length === 2) return { first: parts[0] || '', middle: '', last: parts[1] || '' };
+
+  return {
+    first: parts[0] || '',
+    middle: parts.slice(1, -1).join(' '),
+    last: parts[parts.length - 1] || '',
+  };
+}
+
 interface SuperAdminPagesProps {
   barangays: BarangayTenant[];
   programs: Program[];
@@ -162,10 +179,10 @@ useEffect(() => {
           is_registered_voter: profile?.is_registered_voter === true || user.is_registered_voter === true,
         });
         const fullName = String(user.full_name || '').trim();
-        const nameParts = fullName.split(/\s+/).filter(Boolean);
-        const firstName = String(user.first_name || nameParts[0] || '').trim();
-        const middleName = String(user.middle_name || (nameParts.length > 2 ? nameParts.slice(1, -1).join(' ') : '')).trim();
-        const lastName = String(user.last_name || (nameParts.length > 1 ? nameParts[nameParts.length - 1] : '')).trim();
+        const parsedName = parseFullName(fullName);
+        const firstName = parsedName.first || String(user.first_name || '').trim();
+        const middleName = parsedName.middle || String(user.middle_name || '').trim();
+        const lastName = parsedName.last || String(user.last_name || '').trim();
         const suffix = String(user.suffix || '').trim();
 
         setTypoFirstName(firstName);
