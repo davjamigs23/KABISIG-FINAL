@@ -217,18 +217,37 @@ class KabisigApiClient {
 
   // --- BARANGAY REGISTRY (27 Naga City Barangays) ---
   async getBarangays(): Promise<BarangayTenant[]> {
-    const token = this.getToken();
-    const res = await this.request<BarangayTenant[]>('/barangays', {
-      method: 'GET',
-      ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
-    });
-    if (!res.success) {
-      throw new Error(res.message || 'Failed to load the barangay registry.');
+    try {
+      const getPostgrestErrorMessage = (value: unknown): string | null => {
+        if (!Array.isArray(value)) return null;
+        const first = value[0];
+        if (!first || typeof first !== 'object' || !('message' in first)) return null;
+        return typeof first.message === 'string' ? first.message : null;
+      };
+      const token = this.getToken();
+      const res = await this.request<BarangayTenant[]>('/barangays', {
+        method: 'GET',
+        ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+      });
+      const rawErrorMessage = getPostgrestErrorMessage(res);
+      if (rawErrorMessage || Array.isArray(res)) {
+        throw new Error(rawErrorMessage || 'Database error.');
+      }
+      if (!res || !res.success) {
+        throw new Error(res?.message || 'Failed to load the barangay registry.');
+      }
+      const dataErrorMessage = getPostgrestErrorMessage(res.data);
+      if (dataErrorMessage) {
+        throw new Error(dataErrorMessage);
+      }
+      if (!Array.isArray(res.data)) {
+        throw new Error('The barangay registry response was invalid.');
+      }
+      return res.data;
+    } catch (err: unknown) {
+      console.error('getBarangays Error:', err);
+      throw new Error(err instanceof Error && err.message ? err.message : 'Network error. Please try again.');
     }
-    if (!Array.isArray(res.data)) {
-      throw new Error('The barangay registry response was invalid.');
-    }
-    return res.data;
   }
 
   async getBarangay(id: string): Promise<BarangayTenant | null> {

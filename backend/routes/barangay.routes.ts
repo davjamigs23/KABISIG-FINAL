@@ -148,7 +148,7 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
     // Include pending officials, but exclude rejected records from the roster.
     const { data: allUsers, error: usersError } = await supabaseAdmin
       .from('users')
-      .select('id, tenant_id, role_id, full_name, email, status, setup_completed, resident_profile!resident_profile_user_id_fkey(sex)')
+      .select('id, tenant_id, role_id, full_name, email, status, setup_completed')
       .in('role_id', [2, 3])
       .neq('status', 'rejected');
     if (usersError) {
@@ -156,10 +156,25 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
       return;
     }
 
+    const officialUserIds = (allUsers || []).map((official) => official.id);
+    const profileSexByUserId = new Map<string, string | null>();
+    if (officialUserIds.length > 0) {
+      const { data: profiles, error: profilesError } = await supabaseAdmin
+        .from('resident_profile')
+        .select('user_id, sex')
+        .in('user_id', officialUserIds);
+      if (profilesError) {
+        sendError(res, `Failed to load official profile details: ${profilesError.message}`, 500);
+        return;
+      }
+      profiles?.forEach((profile) => profileSexByUserId.set(profile.user_id, profile.sex));
+    }
+
     const chairMap = new Map<string, {
       id: string;
       full_name: string | null;
       email: string | null;
+      role_id: number;
       status: string | null;
       is_pending: boolean;
       setup_completed: boolean | null;
@@ -175,10 +190,11 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
           id: c.id,
           full_name: c.full_name,
           email: c.email,
+          role_id: Number(c.role_id),
           status: c.status,
           is_pending: c.status === 'pending',
           setup_completed: typeof c.setup_completed === 'boolean' ? c.setup_completed : null,
-          sex: c.resident_profile[0]?.sex || null,
+          sex: profileSexByUserId.get(c.id) || null,
         });
       }
     });
@@ -267,6 +283,7 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
         ? {
             id: chairpersonUser.id,
             full_name: chairpersonUser.full_name,
+            role_id: chairpersonUser.role_id,
             setup_completed: chairpersonUser.setup_completed,
             status: chairpersonUser.status,
             is_pending: chairpersonUser.is_pending,

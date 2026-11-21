@@ -109,7 +109,7 @@ router.get('/expenses', async (_req: Request, res: Response): Promise<void> => {
     for (let offset = 0; ; offset += pageSize) {
       const { data, error } = await supabaseAdmin
         .from('expense')
-        .select('id, tenant_id, budget_id, program_id, title, description, gross_amount, tax_type, tax_rate, tax_amount, net_amount, expense_date, status, budget:budget_id(category), program:program_id(title,aip_reference)')
+        .select('id, tenant_id, budget_id, program_id, title, description, gross_amount, tax_type, tax_rate, tax_amount, net_amount, expense_date, status, budget:budget_id(category,program:program_id(aip_reference)), program:program_id(title,aip_reference)')
         .in('budget_id', budgetIdBatch)
         .order('expense_date', { ascending: false })
         .order('id', { ascending: true })
@@ -125,11 +125,17 @@ router.get('/expenses', async (_req: Request, res: Response): Promise<void> => {
           sendError(res, 'An approved expense is linked to a budget from a different Barangay.', 500);
           return;
         }
+        const expenseCategory = (expense as any).budget?.category
+          || budget.category
+          || (expense as any).program?.title
+          || 'Uncategorized';
         allExpenses.push({
           ...expense,
-          category: (expense as any).budget?.category || budget.category || 'Uncategorized',
-          expense_category: (expense as any).budget?.category || budget.category || null,
-          aip_reference: (expense as any).program?.aip_reference || null,
+          category: expenseCategory,
+          expense_category: expenseCategory,
+          aip_reference: (expense as any).program?.aip_reference
+            || (expense as any).budget?.program?.aip_reference
+            || null,
           barangay_name: barangayNames.get(budget.tenant_id) || null,
           payee_name: expense.title || 'N/A',
           budget,

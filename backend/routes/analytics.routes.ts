@@ -403,11 +403,29 @@ router.get(
       return;
     }
 
-    const { data: youthCounts } = await supabaseAdmin
-      .from('users')
-      .select('tenant_id, role_id')
-      .eq('role_id', 4)
-      .eq('status', 'active');
+    const youthPageSize = 1000;
+    const youthPerBarangay: Record<string, number> = {};
+    let totalRegisteredYouth = 0;
+    for (let offset = 0; ; offset += youthPageSize) {
+      const { data: youthPage, count, error: youthCountsError } = await supabaseAdmin
+        .from('users')
+        .select('id, tenant_id', { count: 'exact' })
+        .eq('role_id', 4)
+        .eq('status', 'active')
+        .order('id', { ascending: true })
+        .range(offset, offset + youthPageSize - 1);
+      if (youthCountsError) {
+        sendError(res, `Failed to count active youth constituents: ${youthCountsError.message}`, 500);
+        return;
+      }
+      totalRegisteredYouth = count ?? totalRegisteredYouth;
+      for (const youth of youthPage || []) {
+        if (youth.tenant_id) {
+          youthPerBarangay[youth.tenant_id] = (youthPerBarangay[youth.tenant_id] || 0) + 1;
+        }
+      }
+      if (!youthPage || youthPage.length < youthPageSize) break;
+    }
 
     const { count: totalRegisteredVoters, error: voterCountError } = await supabaseAdmin
       .from('resident_profile')
@@ -420,13 +438,6 @@ router.get(
       sendError(res, `Failed to count registered youth voters: ${voterCountError.message}`, 500);
       return;
     }
-
-    const youthPerBarangay: Record<string, number> = {};
-    youthCounts?.forEach((y) => {
-      if (y.tenant_id) {
-        youthPerBarangay[y.tenant_id] = (youthPerBarangay[y.tenant_id] || 0) + 1;
-      }
-    });
 
     const currentYear = new Date().getFullYear();
     const { data: allBudgets, error: budgetError } = await supabaseAdmin
@@ -583,7 +594,7 @@ router.get(
         fiscal_year: currentYear,
         citywide_totals: {
           total_barangays: loadedBarangays.length,
-          total_registered_youth: youthCounts?.length || 0,
+          total_registered_youth: totalRegisteredYouth,
           total_registered_voters: totalRegisteredVoters || 0,
           total_budget_allocated: cityTotalAllocated,
           total_budget_spent: cityTotalSpent,
