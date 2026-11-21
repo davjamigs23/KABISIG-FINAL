@@ -108,7 +108,8 @@ export default function SuperAdminPages({
   };
 
   const isDisplayedOfficial = (official: any) =>
-    official?.status === 'active' && official?.setup_completed === true;
+    official?.status === 'active'
+    && (official?.setup_completed === true || Number(official?.role_id) === 3);
   const [activeMenu, setActiveMenu] = useState<string>('dashboard');
   const [popupMsg, setPopupMsg] = useState<PopupMessage | null>(null);
   const [confirmMsg, setConfirmMsg] = useState<PopupMessage | null>(null);
@@ -505,6 +506,9 @@ useEffect(() => {
   // Calculate Aggregated Metrics
   const citywideTotals = federationAnalytics?.citywide_totals;
   const totalYouthPop = toNumber(citywideTotals?.total_registered_youth ?? barangays.reduce((sum, b) => sum + toNumber(b.youthPopulation), 0));
+  const totalRegisteredVoters = citywideTotals?.total_registered_voters == null
+    ? null
+    : toNumber(citywideTotals.total_registered_voters);
   const totalCityBudget = toNumber(citywideTotals?.total_budget_allocated ?? barangays.reduce((sum, b) => sum + toNumber(b.totalBudget), 0));
   const totalCitySpent = toNumber(citywideTotals?.total_budget_spent ?? barangays.reduce((sum, b) => sum + toNumber(b.spentBudget), 0));
   const totalActivePrograms = toNumber(citywideTotals?.total_active_programs ?? programs.filter(p => p.status === 'Upcoming' || p.status === 'Ongoing').length);
@@ -1899,6 +1903,16 @@ useEffect(() => {
                 </div>
               </div>
               
+              <div className="rounded-2xl border border-emerald-100 bg-white p-5 shadow-2xs">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Registered Voters Citywide</span>
+                <div className="mt-1 text-3xl font-black text-emerald-700">
+                  {totalRegisteredVoters == null ? '—' : totalRegisteredVoters.toLocaleString('en-US')}
+                </div>
+                <p className="mt-1 text-[11px] font-medium text-slate-400">
+                  Active youth profiles marked as registered voters
+                </p>
+              </div>
+
               {/* LYDP REPORT GENERATOR BANNER */}
               <div className="bg-gradient-to-r from-[#091d64] via-[#102a83] to-[#1e3a8a] p-6 rounded-2xl text-white shadow-md flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                 <div className="space-y-1">

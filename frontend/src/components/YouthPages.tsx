@@ -96,6 +96,14 @@ const hasProgramEnded = (endDate?: string | Date | null): boolean => {
   return end < new Date();
 };
 
+type YouthRosterEntry = {
+  id: string;
+  name: string;
+  email: string;
+  zone: string;
+  programs: string[];
+};
+
 export default function YouthPages({
   currentYouth,
   programs,
@@ -113,7 +121,9 @@ export default function YouthPages({
   onLogout,
   notifications = [],
 }: YouthPagesProps) {
-  const [youthProfiles, setYouthProfiles] = useState<any[]>([]);
+  const [youthProfiles, setYouthProfiles] = useState<YouthRosterEntry[]>([]);
+  const [isLoadingYouthRoster, setIsLoadingYouthRoster] = useState(false);
+  const [youthRosterError, setYouthRosterError] = useState<string | null>(null);
   const resolvedTenant = currentTenant?.id === currentYouth.barangayId
     ? currentTenant
     : tenants.find(tenant => tenant.id === currentYouth.barangayId) || currentTenant;
@@ -152,15 +162,32 @@ export default function YouthPages({
     };
   }, [currentYouth.id]);
   useEffect(() => {
-    if (activeMenu === 'directory' && youthProfiles.length === 0) {
-      kabisigApi.getYouthDirectory()
-        .then((res: any) => {
-          const rows = Array.isArray(res) ? res : (res && res.data) ? res.data : [];
-          setYouthProfiles(Array.isArray(rows) ? rows : []);
-        })
-        .catch(err => console.error('Failed to load directory:', err));
-    }
-  }, [activeMenu, youthProfiles.length]);
+    if (activeMenu !== 'directory') return;
+
+    let isMounted = true;
+    setIsLoadingYouthRoster(true);
+    setYouthRosterError(null);
+    kabisigApi.getYouthRoster()
+      .then((response) => {
+        if (!response.success) {
+          throw new Error(response.message || 'Failed to load the youth roster.');
+        }
+        if (isMounted) setYouthProfiles(response.data || []);
+      })
+      .catch((error: unknown) => {
+        console.error('Failed to load youth roster:', error);
+        if (isMounted) {
+          setYouthRosterError(error instanceof Error ? error.message : 'Failed to load the youth roster.');
+        }
+      })
+      .finally(() => {
+        if (isMounted) setIsLoadingYouthRoster(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeMenu, currentYouth.id]);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [popupMsg, setPopupMsg] = useState<{ title: string; text: string; type: 'success' | 'error' } | null>(null);
   const [confirmMsg, setConfirmMsg] = useState<PopupMessage | null>(null);
@@ -1759,21 +1786,19 @@ export default function YouthPages({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {youthProfiles?.map((yp: any) => (
+                    {isLoadingYouthRoster ? (
+                      <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-500">Loading verified youth roster...</td></tr>
+                    ) : youthRosterError ? (
+                      <tr><td colSpan={4} className="px-4 py-8 text-center text-rose-700">{youthRosterError}</td></tr>
+                    ) : youthProfiles.length === 0 ? (
+                      <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-500">No verified youth records found.</td></tr>
+                    ) : youthProfiles.map((yp) => (
                       <tr key={yp.id} className="hover:bg-slate-50">
                         <td className="px-4 py-3 font-bold text-slate-800">{yp.name}</td>
                         <td className="px-4 py-3 text-slate-500">{yp.email || 'N/A'}</td>
                         <td className="px-4 py-3 text-slate-500">{yp.zone || 'N/A'}</td>
                         <td className="px-4 py-3 text-slate-500">
-                          <div className="flex flex-wrap gap-1 max-w-xs">
-                            {yp.programs && yp.programs.length > 0 
-                              ? yp.programs.map((prog: string, idx: number) => (
-                                  <span key={idx} className="bg-blue-50 text-[#091d64] border border-blue-100 px-2 py-0.5 rounded text-[9px] font-bold uppercase whitespace-nowrap">
-                                    {prog}
-                                  </span>
-                                ))
-                              : <span className="italic text-slate-400">No programs joined</span>}
-                          </div>
+                          {yp.programs.length > 0 ? yp.programs.join(', ') : 'No programs joined'}
                         </td>
                       </tr>
                     ))}

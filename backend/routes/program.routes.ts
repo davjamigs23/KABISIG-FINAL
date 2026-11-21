@@ -638,14 +638,21 @@ router.post('/:id/attendance', authenticateUser, requireActiveUser, requireRoles
     }
     const attendeeName = uData.full_name || 'Youth Constituent';
 
-    const { data: existingAttendance } = await supabaseAdmin
+    const { data: existingAttendance, error: existingAttendanceError } = await supabaseAdmin
       .from('program_attendance')
       .select('id')
       .eq('program_id', programId)
       .eq('tenant_id', program.tenant_id)
       .eq('user_id', resolvedUserId)
       .maybeSingle();
-    if (existingAttendance) { sendError(res, 'Duplicate check-in: Already marked present.', 400, { attendee_name: attendeeName }); return; }
+    if (existingAttendanceError) {
+      sendError(res, `Failed to check existing attendance: ${existingAttendanceError.message}`, 500);
+      return;
+    }
+    if (existingAttendance) {
+      sendError(res, 'Already marked present', 400, { attendee_name: attendeeName });
+      return;
+    }
 
     const { data: registration } = await supabaseAdmin
       .from('program_registrations')
@@ -668,7 +675,14 @@ router.post('/:id/attendance', authenticateUser, requireActiveUser, requireRoles
       
     }]).select().single();
 
-    if (attendError) { sendError(res, `Failed to record attendance: ${attendError.message}`, 500); return; }
+    if (attendError) {
+      if (attendError.code === '23505') {
+        sendError(res, 'Already marked present', 400, { attendee_name: attendeeName });
+        return;
+      }
+      sendError(res, `Failed to record attendance: ${attendError.message}`, 500);
+      return;
+    }
 
     await supabaseAdmin.from('program_registrations').update({ status: 'attended' }).eq('id', registration.id);
 
@@ -680,11 +694,15 @@ router.post('/:id/attendance', authenticateUser, requireActiveUser, requireRoles
         '"': '&quot;',
         "'": '&#39;',
       })[character] || character);
-      await sendEmail(
-        uData.email,
-        `Attendance confirmed: ${program.title}`,
-        `<p>Hello ${escapeHtml(attendeeName)},</p><p>Your attendance has been recorded as <strong>Present</strong> for <strong>${escapeHtml(program.title)}</strong>.</p><p>Checked in at ${escapeHtml(new Date(checkInTime).toLocaleString())}.</p>`
-      );
+      try {
+        await sendEmail(
+          uData.email,
+          `Attendance confirmed: ${program.title}`,
+          `<p>Hello ${escapeHtml(attendeeName)},</p><p>Your attendance has been recorded as <strong>Present</strong> for <strong>${escapeHtml(program.title)}</strong>.</p><p>Checked in at ${escapeHtml(new Date(checkInTime).toLocaleString())}.</p>`
+        );
+      } catch (emailError) {
+        console.error(`Attendance confirmation email failed for user ${resolvedUserId}:`, emailError);
+      }
     }
 
     sendSuccess(res, {

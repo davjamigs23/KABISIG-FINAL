@@ -5018,11 +5018,11 @@ export default function OfficialPages({
                             `);
                           } else if (reportModuleCategory === 'residents') {
                             const filteredRoster = youthProfiles.filter(y => selectedZoneForReport === 'All' ? true : y.zone === selectedZoneForReport);
-                            const rowsHtml = filteredRoster.map((y, i) => `<tr><td style="text-align:center">${i+1}</td><td><strong>${y.name}</strong></td><td>${y.zone || 'Not Specified'}</td><td>${y.educationalLevel}</td><td>${y.scholarStatus}</td><td>${y.email}</td></tr>`).join('');
+                            const rowsHtml = filteredRoster.map((y, i) => `<tr><td style="text-align:center">${i+1}</td><td><strong>${y.name}</strong></td><td>${y.zone || 'Not Specified'}</td><td>${y.educationalLevel}</td><td>${y.is_registered_voter === true ? 'Yes' : 'No'}</td><td>${y.scholarStatus}</td><td>${y.email}</td></tr>`).join('');
                             printOfficialReport(`Katipunan ng Kabataan Constituent Roster - Zone: ${selectedZoneForReport}`, `
                               <h4>Official Youth Masterlist (${filteredRoster.length} Constituents)</h4>
                               <table>
-                                <thead><tr><th style="width:30px">#</th><th>Full Name</th><th>Zone</th><th>Educational Level</th><th>Scholarship</th><th>Email</th></tr></thead>
+                                <thead><tr><th style="width:30px">#</th><th>Full Name</th><th>Zone</th><th>Educational Level</th><th>Registered Voter</th><th>Scholarship</th><th>Email</th></tr></thead>
                                 <tbody>${rowsHtml}</tbody>
                               </table>
                             `);
@@ -5248,6 +5248,7 @@ export default function OfficialPages({
                               <th className="px-5 py-3 whitespace-nowrap">Constituent Name</th>
                               <th className="px-5 py-3 whitespace-nowrap">Zone</th>
                               <th className="px-5 py-3 whitespace-nowrap">Educational Level</th>
+                              <th className="px-5 py-3 whitespace-nowrap">Registered Voter</th>
                               <th className="px-5 py-3 whitespace-nowrap">School / University</th>
                               <th className="px-5 py-3 whitespace-nowrap">Scholarship</th>
                               <th className="px-5 py-3 whitespace-nowrap">Registry Status</th>
@@ -5259,6 +5260,7 @@ export default function OfficialPages({
                                 <td className="px-5 py-3 font-bold text-slate-800 whitespace-nowrap">{y.name}</td>
                                 <td className="px-5 py-3 whitespace-nowrap"><span className="px-2.5 py-1 bg-slate-100 rounded text-slate-700 font-bold text-[10px]">{y.zone || 'N/A'}</span></td>
                                 <td className="px-5 py-3 text-slate-700 whitespace-nowrap">{y.educationalLevel}</td>
+                                <td className="px-5 py-3 text-center whitespace-nowrap">{y.is_registered_voter === true ? 'Yes' : 'No'}</td>
                                 <td className="px-5 py-3 text-slate-500 whitespace-nowrap">{y.course && y.course !== y.school ? `${y.course} · ` : ''}{y.school || 'N/A'}</td>
                                 <td className="px-5 py-3 whitespace-nowrap">
                                   <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${y.scholarStatus === 'Scholar' ? 'bg-indigo-50 text-[#091d64]' : 'bg-slate-100 text-slate-500'}`}>{y.scholarStatus}</span>
@@ -5655,6 +5657,7 @@ export default function OfficialPages({
                   <optgroup label="Educational Level"><option value="College">College</option><option value="Senior High">Senior High</option><option value="Junior High">Junior High</option><option value="Elementary">Elementary</option><option value="Vocational">Vocational</option></optgroup>
                   <optgroup label="Employment Status"><option value="Employed">Employed</option><option value="Unemployed">Unemployed</option><option value="Student">Student</option></optgroup>
                   <optgroup label="Youth Sector"><option value="In-School Youth">In-School Youth</option><option value="Out-of-School Youth">Out-of-School Youth</option></optgroup>
+                  <optgroup label="Voter Status"><option value="Registered Voter">Registered Voter</option></optgroup>
                 </select>
               </div>
 
@@ -5666,6 +5669,7 @@ export default function OfficialPages({
                     <tr>
                       <th className="px-2 py-2">Youth Constituent</th>
                       <th className="px-2 py-2">Education</th>
+                      <th className="px-2 py-2 text-center">Voter Status</th>
                       <th className="px-2 py-2 text-center">Zone</th>
                       <th className="px-2 py-2 text-center">Scholarship</th>
                       <th className="px-2 py-2">Contact Information</th>
@@ -5689,6 +5693,8 @@ export default function OfficialPages({
                                 ? y.employmentStatus === 'Employed' || y.employment === 'Employed'
                                 : filterCategory === 'Unemployed'
                                   ? y.employmentStatus === 'Unemployed' || y.employment === 'Unemployed'
+                                  : filterCategory === 'Registered Voter'
+                                    ? y.is_registered_voter === true
                                   : filterCategory === 'Student' || filterCategory === 'In School Youth' || filterCategory === 'In-School Youth'
                                     ? /college|high school/i.test(y.educationalLevel || '')
                                     : y.zone === filterCategory || y.scholarStatus === filterCategory;
@@ -5708,6 +5714,7 @@ export default function OfficialPages({
                           <td className="px-2 py-2 break-words">
                             <span className="font-bold text-slate-800">{y.educationalLevel} - {y.school || 'N/A'}</span>
                           </td>
+                          <td className="px-2 py-2 text-center font-semibold">{y.is_registered_voter === true ? 'Yes' : 'No'}</td>
                           <td className="px-2 py-2 text-center">
                             <span className="inline-flex items-center justify-center px-2 py-1 bg-slate-100 rounded text-slate-700 font-bold text-[10px]">{y.zone || 'N/A'}</span>
                           </td>

@@ -408,6 +408,18 @@ router.get(
       .eq('role_id', 4)
       .eq('status', 'active');
 
+    const { count: totalRegisteredVoters, error: voterCountError } = await supabaseAdmin
+      .from('resident_profile')
+      .select('user_id, users!resident_profile_user_id_fkey!inner(role_id, status)', { count: 'exact', head: true })
+      .eq('is_registered_voter', true)
+      .not('tenant_id', 'is', null)
+      .eq('users.role_id', 4)
+      .eq('users.status', 'active');
+    if (voterCountError) {
+      sendError(res, `Failed to count registered youth voters: ${voterCountError.message}`, 500);
+      return;
+    }
+
     const youthPerBarangay: Record<string, number> = {};
     youthCounts?.forEach((y) => {
       if (y.tenant_id) {
@@ -571,6 +583,7 @@ router.get(
         citywide_totals: {
           total_barangays: loadedBarangays.length,
           total_registered_youth: youthCounts?.length || 0,
+          total_registered_voters: totalRegisteredVoters || 0,
           total_budget_allocated: cityTotalAllocated,
           total_budget_spent: cityTotalSpent,
           total_active_programs: Object.values(programPerBarangay).reduce((sum, count) => sum + count, 0),

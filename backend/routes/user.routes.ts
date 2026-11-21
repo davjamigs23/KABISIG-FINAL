@@ -160,12 +160,11 @@ router.put('/complete-profile', authenticateUser, async (req: Request, res: Resp
     }
   }
 
-  // 1. Age Verification (Republic Act No. 10742 - SK Reform Act: 15 to 30 years old)
   const age = calculateAge(birthdate);
-  if (age < 15 || age > 30) {
+  if (user.role_id === 4 && (age < 15 || age > 30)) {
     sendError(
       res,
-      `Republic Act No. 10742 requires SK officials and members to be between 15 and 30 years old. Calculated age is ${age}.`,
+      `Youth Constituents must be between 15 and 30 years old. Calculated age is ${age}.`,
       422,
       { calculatedAge: age, requiredRange: '15-30' }
     );
@@ -1731,6 +1730,137 @@ async function sendEmail(to: string, subject: string, html: string) {
   }
 }
 
+
+/**
+ * GET /api/users/youth-roster
+ * Returns a privacy-limited roster for verified youth in the same barangay.
+ */
+router.get(
+  '/youth-roster',
+  authenticateUser,
+  requireActiveUser,
+  requireRoles('YOUTH_CONSTITUENT'),
+  async (req: Request, res: Response): Promise<void> => {
+    const user = (req as AuthRequest).user!;
+    if (user.role !== 'YOUTH_CONSTITUENT' || user.role_id !== 4) {
+      sendError(res, 'Only Youth Constituents can access this roster.', 403);
+      return;
+    }
+
+    if (!user.tenant_id) {
+      sendError(res, 'A barangay tenant context is required to load the youth roster.', 403);
+      return;
+    }
+
+    const tenantId = user.tenant_id;
+    const { data: requesterProfile, error: requesterProfileError } = await supabaseAdmin
+      .from('resident_profile')
+      .select('verification_status')
+      .eq('user_id', user.id)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+
+    if (requesterProfileError) {
+      sendError(res, `Failed to verify roster access: ${requesterProfileError.message}`, 500);
+      return;
+    }
+    if (requesterProfile?.verification_status !== 'verified') {
+      sendError(res, 'Only verified Youth Constituents can access this roster.', 403);
+      return;
+    }
+
+    const { data: users, error: usersError } = await supabaseAdmin
+      .from('users')
+      .select('id, full_name, email')
+      .eq('tenant_id', tenantId)
+      .eq('role_id', 4)
+      .eq('status', 'active');
+
+    if (usersError) {
+      sendError(res, `Failed to load youth roster: ${usersError.message}`, 500);
+      return;
+    }
+    if (!users?.length) {
+      sendSuccess(res, [], 'Youth roster retrieved.');
+      return;
+    }
+
+    const userIds = users.map((rosterUser) => rosterUser.id);
+    const { data: profiles, error: profilesError } = await supabaseAdmin
+      .from('resident_profile')
+      .select('user_id, tenant_id, zone, verification_status')
+      .eq('tenant_id', tenantId)
+      .in('user_id', userIds);
+
+    if (profilesError) {
+      sendError(res, `Failed to load verified youth profiles: ${profilesError.message}`, 500);
+      return;
+    }
+
+    const verifiedProfiles = (profiles || []).filter((profile) => profile.verification_status === 'verified');
+    const profileByUserId = new Map(verifiedProfiles.map((profile) => [profile.user_id, profile]));
+    const verifiedUsers = users.filter((rosterUser) => profileByUserId.has(rosterUser.id));
+    const verifiedUserIds = verifiedUsers.map((rosterUser) => rosterUser.id);
+    if (!verifiedUserIds.length) {
+      sendSuccess(res, [], 'Youth roster retrieved.');
+      return;
+    }
+
+    const { data: registrations, error: registrationsError } = await supabaseAdmin
+      .from('program_registrations')
+      .select('user_id, program_id, status')
+      .eq('tenant_id', tenantId)
+      .eq('status', 'attended')
+      .in('user_id', verifiedUserIds);
+
+    if (registrationsError) {
+      sendError(res, `Failed to load program registrations: ${registrationsError.message}`, 500);
+      return;
+    }
+
+    const registrationProgramIds = Array.from(new Set((registrations || []).map((registration) => registration.program_id)));
+    let registrationPrograms: { id: string; title: string }[] = [];
+    if (registrationProgramIds.length > 0) {
+      const { data, error } = await supabaseAdmin
+        .from('program')
+        .select('id, title')
+        .eq('tenant_id', tenantId)
+        .in('id', registrationProgramIds);
+
+      if (error) {
+        sendError(res, `Failed to load registered programs: ${error.message}`, 500);
+        return;
+      }
+      registrationPrograms = data || [];
+    }
+
+    const programTitleById = new Map(registrationPrograms.map((program) => [program.id, program.title]));
+    const programsByUser = new Map<string, Set<string>>();
+    for (const registration of registrations || []) {
+      const title = programTitleById.get(registration.program_id);
+      if (!title) continue;
+      const programs = programsByUser.get(registration.user_id) || new Set<string>();
+      programs.add(title);
+      programsByUser.set(registration.user_id, programs);
+    }
+
+    const roster = verifiedUsers
+      .map((rosterUser) => {
+        const profile = profileByUserId.get(rosterUser.id)!;
+
+        return {
+          id: rosterUser.id,
+          name: rosterUser.full_name || 'Name unavailable',
+          email: rosterUser.email || '',
+          zone: profile.zone || '',
+          programs: Array.from(programsByUser.get(rosterUser.id) || []),
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    sendSuccess(res, roster, 'Youth roster retrieved.');
+  }
+);
 
 /**
  * GET /api/users/youth-directory

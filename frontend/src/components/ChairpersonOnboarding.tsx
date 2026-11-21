@@ -84,13 +84,6 @@ export default function ChairpersonOnboarding({
       return;
     }
 
-    if (calculatedAge < 15 || calculatedAge > 30) {
-      setErrorMsg(
-        `Republic Act No. 10742 (SK Reform Act) requires SK Chairpersons and members to be between 15 and 30 years old. Your calculated age is ${calculatedAge}.`
-      );
-      return;
-    }
-
     const cleanPhone = phone.replace(/[\s\-+]/g, '');
     if (cleanPhone) {
       const isPhMobile = cleanPhone.startsWith('09') && cleanPhone.length === 11;
@@ -319,11 +312,7 @@ export default function ChairpersonOnboarding({
                     Birthdate <span className="text-rose-500">*</span>
                   </label>
                   {calculatedAge > 0 && (
-                    <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
-                      calculatedAge >= 15 && calculatedAge <= 30
-                        ? 'bg-emerald-50 text-emerald-700'
-                        : 'bg-rose-50 text-rose-700'
-                    }`}>
+                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">
                       Age: {calculatedAge} yrs
                     </span>
                   )}
@@ -339,7 +328,7 @@ export default function ChairpersonOnboarding({
                   />
                   <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
                 </div>
-                <p className="text-[10px] text-slate-400 mt-1">Must be 15-30 years old (RA 10742)</p>
+                <p className="text-[10px] text-slate-400 mt-1">Birthdate is used for your profile information.</p>
               </div>
 
               <div>
