@@ -3191,10 +3191,10 @@ return (
                           <td className="px-5 py-4 font-bold text-slate-900 truncate whitespace-nowrap" title="Document Title">
                             {doc.title}
                           </td>
-                          <td className="px-5 py-4 max-w-[280px] text-slate-600">
-                            <span className="block max-w-[280px] truncate" title={doc.description || ''}>
+                          <td className="px-4 py-3 text-xs text-slate-600 max-w-[200px]">
+                            <div className="line-clamp-2" title={doc.description || 'No description provided.'}>
                               {doc.description || '—'}
-                            </span>
+                            </div>
                           </td>
                           <td className="px-5 py-4 whitespace-nowrap">
                             <span className="px-2.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-extrabold uppercase">
