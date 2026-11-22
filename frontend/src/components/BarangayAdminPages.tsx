@@ -3400,7 +3400,7 @@ return (
                             </button>
                           </div>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="grid max-h-[350px] grid-cols-1 gap-3 overflow-y-auto pr-2 md:grid-cols-2">
                           {(showClosedPolls ? closedPolls : openPolls).map((res: any) => (
                             <div key={res.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                                 <div className="flex items-center justify-between gap-3">

@@ -136,8 +136,10 @@ const RespondFeedbackSchema = z.object({
   status: z.enum(['under_review', 'resolved', 'dismissed']).default('resolved'),
 });
 
-const PROFANITY_TERMS = [
-  'fuck', 'shit', 'bobo', 'tanginamo', 'tanga', 'gago', 'pakyu', 'putangina', 'tangina', 'ulol',
+const PROFANITY_TERMS = ['fuck', 'fuckyou', 'shit'];
+const TAGALOG_TOXIC_TERMS = [
+  'gago', 'gaga', 'tanginamo', 'tangina', 'pakyu', 'kupal', 'tanga', 'ulol', 'bobo',
+  'putangina', 'tantado', 'hinayupak', 'bwisit',
 ];
 const TOXIC_TERMS = ['pangit', 'panget', 'basura', 'kupal', 'sex', 'sexual', 'porn', 'nude', 'nudes', 'xxx'];
 
@@ -146,8 +148,20 @@ function normalizeModerationText(text: string): string {
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, '')
     .replace(/[^a-z0-9]/g, '')
     .replace(/(.)\1+/g, '$1');
+}
+
+function getModerationViolationType(text: string): 'profanity' | 'toxic' | null {
+  const normalizedText = normalizeModerationText(text);
+  if (PROFANITY_TERMS.some(term => normalizedText.includes(normalizeModerationText(term)))) {
+    return 'profanity';
+  }
+  if (TAGALOG_TOXIC_TERMS.some(term => normalizedText.includes(normalizeModerationText(term)))) {
+    return 'toxic';
+  }
+  return null;
 }
 
 function removeEducationalWhitelistPhrases(text: string): string {
@@ -182,14 +196,16 @@ router.post(
   }
 
   const textToAnalyze = `${subject} ${message}`;
-  const normalizedText = normalizeModerationText(textToAnalyze);
-  const isProfanity = PROFANITY_TERMS.some(term => normalizedText.includes(normalizeModerationText(term)));
+  const violationType = getModerationViolationType(textToAnalyze);
+  const isModerationViolation = violationType !== null;
   const normalizedToxicText = normalizeModerationText(removeEducationalWhitelistPhrases(textToAnalyze));
   const containsToxicContent = TOXIC_TERMS.some(term => normalizedToxicText.includes(normalizeModerationText(term)));
   const sentimentResult = analyzeSentiment(textToAnalyze);
+  const feedbackSentiment = isModerationViolation ? 'negative' : sentimentResult.sentiment;
+  const sentimentScore = isModerationViolation ? Math.min(sentimentResult.score, -1) : sentimentResult.score;
 
-  // Profanity submissions are recorded as strikes before any broader rate-limit action.
-  const spamResult = isProfanity ? null : await detectSpam(user.id, user.tenant_id, subject, message);
+  // Moderation violations are recorded as strikes before broader rate-limit actions.
+  const spamResult = isModerationViolation ? null : await detectSpam(user.id, user.tenant_id, subject, message);
 
   if (spamResult?.action === 'temp_suspend' || spamResult?.action === 'permanent_ban') {
     await applyRestriction({
@@ -220,9 +236,7 @@ router.post(
       ipAddress: req.ip || null,
     });
   }
-  const feedbackStatus = isProfanity
-    ? 'spam'
-    : containsToxicContent
+  const feedbackStatus = isModerationViolation || containsToxicContent
       ? 'pending_review'
       : spamResult?.action === 'flag'
         ? 'flagged'
@@ -238,7 +252,7 @@ router.post(
         subject,
         message,
         category,
-        sentiment: sentimentResult.sentiment,
+        sentiment: feedbackSentiment,
         status: feedbackStatus,
       },
     ])
@@ -255,8 +269,8 @@ router.post(
     .insert({
       tenant_id: user.tenant_id,
       feedback_id: newFeedback.id,
-      sentiment: sentimentResult.sentiment,
-      score: sentimentResult.score,
+      sentiment: feedbackSentiment,
+      score: sentimentScore,
       positive_keywords: sentimentResult.positiveMatches,
       negative_keywords: sentimentResult.negativeMatches,
       program_requests: sentimentResult.programRequests,
@@ -264,29 +278,41 @@ router.post(
 
   if (analysisError) {
     console.error('Failed to persist sentiment analysis:', analysisError);
-    if (!isProfanity) {
+    if (!isModerationViolation) {
       await supabaseAdmin.from('feedback').delete().eq('id', newFeedback.id);
       sendError(res, `Failed to persist sentiment analysis: ${analysisError.message}`, 500);
       return;
     }
   }
 
-  if (isProfanity) {
-    const { count: spamCount, error: spamCountError } = await supabaseAdmin
+  if (violationType) {
+    const { data: previousViolations, error: violationQueryError } = await supabaseAdmin
       .from('feedback')
-      .select('id', { count: 'exact', head: true })
+      .select('subject, message')
       .eq('user_id', user.id)
-      .eq('status', 'spam');
+      .eq('tenant_id', user.tenant_id)
+      .in('status', ['spam', 'pending_review']);
 
-    if (spamCountError) {
-      sendError(res, `Failed to count spam submissions: ${spamCountError.message}`, 500);
+    if (violationQueryError) {
+      sendError(res, `Failed to count moderation violations: ${violationQueryError.message}`, 500);
       return;
     }
 
-    if ((spamCount || 0) >= 3) {
+    const violationCount = (previousViolations || []).filter(record =>
+      getModerationViolationType(`${record.subject || ''} ${record.message || ''}`) === violationType
+    ).length;
+
+    if (violationCount >= 3) {
+      const suspensionReason = violationType === 'profanity'
+        ? 'Automated: Suspended after 3 profanity/spam violations.'
+        : 'Automated: Suspended after 3 toxic behavior violations.';
       const { error: suspensionError } = await supabaseAdmin
         .from('users')
-        .update({ status: 'suspended', updated_at: new Date().toISOString() })
+        .update({
+          status: 'suspended',
+          suspension_reason: suspensionReason,
+          updated_at: new Date().toISOString(),
+        })
         .eq('id', user.id);
 
       if (suspensionError) {
@@ -294,13 +320,13 @@ router.post(
         return;
       }
 
-      sendError(res, 'Account suspended due to repeated spam.', 403);
+      sendError(res, suspensionReason, 403);
       return;
     }
   }
 
   if (analysisError) {
-    sendError(res, `Feedback was recorded as spam, but sentiment analysis failed: ${analysisError.message}`, 500);
+    sendError(res, `Feedback was recorded for review, but sentiment analysis failed: ${analysisError.message}`, 500);
     return;
   }
 
@@ -309,16 +335,14 @@ router.post(
     {
       feedback: newFeedback,
       sentiment_analysis: {
-        sentiment: sentimentResult.sentiment,
-        score: sentimentResult.score,
+        sentiment: feedbackSentiment,
+        score: sentimentScore,
         positive_keywords: sentimentResult.positiveMatches,
         negative_keywords: sentimentResult.negativeMatches,
         program_requests: sentimentResult.programRequests,
       },
     },
-    feedbackStatus === 'spam'
-      ? 'Feedback was recorded as spam. Repeated spam submissions may suspend your account.'
-      : feedbackStatus === 'pending_review'
+    feedbackStatus === 'pending_review'
         ? 'Feedback submitted for manual review by the SK Kagawad.'
         : 'Your voice has been heard! Feedback submitted to Boses ng Kabataan.'
   );

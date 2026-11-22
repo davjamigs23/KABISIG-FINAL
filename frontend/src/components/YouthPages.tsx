@@ -190,6 +190,12 @@ export default function YouthPages({
   }, [activeMenu, currentYouth.id]);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [popupMsg, setPopupMsg] = useState<{ title: string; text: string; type: 'success' | 'error' } | null>(null);
+  const hasReactivationNotice = String(currentYouth?.status || '').toLowerCase() === 'approved'
+    && Boolean(currentYouth?.suspension_reason);
+  const [showReactivatedModal, setShowReactivatedModal] = useState(hasReactivationNotice);
+  useEffect(() => {
+    setShowReactivatedModal(hasReactivationNotice);
+  }, [hasReactivationNotice]);
   const [confirmMsg, setConfirmMsg] = useState<PopupMessage | null>(null);
   const [programTab, setProgramTab] = useState<'browse' | 'registrations'>('browse');
   const [feedbackTab, setFeedbackTab] = useState<'suggestions' | 'resolutions'>('suggestions');
@@ -949,9 +955,9 @@ export default function YouthPages({
       )}
 
       {/* @ts-ignore */}
-      {currentYouth?.status === 'Approved' && currentYouth?.suspension_reason && (
+      {showReactivatedModal && hasReactivationNotice && (
         <div className='fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4'>
-          <div className='bg-white rounded-2xl w-full max-w-[95vw] md:max-w-2xl mx-4 my-8 max-h-[90vh] overflow-y-auto p-6 text-center shadow-2xl'>
+          <div className='relative z-[101] bg-white rounded-2xl w-full max-w-[95vw] md:max-w-2xl mx-4 my-8 max-h-[90vh] overflow-y-auto p-6 text-center shadow-2xl'>
             <div className='w-16 h-16 bg-amber-100 text-slate-900 rounded-full flex items-center justify-center mx-auto mb-4'>
               <ShieldAlert className='w-8 h-8' />
             </div>
@@ -960,10 +966,20 @@ export default function YouthPages({
             <p className='text-sm text-slate-600 mb-6'>{currentYouth?.suspension_reason}</p>
             <button type="button" onClick={async () => {
               try {
-                await kabisigApi.acknowledgeWarning();
-                
-              } catch (e) {
-        setIsLoadingStatus(false);  }
+                const result = await kabisigApi.acknowledgeWarning();
+                if (!result.success) {
+                  throw new Error(result.message || 'The reactivation notice could not be acknowledged.');
+                }
+                setShowReactivatedModal(false);
+              } catch (error) {
+                setPopupMsg({
+                  title: 'Unable to Acknowledge Notice',
+                  text: error instanceof Error ? error.message : 'The reactivation notice could not be acknowledged.',
+                  type: 'error',
+                });
+              } finally {
+                setIsLoadingStatus(false);
+              }
             }} className='w-full py-2.5 bg-[#091d64] hover:bg-[#0a2578] text-white font-bold rounded-xl text-sm transition-colors'>
               I Understand
             </button>

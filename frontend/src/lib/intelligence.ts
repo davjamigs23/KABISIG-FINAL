@@ -566,7 +566,7 @@ export function extractFeedbackKeywords(feedbacks: FeedbackRecord[]): Array<{ wo
     'with', 'i', 'you', 'it', 'not', 'or', 'be', 'are', 'from', 'at', 'as', 'your',
     'all', 'have', 'new', 'more', 'an', 'was', 'we', 'will', 'my', 'has', 'very',
     'para', 'sa', 'ang', 'ng', 'mga', 'na', 'at', 'kung', 'ay', 'ito', 'din', 'rin',
-    'po', 'naman', 'natin', 'kami', 'sila', 'kayo'
+    'po', 'naman', 'natin', 'kami', 'sila', 'kayo', 'yung'
   ]);
 
   const wordCounts: Record<string, number> = {};
@@ -591,8 +591,7 @@ export function getMostRequestedProgramTrends(feedbacks: FeedbackRecord[]): Arra
     { program: 'Scholarship & Educational Aid', keywords: ['scholarship', 'tuition', 'school', 'allowance', 'student', 'books', 'stipend'], icon: 'GraduationCap' },
     { program: 'Sports & Inter-Purok Tournaments', keywords: ['sports', 'basketball', 'volleyball', 'tournament', 'league', 'gym', 'jersey'], icon: 'Trophy' },
     { program: 'Employment & Job Placement', keywords: ['employment', 'job', 'work', 'hiring', 'resume', 'internship', 'career'], icon: 'Briefcase' },
-    { program: 'Livelihood & Skills Training', keywords: ['livelihood', 'skills', 'training', 'tesda', 'workshop', 'vocational', 'business'], icon: 'Wrench' },
-    { program: 'Mental Health & Wellness Clinics', keywords: ['mental', 'health', 'wellness', 'counseling', 'stress', 'mind', 'clinic'], icon: 'Heart' }
+    { program: 'Livelihood & Skills Training', keywords: ['livelihood', 'skills', 'training', 'tesda', 'workshop', 'vocational', 'business'], icon: 'Wrench' }
   ];
 
   return categories.map(cat => {

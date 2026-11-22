@@ -2136,7 +2136,7 @@ export default function OfficialPages({
           ((finalUserId && attendance.userId === finalUserId) || participantIds.has(attendance.participantId))
         );
         if (alreadyPresent || pendingAttendanceScansRef.current.has(scanKey)) {
-          const message = `${youthName} is already marked present for "${progTitle}".`;
+          const message = 'Already marked present';
           setLastScanDetail({
             rawCode: scannedText,
             status: 'ALREADY_PRESENT',
@@ -4244,7 +4244,14 @@ export default function OfficialPages({
                       </div> */}
 
                       <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                        {selectedProgramRegistrations.map(r => {
+                        {selectedProgramRegistrations.filter(r => {
+                          const name = (
+                            r.participantName
+                            || (r as Registration & { fullName?: string }).fullName
+                            || ''
+                          ).trim();
+                          return Boolean(name) && !['unknown participant', 'youth constituent'].includes(name.toLowerCase());
+                        }).map(r => {
                           const participantName = r.participantName
                             || (r as Registration & { fullName?: string }).fullName
                             || 'Unknown Participant';
@@ -4291,7 +4298,14 @@ export default function OfficialPages({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50 text-xs font-medium">
-                      {selectedProgramRegistrations.map(r => {
+                      {selectedProgramRegistrations.filter(r => {
+                        const name = (
+                          r.participantName
+                          || (r as Registration & { fullName?: string }).fullName
+                          || ''
+                        ).trim();
+                        return Boolean(name) && !['unknown participant', 'youth constituent'].includes(name.toLowerCase());
+                      }).map(r => {
                         const participantName = r.participantName
                           || (r as Registration & { fullName?: string }).fullName
                           || 'Unknown Participant';
@@ -4380,13 +4394,13 @@ export default function OfficialPages({
                     <div className="p-4 bg-white rounded-xl border border-slate-100 shadow-2xs">
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Pending Review</span>
                       <span className="text-2xl font-black text-amber-600 mt-1 block">
-                        {localFeedback.filter(f => f.status === 'Pending').length}
+                        {localFeedback.filter(f => ['pending', 'pending_review'].includes(String(f.status).toLowerCase())).length}
                       </span>
                     </div>
                     <div className="p-4 bg-white rounded-xl border border-slate-100 shadow-2xs">
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Action Taken</span>
                       <span className="text-2xl font-black text-green-600 mt-1 block">
-                        {localFeedback.filter(f => f.status !== 'Pending').length}
+                        {localFeedback.filter(f => ['resolved', 'rejected'].includes(String(f.status).toLowerCase())).length}
                       </span>
                     </div>
                     <div className="p-4 bg-white rounded-xl border border-slate-100 shadow-2xs">
@@ -4541,10 +4555,28 @@ export default function OfficialPages({
                         const matchStatus = feedbackStatusFilter === 'All' ? true : f.status?.toLowerCase() === feedbackStatusFilter.toLowerCase();
                         return matchSearch && matchType && matchStatus;
                       })
-                      .map(fb => (
+                      .sort((a, b) => {
+                        const aPriority = String(a.status).toLowerCase() === 'pending_review'
+                          || getStoredFeedbackSentiment(a) === 'Negative';
+                        const bPriority = String(b.status).toLowerCase() === 'pending_review'
+                          || getStoredFeedbackSentiment(b) === 'Negative';
+                        if (aPriority !== bPriority) return aPriority ? -1 : 1;
+                        const aDate = Date.parse(a.dateSubmitted);
+                        const bDate = Date.parse(b.dateSubmitted);
+                        return (Number.isNaN(bDate) ? 0 : bDate) - (Number.isNaN(aDate) ? 0 : aDate);
+                      })
+                      .map(fb => {
+                        const isPriorityFeedback = String(fb.status).toLowerCase() === 'pending_review'
+                          || getStoredFeedbackSentiment(fb) === 'Negative';
+                        return (
                         <div key={fb.id} className="bg-white p-5 rounded-xl border border-slate-100 shadow-2xs space-y-4">
                           <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 border-b border-slate-50 pb-3">
                             <div className="flex items-center gap-2 flex-wrap">
+                              {isPriorityFeedback && (
+                                <span className="inline-flex items-center rounded-full bg-rose-600 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wide text-white shadow-sm">
+                                  FLAGGED
+                                </span>
+                              )}
                               <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
                                 fb.type === 'Suggestion' ? 'bg-blue-50 text-blue-700' :
                                 fb.type === 'Complaint' ? 'bg-rose-50 text-rose-700' :
@@ -4644,7 +4676,8 @@ export default function OfficialPages({
                             </div>
                           )}
                         </div>
-                      ))}
+                      );
+                    })}
 
                     {localFeedback.length === 0 && (
                       <div className="bg-white p-8 text-center rounded-xl border border-slate-100 text-slate-400 font-bold text-xs">
