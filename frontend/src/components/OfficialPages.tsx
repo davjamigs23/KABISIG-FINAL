@@ -795,7 +795,12 @@ export default function OfficialPages({
 
     _promise.then((rows) => {
       if (!isMounted) return;
-      const mapped: Registration[] = rows.map((row: any) => {
+      const namedRows = rows.filter((row: any) => {
+        const user = Array.isArray(row.users) ? row.users[0] : row.users;
+        const fullName = typeof user?.full_name === 'string' ? user.full_name.trim() : '';
+        return Boolean(fullName) && fullName.toLowerCase() !== 'unknown participant';
+      });
+      const mapped: Registration[] = namedRows.map((row: any) => {
         const user = Array.isArray(row.users) ? row.users[0] : row.users;
         const profile = (youthProfiles || []).find((candidate: any) => candidate.userId === row.user_id);
         return {
@@ -804,7 +809,7 @@ export default function OfficialPages({
           programTitle: (programs || []).find((program: any) => program.id === row.program_id)?.title || "",
           participantId: profile?.id || row.user_id,
           userId: row.user_id,
-          participantName: user?.full_name || profile?.name || "Youth Constituent",
+          participantName: user.full_name.trim(),
           dateRegistered: row.registered_at ? getPhilippineDateString(row.registered_at) : "",
           status: (row.status === "attended" ? "Completed" : "Approved") as Registration['status'],
           qrCode: profile?.qrCode || "",
@@ -4096,8 +4101,9 @@ export default function OfficialPages({
                           setLastScanDetail(null);
                           setQrMessage('');
                           setManualQrInput('');
+                          setLocalAttendance([]);
                         }}
-                        title="Clear scanner results without deleting recorded attendance"
+                        title="Clear scanner results from this view; recorded attendance remains saved"
                         className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
                       >
                         Clear Scans

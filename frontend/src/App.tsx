@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import kabisigApi from './lib/api';
 import { formatPhilippineDate, getPhilippineDateString } from './lib/dateUtils';
 import { DEFAULT_BARANGAY_LOGOS } from './data';
@@ -302,6 +302,7 @@ function AppContent() {
 
   // --- PUBLIC PAGES NAVIGATION STATE ---
   const [publicView, setPublicView] = useState<'landing' | 'login' | 'signup' | 'transparency'>('landing');
+  const navigatingToSignInRef = useRef(false);
   const [programConflict, setProgramConflict] = useState<{ program: Program; resolve: (confirmed: boolean) => void } | null>(null);
 
   // Load 27 permanently seeded Naga City barangays and restore session from backend API
@@ -313,7 +314,7 @@ function AppContent() {
       setCurrentTenant(null);
       setCurrentYouth(null);
       setCurrentEmail('');
-      setPublicView('landing');
+      setPublicView(navigatingToSignInRef.current ? 'login' : 'landing');
     };
     window.addEventListener('kabisig:auth-invalid', invalidateSession);
 
@@ -928,6 +929,7 @@ function AppContent() {
 
   // --- AUTH CALLBACKS ---
   const handleLogin = (role: UserRole | 'Viewer', tenantId: string, emailOrName?: string, userObj?: any) => {
+    navigatingToSignInRef.current = false;
     const roleId = Number(userObj?.role_id);
     const roleFromId: UserRole | null = roleId === 1
       ? 'Super Admin'
@@ -1068,6 +1070,7 @@ function AppContent() {
 
   const handleLogout = () => {
     kabisigApi.logout();
+    navigatingToSignInRef.current = false;
     setCurrentRole(null);
     setCurrentTenant(null);
     setCurrentYouth(null);
@@ -1421,9 +1424,9 @@ function AppContent() {
       )}
       {authReady && authProfileReady && currentRole === null && publicView === 'landing' && (
         <LandingPage
-          onSignIn={() => setPublicView('login')}
-          onCreateAccount={() => setPublicView('signup')}
-          onTransparencyPortal={() => { kabisigApi.logout(); setCurrentRole('Viewer'); setCurrentUser(null); setCurrentYouth(null); setCurrentEmail('viewer@kabisig.ph'); }}
+          onSignIn={() => { navigatingToSignInRef.current = true; setPublicView('login'); }}
+          onCreateAccount={() => { navigatingToSignInRef.current = false; setPublicView('signup'); }}
+          onTransparencyPortal={() => { navigatingToSignInRef.current = false; kabisigApi.logout(); setCurrentRole('Viewer'); setCurrentUser(null); setCurrentYouth(null); setCurrentEmail('viewer@kabisig.ph'); }}
         />
       )}
 
@@ -1433,8 +1436,8 @@ function AppContent() {
           programs={programs}
           loginErrorMessage={pendingLoginMessage}
           activeTab={publicView}
-          setActiveTab={(tab) => setPublicView(tab === '_landing' ? 'landing' : (tab as any))}
-          onLogin={(email, role, tenantId, userObj) => { if (role === 'Viewer') { kabisigApi.logout(); setCurrentUser(null); setCurrentYouth(null); setCurrentEmail('viewer@kabisig.ph'); setCurrentRole('Viewer'); setPublicView('login'); return; } handleLogin(role, tenantId || '', email, userObj); }}
+          setActiveTab={(tab) => { navigatingToSignInRef.current = tab === 'login'; setPublicView(tab === '_landing' ? 'landing' : (tab as any)); }}
+          onLogin={(email, role, tenantId, userObj) => { if (role === 'Viewer') { navigatingToSignInRef.current = false; kabisigApi.logout(); setCurrentUser(null); setCurrentYouth(null); setCurrentEmail('viewer@kabisig.ph'); setCurrentRole('Viewer'); setPublicView('login'); return; } handleLogin(role, tenantId || '', email, userObj); }}
         />
       )}
 

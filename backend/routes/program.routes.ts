@@ -698,7 +698,8 @@ router.post('/:id/attendance', authenticateUser, requireActiveUser, requireRoles
       user_id: resolvedUserId,
       tenant_id: program.tenant_id,
       checked_in_at: checkInTime,
-      
+      checked_in_by: user.id,
+      qr_payload: qrPayload || scanValue || null,
     }]).select().single();
 
     if (attendError) {
