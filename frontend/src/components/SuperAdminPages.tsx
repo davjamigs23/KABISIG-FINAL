@@ -28,12 +28,16 @@ import { kabisigApi } from '../lib/api';
 import PopupDialog, { PopupMessage } from './PopupDialog';
 import { useRealtimeData } from '../hooks/useRealtimeData';
 
-const isPendingChair = (chair: any) =>
-  !chair ? false
-    : chair.status?.trim().toLowerCase() === 'pending'
-      || chair.status?.trim().toLowerCase() === 'pending_invite'
-      || chair.full_name?.trim() === 'SK Chairperson'
-      || chair.full_name?.trim() === 'Pending Invitation';
+const isPendingChair = (chair: any) => {
+  if (!chair) return false;
+  const status = String(chair.status || '').trim().toLowerCase();
+  return status === 'pending'
+    || status === 'pending_invite'
+    || chair.is_pending === true
+    || chair.setup_completed === false
+    || chair.full_name?.trim() === 'SK Chairperson'
+    || chair.full_name?.trim() === 'Pending Invitation';
+};
 
 interface SuperAdminPagesProps {
   barangays: BarangayTenant[];
@@ -552,14 +556,16 @@ useEffect(() => {
   const editingChairpersonName = editingBarangay?.chairpersonUser?.full_name?.trim() || '';
   const editingChairpersonIsPending = isPendingChair(editingBarangay?.chairpersonUser);
   const editingChairpersonIsPendingDisplay =
-    editingBarangay?.chairpersonUser?.status?.trim().toLowerCase() === 'pending'
+    editingChairpersonIsPending
     || editingChairpersonName === 'SK Chairperson'
     || editingChairpersonName === 'Pending Invitation';
   const editingChairpersonDisplayName = editingChairpersonIsPendingDisplay
     ? 'Pending Invite'
     : (editingBarangay?.chairpersonUser?.full_name || 'Unassigned');
   const editingChairpersonIsActive =
-    editingBarangay?.chairpersonUser?.status?.trim().toLowerCase() === 'active';
+    editingBarangay?.chairpersonUser?.status?.trim().toLowerCase() === 'active'
+    && editingBarangay?.chairpersonUser?.setup_completed !== false
+    && editingBarangay?.chairpersonUser?.is_pending !== true;
   const [modalNotice, setModalNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [modalForm, setModalForm] = useState({
     name: '',
@@ -1181,7 +1187,12 @@ useEffect(() => {
       showPopup(response.message || 'Failed to resend invitation.');
       return;
     }
-    showPopup(response.message || 'Chairperson invitation resent.', 'success', response.data?.action_link || response.data?.setup_url);
+    const email = response.data?.email || barangay.chairpersonUser?.email || barangay.chairpersonEmail || 'the Chairperson';
+    showPopup(
+      `Invitation resent successfully to ${email}.`,
+      'success',
+      response.data?.action_link || response.data?.setup_url
+    );
     await onRefreshAuditLogs();
   };
 

@@ -720,11 +720,85 @@ router.post('/:id/attendance', authenticateUser, requireActiveUser, requireRoles
         '"': '&quot;',
         "'": '&#39;',
       })[character] || character);
+      let scannerName = user.full_name?.trim() || '';
+      if (!scannerName) {
+        try {
+          const { data: scannerUser, error: scannerLookupError } = await supabaseAdmin
+            .from('users')
+            .select('full_name, email')
+            .eq('id', user.id)
+            .maybeSingle();
+          if (scannerLookupError) {
+            console.error(`Could not load scanner name for user ${user.id}:`, scannerLookupError.message);
+          }
+          scannerName = scannerUser?.full_name?.trim() || scannerUser?.email?.trim() || user.email || 'SK Official';
+        } catch (scannerLookupError) {
+          console.error(`Could not load scanner name for user ${user.id}:`, scannerLookupError);
+          scannerName = user.email || 'SK Official';
+        }
+      }
+
       try {
         await sendEmail(
           uData.email,
           `Attendance confirmed: ${program.title}`,
-          `<p>Hello ${escapeHtml(attendeeName)},</p><p>Your attendance has been recorded as <strong>Present</strong> for <strong>${escapeHtml(program.title)}</strong>.</p><p>Checked in at ${escapeHtml(new Date(checkInTime).toLocaleString())}.</p>`
+          `
+          <!DOCTYPE html>
+          <html>
+          <body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: Arial, sans-serif;">
+            <table role="presentation" style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td align="center" style="padding: 40px 0;">
+                  <table role="presentation" style="width: 100%; max-width: 600px; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                    <tr>
+                      <td style="background-color: #091d64; padding: 24px; text-align: center;">
+                        <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 800; letter-spacing: 1px;">KABISIG</h1>
+                        <p style="color: #93c5fd; margin: 4px 0 0 0; font-size: 12px;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 32px;">
+                        <div style="text-align: center; margin-bottom: 24px;">
+                          <div style="display: inline-block; background-color: #dcfce7; color: #166534; font-weight: bold; padding: 8px 16px; border-radius: 9999px; font-size: 14px; border: 1px solid #86efac;">
+                            ✅ Attendance Confirmed
+                          </div>
+                        </div>
+                        <p style="color: #334155; font-size: 16px; margin: 0 0 8px 0;">Hello <strong>${escapeHtml(attendeeName)}</strong>,</p>
+                        <p style="color: #475569; font-size: 14px; line-height: 1.6; margin: 0 0 24px 0;">
+                          Your attendance has been successfully recorded. You are now marked as <strong>Present</strong> for the following program.
+                        </p>
+                        <table role="presentation" style="width: 100%; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+                          <tr>
+                            <td style="padding: 8px 0; color: #64748b; font-size: 12px; font-weight: 600; text-transform: uppercase;">Program</td>
+                            <td style="padding: 8px 0; color: #0f172a; font-size: 14px; font-weight: bold; text-align: right;">${escapeHtml(program.title)}</td>
+                          </tr>
+                          <tr>
+                            <td style="padding: 8px 0; color: #64748b; font-size: 12px; font-weight: 600; text-transform: uppercase;">Date &amp; Time</td>
+                            <td style="padding: 8px 0; color: #0f172a; font-size: 14px; font-weight: bold; text-align: right;">${escapeHtml(new Date(checkInTime).toLocaleString('en-PH', { timeZone: 'Asia/Manila' }))}</td>
+                          </tr>
+                          <tr>
+                            <td style="padding: 8px 0; color: #64748b; font-size: 12px; font-weight: 600; text-transform: uppercase;">Scanned By</td>
+                            <td style="padding: 8px 0; color: #0f172a; font-size: 14px; font-weight: bold; text-align: right;">${escapeHtml(scannerName)}</td>
+                          </tr>
+                        </table>
+                        <p style="color: #64748b; font-size: 12px; line-height: 1.5; margin: 0;">
+                          If you believe this is an error, please contact your Sangguniang Kabataan Chairperson or the SK Official who scanned your ID.
+                        </p>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="background-color: #f8fafc; padding: 16px; text-align: center; border-top: 1px solid #e2e8f0;">
+                        <p style="color: #94a3b8; font-size: 11px; margin: 0;">&copy; ${new Date().getFullYear()} KABISIG. All rights reserved.</p>
+                        <p style="color: #94a3b8; font-size: 11px; margin: 4px 0 0 0;">Naga City, Philippines</p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </body>
+          </html>
+          `
         );
       } catch (emailError) {
         console.error(`Attendance confirmation email failed for user ${resolvedUserId}:`, emailError);

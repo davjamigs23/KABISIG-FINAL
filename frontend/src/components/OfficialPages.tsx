@@ -1894,7 +1894,7 @@ export default function OfficialPages({
     }
 
     // 2. Parse Event Pass vs Youth ID Code
-    let partId = scannedText;
+    let partId = '';
     let qrProgId = activeProgId;
     let scannedUserId = '';
     let scannedDigitalYouthId = '';
@@ -1915,6 +1915,10 @@ export default function OfficialPages({
       scannedDigitalYouthId = typeof digitalYouthId === 'string' ? digitalYouthId.trim() : '';
       partId = scannedDigitalYouthId || scannedUserId || partId;
     } catch {
+      if (scannedText.startsWith('{')) {
+        showInvalidQrFeedback();
+        return;
+      }
       const isDigitalYouthId = /^(?:KAB-NAGA-|(?:KK|SK)-\d{4}-).+/i.test(scannedText);
       const isTicketOrYouthQr = /^KABISIG-QR-.+/i.test(scannedText);
       const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(scannedText);
@@ -1922,10 +1926,11 @@ export default function OfficialPages({
         showInvalidQrFeedback();
         return;
       }
+      partId = scannedText;
       if (isDigitalYouthId) scannedDigitalYouthId = scannedText;
     }
 
-    if (scannedText.startsWith('KABISIG-QR-')) {
+    if (!scannedUserId && scannedText.startsWith('KABISIG-QR-')) {
       const qrPayload = scannedText.slice('KABISIG-QR-'.length);
       const matchingProgram = programs.find(p => qrPayload.startsWith(`${p.id}-`));
 

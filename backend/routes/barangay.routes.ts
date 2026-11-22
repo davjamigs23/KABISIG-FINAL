@@ -192,7 +192,7 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
           email: c.email,
           role_id: Number(c.role_id),
           status: c.status,
-          is_pending: c.status === 'pending',
+          is_pending: c.status === 'pending' || c.status === 'pending_invite' || c.setup_completed === false,
           setup_completed: typeof c.setup_completed === 'boolean' ? c.setup_completed : null,
           sex: profileSexByUserId.get(c.id) || null,
         });
