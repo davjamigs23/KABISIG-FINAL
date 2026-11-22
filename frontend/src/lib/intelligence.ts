@@ -124,9 +124,10 @@ export interface EngagementAnalytics {
 export function recommendPrograms(
   profile: YouthProfile, 
   programs: Program[],
-  registrations: Registration[] = []
-): { program: Program; reason: string }[] {
-  const recommendations: { program: Program; reason: string }[] = [];
+  registrations: Registration[] = [],
+  engagementScore?: number
+): { program: Program; reason: string; relevanceScore: number }[] {
+  const recommendations: { program: Program; reason: string; relevanceScore: number }[] = [];
   const registeredIds = new Set(registrations.filter(r => r.participantId === profile.id).map(r => r.programId));
   const availablePrograms = programs.filter(p => !registeredIds.has(p.id) && p.status !== 'Completed');
 
@@ -179,19 +180,23 @@ export function recommendPrograms(
     }
 
     // Rule E: Low Engagement Boost
-    const engagement = profile.engagementScore || 0;
-    if (engagement < 50 && prog.category === 'Environmental Protection') {
+    if (engagementScore !== undefined && engagementScore < 50 && prog.category === 'Environmental Protection') {
       score += 15;
       reason = 'Great community protection gateway program for new volunteers.';
     }
 
     if (score > 0) {
-      recommendations.push({ program: prog, reason: reason || 'Recommended community initiative' });
+      recommendations.push({
+        program: prog,
+        reason: reason || 'Recommended community initiative',
+        relevanceScore: score,
+      });
     }
   }
 
-  // Sort by score/relevance (implicitly by priority rules)
-  return recommendations.slice(0, 3);
+  return recommendations
+    .sort((a, b) => b.relevanceScore - a.relevanceScore)
+    .slice(0, 3);
 }
 
 /**

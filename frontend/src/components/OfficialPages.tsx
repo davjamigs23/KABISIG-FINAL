@@ -259,7 +259,7 @@ export default function OfficialPages({
   const [lightboxImg, setLightboxImg] = useState<string | null>(null);
   const [popupMsg, setPopupMsg] = useState<{ title: string; text: string; type: 'success' | 'error' } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; type: 'budget' | 'expense' | 'program' | 'inventory' } | null>(null);
-  const barangayLogo = currentTenant?.logo || DEFAULT_BARANGAY_LOGOS[currentTenant?.name || ''] || '';
+  const barangayLogo = currentTenant?.logo_url || currentTenant?.logo || DEFAULT_BARANGAY_LOGOS[currentTenant?.name || ''] || '/images/default-barangay.png';
 
   // --- Local UI state mirrors backend-backed shared records ---
   const [localAttendance, setLocalAttendance] = useState<(AttendanceRecord & { userId?: string })[]>([]);
@@ -2174,25 +2174,28 @@ export default function OfficialPages({
             activeProgramCount
           ).score
           : null,
-        recommendations: recommendPrograms(profile, programs, profileRegistrations),
+        recommendations: recommendPrograms(
+          profile,
+          programs,
+          profileRegistrations,
+          attendanceByUser.has(profile.userId || profile.id) && activeProgramCount > 0
+            ? calculateEngagementScore(
+              attendanceByUser.get(profile.userId || profile.id) || 0,
+              activeProgramCount
+            ).score
+            : undefined
+        ),
       };
     });
-    const recommendations = profileInsights.flatMap(insight => insight.recommendations);
+    const recommendations = profileInsights
+      .flatMap(insight => insight.recommendations)
+      .sort((a, b) => b.relevanceScore - a.relevanceScore);
     const scoredProfiles = profileInsights.filter(
       (insight): insight is typeof insight & { engagementScore: number } => insight.engagementScore !== null
     );
-    const analyticsScores = (engagementAnalytics?.youth_scores || [])
-      .map(metric => Number((metric as any).engagement_score))
-      .filter((score): score is number => Number.isFinite(score));
-    const analyticsAverage = Number((engagementAnalytics as any)?.average_engagement_score);
-
     return {
       approvedYouthCount: profileInsights.length,
-      averageEngagementScore: Number.isFinite(analyticsAverage)
-        ? Math.round(analyticsAverage)
-        : analyticsScores.length > 0
-          ? Math.round(analyticsScores.reduce((total, score) => total + score, 0) / analyticsScores.length)
-          : scoredProfiles.length > 0
+      averageEngagementScore: scoredProfiles.length > 0
         ? Math.round(scoredProfiles.reduce((total, insight) => total + insight.engagementScore, 0) / scoredProfiles.length)
         : null,
       topRecommendation: recommendations[0] || null,
@@ -2210,9 +2213,9 @@ export default function OfficialPages({
             <img src="/images/Kabisig_logo.png" alt="KABISIG" className="h-9 w-auto object-contain" />
           </div>
           <img
-            src={currentTenant?.logo || "/icon.png"}
+            src={barangayLogo}
             alt={`${currentTenant?.name || 'Barangay'} Seal`}
-            className="h-9 w-auto object-contain ml-2"
+            className="h-9 w-9 rounded-full object-cover ml-2"
             onError={(e) => { e.currentTarget.src = '/icon.png'; }}
           />
           <span className="text-[10px] font-bold bg-[#1e3a8a] px-2 py-0.5 rounded text-amber-300 truncate">{currentRole}</span>
@@ -2370,6 +2373,12 @@ export default function OfficialPages({
                 </span>
               </div>
               <span className="text-[11px] text-slate-400 font-sans tracking-wide font-semibold mt-1 flex items-center gap-1.5">
+                <img
+                  src={barangayLogo}
+                  alt={`${currentTenant?.name || 'Barangay'} Seal`}
+                  className="h-7 w-7 rounded-full object-cover"
+                  onError={(e) => { e.currentTarget.src = '/icon.png'; }}
+                />
                 <Building2 className="w-3.5 h-3.5" /> Barangay {currentTenant?.name || 'Barangay'} SK Council  Naga City
               </span>
             </div>

@@ -953,6 +953,7 @@ export default function ViewerPages({
                                 src={barangay?.logo_url || barangay?.logo || '/images/default-barangay.png'}
                                 alt={group.barangay_name}
                                 className="mr-3 h-8 w-8 rounded-full object-cover"
+                                onError={(event) => { event.currentTarget.src = '/icon.png'; }}
                               />
                               <h4 className="text-sm font-extrabold text-[#091d64]">Barangay {group.barangay_name}</h4>
                             </div>

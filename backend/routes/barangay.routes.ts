@@ -95,9 +95,9 @@ function saveCustomLogo(idOrName: string, logoUrl: string) {
   }
 }
 
-function resolveBarangayLogo(id: string, name: string): string {
+function resolveBarangayLogo(id: string, name: string, databaseLogo?: string | null): string {
   const custom = getCustomLogos();
-  return custom[id] || custom[name] || DEFAULT_BARANGAY_LOGOS[name] || '';
+  return databaseLogo || custom[id] || custom[name] || DEFAULT_BARANGAY_LOGOS[name] || '';
 }
 
 // Chairperson email/phone are only returned to the owning barangay and city-level roles.
@@ -305,7 +305,8 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
         allocatedBudget: budget.allocated,
         spentBudget: budget.spent,
         status: 'Active',
-        logo: resolveBarangayLogo(b.id, b.name),
+        logo: resolveBarangayLogo(b.id, b.name, b.logo_url),
+        logo_url: resolveBarangayLogo(b.id, b.name, b.logo_url),
         dateCreated: b.created_at || '2026-01-01',
       };
     });
@@ -346,7 +347,8 @@ router.get('/:id', optionalAuthenticateUser, async (req: Request, res: Response)
     chairperson: chair?.full_name || 'Unassigned',
     chairpersonEmail: canSeeBarangayContacts(req, barangay.id) ? (chair?.email || '') : '',
     contact: canSeeBarangayContacts(req, barangay.id) ? (chair?.phone || '') : '',
-    logo: resolveBarangayLogo(barangay.id, barangay.name),
+    logo: resolveBarangayLogo(barangay.id, barangay.name, barangay.logo_url),
+    logo_url: resolveBarangayLogo(barangay.id, barangay.name, barangay.logo_url),
   }, 'Barangay details retrieved.');
 });
 
@@ -372,7 +374,7 @@ router.patch(
 
     const { data: existingBgy, error: fetchErr } = await supabaseAdmin
       .from('barangay')
-      .select('id, name')
+      .select('id, name, logo_url')
       .eq('id', id)
       .single();
 
@@ -551,7 +553,15 @@ router.patch(
     }
 
     if ('logo' in updates || 'logo_url' in updates) {
-      const newLogo = updates.logo ?? updates.logo_url ?? '';
+      const newLogo = updates.logo_url ?? updates.logo ?? '';
+      const { error: logoUpdateError } = await supabaseAdmin
+        .from('barangay')
+        .update({ logo_url: newLogo })
+        .eq('id', id);
+      if (logoUpdateError) {
+        sendError(res, `Failed to save the Barangay logo: ${logoUpdateError.message}`, 500);
+        return;
+      }
       saveCustomLogo(id, newLogo);
       saveCustomLogo(existingBgy.name, newLogo);
     }
@@ -580,7 +590,8 @@ router.patch(
       allocatedBudget: allocatedBudget !== undefined ? allocatedBudget : 0,
       totalBudget: allocatedBudget !== undefined ? allocatedBudget : 0,
       youthPopulation: updates.youth_population ?? updates.youthPopulation ?? 0,
-      logo: resolveBarangayLogo(id, existingBgy.name),
+      logo: resolveBarangayLogo(id, existingBgy.name, updates.logo_url ?? updates.logo ?? existingBgy.logo_url),
+      logo_url: resolveBarangayLogo(id, existingBgy.name, updates.logo_url ?? updates.logo ?? existingBgy.logo_url),
       status: updates.status || 'Active',
     }, `Settings updated for Barangay ${existingBgy.name}.`);
   }

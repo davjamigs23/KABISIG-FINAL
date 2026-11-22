@@ -327,7 +327,7 @@ function AppContent() {
       const sortedBarangays = data
         .map(barangay => ({
           ...barangay,
-          logo: barangay.logo || DEFAULT_BARANGAY_LOGOS[barangay.name] || '',
+          logo: barangay.logo_url || barangay.logo || DEFAULT_BARANGAY_LOGOS[barangay.name] || '',
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
       setTenants(sortedBarangays);
@@ -531,7 +531,7 @@ function AppContent() {
       const sortedBarangays = data
         .map(barangay => ({
           ...barangay,
-          logo: barangay.logo || DEFAULT_BARANGAY_LOGOS[barangay.name] || '',
+          logo: barangay.logo_url || barangay.logo || DEFAULT_BARANGAY_LOGOS[barangay.name] || '',
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
       setTenants(sortedBarangays);
@@ -728,7 +728,11 @@ function AppContent() {
       if (!isMounted || !data || data.length === 0) return;
       setTenants(prev => prev.map(existing => {
         const fresh = data.find(b => b.id === existing.id);
-        return fresh ? { ...existing, ...fresh, logo: fresh.logo || existing.logo || '' } : existing;
+        return fresh ? {
+          ...existing,
+          ...fresh,
+          logo: fresh.logo_url || fresh.logo || existing.logo || '',
+        } : existing;
       }));
     }).catch(console.warn);
 
@@ -741,7 +745,11 @@ function AppContent() {
     setCurrentTenant(prev => {
       if (!prev) return prev;
       const live = tenants.find(t => t.id === prev.id);
-      return live ? { ...prev, ...live, logo: live.logo || prev.logo || '' } : prev;
+      return live ? {
+        ...prev,
+        ...live,
+        logo: live.logo_url || live.logo || prev.logo || '',
+      } : prev;
     });
   }, [tenants]);
 
@@ -1064,10 +1072,8 @@ function AppContent() {
     setCurrentUser(null);
     setCurrentEmail('');
     setPublicView('landing');
-    // Force full state reset + navigate to landing page
     if (typeof window !== 'undefined') {
       try { localStorage.clear(); sessionStorage.clear(); } catch {}
-      window.location.href = '/';
     }
   };
 
@@ -1445,8 +1451,14 @@ function AppContent() {
           }}
           onUpdateBarangay={async (id, updated) => {
             // Only explicitly saved, supported settings are sent to the backend.
-            const configPayload: any = {
-              logo: updated.logo,
+            const configPayload: {
+              logo: string;
+              logo_url: string;
+              allocatedBudget?: number;
+              totalBudget?: number;
+            } = {
+              logo: updated.logo_url ?? updated.logo ?? '',
+              logo_url: updated.logo_url ?? updated.logo ?? '',
             };
 
             if (typeof updated.totalBudget === 'number' && updated.totalBudget >= 0) {
@@ -1629,6 +1641,7 @@ function AppContent() {
         <YouthPages 
           notifications={notifications}
           currentYouth={currentYouth}
+          currentTenant={tenants.find(tenant => tenant.id === currentYouth.barangayId) || currentTenant}
           programs={programs}
           registrations={registrations}
           

@@ -63,6 +63,18 @@ interface SuperAdminPagesProps {
   userEmail: string;
 }
 
+interface FederationBarangayAnalyticsRow {
+  id: string;
+  registered_youth?: number | string | null;
+  allocated_amount?: number | string | null;
+  aip_budget?: number | string | null;
+  budget_allocated?: number | string | null;
+  spent_amount?: number | string | null;
+  actual_spent?: number | string | null;
+  budget_spent?: number | string | null;
+  active_programs?: number | string | null;
+}
+
 export default function SuperAdminPages({
   barangays,
   programs,
@@ -372,7 +384,7 @@ useEffect(() => {
   const [inviteOfficialRole, setInviteOfficialRole] = useState<'SK Kagawad' | 'SK Secretary' | 'SK Treasurer' | ''>('');
   const [isInvitingOfficial, setIsInvitingOfficial] = useState(false);
   const [inviteOfficialNotice, setInviteOfficialNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [inviteOfficialSuccessMessage, setInviteOfficialSuccessMessage] = useState<string | null>(null);
+  const [officialSuccessMsg, setOfficialSuccessMsg] = useState<string | null>(null);
   const [pendingOfficialToCancel, setPendingOfficialToCancel] = useState<any>(null);
   const [isCancellingOfficialInvite, setIsCancellingOfficialInvite] = useState(false);
   const [isResendingOfficialId, setIsResendingOfficialId] = useState<string | null>(null);
@@ -696,9 +708,12 @@ useEffect(() => {
   };
 
   // Data for Charts
-  const federationRows = federationAnalytics?.barangay_rankings || [];
+  const federationRows = (federationAnalytics?.barangay_rankings || []) as FederationBarangayAnalyticsRow[];
+  const federationRowsByBarangayId = new Map(
+    federationRows.map(row => [String(row.id), row] as const)
+  );
   const chartBarangayData = sortedBarangays.map(b => {
-    const liveRow = federationRows.find((row: any) => String(row.id ?? row.barangay_id) === String(b.id));
+    const liveRow = federationRowsByBarangayId.get(String(b.id));
     const registeredYouth = toNumber(liveRow?.registered_youth ?? 0);
     const totalBudget = toNumber(liveRow?.allocated_amount ?? liveRow?.aip_budget ?? liveRow?.budget_allocated ?? b.totalBudget);
     const spentBudget = toNumber(liveRow?.spent_amount ?? liveRow?.actual_spent ?? liveRow?.budget_spent ?? b.spentBudget);
@@ -763,7 +778,7 @@ useEffect(() => {
     setInviteOfficialEmail('');
     setInviteOfficialRole('');
     setInviteOfficialNotice(null);
-    setInviteOfficialSuccessMessage(null);
+    setOfficialSuccessMsg(null);
     setRoleCapacity(null);
     setIsLoadingCapacity(Boolean(barangay?.id));
     setInviteReturnToConfigure(returnToConfigure);
@@ -817,6 +832,7 @@ useEffect(() => {
     }
     setIsInvitingOfficial(true);
     setInviteOfficialNotice(null);
+    setOfficialSuccessMsg(null);
     try {
       const res = await kabisigApi.inviteSkOfficial(inviteOfficialBarangay.id, email, inviteOfficialRole);
       if (!res.success) {
@@ -831,7 +847,7 @@ useEffect(() => {
       const refreshedCapacity = await kabisigApi.getRoleCapacity(inviteOfficialBarangay.id);
       if (refreshedCapacity.success) setRoleCapacity(refreshedCapacity.data);
       if (inviteOfficialEmailRef.current.trim().toLowerCase() === email) {
-        setInviteOfficialSuccessMessage(`SK Official invitation sent to ${email} for ${inviteOfficialBarangay.name}.`);
+        setOfficialSuccessMsg(`SK Official invitation sent to ${email} for ${inviteOfficialBarangay.name}.`);
       }
     } catch (err: any) {
       if (inviteOfficialEmailRef.current.trim().toLowerCase() === email) {
@@ -858,10 +874,12 @@ useEffect(() => {
 
     setIsResendingOfficialId(official.id);
     setInviteOfficialNotice(null);
+    setOfficialSuccessMsg(null);
     try {
+      const email = String(official.email).trim().toLowerCase();
       const response = await kabisigApi.inviteSkOfficial(
         inviteOfficialBarangay.id,
-        String(official.email).trim().toLowerCase(),
+        email,
         official.official_role
       );
       if (!response.success) {
@@ -871,11 +889,7 @@ useEffect(() => {
         setInviteOfficialNotice({ type: 'error', text: errorMessage });
         return;
       }
-      showPopup(
-        `${official.official_role} invitation resent to ${String(official.email).trim().toLowerCase()} for Barangay ${inviteOfficialBarangay.name}. Please check the inbox (and spam folder).`,
-        'success',
-        response.data?.action_link || response.data?.setup_url
-      );
+      setOfficialSuccessMsg(`SK Official invitation sent to ${email} for ${inviteOfficialBarangay.name}.`);
       const refreshedCapacity = await kabisigApi.getRoleCapacity(inviteOfficialBarangay.id);
       if (refreshedCapacity.success) setRoleCapacity(refreshedCapacity.data);
     } catch (error: any) {
@@ -1153,7 +1167,7 @@ useEffect(() => {
     setModalForm({
       name: b.name,
       totalBudget: b.totalBudget > 0 ? b.totalBudget : null,
-      logo: b.logo || defaultLogo
+      logo: b.logo_url || b.logo || defaultLogo
     });
     setShowModal(true);
   };
@@ -1185,7 +1199,8 @@ useEffect(() => {
     const defaultLogo = DEFAULT_BARANGAY_LOGOS[currentName] || '';
 
     const payload: Partial<BarangayTenant> = {
-      logo: modalForm.logo
+      logo: modalForm.logo,
+      logo_url: modalForm.logo,
     };
 
     // Empty is an explicit clear operation; never use Number('') (which is 0)
@@ -2768,6 +2783,7 @@ useEffect(() => {
                     setRoleCapacity(null);
                     setIsLoadingCapacity(Boolean(selected));
                     setInviteOfficialNotice(null);
+                    setOfficialSuccessMsg(null);
                   }}
                   className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-1 focus:ring-[#091d64] focus:outline-none cursor-pointer"
                 >
@@ -2916,6 +2932,7 @@ useEffect(() => {
                     inviteOfficialEmailRef.current = email;
                     if (pendingInvite?.official_role) setInviteOfficialRole(pendingInvite.official_role);
                     setInviteOfficialNotice(null);
+                    setOfficialSuccessMsg(null);
                   }}
                   className={`w-full p-2.5 bg-white border ${isInviteOfficialEmailDuplicate ? 'border-rose-500 focus:ring-rose-500' : 'border-slate-200 focus:ring-[#091d64]'} rounded-xl text-xs font-semibold text-slate-800 focus:ring-1 focus:outline-none`}
                   placeholder="official@example.com" required />
@@ -2930,9 +2947,9 @@ useEffect(() => {
                   {inviteOfficialNotice.text}
                 </div>
               )}
-              {inviteOfficialSuccessMessage && (
+              {officialSuccessMsg && (
                 <div className="p-3 mb-4 text-sm text-emerald-800 bg-emerald-50 rounded-lg border border-emerald-200">
-                  {inviteOfficialSuccessMessage}
+                  {officialSuccessMsg}
                 </div>
               )}
               {(() => {
@@ -2951,26 +2968,42 @@ useEffect(() => {
                         {inviteOfficialRole} slots are full for this barangay. Choose a different role or barangay.
                       </p>
                     )}
-                    {!_emailHasPendingInvite && (
-                      <button type="submit" disabled={isInvitingOfficial || isLoadingCapacity || !roleCapacity || _emailBlocked || !inviteOfficialBarangay || !inviteOfficialRole}
-                        className="w-full py-3 bg-[#091d64] hover:bg-[#102a83] disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer">
-                        {isInvitingOfficial
-                          ? 'Sending...'
-                          : isInviteOfficialEmailDuplicate
-                            ? 'This email is already assigned in this barangay.'
-                            : isLoadingCapacity
-                              ? 'Checking existing officials...'
-                          : !inviteOfficialBarangay || !inviteOfficialRole
-                            ? 'Select Barangay and Role'
-                            : !roleCapacity
-                              ? 'Unable to verify assigned officials'
-                              : _pendingResend
-                                ? 'Resend Invitation'
-                              : _full
-                              ? inviteOfficialRole + ' — At Capacity'
-                              : 'Send ' + inviteOfficialRole + ' Invitation'}
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowInviteOfficialModal(false);
+                          setInviteOfficialBarangay(null);
+                          if (inviteReturnToConfigure) {
+                            setShowModal(true);
+                            setInviteReturnToConfigure(false);
+                          }
+                        }}
+                        className="flex-1 rounded-xl border border-slate-200 py-3 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                      >
+                        Cancel
                       </button>
-                    )}
+                      {!_emailHasPendingInvite && (
+                        <button type="submit" disabled={isInvitingOfficial || isLoadingCapacity || !roleCapacity || _emailBlocked || !inviteOfficialBarangay || !inviteOfficialRole}
+                          className="flex-1 py-3 bg-[#091d64] hover:bg-[#102a83] disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 cursor-pointer">
+                          {isInvitingOfficial
+                            ? 'Sending...'
+                            : isInviteOfficialEmailDuplicate
+                              ? 'This email is already assigned in this barangay.'
+                              : isLoadingCapacity
+                                ? 'Checking existing officials...'
+                            : !inviteOfficialBarangay || !inviteOfficialRole
+                              ? 'Select Barangay and Role'
+                              : !roleCapacity
+                                ? 'Unable to verify assigned officials'
+                                : _pendingResend
+                                  ? 'Resend Invitation'
+                                : _full
+                                ? inviteOfficialRole + ' — At Capacity'
+                                : 'Send ' + inviteOfficialRole + ' Invitation'}
+                        </button>
+                      )}
+                    </div>
                   </>
                 );
               })()}

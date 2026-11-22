@@ -370,6 +370,7 @@ class KabisigApiClient {
     totalBudget?: number;
     status?: 'Active' | 'Inactive';
     logo?: string;
+    logo_url?: string;
   }): Promise<{ success: boolean; data?: any; message?: string; error?: any }> {
     return await this.request(`/barangays/${id}`, {
       method: 'PATCH',

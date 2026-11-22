@@ -297,7 +297,7 @@ export default function BarangayAdminPages({
   const [searchTerm, setSearchTerm] = useState('');
   const [reportSubTab, setReportSubTab] = useState<'executive'|'attendance'|'accomplishments'|'beneficiaries'|'demographics'|'financial'|'compliance'>('attendance');
   const [showClosedPolls, setShowClosedPolls] = useState(false);
-  const barangayLogo = currentBarangay?.logo || DEFAULT_BARANGAY_LOGOS[currentBarangay?.name || ''] || '';
+  const barangayLogo = currentBarangay?.logo_url || currentBarangay?.logo || DEFAULT_BARANGAY_LOGOS[currentBarangay?.name || ''] || '/images/default-barangay.png';
   const closedPolls = (resolutions || []).filter((resolution: any) =>
     String(resolution.status || '').toLowerCase() === 'closed'
     || Boolean(resolution.end_date && new Date(resolution.end_date).getTime() < Date.now())
@@ -949,28 +949,26 @@ export default function BarangayAdminPages({
         activePrograms.slice(index + 1)
       )
     );
-    const recommendations = profilesWithRegistrations.flatMap(({ profile, profileRegistrations }) =>
-      recommendPrograms(profile, programs, profileRegistrations)
-    );
     const activeProgramCount = engagementAnalytics?.active_program_count || 0;
     const attendanceByUser = new Map(
       (engagementAnalytics?.youth_scores || []).map(metric => [metric.user_id, metric.attendance_count])
     );
+    const recommendations = profilesWithRegistrations
+      .flatMap(({ profile, profileRegistrations }) => {
+        const attendanceCount = attendanceByUser.get(profile.userId || profile.id);
+        const engagementScore = activeProgramCount > 0 && attendanceCount !== undefined
+          ? calculateEngagementScore(attendanceCount, activeProgramCount).score
+          : undefined;
+        return recommendPrograms(profile, programs, profileRegistrations, engagementScore);
+      })
+      .sort((a, b) => b.relevanceScore - a.relevanceScore);
     const engagementScores = profilesWithRegistrations.flatMap(({ profile }) => {
       const attendanceCount = attendanceByUser.get(profile.userId || profile.id);
       return engagementAnalytics && activeProgramCount > 0 && attendanceCount !== undefined
         ? [calculateEngagementScore(attendanceCount, activeProgramCount).score]
         : [];
     });
-    const analyticsScores = (engagementAnalytics?.youth_scores || [])
-      .map(metric => Number((metric as any).engagement_score))
-      .filter((score): score is number => Number.isFinite(score));
-    const analyticsAverage = Number((engagementAnalytics as any)?.average_engagement_score);
-    const averageEngagementScore = Number.isFinite(analyticsAverage)
-      ? Math.round(analyticsAverage)
-      : analyticsScores.length > 0
-      ? Math.round(analyticsScores.reduce((total, score) => total + score, 0) / analyticsScores.length)
-      : engagementScores.length > 0
+    const averageEngagementScore = engagementScores.length > 0
       ? Math.round(engagementScores.reduce((total, score) => total + score, 0) / engagementScores.length)
       : null;
 
@@ -1736,7 +1734,7 @@ return (
           <div className="h-10 px-1.5 rounded-lg bg-white shadow-md ring-1 ring-white/30 flex items-center justify-center overflow-hidden flex-shrink-0">
             <img src="/images/Kabisig_logo.png" alt="KABISIG" className="h-9 w-auto object-contain" />
             <img
-              src={currentBarangay?.logo || "/icon.png"}
+              src={barangayLogo}
               alt={`${currentBarangay?.name || 'Barangay'} Seal`}
               className="h-8 w-auto object-contain ml-2"
               onError={(e) => { e.currentTarget.src = '/icon.png'; }}
@@ -2022,7 +2020,7 @@ return (
         {/* DESKTOP HEADER */}
         <header className="hidden lg:flex bg-white border-b border-slate-100 h-20 items-center justify-between px-8 flex-shrink-0 z-30">
           <div className="flex items-center gap-4">
-            <div className="flex flex-col"><div className="flex items-center gap-3"><img src={currentBarangay?.logo || "/icon.png"} alt="Barangay Logo" className="h-8 w-auto object-contain" /><h1 className="font-sans font-extrabold text-[#091d64] text-2xl tracking-tight leading-none">
+            <div className="flex flex-col"><div className="flex items-center gap-3"><img src={barangayLogo} alt={`${currentBarangay?.name || 'Barangay'} Seal`} className="h-8 w-8 rounded-full object-cover" onError={(e) => { e.currentTarget.src = '/icon.png'; }} /><h1 className="font-sans font-extrabold text-[#091d64] text-2xl tracking-tight leading-none">
                   {activeMenu === 'dashboard' && `Barangay ${currentBarangay?.name || 'Barangay'} Dashboard`}
                   {activeMenu === 'youth' && 'Youth Management Registry'}
                   {activeMenu === 'programs' && 'Manage Programs'}
@@ -2227,7 +2225,7 @@ return (
                               event.preventDefault();
                               navigateFromAlert(alert.code);
                             }
-                          }} className="flex items-start gap-2.5 p-3 rounded-lg bg-white border border-slate-100 hover:bg-amber-100 cursor-pointer transition-colors group">
+                          }} className="flex items-start gap-2.5 p-3 rounded-lg bg-white border border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors group">
                             <span className="text-sm mt-0.5">{alert.level === 'Critical' ? '🚨' : '⚠️'}</span>
                             <div>
                               <p className="text-[11px] font-bold text-slate-800 leading-snug">{alert.message}</p>

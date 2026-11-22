@@ -127,7 +127,7 @@ export default function YouthPages({
   const resolvedTenant = currentTenant?.id === currentYouth.barangayId
     ? currentTenant
     : tenants.find(tenant => tenant.id === currentYouth.barangayId) || currentTenant;
-  const barangayLogo = resolvedTenant?.logo || DEFAULT_BARANGAY_LOGOS[resolvedTenant?.name || ''] || '';
+  const barangayLogo = resolvedTenant?.logo_url || resolvedTenant?.logo || DEFAULT_BARANGAY_LOGOS[resolvedTenant?.name || ''] || '/images/default-barangay.png';
   // Navigation inside Youth Portal corresponding exactly to Image 4 Sidebar:
   // 'dashboard' | 'profile' | 'programs' | 'registrations' | 'feedback' | 'resolutions' | 'announcements' | 'settings'
   const [zoomImage, setZoomImage] = useState<string | null>(null);
@@ -424,7 +424,7 @@ export default function YouthPages({
   const myEngagement = myEngagementMetrics
     ? calculateEngagementScore(myEngagementMetrics.attendance_count, myEngagementMetrics.active_program_count)
     : null;
-  const myRecommendations = recommendPrograms(youth, programs, localRegs);
+  const myRecommendations = recommendPrograms(youth, programs, localRegs, myEngagement?.score);
   // Search & Filters
   const [programSearch, setProgramSearch] = useState('');
   const [programCategory, setFilterCategory] = useState('All');
@@ -896,12 +896,16 @@ export default function YouthPages({
   // Dynamically count filled fields for the Youth Profile
   const countCompletedFields = (() => {
     const y = youth as any;
+    const guardianName = y.guardian_name ?? y.guardianName;
+    const guardianContact = y.guardian_contact ?? y.guardianContact;
+    const digitalYouthId = y.digital_youth_id ?? y.id;
     const fields = [
       y.name || y.fullName, y.sex, y.birthdate, y.age, y.civilStatus,
       y.address, y.zone, y.phone, y.contact || y.email, y.education || y.educationalLevel,
       y.school, y.course, y.yearLevel || y.year, y.employmentStatus,
-      y.scholarStatus, y.youthSector, y.guardianName, y.guardianContact,
-      y.id
+      y.scholarStatus, y.youthSector,
+      guardianName && guardianContact ? `${guardianName} ${guardianContact}` : null,
+      digitalYouthId
     ];
     return fields.filter(f => f && String(f).trim() !== "" && f !== "Not specified" && f !== "N/A").length;
   })();
@@ -980,6 +984,12 @@ export default function YouthPages({
               className="h-9 w-auto object-contain"
             />
           </div>
+          {resolvedTenant && (
+            <div className="flex items-center gap-1.5 min-w-0">
+              <img src={barangayLogo} alt={`${resolvedTenant.name} Seal`} className="h-7 w-7 rounded-full object-cover" onError={(e) => { e.currentTarget.src = '/icon.png'; }} />
+              <span className="max-w-24 truncate text-[10px] font-bold text-white">Brgy. {resolvedTenant.name}</span>
+            </div>
+          )}
           <span className="text-[10px] font-bold bg-[#1e3a8a] px-2 py-0.5 rounded text-amber-300">Youth Portal</span>
         </div>
         <div className="flex items-center gap-2">
@@ -1120,6 +1130,12 @@ export default function YouthPages({
             <span className="text-[11px] text-slate-400 font-sans tracking-wide font-semibold mt-1">
               Web-Based Kabataan Information System for Inclusive Governance
             </span>
+            {resolvedTenant && (
+              <span className="mt-1 flex items-center gap-2 text-[11px] font-semibold text-slate-500">
+                <img src={barangayLogo} alt={`${resolvedTenant.name} Seal`} className="h-6 w-6 rounded-full object-cover" onError={(e) => { e.currentTarget.src = '/icon.png'; }} />
+                Barangay {resolvedTenant.name}
+              </span>
+            )}
           </div>
           {/* User Profile Block */}
           <div className={isVerificationPending ? "flex items-center gap-5 opacity-50 pointer-events-none" : "flex items-center gap-5"}>
@@ -1592,11 +1608,6 @@ export default function YouthPages({
                     >
                       {isUploadingProfilePicture ? 'Uploading...' : 'Upload Photo'}
                     </button>
-                    {isProfileLocked && (
-                      <p className="max-w-48 text-center text-[10px] font-medium text-slate-500">
-                        Text fields are read-only, but you may update your profile picture.
-                      </p>
-                    )}
                     {profilePictureNotice && (
                       <p className={`max-w-48 text-center text-[10px] font-semibold ${profilePictureNotice.type === 'success' ? 'text-emerald-700' : 'text-rose-700'}`}>
                         {profilePictureNotice.text}
