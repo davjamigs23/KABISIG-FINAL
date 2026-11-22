@@ -521,19 +521,26 @@ export default function BarangayAdminPages({
     switch (activeReportTab) {
       case 'attendance':
         title = 'Program Attendance Log';
-        headers = ['Program', 'Participant', 'Check-in Time', 'Status'];
+        headers = ['Program', 'Participant', 'Zone', 'Check-in Time', 'Status'];
         try {
           const attendanceByProgram = await Promise.all(programs.map(async program => {
             const attendance = await kabisigApi.getProgramAttendance(program.id);
             if (!Array.isArray(attendance)) {
               throw new Error(`Attendance records for ${program.title} could not be loaded.`);
             }
-            return attendance.map(record => [
-              program.title,
-              record.users?.full_name || 'Youth Constituent',
-              record.checked_in_at ? formatPhilippineDateTime(record.checked_in_at) : '—',
-              'Present',
-            ]);
+            return attendance.map(record => {
+              const user = Array.isArray(record.users) ? record.users[0] : record.users;
+              const profile = youthProfiles.find(youth =>
+                youth.userId === record.user_id || youth.id === record.user_id
+              );
+              return [
+                program.title,
+                user?.full_name || profile?.name || 'Youth Constituent',
+                profile?.zone || record.zone || 'Not Specified',
+                record.checked_in_at ? formatPhilippineDateTime(record.checked_in_at) : '—',
+                'Present',
+              ];
+            });
           }));
           records = attendanceByProgram.flat();
         } catch (error) {
@@ -546,19 +553,38 @@ export default function BarangayAdminPages({
           return;
         }
         break;
-      case 'accomplishments':
+      case 'accomplishments': {
         title = 'Program Accomplishment Report';
-        headers = ['Program', 'Category', 'Status', 'Registrations', 'Actual Expenses'];
-        records = programs.map(program => {
-          const programExpenses = expenses.filter(expense => {
-            const linkedExpense = expense as ExpenseRecord & { program_id?: string; gross_amount?: number };
-            return expense.programId === program.id || linkedExpense.program_id === program.id;
+        headers = ['Program', 'Category', 'Status', 'Actual Attendance', 'Actual Expenses'];
+        try {
+          const attendanceByProgram = await Promise.all(programs.map(async program => {
+            const attendance = await kabisigApi.getProgramAttendance(program.id);
+            if (!Array.isArray(attendance)) {
+              throw new Error(`Attendance records for ${program.title} could not be loaded.`);
+            }
+            return attendance;
+          }));
+          const attendanceRecords = attendanceByProgram.flat();
+          records = programs.map(program => {
+            const actualAttendance = attendanceRecords.filter(record => record.program_id === program.id).length;
+            const programExpenses = expenses.filter(expense => {
+              const linkedExpense = expense as ExpenseRecord & { program_id?: string; gross_amount?: number };
+              return expense.programId === program.id || linkedExpense.program_id === program.id;
+            });
+            const spent = programExpenses.reduce((sum, expense) => sum + (Number(expense.netAmount) || 0), 0);
+            totalAmount += spent;
+            return [program.title, program.category, program.status, actualAttendance, `\u20B1${Number(spent || 0).toLocaleString()}`];
           });
-          const spent = programExpenses.reduce((sum, expense) => sum + (Number(expense.netAmount) || 0), 0);
-          totalAmount += spent;
-          return [program.title, program.category, program.status, program.registeredCount, `\u20B1${Number(spent || 0).toLocaleString()}`];
-        });
+        } catch (error) {
+          setPopupMsg({
+            title: 'Accomplishment Export Failed',
+            text: error instanceof Error ? error.message : 'Attendance records could not be loaded.',
+            type: 'error',
+          });
+          return;
+        }
         break;
+      }
       case 'beneficiaries':
         title = 'Youth Beneficiary Registry';
         headers = ['Name', 'Zone', 'Status'];
@@ -698,22 +724,35 @@ export default function BarangayAdminPages({
   const [editingProgram, setEditingProgram] = useState<Program | null>(null);
   const [viewingProgram, setViewingProgram] = useState<Program | null>(null);
   const [modalRegistrations, setModalRegistrations] = useState<any[]>([]);
+  const [modalAttendance, setModalAttendance] = useState<any[]>([]);
   const [loadingModalRegs, setLoadingModalRegs] = useState(false);
 
   useEffect(() => {
     if (!viewingProgram?.id) {
       setModalRegistrations([]);
+      setModalAttendance([]);
       return;
     }
     let cancelled = false;
+    setModalRegistrations([]);
+    setModalAttendance([]);
     setLoadingModalRegs(true);
-    kabisigApi.getProgramRegistrations(viewingProgram.id)
-      .then((rows) => {
-        if (!cancelled) setModalRegistrations(rows || []);
+    Promise.all([
+      kabisigApi.getProgramRegistrations(viewingProgram.id),
+      kabisigApi.getProgramAttendance(viewingProgram.id),
+    ])
+      .then(([rows, attendance]) => {
+        if (!cancelled) {
+          setModalRegistrations(rows || []);
+          setModalAttendance(attendance || []);
+        }
       })
       .catch((err) => {
-        console.warn("Failed to fetch modal registrations:", err);
-        if (!cancelled) setModalRegistrations([]);
+        console.warn("Failed to fetch modal program participants or attendance:", err);
+        if (!cancelled) {
+          setModalRegistrations([]);
+          setModalAttendance([]);
+        }
       })
       .finally(() => {
         if (!cancelled) setLoadingModalRegs(false);
@@ -1742,14 +1781,15 @@ return (
                             const displayName = u?.full_name || r.participantName || 'Unknown';
                             const zone = rp?.zone || '—';
                             const contact = u?.phone || '—';
+                            const isAttended = modalAttendance.some(attendance => attendance.user_id === r.user_id);
                             return (
                               <tr key={r.id}>
                                 <td className="px-3 py-2 font-bold text-slate-800 whitespace-nowrap">{displayName}</td>
                                 <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{zone}</td>
                                 <td className="px-3 py-2 text-slate-600 font-mono text-[10px] whitespace-nowrap">{contact}</td>
                                 <td className="px-3 py-2 text-right whitespace-nowrap">
-                                  <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${r.status === 'attended' || r.status === 'Approved' || r.status === 'registered' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                                    {r.status}
+                                  <span className={`px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${isAttended ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'}`}>
+                                    {isAttended ? 'ATTENDED' : 'REGISTERED'}
                                   </span>
                                 </td>
                               </tr>

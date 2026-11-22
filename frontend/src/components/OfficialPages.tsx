@@ -724,7 +724,7 @@ export default function OfficialPages({
       setLastScanDetail(null);
       setQrMessage('');
       scanFeedbackTimerRef.current = null;
-    }, 10000);
+    }, 20000);
   };
 
   useEffect(() => () => {
@@ -5224,7 +5224,7 @@ export default function OfficialPages({
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <button 
-                        onClick={() => {
+                        onClick={async () => {
                           if (reportModuleCategory === 'attendance') {
                             const selProg = programs.find(p => p.id === selectedProgramForReport);
                             const programTitle = selProg?.title || 'No Program Selected';
@@ -5249,16 +5249,32 @@ export default function OfficialPages({
                               </table>
                             `);
                           } else if (reportModuleCategory === 'accomplishment') {
-                            printOfficialReport('Quarterly Youth Accomplishment Report Q2 2026', `
-                              <h4>SUMMARY OF ACCOMPLISHMENTS (Q2 2026)</h4>
-                              <p style="font-size:11px;">Aligned with CBYDP 2026-2028 Priority Areas</p>
-                              <table>
-                                <thead><tr><th>Program Name</th><th>Category</th><th>Target Beneficiaries</th><th>Actual Attendance</th><th>Allocated Budget</th><th>Disbursed</th></tr></thead>
-                                <tbody>
-                                  ${accomplishmentPrograms.map(p => `<tr><td><strong>${p.title}</strong></td><td>${p.category}</td><td>${p.maxParticipants}</td><td>${p.registeredCount || 0}</td><td>\u20B1${Number(p.budgetAllocation || 0).toLocaleString()}</td><td>\u20B1${Number(expenses.filter(expense => expense.programId === p.id).reduce((sum, expense) => sum + (Number(expense.netAmount) || 0), 0) || 0).toLocaleString()}</td></tr>`).join('')}
-                                </tbody>
-                              </table>
-                            `);
+                            try {
+                              const attendanceByProgram = await Promise.all(
+                                accomplishmentPrograms.map(program => kabisigApi.getProgramAttendance(program.id))
+                              );
+                              const accomplishmentAttendance = attendanceByProgram.flat();
+                              const accomplishmentRows = accomplishmentPrograms.map(program => {
+                                const actualAttendanceCount = accomplishmentAttendance.filter(
+                                  attendance => attendance.program_id === program.id
+                                ).length;
+                                const disbursed = expenses
+                                  .filter(expense => expense.programId === program.id)
+                                  .reduce((sum, expense) => sum + (Number(expense.netAmount) || 0), 0);
+                                return `<tr><td><strong>${program.title}</strong></td><td>${program.category}</td><td>${program.maxParticipants}</td><td>${actualAttendanceCount}</td><td>\u20B1${Number(program.budgetAllocation || 0).toLocaleString()}</td><td>\u20B1${disbursed.toLocaleString()}</td></tr>`;
+                              }).join('');
+                              printOfficialReport('Quarterly Youth Accomplishment Report Q2 2026', `
+                                <h4>SUMMARY OF ACCOMPLISHMENTS (Q2 2026)</h4>
+                                <p style="font-size:11px;">Aligned with CBYDP 2026-2028 Priority Areas</p>
+                                <table>
+                                  <thead><tr><th>Program Name</th><th>Category</th><th>Target Beneficiaries</th><th>Actual Attendance</th><th>Allocated Budget</th><th>Disbursed</th></tr></thead>
+                                  <tbody>${accomplishmentRows}</tbody>
+                                </table>
+                              `);
+                            } catch (error) {
+                              console.error('Could not load actual attendance for the accomplishment report:', error);
+                              window.alert(error instanceof Error ? error.message : 'Could not load attendance for the accomplishment report.');
+                            }
                           } else if (reportModuleCategory === 'compliance') {
                             const complianceRows = documents.map((document, index) => `
                               <tr>
@@ -5409,20 +5425,16 @@ export default function OfficialPages({
                             ) : reportRegistrations.map((registration, idx) => {
                               const user = Array.isArray(registration.users) ? registration.users[0] : registration.users;
                               const checkedIn = reportAttendance.find(attendance => attendance.user_id === registration.user_id);
-                              const isPresent = Boolean(checkedIn) || registration.status === 'attended';
-                              const statusLabel = isPresent
-                                ? 'Present'
-                                : registration.status === 'waitlisted'
-                                  ? 'Waitlisted'
-                                  : 'Registered';
+                              const isPresent = Boolean(checkedIn);
+                              const statusLabel = isPresent ? 'Present' : 'Not Checked In';
                               return (
                               <tr key={registration.id} className="hover:bg-slate-50">
                                 <td className="px-5 py-3 font-mono font-bold text-slate-400 whitespace-nowrap">{idx + 1}</td>
                                 <td className="px-5 py-3 font-bold text-slate-800 whitespace-nowrap">{user?.full_name || 'Youth Constituent'}</td>
                                 <td className="px-5 py-3 text-center whitespace-nowrap">
-                                  <span className={`px-2 py-0.5 font-extrabold text-[9px] rounded uppercase ${isPresent ? 'bg-emerald-50 text-emerald-700' : statusLabel === 'Waitlisted' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>{statusLabel}</span>
+                                  <span className={`px-2 py-0.5 font-extrabold text-[9px] rounded uppercase ${isPresent ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{statusLabel}</span>
                                 </td>
-                                <td className="px-5 py-3 font-mono text-[11px] text-slate-500 whitespace-nowrap">{checkedIn?.checked_in_at ? formatPhilippineDateTime(checkedIn.checked_in_at) : 'Not checked in'}</td>
+                                <td className={`px-5 py-3 font-mono text-[11px] whitespace-nowrap ${isPresent ? 'text-slate-500' : 'text-slate-400'}`}>{checkedIn?.checked_in_at ? formatPhilippineDateTime(checkedIn.checked_in_at) : '—'}</td>
                                 <td className="px-5 py-3 text-center whitespace-nowrap">
                                   <span className="text-[10px] text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded">Verified KK Member</span>
                                 </td>
