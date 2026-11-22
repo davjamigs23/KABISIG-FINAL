@@ -109,7 +109,7 @@ export default function SuperAdminPages({
 
   const isDisplayedOfficial = (official: any) =>
     official?.status === 'active'
-    && (official?.setup_completed === true || Number(official?.role_id) === 3);
+    && official?.setup_completed === true;
   const [activeMenu, setActiveMenu] = useState<string>('dashboard');
   const [popupMsg, setPopupMsg] = useState<PopupMessage | null>(null);
   const [confirmMsg, setConfirmMsg] = useState<PopupMessage | null>(null);
@@ -155,12 +155,19 @@ useEffect(() => {
   const [showFixTypoModal, setShowFixTypoModal] = useState(false);
   const [typoUserId, setTypoUserId] = useState('');
   const [typoTargetUserId, setTypoTargetUserId] = useState('');
+  const [typoTargetUser, setTypoTargetUser] = useState<{
+    role_id: number;
+    status: string | null;
+    verification_status: string | null;
+  } | null>(null);
   const [typoHasProfile, setTypoHasProfile] = useState(false);
   const [typoUserProfile, setTypoUserProfile] = useState<{ is_registered_voter: boolean } | null>(null);
+  const [isResendingYouthLoginLink, setIsResendingYouthLoginLink] = useState(false);
 
   const handleLookupUser = async (searchValue = typoUserId) => {
     if (!searchValue.trim()) return;
     setTypoTargetUserId('');
+    setTypoTargetUser(null);
     setTypoHasProfile(false);
     setTypoUserProfile(null);
     setIsSearching(true);
@@ -188,6 +195,11 @@ useEffect(() => {
         const joinedProfile = user.resident_profile;
         const profile = Array.isArray(joinedProfile) ? joinedProfile[0] || null : joinedProfile || null;
         setTypoTargetUserId(user.id || '');
+        setTypoTargetUser({
+          role_id: Number(user.role_id),
+          status: user.status || null,
+          verification_status: profile?.verification_status || user.verification_status || null,
+        });
         setTypoHasProfile(Boolean(profile || user.has_profile));
         setTypoUserProfile({
           is_registered_voter: profile?.is_registered_voter === true || user.is_registered_voter === true,
@@ -218,6 +230,25 @@ useEffect(() => {
       showPopup(err.message || 'Lookup failed.');
     } finally {
       setIsSearching(false);
+    }
+  };
+  const canResendYouthLoginLink = typoTargetUser?.role_id === 4
+    && ['active', 'pending'].includes(String(typoTargetUser.status || '').trim().toLowerCase())
+    && String(typoTargetUser.verification_status || '').trim().toLowerCase() === 'pending';
+  const handleResendYouthLoginLink = async () => {
+    if (!typoTargetUserId || !canResendYouthLoginLink) return;
+    setIsResendingYouthLoginLink(true);
+    try {
+      const response = await kabisigApi.resendYouthLoginLink(typoTargetUserId);
+      if (!response.success) {
+        showPopup(response.message || 'Failed to resend the Youth sign-in link.');
+        return;
+      }
+      showPopup(response.message || 'Youth sign-in link sent successfully.', 'success');
+    } catch (error: any) {
+      showPopup(error?.message || 'Failed to resend the Youth sign-in link.');
+    } finally {
+      setIsResendingYouthLoginLink(false);
     }
   };
   const [typoFirstName, setTypoFirstName] = useState('');
@@ -653,7 +684,10 @@ useEffect(() => {
             {getInitial(official.full_name)}
           </span>
         )}
-        <span className="break-words">{formatOfficialName(official.full_name || 'Pending Invitation', official.sex, official.role_id, official.position || official.official_role)}</span>
+        <span className="min-w-0">
+          <span className="block break-words">{formatOfficialName(official.full_name || 'Pending Invitation', official.sex, official.role_id, official.official_role)}</span>
+          <span className="block text-[9px] text-slate-500">{official.official_role} · {official.barangay_name}</span>
+        </span>
         <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${badge.className}`}>
           {badge.label}
         </span>
@@ -664,10 +698,12 @@ useEffect(() => {
   // Data for Charts
   const federationRows = federationAnalytics?.barangay_rankings || [];
   const chartBarangayData = sortedBarangays.map(b => {
-    const liveRow = federationRows.find((row: any) => row.id === b.id);
-    const registeredYouth = toNumber(liveRow?.registered_youth ?? b.youthPopulation);
-    const totalBudget = toNumber(liveRow?.aip_budget ?? liveRow?.budget_allocated ?? b.totalBudget);
-    const spentBudget = toNumber(liveRow?.actual_spent ?? liveRow?.budget_spent ?? b.spentBudget);
+    const liveRow = federationRows.find((row: any) => String(row.id ?? row.barangay_id) === String(b.id));
+    const registeredYouth = federationAnalytics
+      ? toNumber(liveRow?.registered_youth ?? 0)
+      : toNumber(b.youthPopulation);
+    const totalBudget = toNumber(liveRow?.allocated_amount ?? liveRow?.aip_budget ?? liveRow?.budget_allocated ?? b.totalBudget);
+    const spentBudget = toNumber(liveRow?.spent_amount ?? liveRow?.actual_spent ?? liveRow?.budget_spent ?? b.spentBudget);
 
     return {
       id: b.id,
@@ -720,7 +756,7 @@ useEffect(() => {
   const analyticsChartData = filteredBarangays.length === sortedBarangays.length
     ? chartBarangayData
     : chartBarangayData.filter((item: any) => filteredBarangays.some(b => b.id === item.id));
-  const hasRegisteredYouthAnalytics = analyticsChartData.some((item: any) => item.registeredYouth > 0);
+  const hasRegisteredYouthAnalytics = analyticsChartData.length > 0;
   const hasFinancialAnalytics = analyticsChartData.some((item: any) => item.budget > 0 || item.spent > 0);
 
   const handleOpenInviteOfficialModal = (barangay?: BarangayTenant, returnToConfigure: boolean = false) => {
@@ -2053,14 +2089,17 @@ useEffect(() => {
                         const chairpersonName = b.chairpersonUser?.full_name || '';
                         const chairpersonIsPending = Boolean(
                           b.chairpersonUser
-                          && String(b.chairpersonUser.status || '').trim().toLowerCase() === 'pending'
+                          && (
+                            String(b.chairpersonUser.status || '').trim().toLowerCase() === 'pending'
+                            || b.chairpersonUser.setup_completed === false
+                          )
                         );
                         return (
                           <tr key={b.id} className="hover:bg-slate-50/50">
                             <td className="p-3 font-bold text-[#091d64] whitespace-nowrap">Brgy. {displayBarangayName(b.name)}</td>
                             <td className="p-3 font-semibold whitespace-nowrap">
                               {chairpersonIsPending
-                                ? <span className="text-amber-600">Pending</span>
+                                ? <span className="text-slate-400">Pending Invitation</span>
                                 : b.chairpersonUser
                                   ? formatOfficialName(chairpersonName, b.chairpersonUser.sex, 2, 'SK Chairperson')
                                   : <span className="text-slate-400">Unassigned</span>}
@@ -2644,7 +2683,11 @@ useEffect(() => {
                   && isDisplayedOfficial(official)
                   && (barangayMatches || [official.full_name, official.email, official.official_role, official.position]
                     .some((value) => String(value || '').toLowerCase().includes(search)))
-                ));
+                )).map((official) => ({
+                  ...official,
+                  official_role: official.official_role || (Number(official.role_id) === 2 ? 'SK Chairperson' : official.position || 'SK Official'),
+                  barangay_name: barangay.name,
+                }));
                 const chairperson = officials.filter((official) => Number(official.role_id) === 2);
                 const secretaries = officials.filter((official) =>
                   Number(official.role_id) === 3 && official.official_role === 'SK Secretary'
@@ -3656,6 +3699,7 @@ useEffect(() => {
                   setShowFixTypoModal(false);
                   setTypoUserId('');
                   setTypoTargetUserId('');
+                  setTypoTargetUser(null);
                   setTypoFullName('');
                   setTypoFirstName('');
                   setTypoMiddleName('');
@@ -3712,6 +3756,20 @@ useEffect(() => {
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Corrected Email</label>
                 <input type="email" value={typoEmail} onChange={e => setTypoEmail(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank if unchanged" />
               </div>
+
+              {canResendYouthLoginLink && (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-xs text-amber-900">Youth verification is pending. Resend a secure sign-in link so the user can submit or update their ID.</p>
+                  <button
+                    type="button"
+                    onClick={() => void handleResendYouthLoginLink()}
+                    disabled={isResendingYouthLoginLink}
+                    className="shrink-0 rounded-lg bg-[#091d64] px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+                  >
+                    {isResendingYouthLoginLink ? 'Sending...' : 'Resend Youth Login Link'}
+                  </button>
+                </div>
+              )}
 
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Corrected Phone</label>

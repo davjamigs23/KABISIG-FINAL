@@ -590,6 +590,8 @@ router.get(
         active_programs: programPerBarangay[b.id] || 0,
         budget_allocated: bgyBudget.allocated,
         budget_spent: bgyBudget.spent,
+        allocated_amount: bgyBudget.allocated,
+        spent_amount: bgyBudget.spent,
         aip_budget: bgyBudget.allocated,
         actual_spent: bgyBudget.spent,
         budget_utilization_pct: utilization,

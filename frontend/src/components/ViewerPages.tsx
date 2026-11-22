@@ -147,7 +147,9 @@ export default function ViewerPages({
   const [expandedOfficialBarangay, setExpandedOfficialBarangay] = useState<string | null>(null);
   const [directorySearch, setDirectorySearch] = useState('');
   const normalizedDirectorySearch = directorySearch.trim().toLowerCase();
-  const synchronizedPublicOfficials = (publicOfficials || []).map((group) => {
+  const synchronizedPublicOfficials = [...(publicOfficials || [])]
+    .sort((a, b) => a.barangay_name.localeCompare(b.barangay_name))
+    .map((group) => {
     const barangay = tenants.find((tenant) => tenant.name.toLowerCase() === group.barangay_name.toLowerCase());
     if (!barangay) return group;
 
@@ -988,7 +990,7 @@ export default function ViewerPages({
                                         <div className="min-w-0">
                                           <p className="break-words text-sm font-bold text-slate-800">{formatOfficialName(official.full_name, official.gender_title, official.role_id, official.position || official.official_role)}</p>
                                           <p className="text-xs font-semibold text-slate-500">
-                                            {official.role_id === 2 ? 'SK Chairperson' : official.official_role || official.position || 'SK Official'}
+                                            {official.official_role || (official.role_id === 2 ? 'SK Chairperson' : 'SK Official')}
                                           </p>
                                         </div>
                                       </div>

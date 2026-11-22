@@ -468,7 +468,7 @@ router.get('/users/lookup', authenticateUser, requireRoles('SUPER_ADMIN'), async
     }
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('resident_profile')
-      .select('birthdate, sex, address, is_registered_voter')
+      .select('birthdate, sex, address, is_registered_voter, verification_status')
       .eq('user_id', user.id)
       .maybeSingle();
     if (profileError) {
@@ -484,6 +484,7 @@ router.get('/users/lookup', authenticateUser, requireRoles('SUPER_ADMIN'), async
       sex: profile?.sex || null,
       address: profile?.address || '',
       is_registered_voter: profile?.is_registered_voter === true,
+      verification_status: profile?.verification_status || null,
       resident_profile: profile || null,
       has_profile: !!profile
     }, 'User found.');
@@ -491,6 +492,102 @@ router.get('/users/lookup', authenticateUser, requireRoles('SUPER_ADMIN'), async
     sendError(res, 'Unexpected error: ' + err.message, 500);
   }
 });
+
+router.post(
+  '/users/:userId/resend-youth-login-link',
+  authenticateUser,
+  requireRoles('SUPER_ADMIN'),
+  async (req: Request, res: Response): Promise<void> => {
+    const userIdResult = z.string().uuid().safeParse(req.params.userId);
+    if (!userIdResult.success) {
+      sendError(res, 'A valid Youth user ID is required.', 400);
+      return;
+    }
+
+    const { data: youth, error: youthError } = await supabaseAdmin
+      .from('users')
+      .select('id, email, role_id, tenant_id, status')
+      .eq('id', userIdResult.data)
+      .maybeSingle();
+    if (youthError) {
+      sendError(res, `Failed to load Youth account: ${youthError.message}`, 500);
+      return;
+    }
+    if (!youth || Number(youth.role_id) !== 4) {
+      sendError(res, 'Youth account not found.', 404);
+      return;
+    }
+
+    const accountStatus = String(youth.status || '').trim().toLowerCase();
+    if (!['active', 'pending'].includes(accountStatus)) {
+      sendError(res, 'A sign-in link cannot be sent for this account status.', 409);
+      return;
+    }
+
+    const { data: residentProfile, error: profileError } = await supabaseAdmin
+      .from('resident_profile')
+      .select('verification_status')
+      .eq('user_id', youth.id)
+      .maybeSingle();
+    if (profileError) {
+      sendError(res, `Failed to load Youth verification status: ${profileError.message}`, 500);
+      return;
+    }
+    if (String(residentProfile?.verification_status || '').trim().toLowerCase() !== 'pending') {
+      sendError(res, 'A sign-in link is only available while Youth verification is pending.', 409);
+      return;
+    }
+
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.getUserById(youth.id);
+    if (authError || !authData.user) {
+      sendError(res, `Failed to load Youth authentication account: ${authError?.message || 'Auth account not found.'}`, 500);
+      return;
+    }
+    const email = String(authData.user.email || '').trim().toLowerCase();
+    if (!email || email !== String(youth.email || '').trim().toLowerCase()) {
+      sendError(res, 'The Youth email does not match the linked authentication account.', 409);
+      return;
+    }
+
+    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+      type: 'magiclink',
+      email,
+      options: { redirectTo: FRONTEND_URL, expiresIn: 60 * 60 } as any,
+    });
+    const actionLink = linkData?.properties?.action_link;
+    if (linkError || !actionLink) {
+      sendError(res, `Failed to generate Youth sign-in link: ${linkError?.message || 'Supabase did not return an action link.'}`, 502);
+      return;
+    }
+
+    const safeActionLink = actionLink.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+    const emailHtml = `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;">
+      <h1 style="color: #091d64;">KABISIG</h1>
+      <h2 style="color: #091d64;">Your Youth account access link</h2>
+      <p style="color: #334155; line-height: 1.6;">Use this secure link to sign in and submit or update your identification document for verification.</p>
+      <div style="text-align: center; margin: 24px 0;"><a href="${safeActionLink}" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Sign in to KABISIG</a></div>
+      <p style="color: #64748b; font-size: 12px;">This link expires in one hour. Your account status and verification status will not change until the SK Chairperson reviews your submission.</p>
+    </div>`;
+    try {
+      await sendEmail(email, 'KABISIG Youth Account Access Link', emailHtml);
+    } catch (emailError) {
+      console.error('[YOUTH SIGN-IN LINK] Email delivery failed:', emailError);
+      sendError(res, 'The sign-in link was generated, but email delivery failed. Please try again.', 502);
+      return;
+    }
+
+    await recordAuditLog({
+      tenantId: youth.tenant_id,
+      userId: (req as AuthRequest).user!.id,
+      action: 'RESEND_YOUTH_LOGIN_LINK',
+      entityName: 'users',
+      entityId: youth.id,
+      details: { verification_status: residentProfile?.verification_status || 'pending' },
+      ipAddress: req.ip || null,
+    });
+    sendSuccess(res, { email }, `A secure sign-in link was sent to ${email}.`);
+  }
+);
 
 router.put('/users/:userId/update-name', authenticateUser, requireRoles('SUPER_ADMIN'), async (req: Request, res: Response): Promise<void> => {
   try {

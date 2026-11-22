@@ -488,6 +488,7 @@ router.get('/documents', async (_req: Request, res: Response): Promise<void> => 
   const { data, error } = await supabaseAdmin
     .from('documents')
     .select('id, title, document_type, tenant_id, created_at, status')
+    .eq('status', 'approved')
     .order('created_at', { ascending: false });
 
   if (error) {

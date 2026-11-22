@@ -342,7 +342,9 @@ export function monitorBudgets(
   const alerts: Array<{ level: 'Critical' | 'Warning' | 'Info'; message: string; code: string }> = [];
 
   // Rule A: General Fund Utilization Thresholds
-  const utilizationRate = (tenant.spentBudget / tenant.totalBudget) * 100;
+  const totalBudget = Number.isFinite(tenant.totalBudget) ? tenant.totalBudget : 0;
+  const spentBudget = Number.isFinite(tenant.spentBudget) ? tenant.spentBudget : 0;
+  const utilizationRate = totalBudget > 0 ? (spentBudget / totalBudget) * 100 : 0;
   if (utilizationRate >= 90) {
     alerts.push({
       level: 'Critical',
@@ -359,10 +361,10 @@ export function monitorBudgets(
 
   // Rule B: Over-allocation Checks
   const totalAllocated = programs.reduce((sum, p) => sum + p.budgetAllocation, 0);
-  if (totalAllocated > tenant.totalBudget) {
+  if (totalAllocated > totalBudget) {
     alerts.push({
       level: 'Critical',
-      message: `Critical Deficit: Total programmatic allocations (\u20B1${totalAllocated.toLocaleString()}) exceed your general fund allotment (\u20B1${tenant.totalBudget.toLocaleString()}) by \u20B1${(totalAllocated - tenant.totalBudget).toLocaleString()}.`,
+      message: `Critical Deficit: Total programmatic allocations (\u20B1${totalAllocated.toLocaleString()}) exceed your general fund allotment (\u20B1${totalBudget.toLocaleString()}) by \u20B1${(totalAllocated - totalBudget).toLocaleString()}.`,
       code: 'ALLOCATION_EXCEEDED'
     });
   }

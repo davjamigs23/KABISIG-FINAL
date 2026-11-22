@@ -689,6 +689,10 @@ class KabisigApiClient {
     return this.request<any>(`/admin/users/lookup?identifier=${encodeURIComponent(identifier)}`, { method: 'GET' });
   }
 
+  async resendYouthLoginLink(userId: string): Promise<{ success: boolean; data?: any; message?: string }> {
+    return this.request<any>(`/admin/users/${encodeURIComponent(userId)}/resend-youth-login-link`, { method: 'POST' });
+  }
+
   async updateUserName(userId: string, payload: { full_name: string; first_name?: string; middle_name?: string; last_name?: string; suffix?: string; email?: string; phone?: string; birthdate?: string; address?: string; sex?: string; is_registered_voter?: boolean; reason?: string }): Promise<{ success: boolean; data?: any; message?: string }> {
     return await this.request(`/admin/users/${encodeURIComponent(userId)}/update-name`, { method: 'PUT', body: JSON.stringify(payload) });
   }

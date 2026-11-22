@@ -2227,7 +2227,7 @@ return (
                               event.preventDefault();
                               navigateFromAlert(alert.code);
                             }
-                          }} className="flex items-start gap-2.5 p-3 rounded-lg bg-white border border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors group">
+                          }} className="flex items-start gap-2.5 p-3 rounded-lg bg-white border border-slate-100 hover:bg-amber-100 cursor-pointer transition-colors group">
                             <span className="text-sm mt-0.5">{alert.level === 'Critical' ? '🚨' : '⚠️'}</span>
                             <div>
                               <p className="text-[11px] font-bold text-slate-800 leading-snug">{alert.message}</p>
