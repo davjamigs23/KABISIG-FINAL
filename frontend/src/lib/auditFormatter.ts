@@ -1,6 +1,7 @@
 const ACTION_LABELS: Record<string, string> = {
   'UPDATE_USER_CREDENTIALS': 'Updated User Credentials',
   'UPDATE_USER_EMAIL': 'Updated User Email',
+  'EMAIL_CHANGE': 'Updated User Email',
   'UPDATE_BARANGAY_SETTINGS': 'Updated Barangay Settings',
   'ASSIGN_CHAIRPERSON': 'Assigned New Chairperson',
   'APPROVE_YOUTH': 'Approved Youth Registration',

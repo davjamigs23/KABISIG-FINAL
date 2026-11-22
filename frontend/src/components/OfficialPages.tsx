@@ -337,7 +337,6 @@ export default function OfficialPages({
         if (isMounted) setEngagementAnalyticsLoaded(true);
       }
     };
-
     refreshEngagementAnalytics();
     const intervalId = window.setInterval(refreshEngagementAnalytics, 30000);
     return () => {
@@ -875,7 +874,7 @@ export default function OfficialPages({
         program: program?.title || budget.category || 'Unallocated',
         allocated: Number(budget.allocated_amount),
         actual: budgetExpenses.reduce((sum: number, expense: any) =>
-          sum + Number(expense.net_amount ?? expense.netAmount ?? 0), 0),
+          sum + Number(expense.gross_amount ?? expense.amount ?? 0), 0),
         hasExpense: budgetExpenses.length > 0,
       };
     });
@@ -917,7 +916,7 @@ export default function OfficialPages({
           || (expenseProgramId && sectorProgramIds.has(String(expenseProgramId)));
       })
       .reduce((sum: number, expense: any) =>
-        sum + Number(expense.net_amount ?? expense.netAmount ?? 0), 0);
+        sum + Number(expense.gross_amount ?? expense.amount ?? 0), 0);
     const rate = alloc > 0 ? (disb / alloc) * 100 : 0;
     return { alloc, disb, rate };
   };
@@ -976,13 +975,17 @@ export default function OfficialPages({
     return 0;
   };
   const getNetPayable = (expense: any) => {
+    const persistedNetAmount = expense.net_amount ?? expense.netAmount;
+    if (persistedNetAmount != null && Number.isFinite(Number(persistedNetAmount))) {
+      return Number(persistedNetAmount);
+    }
     const taxType = String(expense.tax_type || expense.taxType || '').toUpperCase().replace(/-/g, '_');
     const grossAmount = Number(expense.gross_amount ?? expense.amount) || 0;
     const vatAmount = taxType === 'VAT' ? grossAmount - grossAmount / 1.12 : 0;
     return Number((grossAmount - vatAmount - getWithholdingTax(expense)).toFixed(2));
   };
-  const totalWithheld = (expenses || []).reduce((sum: number, expense: any) => sum + getWithholdingTax(expense), 0);
-  const totalNetPayable = (expenses || []).reduce((sum: number, expense: any) => sum + getNetPayable(expense), 0);
+  const totalWithheld = filteredExpenses.reduce((sum: number, expense: any) => sum + getWithholdingTax(expense), 0);
+  const totalNetPayable = filteredExpenses.reduce((sum: number, expense: any) => sum + getNetPayable(expense), 0);
   const complianceDocumentGroups = [
     (category: string) => category.includes('resolution'),
     (category: string) => category.includes('minute'),
@@ -1030,16 +1033,16 @@ export default function OfficialPages({
       return expenseDate && new Date(expenseDate).getFullYear() === Number(treasurerBudgetYear);
     })
     .reduce((sum: number, expense: any) =>
-      sum + Number(expense.net_amount ?? expense.netAmount ?? 0), 0);
+      sum + Number(expense.gross_amount ?? expense.amount ?? 0), 0);
   const remainingCash = totalBarangayBudget - totalSpentExpenses;
   const budgetUtilizationRate = totalBarangayBudget > 0
     ? (totalSpentExpenses / totalBarangayBudget) * 100
     : 0;
   const allocatedToPrograms = budgetOptions
-    .filter((budget: any) =>
-      budget.category !== 'General Youth Development Fund'
-      && !['heha', 'aaaa'].includes(String(budget.category || '').trim().toLowerCase())
-    )
+    .filter((budget: any) => {
+      const category = String(budget.category || '').trim().toLowerCase();
+      return category !== 'general youth development fund' && !['heha', 'aaaa'].includes(category);
+    })
     .reduce((sum: number, budget: any) => sum + Number(budget.allocated_amount || 0), 0);
 
   // --- ACTIONS HANDLERS ---
@@ -1162,11 +1165,19 @@ export default function OfficialPages({
     setConfirmDelete({ id: program.id, type: 'program' });
   };
 
+  const getChairpersonApproverLabel = (): string => {
+    const name = currentTenant?.chairpersonUser?.full_name || currentTenant?.chairperson || '';
+    if (!name || name.toLowerCase() === 'unassigned' || name.toLowerCase().includes('pending invitation')) {
+      return 'Hon. SK Chairperson';
+    }
+    return `Hon. ${name.replace(/^(Hon\.|Mr\.|Ms\.|Mrs\.)\s*/i, '').trim()}`;
+  };
+
   const getDefaultApproverForCategory = (cat: string): string => {
     switch (cat) {
       case 'Resolutions':
       case 'Budget':
-        return currentTenant?.chairperson || 'SK Chairperson';
+        return getChairpersonApproverLabel();
       case 'Minutes':
       case 'Meeting Minutes':
       case 'Communications':
@@ -1244,6 +1255,7 @@ export default function OfficialPages({
       const payload = {
         title: selectedDoc.title.trim(),
         description: selectedDoc.description?.trim() || '',
+        resolutionNumber: selectedDoc.resolutionNumber?.trim() || '',
         document_type: getNormalizedDocumentType(selectedDoc),
       };
       const result = await kabisigApi.updateDocument(selectedDoc.id, payload);
@@ -1257,6 +1269,7 @@ export default function OfficialPages({
         ...selectedDoc,
         title: result.data.title || payload.title,
         description: typeof result.data.description === 'string' ? result.data.description : payload.description,
+        resolutionNumber: result.data.resolution_number || payload.resolutionNumber,
         category: getNormalizedDocumentType(selectedDoc),
         version: newVer,
         history: [
@@ -4929,7 +4942,7 @@ export default function OfficialPages({
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div className="p-4 rounded-xl border border-slate-100 bg-white space-y-1">
                           <span className="text-[10px] font-bold text-slate-400 uppercase">Gross Invoice Disbursements</span>
-                          <h4 className="text-xl font-black text-slate-800">{'\u20B1'}{Number(expenses.reduce((a,c)=>a + (Number(c.amount) || 0), 0) || 0).toLocaleString()}</h4>
+                          <h4 className="text-xl font-black text-slate-800">{'\u20B1'}{Number(filteredExpenses.reduce((sum, expense) => sum + (Number(expense.amount) || 0), 0) || 0).toLocaleString()}</h4>
                           <p className="text-[10px] text-slate-500">Total payments issued</p>
                         </div>
                         <div className="p-4 rounded-xl border border-rose-100 bg-rose-50/30 space-y-1">
@@ -6640,7 +6653,7 @@ export default function OfficialPages({
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Designated Approver / Sign-Off Official (RA 10742)</label>
                 <select value={docForm.designatedApprover} onChange={(e)=>setDocForm({...docForm, designatedApprover: e.target.value})} className="w-full p-2 border rounded text-xs font-semibold text-[#091d64]">
                   <option value="" disabled>Select an Approver</option>
-                  <option value={currentTenant?.chairperson || 'SK Chairperson'}>1. {currentTenant?.chairperson || 'SK Chairperson'} (SK Chairperson / Barangay Admin)</option>
+                  <option value={currentTenant?.chairperson || 'SK Chairperson'}>1. {getChairpersonApproverLabel()} (SK Chairperson / Barangay Admin)</option>
                   <option value={currentUser?.full_name || 'SK Treasurer'}>2. {currentUser?.full_name || 'SK Treasurer'} (SK Treasurer)</option>
                   <option value="Council Secretariat / SK Secretary">3. Council Secretariat / SK Secretary</option>
                   <option value="Committee Chair & SK Council">4. Committee Chair & SK Kagawads (Council Members)</option>
@@ -7133,7 +7146,7 @@ export default function OfficialPages({
                   className="w-full p-2 border border-slate-200 rounded text-xs font-semibold text-[#091d64]"
                 >
                   <option value="">Select a Designated Approver</option>
-                  <option value={currentTenant?.chairperson || 'SK Chairperson'}>1. {currentTenant?.chairperson || 'SK Chairperson'} (SK Chairperson / Barangay Admin)</option>
+                  <option value={currentTenant?.chairperson || 'SK Chairperson'}>1. {getChairpersonApproverLabel()} (SK Chairperson / Barangay Admin)</option>
                   <option value={currentUser?.full_name || 'SK Treasurer'}>2. {currentUser?.full_name || 'SK Treasurer'} (SK Treasurer)</option>
                   <option value="Council Secretariat / SK Secretary">3. Council Secretariat / SK Secretary</option>
                   <option value="Committee Chair & SK Council">4. Committee Chair & SK Kagawads (Council Members)</option>

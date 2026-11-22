@@ -3197,7 +3197,7 @@ return (
                     <tbody className="divide-y divide-slate-100 font-medium text-slate-700 bg-white">{localDocs.map(doc => (
                         <tr key={doc.id} className="hover:bg-slate-50/70 transition-colors">
                           <td className="px-5 py-4 font-mono font-bold text-[#091d64] whitespace-nowrap">
-                            {doc.resolutionNumber || doc.resolution_number || '—'}
+                            {doc.resolutionNumber || '—'}
                           </td>
                           <td className="px-5 py-4 font-bold text-slate-900 truncate whitespace-nowrap" title="Document Title">
                             {doc.title}

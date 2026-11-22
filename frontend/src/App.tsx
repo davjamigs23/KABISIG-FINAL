@@ -677,7 +677,7 @@ function AppContent() {
         uploadedDate: d.created_at ? formatPhilippineDate(d.created_at) : '',
         fileSize: '',
         status: d.status === 'approved' ? 'Approved' : d.status === 'pending_approval' ? 'Pending' : d.status,
-        resolutionNumber: `DOC-${d.id.slice(0, 6).toUpperCase()}`,
+        resolutionNumber: d.resolution_number || `DOC-${d.id.slice(0, 6).toUpperCase()}`,
         description: d.description ?? '',
         fileUrl: d.file_url,
         reviewFeedback: d.feedback || '',
@@ -686,7 +686,7 @@ function AppContent() {
       })));
     }).catch(error => console.warn('Unable to load documents for active role:', error));
 
-    kabisigApi.getExpenses().then(exps => {
+    kabisigApi.getExpenses(currentTenant?.id).then(exps => {
       if (!isMounted) return;
       setExpenses(exps.map((e: any): ExpenseRecord => ({
           id: e.id,
@@ -699,7 +699,9 @@ function AppContent() {
           taxType: e.tax_type === 'EXEMPT' ? 'Exempt' : e.tax_type || e.taxType || 'Non-VAT',
           vatAmount: Number(e.vat_amount ?? e.vatAmount) || 0,
           withholdingTax: Number(e.withholding_tax ?? e.withholdingTax) || 0,
-          netAmount: Number(e.net_amount ?? e.netAmount) || 0,
+          netAmount: e.net_amount != null || e.netAmount != null
+            ? Number(e.net_amount ?? e.netAmount)
+            : undefined,
           description: e.description || '',
           date: e.expense_date || (e.created_at ? getPhilippineDateString(e.created_at) : ''),
           dateLogged: e.expense_date || e.dateLogged || (e.created_at ? getPhilippineDateString(e.created_at) : ''),
@@ -1608,7 +1610,7 @@ function AppContent() {
           onAddResolution={(resolution) => setResolutions(prev => [resolution, ...prev.filter(item => item.id !== resolution.id)])}
           onAddExpense={handleLogExpense}
           onRefreshExpenses={async () => {
-            const rows = await kabisigApi.getExpenses();
+            const rows = await kabisigApi.getExpenses(currentTenant?.id);
             setExpenses(rows.map((e: any): ExpenseRecord => ({
               id: e.id,
               programId: e.program_id || '',
@@ -1620,7 +1622,9 @@ function AppContent() {
               taxType: e.tax_type === 'EXEMPT' ? 'Exempt' : e.tax_type || e.taxType || 'Non-VAT',
               vatAmount: Number(e.vat_amount ?? e.vatAmount) || 0,
               withholdingTax: Number(e.withholding_tax ?? e.withholdingTax) || 0,
-              netAmount: Number(e.net_amount ?? e.netAmount) || 0,
+              netAmount: e.net_amount != null || e.netAmount != null
+                ? Number(e.net_amount ?? e.netAmount)
+                : undefined,
               description: e.description || '',
               date: e.expense_date || (e.created_at ? getPhilippineDateString(e.created_at) : ''),
               dateLogged: e.expense_date || e.dateLogged || (e.created_at ? getPhilippineDateString(e.created_at) : ''),

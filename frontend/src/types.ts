@@ -160,6 +160,8 @@ export interface DocumentRecord {
   fileUrl?: string;
   reviewFeedback?: string;
   resolutionNumber?: string;
+  resolution_number?: string;
+  code?: string;
   designatedApprover?: string;
   version?: string;
   history?: { date: string; action: string; user: string; notes?: string }[];

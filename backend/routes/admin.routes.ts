@@ -438,6 +438,10 @@ router.get('/users/lookup', authenticateUser, requireRoles('SUPER_ADMIN'), async
     const joinedProfile = user.resident_profile;
     const profile = Array.isArray(joinedProfile) ? joinedProfile[0] || null : joinedProfile || null;
 
+    console.log('LOOKUP RESULT:', {
+      hasResidentProfile: Boolean(profile),
+      residentProfileFields: profile ? Object.keys(profile) : [],
+    });
     sendSuccess(res, {
       ...user,
       email: user.email || authResult?.user?.email || '',
@@ -742,33 +746,47 @@ router.put('/users/:userId/update-name', authenticateUser, requireRoles('SUPER_A
 // --- Audit Log ---
     const newEmail = email?.trim() || '';
     const emailChanged = Boolean(newEmail && oldUser?.email !== newEmail);
-    await recordAuditLog({
-      tenantId: oldUser?.tenant_id || null,
-      userId: authUser.id,
-      action: emailChanged ? 'EMAIL_CHANGE' : 'UPDATE_USER_CREDENTIALS',
-      entityName: 'users',
-      entityId: userId,
-      details: {
-        reason: reason || 'No reason provided',
-        target_name: full_name,
-        old_full_name: oldUser?.full_name || 'Unknown',
-        old_email: emailChanged ? oldUser?.email : undefined,
-        new_email: emailChanged ? newEmail : undefined,
-        target_barangay: targetBarangayName,
-        changes: {
-          first_name: (oldUser?.first_name || '') !== (first_name || '') ? { old: oldUser?.first_name || '', new: first_name || '' } : undefined,
-          middle_name: (oldUser?.middle_name || '') !== (middle_name || '') ? { old: oldUser?.middle_name || '', new: middle_name || '' } : undefined,
-          last_name: (oldUser?.last_name || '') !== (last_name || '') ? { old: oldUser?.last_name || '', new: last_name || '' } : undefined,
-          email: emailChanged ? { old: oldUser?.email || '', new: newEmail } : undefined,
-          phone: oldUser?.phone !== phone ? { old: oldUser?.phone, new: phone } : undefined,
-          birthdate: oldProfile?.birthdate !== birthdate && birthdate ? { old: oldProfile?.birthdate, new: birthdate } : undefined,
-          is_registered_voter: oldProfile?.is_registered_voter !== is_registered_voter && is_registered_voter !== undefined
-            ? { old: oldProfile?.is_registered_voter ?? false, new: is_registered_voter }
-            : undefined
-        }
-      },
-      ipAddress: req.ip || null
-    });
+    const auditDetails = {
+      reason: reason || 'No reason provided',
+      target_name: full_name,
+      old_full_name: oldUser?.full_name || 'Unknown',
+      old_email: emailChanged ? oldUser?.email : undefined,
+      new_email: emailChanged ? newEmail : undefined,
+      target_barangay: targetBarangayName,
+      changes: {
+        first_name: (oldUser?.first_name || '') !== (first_name || '') ? { old: oldUser?.first_name || '', new: first_name || '' } : undefined,
+        middle_name: (oldUser?.middle_name || '') !== (middle_name || '') ? { old: oldUser?.middle_name || '', new: middle_name || '' } : undefined,
+        last_name: (oldUser?.last_name || '') !== (last_name || '') ? { old: oldUser?.last_name || '', new: last_name || '' } : undefined,
+        email: emailChanged ? { old: oldUser?.email || '', new: newEmail } : undefined,
+        phone: oldUser?.phone !== phone ? { old: oldUser?.phone, new: phone } : undefined,
+        birthdate: oldProfile?.birthdate !== birthdate && birthdate ? { old: oldProfile?.birthdate, new: birthdate } : undefined,
+        is_registered_voter: oldProfile?.is_registered_voter !== is_registered_voter && is_registered_voter !== undefined
+          ? { old: oldProfile?.is_registered_voter ?? false, new: is_registered_voter }
+          : undefined
+      }
+    };
+    if (emailChanged) {
+      const { error: auditErr } = await supabaseAdmin.from('audit_logs').insert({
+        tenant_id: oldUser?.tenant_id || null,
+        user_id: authUser.id,
+        action: 'EMAIL_CHANGE',
+        entity_name: 'users',
+        entity_id: userId,
+        details: auditDetails,
+        ip_address: req.ip || null,
+      });
+      if (auditErr) console.error('Failed to log email change:', auditErr.message);
+    } else {
+      await recordAuditLog({
+        tenantId: oldUser?.tenant_id || null,
+        userId: authUser.id,
+        action: 'UPDATE_USER_CREDENTIALS',
+        entityName: 'users',
+        entityId: userId,
+        details: auditDetails,
+        ipAddress: req.ip || null,
+      });
+    }
 
     sendSuccess(res, { id: userId, full_name: full_name.trim() }, 'User profile corrected successfully.');
   } catch (err: any) {

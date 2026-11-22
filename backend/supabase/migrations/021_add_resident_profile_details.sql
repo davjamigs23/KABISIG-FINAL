@@ -1,0 +1,8 @@
+ALTER TABLE public.resident_profile
+  ADD COLUMN IF NOT EXISTS zone TEXT,
+  ADD COLUMN IF NOT EXISTS civil_status TEXT,
+  ADD COLUMN IF NOT EXISTS marital_status TEXT,
+  ADD COLUMN IF NOT EXISTS school TEXT,
+  ADD COLUMN IF NOT EXISTS course TEXT,
+  ADD COLUMN IF NOT EXISTS year_level TEXT,
+  ADD COLUMN IF NOT EXISTS scholar_status TEXT;

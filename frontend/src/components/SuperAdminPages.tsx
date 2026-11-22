@@ -110,7 +110,7 @@ export default function SuperAdminPages({
   const [confirmMsg, setConfirmMsg] = useState<PopupMessage | null>(null);
   const showPopup = (message: string, type: PopupMessage['type'] = 'error', setupLink?: string) => {
     setPopupMsg({
-      title: type === 'success' ? 'Success' : type === 'error' ? 'Notice' : 'Information',
+      title: type === 'success' ? 'Success' : type === 'error' ? 'Notice' : type === 'warning' ? 'Warning' : 'Information',
       message,
       type,
       ...(setupLink ? { setupLink } : {}),
@@ -167,14 +167,26 @@ useEffect(() => {
       const res = await kabisigApi.lookupUser(searchValue.trim());
       if (!res.success || !res.data) {
         clearTypoLookupResult();
-        showPopup('User not found. Please check the exact email or phone number.');
+        setSearchBanner({ type: 'error', text: 'User not found.' });
         return;
       }
 
       const user = res.data.user || res.data;
       if (!user.id) {
         clearTypoLookupResult();
-        showPopup('User not found. Please check the exact email or phone number.');
+        setSearchBanner({ type: 'error', text: 'User not found.' });
+        return;
+      }
+      const roleId = Number(user.role_id);
+      if (String(user.status || '').trim().toLowerCase() === 'pending') {
+        clearTypoLookupResult();
+        if (roleId === 4) {
+          showPopup('This Youth Constituent is still pending SK Chairperson approval.', 'warning');
+        } else if ([2, 3].includes(roleId)) {
+          showPopup('This SK Official is still in Pending Invite status.', 'warning');
+        } else {
+          showPopup('This user account is still pending approval.', 'warning');
+        }
         return;
       }
       const joinedProfile = user.resident_profile;
@@ -205,9 +217,19 @@ useEffect(() => {
       setTypoBirthdate(typeof birthdate === 'string' ? birthdate.slice(0, 10) : '');
       setTypoAddress(user.address || profile?.address || '');
       setTypoSex(user.sex || profile?.sex || '');
+      setTypoZone(profile?.zone || '');
+      setTypoCivilStatus(profile?.civil_status || profile?.marital_status || '');
+      setTypoEducation(profile?.educational_status || '');
+      setTypoSchool(profile?.school || '');
+      setTypoCourse(profile?.course || '');
+      setTypoYearLevel(profile?.year_level || '');
+      setTypoEmploymentStatus(profile?.employment_status || '');
+      setTypoScholarStatus(profile?.scholar_status || '');
       setTypoFullName(String(user.full_name || '').trim() || [firstName, middleName, lastName, suffix].filter(Boolean).join(' '));
+      setSearchBanner({ type: 'success', text: 'User account found!' });
     } catch (err: any) {
       clearTypoLookupResult();
+      setSearchBanner({ type: 'error', text: err.message || 'Lookup failed.' });
       showPopup(err.message || 'Lookup failed.');
     } finally {
       setIsSearching(false);
@@ -242,6 +264,14 @@ useEffect(() => {
   const [typoBirthdate, setTypoBirthdate] = useState('');
   const [typoAddress, setTypoAddress] = useState('');
   const [typoSex, setTypoSex] = useState('');
+  const [typoZone, setTypoZone] = useState('');
+  const [typoCivilStatus, setTypoCivilStatus] = useState('');
+  const [typoEducation, setTypoEducation] = useState('');
+  const [typoSchool, setTypoSchool] = useState('');
+  const [typoCourse, setTypoCourse] = useState('');
+  const [typoYearLevel, setTypoYearLevel] = useState('');
+  const [typoEmploymentStatus, setTypoEmploymentStatus] = useState('');
+  const [typoScholarStatus, setTypoScholarStatus] = useState('');
   const [typoReason, setTypoReason] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -250,6 +280,7 @@ useEffect(() => {
   const [emailModalTab, setEmailModalTab] = useState<'update' | 'history'>('update');
   const [emailHistoryList, setEmailHistoryList] = useState<any[]>([]);
   const [isFetchingEmailHistory, setIsFetchingEmailHistory] = useState(false);
+  const [searchBanner, setSearchBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const clearTypoLookupResult = () => {
     setTypoTargetUserId('');
     setTypoTargetUser(null);
@@ -265,7 +296,16 @@ useEffect(() => {
     setTypoBirthdate('');
     setTypoAddress('');
     setTypoSex('');
+    setTypoZone('');
+    setTypoCivilStatus('');
+    setTypoEducation('');
+    setTypoSchool('');
+    setTypoCourse('');
+    setTypoYearLevel('');
+    setTypoEmploymentStatus('');
+    setTypoScholarStatus('');
     setTypoReason('');
+    setSearchBanner(null);
   };
 
   // Dedicated Assign SK Chairperson Modal State (Email-only)
@@ -1512,17 +1552,7 @@ useEffect(() => {
                   <button 
                      onClick={() => {
     setTypoUserId('');
-    setTypoFullName('');
-    setTypoFirstName('');
-    setTypoMiddleName('');
-    setTypoLastName('');
-    setTypoSuffix('');
-    setTypoEmail('');
-    setTypoPhone('');
-    setTypoBirthdate('');
-    setTypoAddress('');
-    setTypoSex('');
-    setTypoReason('');
+    clearTypoLookupResult();
     setShowFixTypoModal(true);
   }}
                     className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-[11px] transition-colors flex items-center gap-2 cursor-pointer shadow-xs whitespace-nowrap"
@@ -3711,6 +3741,14 @@ useEffect(() => {
                   birthdate: typoBirthdate || undefined,
                   address: typoAddress.trim() || undefined,
                   sex: typoSex || undefined,
+                  zone: typoZone.trim() || undefined,
+                  civil_status: typoCivilStatus || undefined,
+                  educational_status: typoEducation || undefined,
+                  school: typoSchool.trim() || undefined,
+                  course: typoCourse.trim() || undefined,
+                  year_level: typoYearLevel.trim() || undefined,
+                  employment_status: typoEmploymentStatus || undefined,
+                  scholar_status: typoScholarStatus.trim() || undefined,
                   is_registered_voter: typoHasProfile ? Boolean(typoUserProfile?.is_registered_voter) : undefined,
                   reason: typoReason.trim() || undefined
                 });
@@ -3730,6 +3768,14 @@ useEffect(() => {
                   setTypoBirthdate('');
                   setTypoAddress('');
                   setTypoSex('');
+                  setTypoZone('');
+                  setTypoCivilStatus('');
+                  setTypoEducation('');
+                  setTypoSchool('');
+                  setTypoCourse('');
+                  setTypoYearLevel('');
+                  setTypoEmploymentStatus('');
+                  setTypoScholarStatus('');
                   setTypoHasProfile(false);
                   setTypoUserProfile(null);
                   setTypoReason('');
@@ -3746,11 +3792,19 @@ useEffect(() => {
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Search by Name, Email, Role, or User ID</label>
                 <div className="flex gap-2">
-                  <input required type="text" value={typoUserId} onChange={e => setTypoUserId(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); handleLookupUser(); } }} className="flex-1 border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Exact email, phone number, or full name" />
+                  <input required type="text" value={typoUserId} onChange={e => { setTypoUserId(e.target.value); setSearchBanner(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); handleLookupUser(); } }} className="flex-1 border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Exact email, phone number, or full name" />
                   <button type="button" onClick={(e) => { e.preventDefault(); handleLookupUser(); }} disabled={isSearching} className="px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-lg border border-slate-200 transition-colors disabled:opacity-50">
                     {isSearching ? '...' : 'Search'}
                   </button>
                 </div>
+                {searchBanner && (
+                  <div
+                    role={searchBanner.type === 'error' ? 'alert' : 'status'}
+                    className={searchBanner.type === 'success' ? 'text-emerald-600 bg-emerald-50 p-2 rounded' : 'text-rose-600 bg-rose-50 p-2 rounded'}
+                  >
+                    {searchBanner.text}
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -3802,7 +3856,9 @@ useEffect(() => {
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Address</label>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                  Address {typoZone && <span className="normal-case text-slate-400">(Zone: {typoZone})</span>}
+                </label>
                 <input type="text" value={typoAddress} onChange={e => setTypoAddress(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank if unchanged" />
               </div>
 
@@ -3816,6 +3872,64 @@ useEffect(() => {
                   <option value="Prefer not to say">Prefer not to say</option>
                 </select>
               </div>
+
+              <section className="rounded-xl border border-slate-200 p-4">
+                <h4 className="mb-3 text-xs font-bold uppercase tracking-wide text-[#091d64]">Resident Profile Details</h4>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Zone</label>
+                    <input type="text" value={typoZone} onChange={e => setTypoZone(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank if unchanged" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Civil Status</label>
+                    <select value={typoCivilStatus} onChange={e => setTypoCivilStatus(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs">
+                      <option value="">Leave unchanged</option>
+                      <option value="Single">Single</option>
+                      <option value="Married">Married</option>
+                      <option value="Widowed">Widowed</option>
+                      <option value="Separated">Separated</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Education</label>
+                    <select value={typoEducation} onChange={e => setTypoEducation(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs">
+                      <option value="">Leave unchanged</option>
+                      <option value="Elementary">Elementary</option>
+                      <option value="High School">High School</option>
+                      <option value="Vocational">Vocational</option>
+                      <option value="College">College</option>
+                      <option value="Post-Graduate">Post-Graduate</option>
+                      <option value="Out of School Youth">Out of School Youth</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">School</label>
+                    <input type="text" value={typoSchool} onChange={e => setTypoSchool(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank if unchanged" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Course</label>
+                    <input type="text" value={typoCourse} onChange={e => setTypoCourse(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank if unchanged" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Year Level</label>
+                    <input type="text" value={typoYearLevel} onChange={e => setTypoYearLevel(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank if unchanged" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Employment Status</label>
+                    <select value={typoEmploymentStatus} onChange={e => setTypoEmploymentStatus(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs">
+                      <option value="">Leave unchanged</option>
+                      <option value="Employed">Employed</option>
+                      <option value="Unemployed">Unemployed</option>
+                      <option value="Self-Employed">Self-Employed</option>
+                      <option value="Student">Student</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Scholar Status</label>
+                    <input type="text" value={typoScholarStatus} onChange={e => setTypoScholarStatus(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank if unchanged" />
+                  </div>
+                </div>
+              </section>
 
               <div>
                 <label className="flex items-center gap-2 text-xs font-bold text-slate-600">

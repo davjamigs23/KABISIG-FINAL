@@ -6,7 +6,7 @@ import { AlertCircle, CheckCircle2, Info } from 'lucide-react';
 export interface PopupMessage {
   title: string;
   message: string;
-  type: 'success' | 'error' | 'info';
+  type: 'success' | 'error' | 'info' | 'warning';
   confirmLabel?: string;
   cancelLabel?: string;
   onConfirm?: () => void;
@@ -25,12 +25,14 @@ export default function PopupDialog({ notice, onClose }: PopupDialogProps) {
 
   const isConfirmation = Boolean(notice.onConfirm);
   const setupLink = notice.setupLink;
-  const Icon = notice.type === 'success' ? CheckCircle2 : notice.type === 'error' ? AlertCircle : Info;
+  const Icon = notice.type === 'success' ? CheckCircle2 : notice.type === 'error' || notice.type === 'warning' ? AlertCircle : Info;
   const iconClass = notice.type === 'success'
     ? 'bg-emerald-100 text-emerald-600'
     : notice.type === 'error'
       ? 'bg-rose-100 text-rose-600'
-      : 'bg-blue-100 text-blue-600';
+      : notice.type === 'warning'
+        ? 'bg-amber-100 text-amber-600'
+        : 'bg-blue-100 text-blue-600';
 
   const handleConfirm = () => {
     notice.onConfirm?.();
