@@ -561,7 +561,7 @@ router.put('/users/:userId/update-name', authenticateUser, requireRoles('SUPER_A
     const rawId = String(req.params.userId || '').trim();
     const {
       full_name, first_name, middle_name, last_name, suffix, email, phone, birthdate, address, sex,
-      zone, civil_status, educational_status, school, course, year_level, employment_status, scholar_status,
+      zone, civil_status, educational_status, school, course, year_level, employment_status, scholar_status, scholarship_type,
       is_registered_voter, reason,
     } = req.body;
     if (!full_name) { sendError(res, 'Full name is required.', 400); return; }
@@ -570,7 +570,7 @@ router.put('/users/:userId/update-name', authenticateUser, requireRoles('SUPER_A
       return;
     }
     const optionalProfileStrings: Record<string, unknown> = {
-      zone, civil_status, educational_status, school, course, year_level, employment_status, scholar_status,
+      zone, civil_status, educational_status, school, course, year_level, employment_status, scholar_status, scholarship_type,
     };
     for (const [field, value] of Object.entries(optionalProfileStrings)) {
       if (value !== undefined && typeof value !== 'string') {
@@ -582,6 +582,7 @@ router.put('/users/:userId/update-name', authenticateUser, requireRoles('SUPER_A
       civil_status: ['Single', 'Married', 'Widowed', 'Separated'],
       educational_status: ['Elementary', 'High School', 'Vocational', 'College', 'Post-Graduate', 'Out of School Youth'],
       employment_status: ['Employed', 'Unemployed', 'Self-Employed', 'Student'],
+      scholarship_type: ['Government', 'Private', 'Academic', 'NGO', 'Other'],
     };
     for (const [field, allowedValues] of Object.entries(validProfileValues)) {
       const value = optionalProfileStrings[field];
@@ -620,7 +621,7 @@ router.put('/users/:userId/update-name', authenticateUser, requireRoles('SUPER_A
     const { data: oldUser } = await supabaseAdmin.from('users').select('full_name, first_name, middle_name, last_name, email, phone, tenant_id').eq('id', userId).single();
     const { data: oldProfile, error: oldProfileError } = await supabaseAdmin
       .from('resident_profile')
-      .select('birthdate, address, sex, is_registered_voter, zone, civil_status, marital_status, educational_status, school, course, year_level, employment_status, scholar_status')
+      .select('birthdate, address, sex, is_registered_voter, zone, civil_status, marital_status, educational_status, school, course, year_level, employment_status, scholar_status, scholarship_type')
       .eq('user_id', userId)
       .maybeSingle();
     if (oldProfileError) {
@@ -629,7 +630,7 @@ router.put('/users/:userId/update-name', authenticateUser, requireRoles('SUPER_A
     }
     const residentProfileFields = [
       birthdate, address, sex, is_registered_voter, zone, civil_status, educational_status,
-      school, course, year_level, employment_status, scholar_status,
+      school, course, year_level, employment_status, scholar_status, scholarship_type,
     ];
     if (residentProfileFields.some((value) => value !== undefined) && !oldProfile) {
       sendError(res, 'Resident profile details cannot be updated because this user has no resident profile.', 409);
@@ -681,6 +682,8 @@ router.put('/users/:userId/update-name', authenticateUser, requireRoles('SUPER_A
       if (year_level !== undefined) profileUpdate.year_level = year_level.trim() || null;
       if (employment_status !== undefined) profileUpdate.employment_status = employment_status || null;
       if (scholar_status !== undefined) profileUpdate.scholar_status = scholar_status.trim() || null;
+      if (scholarship_type !== undefined) profileUpdate.scholarship_type = scholarship_type || null;
+      else if (scholar_status && scholar_status !== 'Scholar') profileUpdate.scholarship_type = null;
       if (is_registered_voter !== undefined) profileUpdate.is_registered_voter = is_registered_voter;
       const { error: profileError } = await supabaseAdmin.from('resident_profile').update(profileUpdate).eq('user_id', userId);
       if (profileError) {

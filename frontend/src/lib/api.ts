@@ -120,11 +120,14 @@ function toResolutionRecord(poll: any): ResolutionRecord {
 
 class KabisigApiClient {
   private token: string | null = null;
+  private refreshToken: string | null = null;
+  private refreshInFlight: Promise<boolean> | null = null;
   private invalidating = false;
 
   constructor() {
     if (typeof window !== 'undefined') {
       this.token = localStorage.getItem('kabisig_token');
+      this.refreshToken = localStorage.getItem('kabisig_refresh_token');
     }
   }
 
@@ -135,7 +138,16 @@ class KabisigApiClient {
         localStorage.setItem('kabisig_token', token);
       } else {
         localStorage.removeItem('kabisig_token');
+        this.setRefreshToken(null);
       }
+    }
+  }
+
+  private setRefreshToken(token: string | null) {
+    this.refreshToken = token;
+    if (typeof window !== 'undefined') {
+      if (token) localStorage.setItem('kabisig_refresh_token', token);
+      else localStorage.removeItem('kabisig_refresh_token');
     }
   }
 
@@ -146,27 +158,70 @@ class KabisigApiClient {
     return this.token;
   }
 
+  private getRefreshToken(): string | null {
+    if (typeof window !== 'undefined') {
+      this.refreshToken = localStorage.getItem('kabisig_refresh_token');
+    }
+    return this.refreshToken;
+  }
+
+  private async refreshAccessToken(): Promise<boolean> {
+    if (this.refreshInFlight) return this.refreshInFlight;
+    const refreshToken = this.getRefreshToken();
+    if (!refreshToken) return false;
+
+    this.refreshInFlight = (async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+        const json = await response.json().catch(() => ({}));
+        if (!response.ok || !json.success || !json.data?.token || !json.data?.refreshToken) return false;
+        this.setToken(json.data.token);
+        this.setRefreshToken(json.data.refreshToken);
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+
+    try {
+      return await this.refreshInFlight;
+    } finally {
+      this.refreshInFlight = null;
+    }
+  }
+
   async request<T>(endpoint: string, options: RequestInit = {}): Promise<{ success: boolean; status?: number; data?: T; message?: string; error?: any; details?: any; errors?: unknown }> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(options.headers as Record<string, string>),
     };
 
-    const token = localStorage.getItem('kabisig_token') || this.getToken();
-    if (token && !headers.Authorization) {
-      headers.Authorization = "Bearer " + token;
-    }
+    const makeHeaders = (token: string | null) => {
+      const requestHeaders = { ...headers };
+      if (token && !requestHeaders.Authorization) requestHeaders.Authorization = `Bearer ${token}`;
+      return requestHeaders;
+    };
 
     try {
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      let response = await fetch(`${API_BASE_URL}${endpoint}`, {
         ...options,
-        headers,
+        headers: makeHeaders(this.getToken()),
       });
 
+      if (response.status === 401 && endpoint !== '/auth/login' && !headers.Authorization) {
+        if (await this.refreshAccessToken()) {
+          response = await fetch(`${API_BASE_URL}${endpoint}`, {
+            ...options,
+            headers: makeHeaders(this.getToken()),
+          });
+        }
+      }
+
       const json = await response.json().catch(() => ({}));
-      
-      
-      
       if (response.status === 401) {
         if (endpoint === '/auth/login') {
           return {
@@ -493,11 +548,16 @@ class KabisigApiClient {
     official_role: string;
     tenant_id: string;
   }, inviteAccessToken: string): Promise<{ success: boolean; message?: string; data?: any; errors?: unknown }> {
-    return await this.request<any>('/auth/setup-official-password', {
+    const res = await this.request<{ token: string; refreshToken?: string }>('/auth/setup-official-password', {
       method: 'POST',
       body: JSON.stringify(payload),
       headers: { Authorization: `Bearer ${inviteAccessToken}` },
     });
+    if (res.success && res.data?.token) {
+      this.setToken(res.data.token);
+      this.setRefreshToken(res.data.refreshToken || null);
+    }
+    return res;
   }
   async getPublicDocuments(): Promise<any[]> {
     const res = await this.request<any[]>('/public/documents', { method: 'GET' });
@@ -564,13 +624,14 @@ class KabisigApiClient {
   }
 
   async login(email: string, password: string): Promise<{ success: boolean; token?: string; user?: any; message?: string }> {
-    const res = await this.request<{ token: string; user: any }>('/auth/login', {
+    const res = await this.request<{ token: string; refreshToken?: string; user: any }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
 
     if (res.success && res.data?.token) {
       this.setToken(res.data.token);
+      this.setRefreshToken(res.data.refreshToken || null);
       return { success: true, token: res.data.token, user: res.data.user, message: res.message };
     }
     return { success: false, message: res.message };
@@ -600,7 +661,7 @@ class KabisigApiClient {
     sex?: 'Male' | 'Female' | 'Other' | 'Prefer not to say';
     address?: string;
   }, inviteAccessToken: string): Promise<{ success: boolean; token?: string; user?: any; message?: string; errors?: unknown }> {
-    const res = await this.request<{ token: string; user: any }>('/auth/setup-chairperson-password', {
+    const res = await this.request<{ token: string; refreshToken?: string; user: any }>('/auth/setup-chairperson-password', {
       method: 'POST',
       body: JSON.stringify(data),
       headers: { Authorization: `Bearer ${inviteAccessToken}` },
@@ -608,6 +669,7 @@ class KabisigApiClient {
 
     if (res.success && res.data?.token) {
       this.setToken(res.data.token);
+      this.setRefreshToken(res.data.refreshToken || null);
       return { success: true, token: res.data.token, user: res.data.user, message: res.message };
     }
     return { success: false, message: res.message || 'Password setup failed', errors: res.errors };
@@ -730,6 +792,7 @@ class KabisigApiClient {
     year_level?: string;
     employment_status?: string;
     scholar_status?: string;
+    scholarship_type?: string;
     is_registered_voter?: boolean;
     reason?: string;
   }): Promise<{ success: boolean; data?: any; message?: string }> {

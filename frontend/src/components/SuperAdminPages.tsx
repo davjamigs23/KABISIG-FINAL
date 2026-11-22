@@ -225,6 +225,7 @@ useEffect(() => {
       setTypoYearLevel(profile?.year_level || '');
       setTypoEmploymentStatus(profile?.employment_status || '');
       setTypoScholarStatus(profile?.scholar_status || '');
+      setTypoScholarshipType(profile?.scholarship_type || profile?.scholarship_source || '');
       setTypoFullName(String(user.full_name || '').trim() || [firstName, middleName, lastName, suffix].filter(Boolean).join(' '));
       setSearchBanner({ type: 'success', text: 'User account found!' });
     } catch (err: any) {
@@ -272,6 +273,7 @@ useEffect(() => {
   const [typoYearLevel, setTypoYearLevel] = useState('');
   const [typoEmploymentStatus, setTypoEmploymentStatus] = useState('');
   const [typoScholarStatus, setTypoScholarStatus] = useState('');
+  const [typoScholarshipType, setTypoScholarshipType] = useState('');
   const [typoReason, setTypoReason] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -304,6 +306,7 @@ useEffect(() => {
     setTypoYearLevel('');
     setTypoEmploymentStatus('');
     setTypoScholarStatus('');
+    setTypoScholarshipType('');
     setTypoReason('');
     setSearchBanner(null);
   };
@@ -3627,8 +3630,7 @@ useEffect(() => {
                   ) : emailHistoryList.length === 0 ? (
                     <p className="text-center text-xs text-slate-500">No email changes recorded yet.</p>
                   ) : (
-                    <div className="max-h-[60vh] overflow-y-auto border border-slate-200 rounded-lg">
-                      <div className="w-full overflow-x-auto block">
+                    <div className="max-h-[60vh] overflow-y-auto w-full overflow-x-auto border border-slate-200 rounded-lg">
                     <table className="w-full text-left border-collapse min-w-[600px]">
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-200">
@@ -3659,7 +3661,7 @@ useEffect(() => {
                                 <span className="font-bold text-slate-700">System User</span>
                               )}
                             </td>
-                            <td className="px-4 py-4 text-xs text-slate-600 align-top whitespace-nowrap">
+                            <td className="px-4 py-4 text-slate-600 align-top whitespace-normal break-words text-xs max-w-md">
                               {log.details?.target_barangay || log.users?.barangay?.name || 'N/A'}
                             </td>
                             <td className="px-4 py-4 text-xs text-slate-600 align-top whitespace-nowrap">
@@ -3705,7 +3707,6 @@ useEffect(() => {
                       </tbody>
                     </table>
                     </div>
-                    </div>
                   )}
                 </div>
               )}
@@ -3749,6 +3750,7 @@ useEffect(() => {
                   year_level: typoYearLevel.trim() || undefined,
                   employment_status: typoEmploymentStatus || undefined,
                   scholar_status: typoScholarStatus.trim() || undefined,
+                  scholarship_type: typoScholarshipType || undefined,
                   is_registered_voter: typoHasProfile ? Boolean(typoUserProfile?.is_registered_voter) : undefined,
                   reason: typoReason.trim() || undefined
                 });
@@ -3776,6 +3778,7 @@ useEffect(() => {
                   setTypoYearLevel('');
                   setTypoEmploymentStatus('');
                   setTypoScholarStatus('');
+                  setTypoScholarshipType('');
                   setTypoHasProfile(false);
                   setTypoUserProfile(null);
                   setTypoReason('');
@@ -3912,7 +3915,15 @@ useEffect(() => {
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Year Level</label>
-                    <input type="text" value={typoYearLevel} onChange={e => setTypoYearLevel(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank if unchanged" />
+                    <select value={typoYearLevel} onChange={e => setTypoYearLevel(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs">
+                      <option value="">Leave blank if unchanged</option>
+                      <option value="1st Year">1st Year</option>
+                      <option value="2nd Year">2nd Year</option>
+                      <option value="3rd Year">3rd Year</option>
+                      <option value="4th Year">4th Year</option>
+                      <option value="5th Year">5th Year</option>
+                      <option value="Graduate">Graduate</option>
+                    </select>
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Employment Status</label>
@@ -3926,8 +3937,28 @@ useEffect(() => {
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Scholar Status</label>
-                    <input type="text" value={typoScholarStatus} onChange={e => setTypoScholarStatus(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank if unchanged" />
+                    <select value={typoScholarStatus} onChange={e => {
+                      setTypoScholarStatus(e.target.value);
+                      if (e.target.value !== 'Scholar') setTypoScholarshipType('');
+                    }} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs">
+                      <option value="">Leave blank if unchanged</option>
+                      <option value="Scholar">Scholar</option>
+                      <option value="Not Scholar">Not Scholar</option>
+                    </select>
                   </div>
+                  {typoScholarStatus === 'Scholar' && (
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Scholarship Type</label>
+                      <select value={typoScholarshipType} onChange={e => setTypoScholarshipType(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs">
+                        <option value="">Select scholarship type</option>
+                        <option value="Government">Government</option>
+                        <option value="Private">Private</option>
+                        <option value="Academic">Academic</option>
+                        <option value="NGO">NGO</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                  )}
                 </div>
               </section>
 

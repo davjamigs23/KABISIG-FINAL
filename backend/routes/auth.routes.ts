@@ -1040,6 +1040,30 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
   );
 });
 
+// POST /api/auth/refresh
+router.post('/refresh', async (req: Request, res: Response): Promise<void> => {
+  const refreshToken = typeof req.body?.refreshToken === 'string'
+    ? req.body.refreshToken.trim()
+    : typeof req.body?.refresh_token === 'string'
+      ? req.body.refresh_token.trim()
+      : '';
+  if (!refreshToken) {
+    sendError(res, 'Refresh token is required.', 400);
+    return;
+  }
+
+  const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
+  if (error || !data.session) {
+    sendError(res, 'Session refresh failed. Please sign in again.', 401);
+    return;
+  }
+
+  sendSuccess(res, {
+    token: data.session.access_token,
+    refreshToken: data.session.refresh_token,
+  }, 'Session refreshed.');
+});
+
 // POST /api/auth/forgot-password
 router.post('/forgot-password', async (req: Request, res: Response): Promise<void> => {
   const parseResult = ForgotPasswordSchema.safeParse(req.body);

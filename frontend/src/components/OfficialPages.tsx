@@ -111,7 +111,7 @@ import { KabisigLogo } from './PublicPages';
 import { UserMenu } from './UserMenu';
 import NotificationMenu from './NotificationMenu';
 import ProfileAvatar from './ProfileAvatar';
-import kabisigApi from '../lib/api';
+import kabisigApi, { type PublicOfficialRosterEntry } from '../lib/api';
 import { openPrintableReport } from '../lib/reportGenerator';
 import { DEFAULT_BARANGAY_LOGOS } from '../data';
 import PopupDialog, { type PopupMessage } from './PopupDialog';
@@ -155,6 +155,17 @@ type DocumentUploadCategory = 'Resolutions' | 'Minutes' | 'Reports' | 'Vouchers'
 function getNormalizedDocumentType(document: DocumentRecord): 'Resolutions' | 'Minutes' | 'Vouchers' | 'Reports' {
   const rawDocumentType = (document as DocumentRecord & { document_type?: string }).document_type;
   return normalizeDocType(rawDocumentType || document.category);
+}
+
+function normalizeZone(zone: string): string {
+  const rawZone = zone.trim();
+  if (!rawZone) return 'Not Specified';
+  const normalized = rawZone
+    .replace(/^zone\s*/i, '')
+    .replace(/[-\s]+/g, '')
+    .toUpperCase();
+  if (!normalized || ['NOTSPECIFIED', 'UNKNOWN', 'NA'].includes(normalized)) return 'Not Specified';
+  return `Zone ${normalized}`;
 }
 
 interface OfficialPagesProps {
@@ -264,6 +275,31 @@ export default function OfficialPages({
   const [popupMsg, setPopupMsg] = useState<{ title: string; text: string; type: 'success' | 'error' } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; type: 'budget' | 'expense' | 'program' | 'inventory' } | null>(null);
   const barangayLogo = currentTenant?.logo_url || currentTenant?.logo || DEFAULT_BARANGAY_LOGOS[currentTenant?.name || ''] || '/images/default-barangay.png';
+  const [officials, setOfficials] = useState<PublicOfficialRosterEntry[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const tenantName = currentTenant?.name?.trim().toLowerCase();
+    setOfficials([]);
+    if (!tenantName) {
+      return () => { isMounted = false; };
+    }
+
+    kabisigApi.getPublicOfficials()
+      .then(groups => {
+        if (!isMounted) return;
+        const group = groups.find(item => item.barangay_name.trim().toLowerCase() === tenantName);
+        setOfficials(group?.officials || []);
+      })
+      .catch(error => {
+        if (isMounted) console.error('Failed to load barangay officials for document approvers:', error);
+      });
+
+    return () => { isMounted = false; };
+  }, [currentTenant?.id]);
+
+  const treasurerName = officials.find(official => official.official_role === 'SK Treasurer')?.full_name || 'SK Treasurer';
+  const secretaryName = officials.find(official => official.official_role === 'SK Secretary')?.full_name || 'SK Secretary';
 
   // --- Local UI state mirrors backend-backed shared records ---
   const [localAttendance, setLocalAttendance] = useState<(AttendanceRecord & { userId?: string })[]>([]);
@@ -6654,8 +6690,8 @@ export default function OfficialPages({
                 <select value={docForm.designatedApprover} onChange={(e)=>setDocForm({...docForm, designatedApprover: e.target.value})} className="w-full p-2 border rounded text-xs font-semibold text-[#091d64]">
                   <option value="" disabled>Select an Approver</option>
                   <option value={currentTenant?.chairperson || 'SK Chairperson'}>1. {getChairpersonApproverLabel()} (SK Chairperson / Barangay Admin)</option>
-                  <option value={currentUser?.full_name || 'SK Treasurer'}>2. {currentUser?.full_name || 'SK Treasurer'} (SK Treasurer)</option>
-                  <option value="Council Secretariat / SK Secretary">3. Council Secretariat / SK Secretary</option>
+                  <option value={treasurerName}>2. {treasurerName} (SK Treasurer)</option>
+                  <option value={secretaryName}>3. {secretaryName} (SK Secretary)</option>
                   <option value="Committee Chair & SK Council">4. Committee Chair & SK Kagawads (Council Members)</option>
                   <option value="DILG Local Government Officer">5. DILG Local Government Officer</option>
                   <option value="Barangay Captain & SK Council">6. Barangay Captain & SK Council</option>
@@ -7147,8 +7183,8 @@ export default function OfficialPages({
                 >
                   <option value="">Select a Designated Approver</option>
                   <option value={currentTenant?.chairperson || 'SK Chairperson'}>1. {getChairpersonApproverLabel()} (SK Chairperson / Barangay Admin)</option>
-                  <option value={currentUser?.full_name || 'SK Treasurer'}>2. {currentUser?.full_name || 'SK Treasurer'} (SK Treasurer)</option>
-                  <option value="Council Secretariat / SK Secretary">3. Council Secretariat / SK Secretary</option>
+                  <option value={treasurerName}>2. {treasurerName} (SK Treasurer)</option>
+                  <option value={secretaryName}>3. {secretaryName} (SK Secretary)</option>
                   <option value="Committee Chair & SK Council">4. Committee Chair & SK Kagawads (Council Members)</option>
                   <option value="DILG Local Government Officer">5. DILG Local Government Officer</option>
                   <option value="Barangay Captain & SK Council">6. Barangay Captain & SK Council</option>
@@ -7497,7 +7533,7 @@ export default function OfficialPages({
                 </div>
                 <div className="p-4 bg-violet-50/60 border border-violet-100 rounded-xl space-y-1">
                   <span className="text-[10px] font-bold text-violet-800 uppercase block">Zones Covered</span>
-                  <h4 className="text-2xl font-black text-violet-900">{new Set(localYouthProfiles.map(profile => profile.zone).filter(Boolean)).size}</h4>
+                  <h4 className="text-2xl font-black text-violet-900">{new Set(localYouthProfiles.map(profile => String(profile.zone || '').trim()).filter(Boolean).map(normalizeZone)).size}</h4>
                   <span className="text-[10px] text-slate-400 block">Registered zones</span>
                 </div>
                 <div className="p-4 bg-amber-50/60 border border-amber-100 rounded-xl space-y-1">
@@ -7522,9 +7558,9 @@ export default function OfficialPages({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium">
-                      {Array.from(new Set(localYouthProfiles.map(y => y.zone).filter(Boolean))).sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true })).map((z: any) => {
-                        const zoneCount = localYouthProfiles.filter(y => y.zone === z && (y.status === 'Approved' || y.status?.toLowerCase() === 'suspended')).length;
-                        const zoneScholars = localYouthProfiles.filter(y => y.zone === z && y.scholarStatus === 'Scholar').length;
+                      {Array.from(new Set(localYouthProfiles.map(y => String(y.zone || '').trim()).filter(Boolean).map(normalizeZone))).sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).map(z => {
+                        const zoneCount = localYouthProfiles.filter(y => normalizeZone(String(y.zone || '')) === z && (y.status === 'Approved' || y.status?.toLowerCase() === 'suspended')).length;
+                        const zoneScholars = localYouthProfiles.filter(y => normalizeZone(String(y.zone || '')) === z && y.scholarStatus === 'Scholar').length;
                         const total = localYouthProfiles.filter(y => (y.status === 'Approved' || y.status?.toLowerCase() === 'suspended')).length || 1;
                         const pct = ((zoneCount / total) * 100).toFixed(1);
                         return (
