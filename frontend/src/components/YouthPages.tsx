@@ -1812,9 +1812,6 @@ export default function YouthPages({
           {/* ==================== 2.5 DIRECTORY VIEW ==================== */}
           {activeMenu === 'directory' && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-[#091d64] mb-4">Katipunan ng Kabataan Roster</h2>
-              </div>
               <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-x-auto pb-4">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-[#091d64] text-white font-bold uppercase text-[10px]">

@@ -566,11 +566,13 @@ export default function BarangayAdminPages({
         break;
       case 'demographics': {
         title = 'Youth Demographic Summary';
-        headers = ['Demographic Category', 'Specific Group', 'Count'];
-        const counts = new Map<string, number>();
+        headers = ['Category', 'Breakdown'];
+        const counts = new Map<string, Map<string, number>>();
         const addCount = (demographicCategory: string, specificGroup: string) => {
-          const key = `${demographicCategory}|${specificGroup || 'Not Specified'}`;
-          counts.set(key, (counts.get(key) || 0) + 1);
+          const group = specificGroup || 'Not Specified';
+          const categoryCounts = counts.get(demographicCategory) || new Map<string, number>();
+          categoryCounts.set(group, (categoryCounts.get(group) || 0) + 1);
+          counts.set(demographicCategory, categoryCounts);
         };
         youthProfiles.forEach(youth => {
           const age = Number(youth.age);
@@ -583,7 +585,10 @@ export default function BarangayAdminPages({
           addCount('Age', ageGroup);
           addCount('Education', youth.educationalLevel || youth.education || '');
         });
-        records = Array.from(counts.entries()).map(([key, count]) => [...key.split('|'), count]);
+        records = Array.from(counts.entries()).map(([category, groups]) => [
+          category,
+          Array.from(groups.entries()).map(([group, count]) => `${group} (${count})`).join(', '),
+        ]);
         break;
       }
       case 'financial':
@@ -3170,6 +3175,7 @@ return (
                       <tr>
                         <th className="px-5 py-3.5 whitespace-nowrap">Code / Ref No.</th>
                         <th className="px-5 py-3.5 whitespace-nowrap">Document Title</th>
+                        <th className="px-5 py-3.5 whitespace-nowrap">Description &amp; Scope</th>
                         <th className="px-5 py-3.5 whitespace-nowrap">Category</th>
                         <th className="px-5 py-3.5 whitespace-nowrap">Author / Officer</th>
                         <th className="px-5 py-3.5 whitespace-nowrap">Date</th>
@@ -3184,6 +3190,11 @@ return (
                           </td>
                           <td className="px-5 py-4 font-bold text-slate-900 truncate whitespace-nowrap" title="Document Title">
                             {doc.title}
+                          </td>
+                          <td className="px-5 py-4 max-w-[280px] text-slate-600">
+                            <span className="block max-w-[280px] truncate" title={doc.description || ''}>
+                              {doc.description || '—'}
+                            </span>
                           </td>
                           <td className="px-5 py-4 whitespace-nowrap">
                             <span className="px-2.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-extrabold uppercase">
@@ -3239,7 +3250,7 @@ return (
                       ))}
                       {localDocs.length === 0 && (
                         <tr>
-                          <td colSpan={7} className="text-center py-8 text-slate-400 font-bold whitespace-nowrap">
+                          <td colSpan={8} className="text-center py-8 text-slate-400 font-bold whitespace-nowrap">
                             No documents found in repository.
                           </td>
                         </tr>

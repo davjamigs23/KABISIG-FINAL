@@ -1196,6 +1196,7 @@ export default function OfficialPages({
     try {
       const result = await kabisigApi.uploadDocument({
         title: docForm.title.trim(),
+        description: docForm.description.trim(),
         document_type: docForm.category,
         file: selectedDocumentFile,
       });

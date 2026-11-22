@@ -27,6 +27,7 @@ const ApproveDocumentSchema = z.object({
 
 const UploadDocumentSchema = z.object({
   title: z.string().min(3, 'Document title is required'),
+  description: z.string().optional(),
   document_type: z.enum(DOCUMENT_TYPES),
   file_name: z.string().min(1, 'File name is required'),
   content_type: z.string().min(1, 'Content type is required'),
@@ -98,7 +99,7 @@ router.post(
       return;
     }
 
-    const { title, document_type, file_name, content_type, file_base64 } = parsed.data;
+    const { title, description, document_type, file_name, content_type, file_base64 } = parsed.data;
     const status = user.role === 'SK_OFFICIAL' ? 'pending_approval' : 'approved';
     const normalizedContentType = content_type.toLowerCase().split(';')[0]?.trim() || '';
     const extension = file_name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] || '';
@@ -135,6 +136,7 @@ router.post(
       .insert({
         tenant_id: tenantId,
         title,
+        description: description?.trim() || null,
         document_type,
         file_url: objectPath,
         status,
