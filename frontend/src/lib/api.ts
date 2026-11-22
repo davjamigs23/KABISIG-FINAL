@@ -243,6 +243,9 @@ class KabisigApiClient {
       if (rawErrorMessage || Array.isArray(res)) {
         throw new Error(rawErrorMessage || 'Database error.');
       }
+      if (res?.message === 'UNAUTHORIZED') {
+        return [];
+      }
       if (!res || !res.success) {
         throw new Error(res?.message || 'Failed to load the barangay registry.');
       }
@@ -255,6 +258,9 @@ class KabisigApiClient {
       }
       return res.data;
     } catch (err: unknown) {
+      if (err instanceof Error && err.message === 'UNAUTHORIZED') {
+        return [];
+      }
       console.error('getBarangays Error:', err);
       throw new Error(err instanceof Error && err.message ? err.message : 'Network error. Please try again.');
     }
@@ -705,7 +711,28 @@ class KabisigApiClient {
     return this.request<any>(`/admin/users/${encodeURIComponent(userId)}/resend-youth-login-link`, { method: 'POST' });
   }
 
-  async updateUserName(userId: string, payload: { full_name: string; first_name?: string; middle_name?: string; last_name?: string; suffix?: string; email?: string; phone?: string; birthdate?: string; address?: string; sex?: string; is_registered_voter?: boolean; reason?: string }): Promise<{ success: boolean; data?: any; message?: string }> {
+  async updateUserName(userId: string, payload: {
+    full_name: string;
+    first_name?: string;
+    middle_name?: string;
+    last_name?: string;
+    suffix?: string;
+    email?: string;
+    phone?: string;
+    birthdate?: string;
+    address?: string;
+    sex?: string;
+    zone?: string;
+    civil_status?: string;
+    educational_status?: string;
+    school?: string;
+    course?: string;
+    year_level?: string;
+    employment_status?: string;
+    scholar_status?: string;
+    is_registered_voter?: boolean;
+    reason?: string;
+  }): Promise<{ success: boolean; data?: any; message?: string }> {
     return await this.request(`/admin/users/${encodeURIComponent(userId)}/update-name`, { method: 'PUT', body: JSON.stringify(payload) });
   }
 
@@ -942,11 +969,17 @@ class KabisigApiClient {
   async updateDocument(id: string, payload: {
     title?: string;
     description?: string;
+    resolutionNumber?: string;
     document_type?: 'Resolutions' | 'Minutes' | 'Reports' | 'Vouchers';
   }): Promise<{ success: boolean; data?: any; message?: string }> {
     return await this.request(`/documents/${encodeURIComponent(id)}`, {
       method: 'PATCH',
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        title: payload.title,
+        description: payload.description,
+        resolution_number: payload.resolutionNumber,
+        document_type: payload.document_type,
+      }),
     });
   }
 
