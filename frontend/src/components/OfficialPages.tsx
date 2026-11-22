@@ -679,6 +679,8 @@ export default function OfficialPages({
   // Attendance scanner state
   const [selectedProgId, setSelectedProgId] = useState('');
   const selectedProgIdRef = useRef(selectedProgId);
+  const lastScanKeyRef = useRef<string>('');
+  const lastScanTimeRef = useRef<number>(0);
   const selectedProg = programs.find(p => p.id === selectedProgId);
   const isProgramEnded = String(selectedProg?.status || '').toLowerCase() === 'completed'
     || String(selectedProg?.status || '').toLowerCase() === 'cancelled'
@@ -1832,6 +1834,15 @@ export default function OfficialPages({
   };
 
   const handleActualScan = async (scannedText: string) => {
+    const now = Date.now();
+    const lastKey = `${scannedText.trim()}_${selectedProgIdRef.current}`;
+    if (lastScanKeyRef.current === lastKey && now - lastScanTimeRef.current < 3000) {
+      console.log('[Scan dedupe] Ignoring duplicate scan within 3s');
+      return;
+    }
+    lastScanKeyRef.current = lastKey;
+    lastScanTimeRef.current = now;
+
     setManualQrInput('');
     scannedText = scannedText.trim();
     const showInvalidQrFeedback = () => {

@@ -3,7 +3,7 @@ import { Html5Qrcode } from 'html5-qrcode';
 import { Camera, X, RefreshCw, QrCode, ShieldAlert, CheckCircle2, SwitchCamera, Sparkles } from 'lucide-react';
 
 interface LiveCameraScannerProps {
-  onScan: (decodedText: string) => void;
+  onScan: (decodedText: string) => void | Promise<void>;
   onClose?: () => void;
   selectedProgId?: string;
   disabled?: boolean;
@@ -26,6 +26,7 @@ export const LiveCameraScanner: React.FC<LiveCameraScannerProps> = ({
 
   const html5QrcodeRef = useRef<Html5Qrcode | null>(null);
   const isStartingRef = useRef<boolean>(false);
+  const isProcessingRef = useRef<boolean>(false);
   const mountedRef = useRef<boolean>(true);
   const lastScanTimeRef = useRef<number>(0);
   const lastScannedCodeRef = useRef<string>('');
@@ -161,7 +162,8 @@ export const LiveCameraScanner: React.FC<LiveCameraScannerProps> = ({
         aspectRatio: 1.0
       };
 
-      const handleSuccess = (decodedText: string) => {
+      const handleSuccess = async (decodedText: string) => {
+        if (isProcessingRef.current) return;
         const now = Date.now();
         // Debounce: ignore same code scanned within 2.5 seconds, or any scan within 1 second
         if (
@@ -174,6 +176,7 @@ export const LiveCameraScanner: React.FC<LiveCameraScannerProps> = ({
           return;
         }
 
+        isProcessingRef.current = true;
         lastScanTimeRef.current = now;
         lastScannedCodeRef.current = decodedText;
 
@@ -188,7 +191,15 @@ export const LiveCameraScanner: React.FC<LiveCameraScannerProps> = ({
           }, 2000);
         }
         
-        onScan(decodedText);
+        try {
+          await onScan(decodedText);
+        } catch (error) {
+          console.error('QR scan handler failed:', error);
+        } finally {
+          window.setTimeout(() => {
+            isProcessingRef.current = false;
+          }, 2000);
+        }
       };
 
       const handleError = () => {
