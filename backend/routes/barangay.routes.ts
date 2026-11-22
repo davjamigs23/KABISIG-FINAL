@@ -700,11 +700,26 @@ router.post(
     }
 
     // Check if user already exists in users table with this email
-    const { data: existingUser } = await supabaseAdmin
+    const { data: existingUser, error: existingUserError } = await supabaseAdmin
       .from('users')
-      .select('id, email, tenant_id, role_id')
+      .select('id, email, role_id, status, tenant_id')
       .eq('email', email)
       .maybeSingle();
+
+    if (existingUserError) {
+      sendError(res, `Failed to inspect existing user record: ${existingUserError.message}`, 500);
+      return;
+    }
+
+    if (existingUser && String(existingUser.status || '').toLowerCase() === 'pending' && existingUser.tenant_id !== id) {
+      sendError(res, 'This email already has a pending invitation for another Barangay.', 400);
+      return;
+    }
+
+    if (existingUser && String(existingUser.status || '').toLowerCase() === 'active' && existingUser.tenant_id !== id) {
+      sendError(res, 'This email is already assigned as an official in another Barangay.', 400);
+      return;
+    }
 
     if (existingUser) {
       const { error: updateErr } = await supabaseAdmin

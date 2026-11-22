@@ -1832,6 +1832,18 @@ export default function OfficialPages({
   };
 
   const handleActualScan = async (scannedText: string) => {
+    setManualQrInput('');
+    scannedText = scannedText.trim();
+    const showInvalidQrFeedback = () => {
+      const message = 'Invalid QR Code scanned.';
+      setQrMessage(message);
+      showScanFeedback('error', message);
+    };
+    if (!scannedText) {
+      showInvalidQrFeedback();
+      return;
+    }
+
     const activeProgId = selectedProgIdRef.current;
     if (!activeProgId) {
       setQrMessage('Please select a program before scanning.');
@@ -1888,12 +1900,29 @@ export default function OfficialPages({
     let scannedDigitalYouthId = '';
 
     try {
-      const payload = JSON.parse(scannedText);
-      scannedUserId = payload.user_id || '';
-      scannedDigitalYouthId = payload.digital_youth_id || '';
+      const payload: unknown = JSON.parse(scannedText);
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        showInvalidQrFeedback();
+        return;
+      }
+      const userId = (payload as { user_id?: unknown }).user_id;
+      if (typeof userId !== 'string' || !userId.trim()) {
+        showInvalidQrFeedback();
+        return;
+      }
+      scannedUserId = userId.trim();
+      const digitalYouthId = (payload as { digital_youth_id?: unknown }).digital_youth_id;
+      scannedDigitalYouthId = typeof digitalYouthId === 'string' ? digitalYouthId.trim() : '';
       partId = scannedDigitalYouthId || scannedUserId || partId;
     } catch {
-      if (/^(?:KAB-NAGA-|(?:KK|SK)-\d{4}-)/i.test(scannedText)) scannedDigitalYouthId = scannedText;
+      const isDigitalYouthId = /^(?:KAB-NAGA-|(?:KK|SK)-\d{4}-).+/i.test(scannedText);
+      const isTicketOrYouthQr = /^KABISIG-QR-.+/i.test(scannedText);
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(scannedText);
+      if (!isDigitalYouthId && !isTicketOrYouthQr && !isUuid) {
+        showInvalidQrFeedback();
+        return;
+      }
+      if (isDigitalYouthId) scannedDigitalYouthId = scannedText;
     }
 
     if (scannedText.startsWith('KABISIG-QR-')) {
@@ -1909,6 +1938,10 @@ export default function OfficialPages({
         if (/^(?:KAB-NAGA-|(?:KK|SK)-\d{4}-)/i.test(qrPayload)) {
           scannedDigitalYouthId = qrPayload;
         }
+      }
+      if (!partId.trim()) {
+        showInvalidQrFeedback();
+        return;
       }
     }
 
@@ -2016,6 +2049,10 @@ export default function OfficialPages({
       .map(value => typeof value === 'string' ? value.trim() : '')
       .find(value => value && value !== partId && !/^(unknown(?: participant| \/ unregistered youth)?|registered youth|youth constituent)$/i.test(value)) || '';
     const purokVal = youthProf?.zone || regAny?.zone || "Naga Youth Constituent";
+    if (!finalUserId || !finalPartId) {
+      showInvalidQrFeedback();
+      return;
+    }
     if (!youthName) {
       const message = 'Could not identify this participant. Scan a registered youth Digital ID.';
       setLastScanDetail({
@@ -4159,7 +4196,6 @@ export default function OfficialPages({
                           onClick={() => {
                             if (!manualQrInput.trim()) return;
                             handleActualScan(manualQrInput.trim());
-                            setManualQrInput('');
                           }}
                           className="px-4 py-2 bg-[#091d64] text-white rounded-xl text-xs font-bold hover:bg-opacity-95 cursor-pointer whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50"
                         >

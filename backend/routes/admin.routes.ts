@@ -1310,6 +1310,22 @@ router.post(
       sendError(res, 'Failed to inspect existing user record: ' + existingUserError.message, 500);
       return;
     }
+    if (
+      existingUser
+      && String(existingUser.status || '').toLowerCase() === 'pending'
+      && existingUser.tenant_id !== barangay_id
+    ) {
+      sendError(res, 'This email already has a pending invitation for another Barangay.', 400);
+      return;
+    }
+    if (
+      existingUser
+      && String(existingUser.status || '').toLowerCase() === 'active'
+      && existingUser.tenant_id !== barangay_id
+    ) {
+      sendError(res, 'This email is already assigned as an official in another Barangay.', 400);
+      return;
+    }
     const officialAuthFullName = resolveName({
       payload: { first_name, middle_name, last_name, suffix },
       existing: existingUser ? {

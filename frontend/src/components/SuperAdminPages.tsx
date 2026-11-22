@@ -189,6 +189,7 @@ useEffect(() => {
         }
         return;
       }
+      setIsEditingCreds(false);
       const joinedProfile = user.resident_profile;
       const profile = Array.isArray(joinedProfile) ? joinedProfile[0] || null : joinedProfile || null;
       setTypoTargetUserId(user.id);
@@ -276,6 +277,7 @@ useEffect(() => {
   const [typoScholarshipType, setTypoScholarshipType] = useState('');
   const [typoReason, setTypoReason] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [isEditingCreds, setIsEditingCreds] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [emailForm, setEmailForm] = useState({ current_email: '', new_email: '', reason: '' });
   const [isUpdatingEmail, setIsUpdatingEmail] = useState(false);
@@ -283,7 +285,10 @@ useEffect(() => {
   const [emailHistoryList, setEmailHistoryList] = useState<any[]>([]);
   const [isFetchingEmailHistory, setIsFetchingEmailHistory] = useState(false);
   const [searchBanner, setSearchBanner] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const hasScholarStatus = /\bscholar\b/i.test(typoScholarStatus)
+    && !/\b(?:not|non)[-\s]+scholar\b/i.test(typoScholarStatus);
   const clearTypoLookupResult = () => {
+    setIsEditingCreds(false);
     setTypoTargetUserId('');
     setTypoTargetUser(null);
     setTypoHasProfile(false);
@@ -1285,6 +1290,85 @@ useEffect(() => {
   };
 
   const displayBarangayName = (name: string) => name === 'Igualdad Interior' ? 'Igualdad' : name;
+
+  const handleUpdateCredentials = async () => {
+    if (!typoTargetUserId || !typoFullName) {
+      showPopup('Search for a user before updating credentials.');
+      return;
+    }
+    if (typoPhone && !/^09\d{9}$/.test(typoPhone)) {
+      showPopup('Phone number must be exactly 11 digits and start with 09 (e.g., 09171234567).');
+      return;
+    }
+    setIsUpdating(true);
+    try {
+      const combinedName = [typoFirstName.trim(), typoMiddleName.trim(), typoLastName.trim(), typoSuffix.trim()].filter(Boolean).join(' ');
+      if (!combinedName) {
+        showPopup('Please enter at least a First or Last name.');
+        return;
+      }
+
+      const res = await kabisigApi.updateUserName(typoTargetUserId, {
+        full_name: combinedName,
+        first_name: typoFirstName.trim() || undefined,
+        middle_name: typoMiddleName.trim() || undefined,
+        last_name: typoLastName.trim() || undefined,
+        suffix: typoSuffix.trim() || undefined,
+        email: typoEmail.trim() || undefined,
+        phone: typoPhone.trim() || undefined,
+        birthdate: typoBirthdate || undefined,
+        address: typoAddress.trim() || undefined,
+        sex: typoSex || undefined,
+        zone: typoZone.trim() || undefined,
+        civil_status: typoCivilStatus || undefined,
+        educational_status: typoEducation || undefined,
+        school: typoSchool.trim() || undefined,
+        course: typoCourse.trim() || undefined,
+        year_level: typoYearLevel.trim() || undefined,
+        employment_status: typoEmploymentStatus || undefined,
+        scholar_status: typoScholarStatus.trim() || undefined,
+        scholarship_type: typoScholarshipType || undefined,
+        is_registered_voter: typoHasProfile ? Boolean(typoUserProfile?.is_registered_voter) : undefined,
+        reason: typoReason.trim() || undefined
+      });
+      if (res.success) {
+        showPopup('User credentials updated successfully!', 'success');
+        setShowFixTypoModal(false);
+        setIsEditingCreds(false);
+        setTypoUserId('');
+        setTypoTargetUserId('');
+        setTypoTargetUser(null);
+        setTypoFullName('');
+        setTypoFirstName('');
+        setTypoMiddleName('');
+        setTypoLastName('');
+        setTypoSuffix('');
+        setTypoEmail('');
+        setTypoPhone('');
+        setTypoBirthdate('');
+        setTypoAddress('');
+        setTypoSex('');
+        setTypoZone('');
+        setTypoCivilStatus('');
+        setTypoEducation('');
+        setTypoSchool('');
+        setTypoCourse('');
+        setTypoYearLevel('');
+        setTypoEmploymentStatus('');
+        setTypoScholarStatus('');
+        setTypoScholarshipType('');
+        setTypoHasProfile(false);
+        setTypoUserProfile(null);
+        setTypoReason('');
+      } else {
+        showPopup(res.message || 'Failed to update.');
+      }
+    } catch (err: any) {
+      showPopup(err.message || 'Error updating name.');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   return (
     <div className="flex flex-col lg:flex-row h-screen bg-[#f8fafc] overflow-hidden font-sans text-slate-800">
@@ -3630,7 +3714,7 @@ useEffect(() => {
                   ) : emailHistoryList.length === 0 ? (
                     <p className="text-center text-xs text-slate-500">No email changes recorded yet.</p>
                   ) : (
-                    <div className="max-h-[60vh] overflow-y-auto w-full overflow-x-auto border border-slate-200 rounded-lg">
+                    <div className="max-h-[60vh] overflow-y-auto w-full border border-slate-200 rounded-lg">
                     <table className="w-full text-left border-collapse min-w-[600px]">
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-200">
@@ -3661,41 +3745,41 @@ useEffect(() => {
                                 <span className="font-bold text-slate-700">System User</span>
                               )}
                             </td>
-                            <td className="px-4 py-4 text-slate-600 align-top whitespace-normal break-words text-xs max-w-md">
+                            <td className="px-4 py-3 text-xs text-slate-600 align-top whitespace-nowrap">
                               {log.details?.target_barangay || log.users?.barangay?.name || 'N/A'}
                             </td>
-                            <td className="px-4 py-4 text-xs text-slate-600 align-top whitespace-nowrap">
-                              <div className="flex flex-col gap-3">
+                            <td className="px-4 py-4 text-slate-600 align-top whitespace-normal break-words text-xs max-w-xs">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                 {log.details?.changes ? (
                                   Object.entries(log.details.changes).map(([key, val]: any) =>
                                     val ? (
-                                      <div key={key} className="flex flex-col border-b border-slate-100 last:border-0 pb-2 last:pb-0">
-                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">{key.replace('_', ' ')}</span>
+                                      <div key={key} className="flex flex-col bg-slate-50 p-1.5 rounded border border-slate-100">
+                                        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">{key.replace(/_/g, ' ')}</span>
                                         <div className="flex items-start gap-2 text-[11px]">
                                           <span className="text-slate-400 font-semibold shrink-0 w-9">Old:</span>
-                                          <span className="text-rose-500 break-words">{val.old || 'None'}</span>
+                                          <span className="text-[11px] text-rose-500 break-words truncate">{val.old || 'None'}</span>
                                         </div>
                                         <div className="flex items-start gap-2 text-[11px] mt-0.5">
                                           <span className="text-slate-400 font-semibold shrink-0 w-9">New:</span>
-                                          <span className="text-emerald-600 font-medium break-words">{val.new || 'None'}</span>
+                                          <span className="text-[11px] text-emerald-600 font-medium break-words truncate">{val.new || 'None'}</span>
                                         </div>
                                       </div>
                                     ) : null
                                   )
                                 ) : log.details?.old_email || log.details?.new_email ? (
-                                  <div className="flex flex-col border-b border-slate-100 last:border-0 pb-2 last:pb-0">
-                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Email</span>
+                                  <div className="flex flex-col bg-slate-50 p-1.5 rounded border border-slate-100">
+                                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">Email</span>
                                     <div className="flex items-start gap-2 text-[11px]">
                                       <span className="text-slate-400 font-semibold shrink-0 w-9">Old:</span>
-                                      <span className="text-rose-500 break-words">{log.details?.old_email || 'None'}</span>
+                                      <span className="text-[11px] text-rose-500 break-words truncate">{log.details?.old_email || 'None'}</span>
                                     </div>
                                     <div className="flex items-start gap-2 text-[11px] mt-0.5">
                                       <span className="text-slate-400 font-semibold shrink-0 w-9">New:</span>
-                                      <span className="text-emerald-600 font-medium break-words">{log.details?.new_email || 'None'}</span>
+                                      <span className="text-[11px] text-emerald-600 font-medium break-words truncate">{log.details?.new_email || 'None'}</span>
                                     </div>
                                   </div>
                                 ) : (
-                                  <span className="text-slate-400 italic text-[11px]">No details recorded</span>
+                                  <span className="text-slate-400 italic text-[11px] col-span-full">No details recorded</span>
                                 )}
                               </div>
                             </td>
@@ -3722,75 +3806,7 @@ useEffect(() => {
             <h3 className="font-bold text-slate-800 text-lg mb-1">Manage User Credentials</h3>
             <p className="text-xs text-slate-500 mb-4">Correct a user&apos;s profile, contact info, or birthdate directly in the database. Leave fields blank to keep them unchanged.</p>
             
-            <form onSubmit={async (e) => {
-              e.preventDefault();
-              if (!typoTargetUserId || !typoFullName) { showPopup('Search for a user before updating credentials.'); return; }
-              if (typoPhone && !/^09\d{9}$/.test(typoPhone)) { showPopup('Phone number must be exactly 11 digits and start with 09 (e.g., 09171234567).'); return; }
-              setIsUpdating(true);
-              try {
-                const combinedName = [typoFirstName.trim(), typoMiddleName.trim(), typoLastName.trim(), typoSuffix.trim()].filter(Boolean).join(' ');
-                if (!combinedName) { showPopup('Please enter at least a First or Last name.'); setIsUpdating(false); return; }
-                
-                const res = await kabisigApi.updateUserName(typoTargetUserId, {
-                  full_name: combinedName,
-                  first_name: typoFirstName.trim() || undefined,
-                  middle_name: typoMiddleName.trim() || undefined,
-                  last_name: typoLastName.trim() || undefined,
-                  suffix: typoSuffix.trim() || undefined,
-                  email: typoEmail.trim() || undefined,
-                  phone: typoPhone.trim() || undefined,
-                  birthdate: typoBirthdate || undefined,
-                  address: typoAddress.trim() || undefined,
-                  sex: typoSex || undefined,
-                  zone: typoZone.trim() || undefined,
-                  civil_status: typoCivilStatus || undefined,
-                  educational_status: typoEducation || undefined,
-                  school: typoSchool.trim() || undefined,
-                  course: typoCourse.trim() || undefined,
-                  year_level: typoYearLevel.trim() || undefined,
-                  employment_status: typoEmploymentStatus || undefined,
-                  scholar_status: typoScholarStatus.trim() || undefined,
-                  scholarship_type: typoScholarshipType || undefined,
-                  is_registered_voter: typoHasProfile ? Boolean(typoUserProfile?.is_registered_voter) : undefined,
-                  reason: typoReason.trim() || undefined
-                });
-                if (res.success) {
-                  showPopup('User credentials updated successfully!', 'success');
-                  setShowFixTypoModal(false);
-                  setTypoUserId('');
-                  setTypoTargetUserId('');
-                  setTypoTargetUser(null);
-                  setTypoFullName('');
-                  setTypoFirstName('');
-                  setTypoMiddleName('');
-                  setTypoLastName('');
-                  setTypoSuffix('');
-                  setTypoEmail('');
-                  setTypoPhone('');
-                  setTypoBirthdate('');
-                  setTypoAddress('');
-                  setTypoSex('');
-                  setTypoZone('');
-                  setTypoCivilStatus('');
-                  setTypoEducation('');
-                  setTypoSchool('');
-                  setTypoCourse('');
-                  setTypoYearLevel('');
-                  setTypoEmploymentStatus('');
-                  setTypoScholarStatus('');
-                  setTypoScholarshipType('');
-                  setTypoHasProfile(false);
-                  setTypoUserProfile(null);
-                  setTypoReason('');
-                } else {
-                  showPopup(res.message || 'Failed to update.');
-                }
-              } catch (err: any) {
-                showPopup(err.message || 'Error updating name.');
-              } finally {
-                setIsUpdating(false);
-              }
-            }} className="space-y-4">
+            <form onSubmit={e => { e.preventDefault(); void handleUpdateCredentials(); }} className="space-y-4">
               
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Search by Name, Email, Role, or User ID</label>
@@ -3813,25 +3829,25 @@ useEffect(() => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">First Name</label>
-                  <input required type="text" value={typoFirstName} onChange={e => setTypoFirstName(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" />
+                  <input required type="text" value={typoFirstName} disabled={!isEditingCreds} onChange={e => setTypoFirstName(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" />
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Middle Name</label>
-                  <input type="text" value={typoMiddleName} onChange={e => setTypoMiddleName(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" />
+                  <input type="text" value={typoMiddleName} disabled={!isEditingCreds} onChange={e => setTypoMiddleName(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" />
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Last Name</label>
-                  <input required type="text" value={typoLastName} onChange={e => setTypoLastName(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" />
+                  <input required type="text" value={typoLastName} disabled={!isEditingCreds} onChange={e => setTypoLastName(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" />
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Suffix</label>
-                  <input type="text" value={typoSuffix} onChange={e => setTypoSuffix(e.target.value)} placeholder="e.g. Jr., III" className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" />
+                  <input type="text" value={typoSuffix} disabled={!isEditingCreds} onChange={e => setTypoSuffix(e.target.value)} placeholder="e.g. Jr., III" className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" />
                 </div>
               </div>
 
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Corrected Email</label>
-                <input type="email" value={typoEmail} onChange={e => setTypoEmail(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank if unchanged" />
+                <input type="email" value={typoEmail} disabled={!isEditingCreds} onChange={e => setTypoEmail(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank if unchanged" />
               </div>
 
               {canResendYouthLoginLink && (
@@ -3850,24 +3866,24 @@ useEffect(() => {
 
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Corrected Phone</label>
-                <input type="text" value={typoPhone} onChange={(e) => { let val = e.target.value.replace(/\D/g, ''); if (val.length > 11) val = val.slice(0, 11); setTypoPhone(val); }} maxLength={11} inputMode="numeric" className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank if unchanged" />
+                <input type="text" value={typoPhone} disabled={!isEditingCreds} onChange={(e) => { let val = e.target.value.replace(/\D/g, ''); if (val.length > 11) val = val.slice(0, 11); setTypoPhone(val); }} maxLength={11} inputMode="numeric" className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank if unchanged" />
               </div>
 
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Corrected Birthdate</label>
-                <input type="date" value={typoBirthdate} onChange={e => setTypoBirthdate(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" />
+                <input type="date" value={typoBirthdate} disabled={!isEditingCreds} onChange={e => setTypoBirthdate(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" />
               </div>
 
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
                   Address {typoZone && <span className="normal-case text-slate-400">(Zone: {typoZone})</span>}
                 </label>
-                <input type="text" value={typoAddress} onChange={e => setTypoAddress(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank if unchanged" />
+                <input type="text" value={typoAddress} disabled={!isEditingCreds} onChange={e => setTypoAddress(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank if unchanged" />
               </div>
 
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Biological Sex</label>
-                <select value={typoSex} onChange={e => setTypoSex(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs">
+                <select value={typoSex} disabled={!isEditingCreds} onChange={e => setTypoSex(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs">
                   <option value="">Leave unchanged</option>
                   <option value="Male">Male</option>
                   <option value="Female">Female</option>
@@ -3881,11 +3897,11 @@ useEffect(() => {
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Zone</label>
-                    <input type="text" value={typoZone} onChange={e => setTypoZone(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank if unchanged" />
+                    <input type="text" value={typoZone} disabled={!isEditingCreds} onChange={e => setTypoZone(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank if unchanged" />
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Civil Status</label>
-                    <select value={typoCivilStatus} onChange={e => setTypoCivilStatus(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs">
+                    <select value={typoCivilStatus} disabled={!isEditingCreds} onChange={e => setTypoCivilStatus(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs">
                       <option value="">Leave unchanged</option>
                       <option value="Single">Single</option>
                       <option value="Married">Married</option>
@@ -3895,7 +3911,7 @@ useEffect(() => {
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Education</label>
-                    <select value={typoEducation} onChange={e => setTypoEducation(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs">
+                    <select value={typoEducation} disabled={!isEditingCreds} onChange={e => setTypoEducation(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs">
                       <option value="">Leave unchanged</option>
                       <option value="Elementary">Elementary</option>
                       <option value="High School">High School</option>
@@ -3907,15 +3923,15 @@ useEffect(() => {
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">School</label>
-                    <input type="text" value={typoSchool} onChange={e => setTypoSchool(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank if unchanged" />
+                    <input type="text" value={typoSchool} disabled={!isEditingCreds} onChange={e => setTypoSchool(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank if unchanged" />
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Course</label>
-                    <input type="text" value={typoCourse} onChange={e => setTypoCourse(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank if unchanged" />
+                    <input type="text" value={typoCourse} disabled={!isEditingCreds} onChange={e => setTypoCourse(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank if unchanged" />
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Year Level</label>
-                    <select value={typoYearLevel} onChange={e => setTypoYearLevel(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs">
+                    <select value={typoYearLevel} disabled={!isEditingCreds} onChange={e => setTypoYearLevel(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs">
                       <option value="">Leave blank if unchanged</option>
                       <option value="1st Year">1st Year</option>
                       <option value="2nd Year">2nd Year</option>
@@ -3927,7 +3943,7 @@ useEffect(() => {
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Employment Status</label>
-                    <select value={typoEmploymentStatus} onChange={e => setTypoEmploymentStatus(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs">
+                    <select value={typoEmploymentStatus} disabled={!isEditingCreds} onChange={e => setTypoEmploymentStatus(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs">
                       <option value="">Leave unchanged</option>
                       <option value="Employed">Employed</option>
                       <option value="Unemployed">Unemployed</option>
@@ -3937,19 +3953,15 @@ useEffect(() => {
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Scholar Status</label>
-                    <select value={typoScholarStatus} onChange={e => {
+                    <input type="text" value={typoScholarStatus} disabled={!isEditingCreds} onChange={e => {
                       setTypoScholarStatus(e.target.value);
-                      if (e.target.value !== 'Scholar') setTypoScholarshipType('');
-                    }} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs">
-                      <option value="">Leave blank if unchanged</option>
-                      <option value="Scholar">Scholar</option>
-                      <option value="Not Scholar">Not Scholar</option>
-                    </select>
+                      if (!/\bscholar\b/i.test(e.target.value) || /\b(?:not|non)[-\s]+scholar\b/i.test(e.target.value)) setTypoScholarshipType('');
+                    }} placeholder="e.g. Scholar, Not Scholar" className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" />
                   </div>
-                  {typoScholarStatus === 'Scholar' && (
+                  {hasScholarStatus && (
                     <div>
                       <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Scholarship Type</label>
-                      <select value={typoScholarshipType} onChange={e => setTypoScholarshipType(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs">
+                      <select value={typoScholarshipType} disabled={!isEditingCreds} onChange={e => setTypoScholarshipType(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs">
                         <option value="">Select scholarship type</option>
                         <option value="Government">Government</option>
                         <option value="Private">Private</option>
@@ -3967,7 +3979,7 @@ useEffect(() => {
                   <input
                     type="checkbox"
                     checked={typoUserProfile?.is_registered_voter || false}
-                    disabled={!typoHasProfile || isUpdating}
+                    disabled={!isEditingCreds || !typoHasProfile || isUpdating}
                     onChange={(e) => setTypoUserProfile({ is_registered_voter: e.target.checked })}
                     className="h-4 w-4 rounded border-slate-300 text-[#091d64] focus:ring-[#091d64]"
                   />
@@ -3980,7 +3992,7 @@ useEffect(() => {
 
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Purpose / Reason for Change</label>
-                <textarea value={typoReason} onChange={e => setTypoReason(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" rows={2} placeholder="E.g., Corrected birthdate typo upon user request" />
+                <textarea value={typoReason} disabled={!isEditingCreds} onChange={e => setTypoReason(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" rows={2} placeholder="E.g., Corrected birthdate typo upon user request" />
               </div>
 
               <div className="flex justify-between items-center pt-2 border-t border-slate-100">
@@ -3988,10 +4000,20 @@ useEffect(() => {
                   View Change History
                 </button>
                 <div className="flex gap-2">
-                  <button type="button" onClick={() => setShowFixTypoModal(false)} className="px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-50 rounded-lg">Cancel</button>
-                  <button type="submit" disabled={isUpdating} className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg disabled:opacity-50">
-                    {isUpdating ? 'Saving...' : 'Update Credentials'}
-                  </button>
+                  {!isEditingCreds ? (
+                    <button type="button" disabled={!typoTargetUserId} onClick={() => setIsEditingCreds(true)} className="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold rounded-lg disabled:opacity-50">
+                      Edit Credentials
+                    </button>
+                  ) : (
+                    <>
+                      <button type="button" onClick={() => setIsEditingCreds(false)} disabled={isUpdating} className="px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-50 rounded-lg disabled:opacity-50">
+                        Cancel
+                      </button>
+                      <button type="button" onClick={handleUpdateCredentials} disabled={isUpdating} className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg disabled:opacity-50">
+                        {isUpdating ? 'Saving...' : 'Save Changes'}
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             </form>

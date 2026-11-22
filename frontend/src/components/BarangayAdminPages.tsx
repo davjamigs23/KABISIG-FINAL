@@ -3186,7 +3186,6 @@ return (
                       <tr>
                         <th className="px-5 py-3.5 whitespace-nowrap">Code / Ref No.</th>
                         <th className="px-5 py-3.5 whitespace-nowrap">Document Title</th>
-                        <th className="px-5 py-3.5 whitespace-nowrap">Description &amp; Scope</th>
                         <th className="px-5 py-3.5 whitespace-nowrap">Category</th>
                         <th className="px-5 py-3.5 whitespace-nowrap">Author / Officer</th>
                         <th className="px-5 py-3.5 whitespace-nowrap">Date</th>
@@ -3201,9 +3200,6 @@ return (
                           </td>
                           <td className="px-5 py-4 font-bold text-slate-900 truncate whitespace-nowrap" title="Document Title">
                             {doc.title}
-                          </td>
-                          <td className="px-4 py-3 text-xs text-slate-600 max-w-[200px] truncate" title={doc.description || 'No description'}>
-                            {doc.description || '—'}
                           </td>
                           <td className="px-5 py-4 whitespace-nowrap">
                             <span className="px-2.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-extrabold uppercase">
@@ -3259,7 +3255,7 @@ return (
                       ))}
                       {localDocs.length === 0 && (
                         <tr>
-                          <td colSpan={8} className="text-center py-8 text-slate-400 font-bold whitespace-nowrap">
+                          <td colSpan={7} className="text-center py-8 text-slate-400 font-bold whitespace-nowrap">
                             No documents found in repository.
                           </td>
                         </tr>
@@ -3277,6 +3273,10 @@ return (
                         <p className="mt-1 text-xs text-blue-100">{selectedDocForApprove.title}</p>
                       </div>
                       <div className="p-5 space-y-4">
+                        <section>
+                          <h4 className="font-bold text-sm mt-4">Description &amp; Scope</h4>
+                          <p className="text-sm text-slate-700">{selectedDocForApprove.description || 'No description provided.'}</p>
+                        </section>
                         <div className="grid grid-cols-2 gap-2" role="group" aria-label="Review decision">
                           <button
                             type="button"
