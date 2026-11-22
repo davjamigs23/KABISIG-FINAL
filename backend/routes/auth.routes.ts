@@ -750,7 +750,7 @@ router.post(
 
     const { data: targetUser, error: fetchError } = await supabaseAdmin
       .from('users')
-      .select('id, full_name, email, tenant_id, status, barangay(name)')
+      .select('id, full_name, email, role_id, is_demoted, tenant_id, status, barangay(name)')
       .eq('id', user_id)
       .single();
 
@@ -797,8 +797,8 @@ router.post(
     }
 
     const currentYear = new Date().getFullYear();
-    const randomSuffix = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const digitalYouthId = `KAB-NAGA-${currentYear}-${randomSuffix}`;
+    const idPrefix = Number(targetUser.role_id) === 4 && targetUser.is_demoted !== true ? 'KK' : 'SK';
+    const digitalYouthId = `${idPrefix}-${currentYear}-${targetUser.id.slice(0, 4)}`;
 
     const qrPayload = JSON.stringify({
       digital_youth_id: digitalYouthId,

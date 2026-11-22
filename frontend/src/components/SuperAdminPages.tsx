@@ -699,9 +699,7 @@ useEffect(() => {
   const federationRows = federationAnalytics?.barangay_rankings || [];
   const chartBarangayData = sortedBarangays.map(b => {
     const liveRow = federationRows.find((row: any) => String(row.id ?? row.barangay_id) === String(b.id));
-    const registeredYouth = federationAnalytics
-      ? toNumber(liveRow?.registered_youth ?? 0)
-      : toNumber(b.youthPopulation);
+    const registeredYouth = toNumber(liveRow?.registered_youth ?? 0);
     const totalBudget = toNumber(liveRow?.allocated_amount ?? liveRow?.aip_budget ?? liveRow?.budget_allocated ?? b.totalBudget);
     const spentBudget = toNumber(liveRow?.spent_amount ?? liveRow?.actual_spent ?? liveRow?.budget_spent ?? b.spentBudget);
 
@@ -756,7 +754,7 @@ useEffect(() => {
   const analyticsChartData = filteredBarangays.length === sortedBarangays.length
     ? chartBarangayData
     : chartBarangayData.filter((item: any) => filteredBarangays.some(b => b.id === item.id));
-  const hasRegisteredYouthAnalytics = analyticsChartData.length > 0;
+  const hasRegisteredYouthAnalytics = chartBarangayData.length > 0;
   const hasFinancialAnalytics = analyticsChartData.some((item: any) => item.budget > 0 || item.spent > 0);
 
   const handleOpenInviteOfficialModal = (barangay?: BarangayTenant, returnToConfigure: boolean = false) => {
@@ -1565,7 +1563,7 @@ useEffect(() => {
                   {hasRegisteredYouthAnalytics ? (
                     <div className="h-64 w-full min-w-0 overflow-hidden">
                       <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
-                        <BarChart data={analyticsChartData}>
+                        <BarChart data={chartBarangayData}>
                           <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} />
                           <YAxis stroke="#94a3b8" fontSize={10} />
                           <Tooltip />
@@ -2009,7 +2007,7 @@ useEffect(() => {
                   {hasRegisteredYouthAnalytics ? (
                     <div className="h-64 w-full min-w-0 overflow-hidden">
                       <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
-                        <BarChart data={analyticsChartData}>
+                        <BarChart data={chartBarangayData}>
                           <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} />
                           <YAxis stroke="#94a3b8" fontSize={10} />
                           <Tooltip />

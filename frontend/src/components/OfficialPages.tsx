@@ -1785,7 +1785,7 @@ export default function OfficialPages({
       scannedDigitalYouthId = payload.digital_youth_id || '';
       partId = scannedDigitalYouthId || scannedUserId || partId;
     } catch {
-      if (scannedText.startsWith('KAB-NAGA-')) scannedDigitalYouthId = scannedText;
+      if (/^(?:KAB-NAGA-|(?:KK|SK)-\d{4}-)/i.test(scannedText)) scannedDigitalYouthId = scannedText;
     }
 
     if (scannedText.startsWith('KABISIG-QR-')) {
@@ -1798,6 +1798,9 @@ export default function OfficialPages({
       } else {
         // Personal Youth IDs use KABISIG-QR-{residentId}; keep the full resident ID.
         partId = qrPayload;
+        if (/^(?:KAB-NAGA-|(?:KK|SK)-\d{4}-)/i.test(qrPayload)) {
+          scannedDigitalYouthId = qrPayload;
+        }
       }
     }
 
@@ -7105,7 +7108,7 @@ export default function OfficialPages({
                     value={
                       (selectedYouthProfile as any).userId
                         ? JSON.stringify({ user_id: (selectedYouthProfile as any).userId })
-                        : (selectedYouthProfile as any).qrCode?.startsWith('KAB-NAGA-')
+                        : /^(?:KAB-NAGA-|(?:KK|SK)-\d{4}-)/i.test(String((selectedYouthProfile as any).qrCode || ''))
                           ? (selectedYouthProfile as any).qrCode
                           : selectedYouthProfile.id
                     }

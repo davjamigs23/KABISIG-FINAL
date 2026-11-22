@@ -55,9 +55,10 @@ export interface YouthProfile {
   userId?: string;
   id: string; // Resident ID (Auto-generated, e.g. SK-2026-001)
   name: string; // Full Name (Required)
-  first_name?: string;    // Rule #1: split name field
+  full_name?: string | null;
+  first_name?: string | null;    // Rule #1: split name field
   middle_name?: string | null;
-  last_name?: string;
+  last_name?: string | null;
   suffix?: string | null;
   sex: 'Male' | 'Female' | 'Other' | 'Prefer not to say'; // Sex (Required)
   birthdate: string; // Birthdate (Required)

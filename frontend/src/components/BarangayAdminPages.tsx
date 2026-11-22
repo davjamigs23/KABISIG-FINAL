@@ -3788,7 +3788,7 @@ return (
                     value={
                       (inspectProfile as any).userId
                         ? JSON.stringify({ user_id: (inspectProfile as any).userId })
-                        : (inspectProfile as any).qrCode?.startsWith('KAB-NAGA-')
+                        : /^(?:KAB-NAGA-|(?:KK|SK)-\d{4}-)/i.test(String((inspectProfile as any).qrCode || ''))
                           ? (inspectProfile as any).qrCode
                           : inspectProfile.id
                     }

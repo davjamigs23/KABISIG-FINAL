@@ -586,10 +586,10 @@ router.post('/:id/attendance', authenticateUser, requireActiveUser, requireRoles
       digitalYouthId = parsedJson.digital_youth_id || parsedJson.digitalYouthId || '';
     } catch {
       if (scanValue.startsWith('KABISIG-QR-')) {
-        const kabIndex = scanValue.indexOf('KAB-NAGA-');
-        if (kabIndex !== -1) digitalYouthId = scanValue.substring(kabIndex);
+        const idMatch = scanValue.match(/(?:KAB-NAGA-|(?:KK|SK)-\d{4}-)/i);
+        if (idMatch?.index !== undefined) digitalYouthId = scanValue.substring(idMatch.index);
         else attendeeUserId = scanValue;
-      } else if (scanValue.startsWith('KAB-NAGA-')) {
+      } else if (/^(?:KAB-NAGA-|(?:KK|SK)-\d{4}-)/i.test(scanValue)) {
         digitalYouthId = scanValue;
       } else {
         attendeeUserId = scanValue;

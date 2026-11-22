@@ -168,6 +168,16 @@ class KabisigApiClient {
       
       
       if (response.status === 401) {
+        if (endpoint === '/auth/login') {
+          return {
+            success: false,
+            status: response.status,
+            message: json.message || 'Invalid login credentials. Please check your email and password.',
+            error: json.error || json.details || null,
+            details: json.details,
+            errors: json.errors ?? json.details,
+          };
+        }
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         this.setToken(null);

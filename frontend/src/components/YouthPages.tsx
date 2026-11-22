@@ -195,10 +195,11 @@ export default function YouthPages({
   const [feedbackTab, setFeedbackTab] = useState<'suggestions' | 'resolutions'>('suggestions');
   // Local copy of profile for real-time editing & persistence
   const [youth, setYouth] = useState<YouthProfile>(currentYouth);
-  const profileFullName = String((youth as any).full_name || youth.name || '').trim();
-  const profileFirstName = String((youth as any).first_name || profileFullName.split(/\s+/)[0] || '\u2014').trim();
-  const profileLastName = String((youth as any).last_name || profileFullName.split(/\s+/).slice(-1)[0] || '\u2014').trim();
-  const profileMiddleName = String((youth as any).middle_name || profileFullName.split(/\s+/).slice(profileFirstName.split(/\s+/).length, profileFullName.split(/\s+/).length - profileLastName.split(/\s+/).length).join(' ') || '\u2014').trim();
+  const profileFullName = String(youth.full_name ?? youth.name ?? '').trim();
+  const fallbackNameParts = splitFullName(profileFullName);
+  const profileFirstName = String(youth.first_name ?? fallbackNameParts.first_name).trim() || '\u2014';
+  const profileMiddleName = String(youth.middle_name ?? fallbackNameParts.middle_name).trim() || '\u2014';
+  const profileLastName = String(youth.last_name ?? fallbackNameParts.last_name).trim() || '\u2014';
   const [isUploadingProfilePicture, setIsUploadingProfilePicture] = useState(false);
   const [profilePictureNotice, setProfilePictureNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -332,7 +333,7 @@ export default function YouthPages({
   const [resolutionVoteNotice, setResolutionVoteNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const youthQrPayload = (profile: YouthProfile) => profile.userId
     ? JSON.stringify({ user_id: profile.userId })
-    : profile.qrCode?.startsWith('KAB-NAGA-')
+    : /^(?:KAB-NAGA-|(?:KK|SK)-\d{4}-)/i.test(profile.qrCode || '')
       ? profile.qrCode
       : profile.id;
   useEffect(() => {
@@ -505,11 +506,16 @@ export default function YouthPages({
   const ensureSplitName = (profile: YouthProfile): YouthProfile => {
     const scholarshipSource = profile.scholarshipSource || (profile as YouthProfile & { scholarship_source?: string }).scholarship_source || '';
     const scholarshipSourceDetail = profile.scholarshipSourceDetail || (profile as YouthProfile & { scholarship_source_detail?: string }).scholarship_source_detail || '';
-    if (profile.first_name?.trim() && profile.last_name?.trim()) {
-      return { ...profile, scholarshipSource, scholarshipSourceDetail };
-    }
-    const parts = splitFullName(profile.name || '');
-    return { ...profile, ...parts, scholarshipSource, scholarshipSourceDetail };
+    const parts = splitFullName(String(profile.full_name ?? profile.name ?? ''));
+    return {
+      ...profile,
+      first_name: profile.first_name ?? parts.first_name,
+      middle_name: profile.middle_name ?? parts.middle_name,
+      last_name: profile.last_name ?? parts.last_name,
+      suffix: profile.suffix ?? parts.suffix,
+      scholarshipSource,
+      scholarshipSourceDetail,
+    };
   };
   const loadVerification = async () => {
     setVerificationLoading(true);
@@ -680,8 +686,15 @@ export default function YouthPages({
       if (!res.success) {
         throw new Error(res.message || 'The profile could not be saved.');
       }
-      const savedProfile = {
+      const savedFields = res.data || {};
+      const savedProfile: YouthProfile = {
         ...updatedProfile,
+        ...savedFields,
+        name: savedFields.full_name ?? savedFields.name ?? updatedProfile.name,
+        first_name: Object.prototype.hasOwnProperty.call(savedFields, 'first_name') ? savedFields.first_name : updatedProfile.first_name,
+        middle_name: Object.prototype.hasOwnProperty.call(savedFields, 'middle_name') ? savedFields.middle_name : updatedProfile.middle_name,
+        last_name: Object.prototype.hasOwnProperty.call(savedFields, 'last_name') ? savedFields.last_name : updatedProfile.last_name,
+        suffix: Object.prototype.hasOwnProperty.call(savedFields, 'suffix') ? savedFields.suffix : updatedProfile.suffix,
         ...(isInDemotionCompletion ? { has_edited_profile: true } : {}),
       };
       setYouth(savedProfile);
@@ -1579,6 +1592,11 @@ export default function YouthPages({
                     >
                       {isUploadingProfilePicture ? 'Uploading...' : 'Upload Photo'}
                     </button>
+                    {isProfileLocked && (
+                      <p className="max-w-48 text-center text-[10px] font-medium text-slate-500">
+                        Text fields are read-only, but you may update your profile picture.
+                      </p>
+                    )}
                     {profilePictureNotice && (
                       <p className={`max-w-48 text-center text-[10px] font-semibold ${profilePictureNotice.type === 'success' ? 'text-emerald-700' : 'text-rose-700'}`}>
                         {profilePictureNotice.text}

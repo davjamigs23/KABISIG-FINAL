@@ -469,10 +469,11 @@ function AppContent() {
               userId: user.id,
               id: meta.id || resident.digital_youth_id || '',
               name: user.full_name || meta.name || '',
-              first_name: (user as any).first_name || (meta as any).first_name || '',
-              middle_name: (user as any).middle_name || (meta as any).middle_name || '',
-              last_name: (user as any).last_name || (meta as any).last_name || '',
-              suffix: (user as any).suffix || (meta as any).suffix || '',
+              full_name: user.full_name || meta.full_name || meta.name || '',
+              first_name: (user as any).first_name ?? null,
+              middle_name: (user as any).middle_name ?? null,
+              last_name: (user as any).last_name ?? null,
+              suffix: (user as any).suffix ?? null,
               sex: resident.sex || meta.sex || '',
               birthdate: resident.birthdate || meta.birthdate || '',
               age: Number(meta.age) || 0,
@@ -917,6 +918,21 @@ function AppContent() {
 
   // --- AUTH CALLBACKS ---
   const handleLogin = (role: UserRole | 'Viewer', tenantId: string, emailOrName?: string, userObj?: any) => {
+    const roleId = Number(userObj?.role_id);
+    const roleFromId: UserRole | null = roleId === 1
+      ? 'Super Admin'
+      : roleId === 2
+        ? 'Barangay Admin'
+        : roleId === 3
+          ? resolveUserRole({
+            ...userObj,
+            official_position: userObj?.official_position || userObj?.official_role || userObj?.position,
+          })
+          : roleId === 4
+            ? 'Youth Constituent'
+            : null;
+    const resolvedRole: UserRole = roleFromId || ((role === 'SK Chairperson' || role === 'Barangay Admin') ? 'Barangay Admin' : role);
+
     if (emailOrName) {
       setCurrentEmail(emailOrName);
     }
@@ -931,12 +947,12 @@ function AppContent() {
     // Check if the user has a registered profile with a pending or rejected status
     if (emailOrName) {
       const matchedProfile = youthProfiles.find(p => p.email.toLowerCase() === emailOrName.trim().toLowerCase());
-      if (matchedProfile && matchedProfile.registeredRole === role) {
-        if (matchedProfile.status === 'Pending' && role !== 'Youth Constituent') {
-          showGlobalAlert(`Access Denied!\n\nYour registration as ${role} is currently PENDING approval by your Sangguniang Kabataan Chairperson.\n\nPlease wait for validation.`, 'error');
+      if (matchedProfile && matchedProfile.registeredRole === resolvedRole) {
+        if (matchedProfile.status === 'Pending' && resolvedRole !== 'Youth Constituent') {
+          showGlobalAlert(`Access Denied!\n\nYour registration as ${resolvedRole} is currently PENDING approval by your Sangguniang Kabataan Chairperson.\n\nPlease wait for validation.`, 'error');
           return;
         } else if (matchedProfile.status === 'Rejected') {
-          showGlobalAlert(`Access Denied!\n\nYour registration as ${role} was REJECTED by your Sangguniang Kabataan Chairperson.\n\nReason: ${matchedProfile.rejectionReason || 'No reason specified.'}`, 'error');
+          showGlobalAlert(`Access Denied!\n\nYour registration as ${resolvedRole} was REJECTED by your Sangguniang Kabataan Chairperson.\n\nReason: ${matchedProfile.rejectionReason || 'No reason specified.'}`, 'error');
           return;
         }
       }
@@ -968,7 +984,6 @@ function AppContent() {
       };
     }
 
-    const resolvedRole: UserRole = (role === 'SK Chairperson' || role === 'Barangay Admin') ? 'Barangay Admin' : role;
     setCurrentTenant(selectedTenant);
     setCurrentRole(resolvedRole);
 
@@ -981,6 +996,11 @@ function AppContent() {
           userId: userObj.id,
           id: resident.digital_youth_id || meta.id || matchedProfile?.id || '',
           name: userObj.full_name || meta.name || matchedProfile?.name || '',
+          full_name: userObj.full_name ?? meta.full_name ?? meta.name ?? matchedProfile?.full_name ?? matchedProfile?.name ?? '',
+          first_name: userObj.first_name ?? null,
+          middle_name: userObj.middle_name ?? null,
+          last_name: userObj.last_name ?? null,
+          suffix: userObj.suffix ?? null,
           sex: resident.sex || meta.sex || matchedProfile?.sex || '',
           birthdate: resident.birthdate || meta.birthdate || matchedProfile?.birthdate || '',
           age: Number(meta.age ?? matchedProfile?.age) || 0,

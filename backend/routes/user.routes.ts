@@ -645,7 +645,15 @@ router.put('/profile', authenticateUser, async (req: Request, res: Response): Pr
 
     sendSuccess(
       res,
-      updatedMetadata,
+      {
+        ...updatedMetadata,
+        name: userUpdates.full_name ?? user.full_name ?? updatedMetadata.name,
+        full_name: userUpdates.full_name ?? user.full_name ?? updatedMetadata.name,
+        first_name: Object.prototype.hasOwnProperty.call(userUpdates, 'first_name') ? userUpdates.first_name : user.first_name,
+        middle_name: Object.prototype.hasOwnProperty.call(userUpdates, 'middle_name') ? userUpdates.middle_name : user.middle_name,
+        last_name: Object.prototype.hasOwnProperty.call(userUpdates, 'last_name') ? userUpdates.last_name : user.last_name,
+        suffix: Object.prototype.hasOwnProperty.call(userUpdates, 'suffix') ? userUpdates.suffix : user.suffix,
+      },
       'Katipunan ng Kabataan Profile updated and saved to the database successfully!'
     );
   } catch (err: any) {
@@ -708,6 +716,11 @@ router.get('/profile', authenticateUser, async (req: Request, res: Response): Pr
     const fullProfile = {
       id: meta.id || resident.digital_youth_id || getFallbackDigitalYouthId(userId, dbUser || {}),
       name: dbUser?.full_name || meta.name || meta.full_name || '',
+      full_name: dbUser?.full_name || meta.full_name || meta.name || '',
+      first_name: dbUser?.first_name ?? meta.first_name ?? null,
+      middle_name: dbUser?.middle_name ?? meta.middle_name ?? null,
+      last_name: dbUser?.last_name ?? meta.last_name ?? null,
+      suffix: dbUser?.suffix ?? meta.suffix ?? null,
       sex: resident.sex || meta.sex || 'Female',
       birthdate: resident.birthdate || meta.birthdate || '2005-01-01',
       age: meta.age || (resident.birthdate ? calculateAge(resident.birthdate) : 20),
@@ -1521,36 +1534,6 @@ router.post('/upload-avatar', authenticateUser, async (req: Request, res: Respon
       return;
     }
     const user = (req as AuthRequest).user!;
-    const { data: lockProfile, error: lockProfileError } = await supabaseAdmin
-      .from('users')
-      .select('role_id, status, is_demoted, has_edited_profile')
-      .eq('id', user.id)
-      .maybeSingle();
-    if (lockProfileError) {
-      sendError(res, `Failed to verify profile status: ${lockProfileError.message}`, 500);
-      return;
-    }
-    if (!lockProfile) {
-      sendError(res, 'User profile not found.', 404);
-      return;
-    }
-    const { data: verificationProfile, error: verificationProfileError } = await supabaseAdmin
-      .from('resident_profile')
-      .select('verification_status')
-      .eq('user_id', user.id)
-      .maybeSingle();
-    if (verificationProfileError) {
-      sendError(res, `Failed to verify identity status: ${verificationProfileError.message}`, 500);
-      return;
-    }
-    if (isYouthProfileLocked({
-      ...lockProfile,
-      verification_status: verificationProfile?.verification_status,
-    })) {
-      sendLockedFieldsError(res, ['profile_picture']);
-      return;
-    }
-
     const imageData = base64.replace(/^data:image\/(?:jpeg|png|webp);base64,/i, '');
     if (!/^[A-Za-z0-9+/]+={0,2}$/.test(imageData)) {
       sendError(res, 'The uploaded image data is invalid.', 400);
