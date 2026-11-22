@@ -888,6 +888,29 @@ router.post(
       return;
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
+    const { data: existingAssignment, error: checkErr } = await supabaseAdmin
+      .from('users')
+      .select('id, email, role_id, status, tenant_id')
+      .ilike('email', normalizedEmail)
+      .in('role_id', [2, 3])
+      .in('status', ['active', 'pending'])
+      .maybeSingle();
+
+    if (checkErr) {
+      sendError(res, `Failed to check existing Chairperson assignment: ${checkErr.message}`, 500);
+      return;
+    }
+
+    if (existingAssignment && String(existingAssignment.tenant_id) !== String(barangay_id)) {
+      sendError(
+        res,
+        'This email is already active or pending as an SK Official in another Barangay. They must resign or be unassigned first.',
+        400
+      );
+      return;
+    }
+
     // Panel rec #9: prevent silent overwrite of an existing Chairperson.
     // If a Chairperson already exists, use the Transfer Leadership workflow instead.
 
@@ -926,11 +949,16 @@ router.post(
     let inviteMethod: 'email_invitation' | 'existing_auth_user' | 'temp_credentials' = 'existing_auth_user';
 
     // 2. Check the app's users table first
-    const { data: existingUser } = await supabaseAdmin
+    const { data: currentUser, error: currentUserError } = await supabaseAdmin
       .from('users')
       .select('id, email, tenant_id, role_id, full_name, first_name, middle_name, last_name, suffix, status')
       .eq('email', cleanEmail)
       .maybeSingle();
+    if (currentUserError) {
+      sendError(res, `Failed to inspect existing user record: ${currentUserError.message}`, 500);
+      return;
+    }
+    const existingUser = currentUser;
     const chairpersonAuthFullName = existingUser?.full_name || 'Pending Invitation';
 
     // 3. Check Supabase Auth users too, since invite/create may fail if the auth user already exists
