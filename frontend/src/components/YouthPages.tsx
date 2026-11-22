@@ -1134,9 +1134,12 @@ export default function YouthPages({
               <div className="flex items-center gap-3">
                 <h1 className="font-sans font-bold text-[#091d64] text-2xl tracking-tight leading-none">
                   {activeMenu === 'dashboard' && 'Youth Constituent Dashboard'}
-                  {(activeMenu === 'programs' || activeMenu === 'registrations') && 'Barangay Programs & Participation'}
+                  {activeMenu === 'directory' && 'Katipunan ng Kabataan Roster'}
+                  {(activeMenu === 'programs' || activeMenu === 'registrations') && 'Programs & Activities'}
                   {(activeMenu === 'feedback' || activeMenu === 'resolutions') && 'Boses ng Kabataan - Civic Desk'}
-                  {activeMenu === 'profile' && 'My Katipunan ng Kabataan Profile'}
+                  {activeMenu === 'profile' && 'My Profile'}
+                  {activeMenu === 'announcements' && 'Announcements'}
+                  {activeMenu === 'settings' && 'Settings'}
                 </h1>
                 <span className="text-[10px] font-extrabold uppercase tracking-widest px-2.5 py-1 rounded bg-[#091d64] text-white">
                   Youth
@@ -1240,7 +1243,7 @@ export default function YouthPages({
                           <span className="text-[10px] text-slate-400 font-semibold">{a.datePosted}</span>
                         </div>
                         <p className="text-sm sm:text-base font-bold text-slate-800 truncate">{a.title}</p>
-                        <p className="text-xs sm:text-sm text-slate-600 font-normal leading-relaxed line-clamp-3 mt-0.5">{a.content}</p>
+                        <p className="text-[11px] sm:text-xs text-slate-600 leading-relaxed font-normal line-clamp-2 mb-1">{a.content}</p>
                       </div>
                     ))}
                   {announcements.filter(a => a.status === 'published').length === 0 && (

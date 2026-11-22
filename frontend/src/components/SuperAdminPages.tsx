@@ -720,7 +720,7 @@ useEffect(() => {
 
     return {
       id: b.id,
-      name: b.name.length > 10 ? b.name.slice(0, 10) + '...' : b.name,
+      name: b.name,
       fullName: b.name,
       registeredYouth,
       activePrograms: toNumber(liveRow?.active_programs ?? b.activePrograms),
@@ -1579,7 +1579,7 @@ useEffect(() => {
                       <div className="h-80 min-w-[1200px]">
                         <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
                           <BarChart data={chartBarangayData}>
-                            <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} interval={0} angle={-45} textAnchor="end" height={80} tickFormatter={(val) => val === 'Concepcion Pequeña' ? 'Concepcion P.' : val === 'Concepcion Grande' ? 'Concepcion G.' : val} />
+                            <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} interval={0} angle={-45} textAnchor="end" height={80} tickFormatter={(val) => val === 'Concepcion Pequeña' ? 'Conc. Pequeña' : val === 'Concepcion Grande' ? 'Conc. Grande' : val} />
                             <YAxis stroke="#94a3b8" fontSize={10} />
                             <Tooltip />
                             <Legend />
@@ -2025,7 +2025,7 @@ useEffect(() => {
                       <div className="h-80 min-w-[1200px]">
                         <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
                           <BarChart data={chartBarangayData}>
-                            <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} interval={0} angle={-45} textAnchor="end" height={80} tickFormatter={(val) => val === 'Concepcion Pequeña' ? 'Concepcion P.' : val === 'Concepcion Grande' ? 'Concepcion G.' : val} />
+                            <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} interval={0} angle={-45} textAnchor="end" height={80} tickFormatter={(val) => val === 'Concepcion Pequeña' ? 'Conc. Pequeña' : val === 'Concepcion Grande' ? 'Conc. Grande' : val} />
                             <YAxis stroke="#94a3b8" fontSize={10} />
                             <Tooltip />
                             <Legend />
