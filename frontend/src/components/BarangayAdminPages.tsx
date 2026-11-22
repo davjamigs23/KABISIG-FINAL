@@ -607,7 +607,15 @@ export default function BarangayAdminPages({
     let cancelled = false;
     setYouthVerificationLoading(true);
     kabisigApi.getUserVerification((inspectProfile as any).user_id || inspectProfile.userId || inspectProfile.id).then((res) => {
-      if (!cancelled && res.success) setYouthVerification(res.data);
+      if (!cancelled && res.success) {
+        setYouthVerification(res.data || {
+          id_type: null,
+          id_number: null,
+          id_document_path: null,
+          has_document: false,
+          verification_status: 'not_submitted',
+        });
+      }
     }).catch(() => {
       if (!cancelled) setYouthVerification(null);
     }).finally(() => {
@@ -3896,10 +3904,10 @@ return (
                     <span>Failed to load verification data. Please try again or check the backend logs.</span>
                   </div>
                 )}
-                {!youthVerificationLoading && youthVerification && youthVerification.verification_status === "not_submitted" && (
+                {!youthVerificationLoading && youthVerification && !youthVerification.has_document && !youthVerification.id_document_path && !youthVerification.signed_url && (
                   <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-start gap-2">
                     <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                    <span>This youth has <strong>not submitted an ID</strong>. Approval is blocked until they upload one.</span>
+                    <span><strong>No ID Uploaded.</strong> This youth has not submitted an ID. Approval is blocked until they upload one.</span>
                   </div>
                 )}
 

@@ -1230,7 +1230,27 @@ router.get(
       return;
     }
 
-    // 1. Fetch Profile safely
+    // 1. Fetch the user first so tenant access can be checked even without a resident profile.
+    const { data: userData, error: userError } = await supabaseAdmin
+      .from('users')
+      .select('id, tenant_id, full_name, email')
+      .eq('id', targetUserId)
+      .maybeSingle();
+
+    if (userError) {
+      sendError(res, 'Failed to load user: ' + userError.message, 500);
+      return;
+    }
+    if (!userData) {
+      sendError(res, 'User not found.', 404);
+      return;
+    }
+    if (requester.role !== 'SUPER_ADMIN' && userData.tenant_id !== requester.tenant_id) {
+      sendError(res, 'You can only review youth in your barangay.', 403);
+      return;
+    }
+
+    // 2. Fetch Profile safely; users may not have uploaded an ID yet.
     const { data: profile, error } = await supabaseAdmin
       .from('resident_profile')
       .select('user_id, tenant_id, id_type, id_number, id_document_path, id_back_document_path, verification_status, verification_notes, verification_reviewed_at')
@@ -1241,38 +1261,34 @@ router.get(
       sendError(res, 'Failed to load verification: ' + error.message, 500);
       return;
     }
-    if (!profile) {
-      sendError(res, 'Verification record not found for this user.', 404);
-      return;
-    }
 
-    if (requester.role !== 'SUPER_ADMIN' && profile.tenant_id !== requester.tenant_id) {
-      sendError(res, 'You can only review youth in your barangay.', 403);
-      return;
-    }
-
-    // 2. Fetch User info safely (no fragile !inner joins)
-    const { data: userData } = await supabaseAdmin
-      .from('users')
-      .select('full_name, email')
-      .eq('id', targetUserId)
-      .maybeSingle();
+    const verificationProfile = profile || {
+      user_id: userData.id,
+      tenant_id: userData.tenant_id,
+      id_type: null,
+      id_number: null,
+      id_document_path: null,
+      id_back_document_path: null,
+      verification_status: 'not_submitted',
+      verification_notes: null,
+      verification_reviewed_at: null,
+    };
 
     // 3. Generate Signed URLs
     let signedUrl: string | null = null;
-    if (profile.id_document_path) {
+    if (verificationProfile.id_document_path) {
       const { data: signData, error: signErr } = await supabaseAdmin.storage
         .from('verification-ids')
-        .createSignedUrl(profile.id_document_path, 300);
+        .createSignedUrl(verificationProfile.id_document_path, 300);
       if (signErr) console.error("Storage Sign Error (Front):", signErr.message);
       if (signData) signedUrl = signData.signedUrl;
     }
 
     let backSignedUrl: string | null = null;
-    if ((profile as any).id_back_document_path) {
+    if (verificationProfile.id_back_document_path) {
       const { data: signData, error: signErr } = await supabaseAdmin.storage
         .from('verification-ids')
-        .createSignedUrl((profile as any).id_back_document_path, 300);
+        .createSignedUrl(verificationProfile.id_back_document_path, 300);
       if (signErr) console.error("Storage Sign Error (Back):", signErr.message);
       if (signData) backSignedUrl = signData.signedUrl;
     }
@@ -1287,20 +1303,21 @@ router.get(
     sendSuccess(
       res,
       {
-        user_id: profile.user_id,
+        user_id: verificationProfile.user_id,
         is_demoted_chair: Boolean(transferRecord),
         full_name: userData?.full_name || null,
         email: userData?.email || null,
-        id_type: profile.id_type,
-        id_number: profile.id_number,
-        has_document: Boolean(profile.id_document_path),
+        id_type: verificationProfile.id_type ?? null,
+        id_number: verificationProfile.id_number ?? null,
+        id_document_path: verificationProfile.id_document_path ?? null,
+        has_document: Boolean(verificationProfile.id_document_path),
         signed_url: signedUrl,
-        has_back_document: Boolean((profile as any).id_back_document_path),
+        has_back_document: Boolean(verificationProfile.id_back_document_path),
         back_signed_url: backSignedUrl,
         signed_url_expires_in_seconds: signedUrl ? 300 : null,
-        verification_status: profile.verification_status,
-        verification_notes: profile.verification_notes,
-        verification_reviewed_at: profile.verification_reviewed_at,
+        verification_status: verificationProfile.verification_status || 'not_submitted',
+        verification_notes: verificationProfile.verification_notes ?? null,
+        verification_reviewed_at: verificationProfile.verification_reviewed_at ?? null,
       },
       'Verification details retrieved.'
     );
