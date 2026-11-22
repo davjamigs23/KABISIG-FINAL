@@ -397,6 +397,31 @@ router.patch(
       return;
     }
 
+    let resolvedChairEmail = chairEmail && chairEmail.trim() ? chairEmail.trim().toLowerCase() : null;
+    if (resolvedChairEmail) {
+      const { data: existingOfficial, error: existingOfficialError } = await supabaseAdmin
+        .from('users')
+        .select('id, email, role_id, status, tenant_id')
+        .eq('email', resolvedChairEmail)
+        .in('role_id', [2, 3])
+        .in('status', ['active', 'pending', 'pending_invite'])
+        .maybeSingle();
+
+      if (existingOfficialError) {
+        sendError(res, `Failed to inspect existing user record: ${existingOfficialError.message}`, 500);
+        return;
+      }
+
+      if (existingOfficial && existingOfficial.tenant_id !== id) {
+        sendError(
+          res,
+          `This email is already assigned or pending in another Barangay (${existingOfficial.tenant_id}). Please use a different email.`,
+          400
+        );
+        return;
+      }
+    }
+
     // 1. If allocating budget, upsert into budget table for current year
     if (typeof allocatedBudget === 'number' && allocatedBudget >= 0) {
       const requestedYear = updates.active_fiscal_year || new Date().getFullYear();
@@ -449,14 +474,18 @@ router.patch(
 
     // 2. Chairperson assignment and resolution
     let resolvedChairName = chairName && chairName.trim() && chairName !== 'Unassigned' ? chairName.trim() : null;
-    let resolvedChairEmail = chairEmail && chairEmail.trim() ? chairEmail.trim().toLowerCase() : null;
 
     if (resolvedChairEmail) {
-      const { data: existingUser } = await supabaseAdmin
+      const { data: existingUser, error: existingUserError } = await supabaseAdmin
         .from('users')
         .select('id, email, full_name, tenant_id')
         .eq('email', resolvedChairEmail)
         .maybeSingle();
+
+      if (existingUserError) {
+        sendError(res, `Failed to inspect existing user record: ${existingUserError.message}`, 500);
+        return;
+      }
 
       if (existingUser) {
         resolvedChairName = resolvedChairName || existingUser.full_name || 'Hon. SK Chairperson';
@@ -687,6 +716,7 @@ router.post(
     }
 
     const { full_name, email, phone } = parseResult.data;
+    const cleanEmail = email.trim().toLowerCase();
 
     const { data: existingBgy, error: fetchErr } = await supabaseAdmin
       .from('barangay')
@@ -699,25 +729,36 @@ router.post(
       return;
     }
 
-    // Check if user already exists in users table with this email
-    const { data: existingUser, error: existingUserError } = await supabaseAdmin
+    const { data: existingOfficial, error: existingOfficialError } = await supabaseAdmin
       .from('users')
       .select('id, email, role_id, status, tenant_id')
-      .eq('email', email)
+      .eq('email', cleanEmail)
+      .in('role_id', [2, 3])
+      .in('status', ['active', 'pending', 'pending_invite'])
       .maybeSingle();
 
+    if (existingOfficialError) {
+      sendError(res, `Failed to inspect existing user record: ${existingOfficialError.message}`, 500);
+      return;
+    }
+
+    if (existingOfficial && existingOfficial.tenant_id !== id) {
+      sendError(
+        res,
+        `This email is already assigned or pending in another Barangay (${existingOfficial.tenant_id}). Please use a different email.`,
+        400
+      );
+      return;
+    }
+
+    // Keep existing-user updates for same-tenant accounts and other account types.
+    const { data: existingUser, error: existingUserError } = await supabaseAdmin
+      .from('users')
+      .select('id, email, tenant_id, role_id')
+      .eq('email', cleanEmail)
+      .maybeSingle();
     if (existingUserError) {
       sendError(res, `Failed to inspect existing user record: ${existingUserError.message}`, 500);
-      return;
-    }
-
-    if (existingUser && String(existingUser.status || '').toLowerCase() === 'pending' && existingUser.tenant_id !== id) {
-      sendError(res, 'This email already has a pending invitation for another Barangay.', 400);
-      return;
-    }
-
-    if (existingUser && String(existingUser.status || '').toLowerCase() === 'active' && existingUser.tenant_id !== id) {
-      sendError(res, 'This email is already assigned as an official in another Barangay.', 400);
       return;
     }
 
@@ -742,7 +783,7 @@ router.post(
     } else {
       const tempPassword = `Kabisig${new Date().getFullYear()}!`;
       const { data: authData, error: authErr } = await supabaseAdmin.auth.admin.createUser({
-        email,
+        email: cleanEmail,
         password: tempPassword,
         email_confirm: true,
         user_metadata: { full_name, tenant_id: id, role_id: 2, setup_completed: false },
@@ -759,7 +800,7 @@ router.post(
           tenant_id: id,
           role_id: 2, // BARANGAY_ADMIN
           full_name,
-          email,
+          email: cleanEmail,
           phone: phone || null,
           status: 'active',
           setup_completed: false,
@@ -782,7 +823,7 @@ router.post(
       entityId: id,
       details: {
         assigned_chairperson: full_name,
-        email,
+        email: cleanEmail,
         barangay: existingBgy.name,
         assigned_by: admin.full_name,
       },
@@ -795,7 +836,7 @@ router.post(
         tenant_id: id,
         barangay_name: existingBgy.name,
         chairperson: full_name,
-        email,
+        email: cleanEmail,
       },
       `Hon. ${full_name} successfully assigned as SK Chairperson (Barangay Admin) for Barangay ${existingBgy.name}.`
     );
