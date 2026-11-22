@@ -8,17 +8,11 @@ import { authenticateUser, optionalAuthenticateUser, requireActiveUser, requireR
 import type { AuthRequest } from '../types/database.types.js';
 
 const router = express.Router();
+const DOCUMENT_TYPES = ['Resolutions', 'Minutes', 'Reports', 'Vouchers'] as const;
 
 const CreateDocumentSchema = z.object({
   title: z.string().min(3, 'Document title is required'),
-  document_type: z.enum([
-    'Resolution',
-    'Ordinance',
-    'Financial Report',
-    'Minutes',
-    'Project Proposal',
-    'Other',
-  ]),
+  document_type: z.enum(DOCUMENT_TYPES),
   file_url: z.string().url('A valid file URL is required'),
   status: z.enum(['draft', 'pending_approval', 'approved', 'rejected']).default('approved'),
 });
@@ -33,7 +27,7 @@ const ApproveDocumentSchema = z.object({
 
 const UploadDocumentSchema = z.object({
   title: z.string().min(3, 'Document title is required'),
-  document_type: z.enum(['Resolution', 'Resolutions', 'Ordinance', 'Ordinances', 'Financial Report', 'Reports', 'Minutes', 'Meeting Minutes', 'Project Proposal', 'Accomplishment', 'Budget', 'Vouchers', 'Liquidation', 'Communications', 'Other']),
+  document_type: z.enum(DOCUMENT_TYPES),
   file_name: z.string().min(1, 'File name is required'),
   content_type: z.string().min(1, 'Content type is required'),
   file_base64: z.string().min(1, 'File data is required'),

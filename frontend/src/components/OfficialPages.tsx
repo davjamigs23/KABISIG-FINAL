@@ -150,6 +150,8 @@ function normalizeDocType(type: string): 'Resolutions' | 'Minutes' | 'Vouchers' 
   return 'Reports';
 }
 
+type DocumentUploadCategory = 'Resolutions' | 'Minutes' | 'Reports' | 'Vouchers';
+
 function getNormalizedDocumentType(document: DocumentRecord): 'Resolutions' | 'Minutes' | 'Vouchers' | 'Reports' {
   const rawDocumentType = (document as DocumentRecord & { document_type?: string }).document_type;
   return normalizeDocType(rawDocumentType || document.category);
@@ -579,7 +581,7 @@ export default function OfficialPages({
     title: '', description: '', startDate: '', endDate: '', location: '', maxParticipants: 0 as number | '', budgetAllocation: 0, aipReference: '', category: '' as any, status: 'Published' as any
   });
   const [docForm, setDocForm] = useState({
-    title: '', description: '', category: '' as any, fileName: '', resolutionNumber: '', designatedApprover: ''
+    title: '', description: '', category: '' as DocumentUploadCategory | '', fileName: '', resolutionNumber: '', designatedApprover: ''
   });
   const resetDocumentUploadForm = () => {
     setShowDocModal(false);
@@ -1189,20 +1191,12 @@ export default function OfficialPages({
       : `${catCode}-2026-${count.toString().padStart(3, '0')}`;
     const autoResNum = docForm.resolutionNumber?.trim() || defaultResNum;
 
-    const documentType = docForm.category === 'Resolutions'
-      ? 'Resolution'
-      : docForm.category === 'Minutes'
-        ? 'Minutes'
-        : docForm.category === 'Vouchers'
-          ? 'Other'
-          : 'Financial Report';
-
     setIsUploadingDocument(true);
     setDocumentUploadError('');
     try {
       const result = await kabisigApi.uploadDocument({
         title: docForm.title.trim(),
-        document_type: documentType,
+        document_type: docForm.category,
         file: selectedDocumentFile,
       });
       if (!result.success || !result.data?.id) {
@@ -1264,6 +1258,46 @@ export default function OfficialPages({
     }));
     setShowEditDocModal(false);
     setSelectedDoc(null);
+  };
+
+  const getSignedDocumentUrl = async (documentId: string): Promise<string> => {
+    const result = await kabisigApi.getDocumentDownloadUrl(documentId);
+    if (!result.success || !result.data?.url) {
+      throw new Error(result.message || 'The document link could not be generated.');
+    }
+    return result.data.url;
+  };
+
+  const handleViewDocument = async (doc: DocumentRecord) => {
+    try {
+      setPreviewDoc({ ...doc, fileUrl: await getSignedDocumentUrl(doc.id) });
+    } catch (error) {
+      setPopupMsg({
+        title: 'Document Unavailable',
+        text: error instanceof Error ? error.message : 'The document could not be opened.',
+        type: 'error',
+      });
+    }
+  };
+
+  const handleDownloadDocument = async (documentId: string) => {
+    const downloadWindow = window.open('', '_blank');
+    if (!downloadWindow) {
+      setPopupMsg({ title: 'Pop-up Blocked', text: 'Please allow popups to open the document.', type: 'error' });
+      return;
+    }
+    downloadWindow.opener = null;
+
+    try {
+      downloadWindow.location.href = await getSignedDocumentUrl(documentId);
+    } catch (error) {
+      downloadWindow.close();
+      setPopupMsg({
+        title: 'Document Unavailable',
+        text: error instanceof Error ? error.message : 'The document could not be downloaded.',
+        type: 'error',
+      });
+    }
   };
 
 
@@ -2355,16 +2389,14 @@ export default function OfficialPages({
         
         {/* DESKTOP HEADER */}
         <header className="hidden lg:flex bg-white border-b border-slate-100 h-20 items-center justify-between px-8 flex-shrink-0 z-30">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            <img
+              src={barangayLogo}
+              alt={`${currentTenant?.name || 'Barangay'} Seal`}
+              className="w-10 h-10 sm:w-12 sm:h-12 object-cover rounded-full shadow-sm mr-3 shrink-0"
+            />
             <div className="flex flex-col">
               <div className="flex items-center gap-3">
-                {barangayLogo && (
-                  <img
-                    src={barangayLogo}
-                    alt="Barangay Seal"
-                    className="w-11 h-11 object-contain rounded-full bg-white p-0.5 border border-slate-200 shadow-2xs shrink-0"
-                  />
-                )}
                 <h1 className="font-sans font-bold text-[#091d64] text-2xl tracking-tight leading-none">
                   {activeMenu.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
                 </h1>
@@ -2373,13 +2405,7 @@ export default function OfficialPages({
                 </span>
               </div>
               <span className="text-[11px] text-slate-400 font-sans tracking-wide font-semibold mt-1 flex items-center gap-1.5">
-                <img
-                  src={barangayLogo}
-                  alt={`${currentTenant?.name || 'Barangay'} Seal`}
-                  className="h-7 w-7 rounded-full object-cover"
-                  onError={(e) => { e.currentTarget.src = '/icon.png'; }}
-                />
-                <Building2 className="w-3.5 h-3.5" /> Barangay {currentTenant?.name || 'Barangay'} SK Council  Naga City
+                Barangay {currentTenant?.name || 'Barangay'} SK Council  Naga City
               </span>
             </div>
           </div>
@@ -2406,7 +2432,7 @@ export default function OfficialPages({
         </header>
 
         {/* WORKSPACE VIEW CONTENT AREA */}
-        <div className="flex-grow p-3.5 sm:p-6 lg:p-8 pb-24 sm:pb-8 overflow-y-auto">
+        <div className="flex-grow p-3.5 sm:p-6 lg:p-8 pb-24 sm:pb-24 lg:pb-8 overflow-y-auto">
           
           {/* ==================== SCREEN 1: DASHBOARD (Unified role-based screen) ==================== */}
           {activeMenu === 'profile' && (
@@ -3549,7 +3575,11 @@ export default function OfficialPages({
                         </div>
 
                         <div className="max-h-64 overflow-y-auto pr-2 space-y-2 text-xs">
-                          <div className="p-2.5 rounded-lg bg-emerald-50/50 border border-emerald-100 flex items-start gap-2">
+                          <button
+                            type="button"
+                            onClick={() => { setActiveMenu('reports'); setReportModuleCategory('compliance'); }}
+                            className="w-full p-2.5 rounded-lg bg-emerald-50/50 border border-emerald-100 flex items-start gap-2 text-left transition-colors hover:bg-slate-50 cursor-pointer"
+                          >
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 mt-0.5 flex-shrink-0" />
                             <div>
                               <p className="font-bold text-slate-800">Q2 Financial Performance Report</p>
@@ -3559,9 +3589,13 @@ export default function OfficialPages({
                                   : complianceAutoDetected.q2_report_status || 'Not Yet Submitted'}
                               </p>
                             </div>
-                          </div>
+                          </button>
 
-                          <div className="p-2.5 rounded-lg bg-blue-50/50 border border-blue-100 flex items-start gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setActiveMenu('budget')}
+                            className="w-full p-2.5 rounded-lg bg-blue-50/50 border border-blue-100 flex items-start gap-2 text-left transition-colors hover:bg-slate-50 cursor-pointer"
+                          >
                             <RefreshCw className="w-3.5 h-3.5 text-blue-600 mt-0.5 flex-shrink-0" />
                             <div>
                               <p className="font-bold text-slate-800">Cash Advances Liquidation</p>
@@ -3571,7 +3605,7 @@ export default function OfficialPages({
                                   : complianceAutoDetected.liquidation_status || 'Not Yet Submitted'}
                               </p>
                             </div>
-                          </div>
+                          </button>
                         </div>
                       </div>
 
@@ -5608,7 +5642,7 @@ export default function OfficialPages({
                             <div className="flex justify-center items-center gap-1.5">
 
                               <button 
-                                onClick={() => setPreviewDoc(doc)}
+                                onClick={() => { void handleViewDocument(doc); }}
                                 className="p-1.5 hover:bg-slate-100 rounded text-[#091d64] font-bold" 
                                 title="Preview Document"
                               >
@@ -5628,6 +5662,10 @@ export default function OfficialPages({
                                   href={doc.fileUrl || (doc as any).file_url}
                                   target="_blank"
                                   rel="noopener noreferrer"
+                                  onClick={(event) => {
+                                    event.preventDefault();
+                                    void handleDownloadDocument(doc.id);
+                                  }}
                                   className="p-1.5 hover:bg-slate-100 rounded text-emerald-700 font-bold"
                                   title="Download File"
                                 >
@@ -6545,7 +6583,7 @@ export default function OfficialPages({
                 <input type="text" value={docForm.title} onChange={(e)=>setDocForm({...docForm, title: e.target.value})} placeholder="e.g. Resolution No. 2026-005: Youth Sports Allocation" className="w-full p-2 border rounded text-xs" required />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Resolution / Tracking No. (Optional)</label>
                   <input type="text" value={docForm.resolutionNumber} onChange={(e)=>setDocForm({...docForm, resolutionNumber: e.target.value})} placeholder="Auto-generated if empty (e.g. RES-2026-005)" className="w-full p-2 border rounded text-xs font-mono" />
@@ -6555,7 +6593,7 @@ export default function OfficialPages({
                   <select 
                     value={docForm.category} 
                     onChange={(e) => {
-                      const newCat = e.target.value as any;
+                      const newCat = e.target.value as DocumentUploadCategory | '';
                       setDocForm({
                         ...docForm, 
                         category: newCat,
@@ -6995,6 +7033,10 @@ export default function OfficialPages({
                     href={selectedDoc.fileUrl || (selectedDoc as any).file_url}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      void handleDownloadDocument(selectedDoc.id);
+                    }}
                     className="px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold rounded-lg text-xs flex items-center gap-1.5"
                   >
                     <Download className="w-4 h-4" /> Download Official File
@@ -7493,35 +7535,6 @@ export default function OfficialPages({
         </div>
       )}
 
-      {/* MOBILE BOTTOM NAVIGATION BAR */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200/80 px-2 py-1.5 flex justify-around items-center z-40 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
-        {menuConfig[currentRole]?.slice(0, 4).map(menu => {
-          const Icon = menu.icon;
-          const isActive = activeMenu === menu.id;
-          return (
-            <button
-              key={menu.id}
-              onClick={() => { setActiveMenu(menu.id); setSearchTerm(''); setFilterCategory('All'); }}
-              className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all cursor-pointer ${
-                isActive ? 'text-[#091d64] font-extrabold bg-blue-50/80' : 'text-slate-400 font-medium hover:text-slate-600'
-              }`}
-            >
-              <Icon className={`w-5 h-5 ${isActive ? 'text-[#091d64] scale-110' : 'text-slate-400'} transition-transform`} />
-              <span className="text-[10px] mt-0.5 tracking-tight font-sans truncate max-w-[64px]">{menu.label.split(' ')[0]}</span>
-            </button>
-          );
-        })}
-        {false && menuConfig[currentRole] && menuConfig[currentRole].length > 4 && (
-          <button
-            onClick={() => setIsMobileMenuOpen(true)}
-            className="flex flex-col items-center justify-center py-1 px-2.5 rounded-xl text-slate-400 font-medium hover:text-slate-600 cursor-pointer"
-          >
-            <Menu className="w-5 h-5 text-slate-400" />
-            <span className="text-[10px] mt-0.5 tracking-tight font-sans">More</span>
-          </button>
-        )}
-      </div>
-
       {/* INVENTORY LIGHTBOX MODAL */}
       {previewImage && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -7545,6 +7558,41 @@ export default function OfficialPages({
           </div>
         </div>
       )}
+      {/* MOBILE BOTTOM NAVIGATION BAR */}
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200/80 px-2 py-1.5 flex justify-around items-center z-40 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
+        {menuConfig[currentRole]?.slice(0, 4).map(menu => {
+          const Icon = menu.icon;
+          const isActive = activeMenu === menu.id;
+          return (
+            <button
+              key={menu.id}
+              type="button"
+              onClick={() => {
+                setActiveMenu(menu.id);
+                setSearchTerm('');
+                setFilterCategory('All');
+                setIsMobileMenuOpen(false);
+              }}
+              className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all cursor-pointer ${
+                isActive ? 'text-[#091d64] font-extrabold bg-blue-50/80' : 'text-slate-400 font-medium hover:text-slate-600'
+              }`}
+            >
+              <Icon className={`w-5 h-5 ${isActive ? 'text-[#091d64] scale-110' : 'text-slate-400'} transition-transform`} />
+              <span className="text-[10px] mt-0.5 tracking-tight font-sans truncate max-w-[64px]">{menu.label.split(' ')[0]}</span>
+            </button>
+          );
+        })}
+        {(menuConfig[currentRole]?.length || 0) > 4 && (
+          <button
+            type="button"
+            onClick={() => setIsMobileMenuOpen(true)}
+            className="flex flex-col items-center justify-center py-1 px-2.5 rounded-xl text-slate-400 font-medium hover:text-slate-600 cursor-pointer"
+          >
+            <Menu className="w-5 h-5 text-slate-400" />
+            <span className="text-[10px] mt-0.5 tracking-tight font-sans">More</span>
+          </button>
+        )}
+      </div>
       <PopupDialog notice={confirmDeleteNotice} onClose={() => setConfirmDelete(null)} />
       {lightboxImg && (
         <div

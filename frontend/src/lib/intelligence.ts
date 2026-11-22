@@ -474,7 +474,7 @@ export function getComplianceIssues(
   const hasApprovedFinancialDocument = documents.some(doc => {
     const documentType = String((doc as typeof doc & { document_type?: string }).document_type || '').toLowerCase();
     return String(doc.status || '').toLowerCase() === 'approved'
-      && (documentType === 'financial reports' || String(doc.title || '').toLowerCase().includes('budget'));
+      && (documentType === 'reports' || String(doc.title || '').toLowerCase().includes('budget'));
   });
   if (!hasApprovedFinancialDocument) {
     issues.push({

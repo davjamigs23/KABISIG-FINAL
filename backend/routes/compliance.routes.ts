@@ -145,7 +145,7 @@ router.get('/', authenticateUser, requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 
   const q2Docs = (docs || []).filter((d: any) => {
     const type = String(d.document_type || '').trim().toLowerCase();
     const title = String(d.title || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-    return type === 'financial report' && /(?:^|\s)q2 financial performance report(?:$|\s)/.test(title);
+    return type === 'reports' && /(?:^|\s)q2 financial performance report(?:$|\s)/.test(title);
   });
   const q2ApprovedDocs = q2Docs.filter((document: any) => String(document.status || '').toLowerCase() === 'approved');
   const q2PendingDocs = q2Docs.filter((document: any) =>

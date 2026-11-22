@@ -137,6 +137,11 @@ export default function ViewerPages({
 
   // Sub-tab inside Transparency
   const [transparencySubTab, setTransparencySubTab] = useState<'financial' | 'demographics' | 'fpd' | 'auditing' | 'officials'>('financial');
+  useEffect(() => {
+    if (activeMenu === 'transparency' && transparencySubTab === 'fpd') {
+      void publicDocumentsQuery.refetch();
+    }
+  }, [activeMenu, transparencySubTab]);
 
   // --- Public demographics (anonymized aggregate) ---
   const [publicDemographics, setPublicDemographics] = useState<any>(null);
@@ -191,15 +196,17 @@ export default function ViewerPages({
   const [budgetCache, setBudgetCache] = useState<Record<string, any>>({});
 
   useEffect(() => {
-    if (activeMenu !== 'transparency' || transparencySubTab !== 'demographics') return;
+    if (activeMenu !== 'transparency') return;
     let isMounted = true;
     setPublicDemographicsLoading(true);
     kabisigApi.getPublicDemographics()
       .then((d) => { if (isMounted) setPublicDemographics(d); })
-      .catch(() => {})
+      .catch((error: unknown) => {
+        console.error('Failed to load public demographics:', error);
+      })
       .finally(() => { if (isMounted) setPublicDemographicsLoading(false); });
     return () => { isMounted = false; };
-  }, [activeMenu, transparencySubTab]);
+  }, [activeMenu]);
 
   useEffect(() => {
     if (activeMenu !== 'transparency' || transparencySubTab !== 'officials' || publicOfficials !== null) return;
@@ -233,6 +240,7 @@ export default function ViewerPages({
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [announcementSearch, setAnnouncementSearch] = useState('');
   const [visiblePrograms, setVisiblePrograms] = useState(6);
+  const [showAllAnnouncements, setShowAllAnnouncements] = useState(false);
 
   const downloadPublicCOAPDF = () => {
     const printWindow = window.open('', '_blank');
@@ -380,7 +388,7 @@ export default function ViewerPages({
   const _demoRaw = (publicDemographics as any)?.data?.data
     ?? (publicDemographics as any)?.data
     ?? publicDemographics;
-  const totalCityYouth = Number(_demoRaw?.total_youth || 0);
+  const totalCityYouth = Number(_demoRaw?.total_youth ?? _demoRaw?.totalYouth ?? 0);
 
   // Demographics aggregation
   const maleCount = youthProfiles.filter(p => p.sex === 'Male').length;
@@ -417,16 +425,11 @@ export default function ViewerPages({
   const sortedTenants = [...tenants].sort((a, b) => a.name.localeCompare(b.name));
 
   // Recharts Chart F1: City-Wide budget comparison
-  const cityWideBarData = [...tenants]
-    .filter(tenant => tenant.totalBudget > 0)
-    .sort((a, b) => b.totalBudget - a.totalBudget)
-    .slice(0, 7)
-    .map(t => ({
+  const cityWideBarData = sortedTenants.map(t => ({
       name: t.name,
       budget: t.totalBudget,
       spent: t.spentBudget
     }));
-  const hasCityWideBudgetData = cityWideBarData.some(entry => entry.budget > 0 || entry.spent > 0);
 
   // Recharts Pie Chart F2: Category expense allocations
   const expenseCategoryTotals = useMemo(() => expenses.reduce<Record<string, number>>((totals, exp) => {
@@ -443,14 +446,14 @@ export default function ViewerPages({
   })).filter(entry => entry.value > 0), [expenseCategoryTotals]);
 
   // FPD Compliance Documents list from live documents
-  const fpdDocuments = documents.length > 0 ? documents.filter(d => d.status?.toLowerCase() === "approved").map(d => ({
+  const fpdDocuments = documents.filter(d => ['approved', 'published'].includes(String(d.status || '').trim().toLowerCase())).map(d => ({
     id: d.id,
     title: d.title,
     category: (d as any).document_type || (d as any).category || 'Compliance',
-    barangay: tenants.find(t => t.id === d.barangayId)?.name || 'Naga City',
+    barangay: tenants.find(t => t.id === ((d as any).tenant_id || d.barangayId))?.name || 'Naga City',
     date: d.uploadedDate || (d.created_at ? getPhilippineDateString(d.created_at) : getPhilippineDateString()),
     status: d.status || 'Compliant',
-  })) : [];
+  }));
 
   const closeRequestCopyModal = () => {
     if (isRequestCopySubmitting) return;
@@ -1053,17 +1056,19 @@ export default function ViewerPages({
                         <TrendingUp className="w-4 h-4 text-[#091d64]" />
                         Barangay Budget Utilization
                       </h4>
-                      {hasCityWideBudgetData ? (
-                        <div className="h-56 w-full min-w-0 overflow-hidden">
-                          <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
-                            <BarChart data={cityWideBarData} margin={{ bottom: 20 }}>
-                              <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} interval={0} angle={-45} textAnchor="end" height={70} tickFormatter={(value) => { const name = String(value || ''); return name.length > 12 ? `${name.substring(0, 10)}...` : name; }} tick={{ fill: '#475569', fontSize: 11 }} />
-                              <YAxis stroke="#64748b" fontSize={10} tickLine={false} />
-                              <Tooltip />
-                              <Bar dataKey="budget" name="Annual Budget Allocation" fill="#091d64" radius={[2, 2, 0, 0]} />
-                              <Bar dataKey="spent" name="Actual Expenditures Logged" fill="#e11d48" radius={[2, 2, 0, 0]} />
-                            </BarChart>
-                          </ResponsiveContainer>
+                      {cityWideBarData.length > 0 ? (
+                        <div className="w-full overflow-x-auto">
+                          <div className="h-72 min-w-[800px]">
+                            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
+                              <BarChart data={cityWideBarData} margin={{ bottom: 20 }}>
+                                <XAxis dataKey="name" stroke="#64748b" fontSize={10} tickLine={false} interval={0} angle={-45} textAnchor="end" height={80} tick={{ fill: '#475569', fontSize: 11 }} />
+                                <YAxis stroke="#64748b" fontSize={10} tickLine={false} />
+                                <Tooltip />
+                                <Bar dataKey="budget" name="Annual Budget Allocation" fill="#091d64" radius={[2, 2, 0, 0]} />
+                                <Bar dataKey="spent" name="Actual Expenditures Logged" fill="#e11d48" radius={[2, 2, 0, 0]} />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
                         </div>
                       ) : (
                         <div className="h-56 flex items-center justify-center text-sm text-slate-500">
@@ -1224,8 +1229,20 @@ export default function ViewerPages({
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 font-medium">
-                          {fpdDocuments.map((doc, i) => (
-                            <tr key={i} className="hover:bg-slate-50">
+                          {publicDocumentsQuery.isError ? (
+                            <tr>
+                              <td colSpan={5} className="px-5 py-8 text-center text-rose-600">
+                                {publicDocumentsQuery.error instanceof Error
+                                  ? publicDocumentsQuery.error.message
+                                  : 'Public disclosure documents could not be loaded.'}
+                              </td>
+                            </tr>
+                          ) : publicDocumentsQuery.isFetching && fpdDocuments.length === 0 ? (
+                            <tr>
+                              <td colSpan={5} className="px-5 py-8 text-center text-slate-400">Loading public disclosure documents...</td>
+                            </tr>
+                          ) : fpdDocuments.map(doc => (
+                            <tr key={doc.id} className="hover:bg-slate-50">
                               <td className="px-5 py-3.5">
                                 <span className="font-bold text-slate-800 block">{doc.title}</span>
                                 <span className="text-[10px] text-slate-400 font-mono">{doc.category}</span>
@@ -1251,6 +1268,11 @@ export default function ViewerPages({
                               </td>
                             </tr>
                           ))}
+                          {!publicDocumentsQuery.isError && !publicDocumentsQuery.isFetching && fpdDocuments.length === 0 && (
+                            <tr>
+                              <td colSpan={5} className="px-5 py-8 text-center text-slate-400">No approved or published disclosure documents are available.</td>
+                            </tr>
+                          )}
                         </tbody>
                       </table>
                     </div>
@@ -1532,7 +1554,7 @@ export default function ViewerPages({
 
                 {/* Announcement Cards Feed */}
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-                  {filteredAnnouncements.slice(0, 3).map(ann => (
+                  {(showAllAnnouncements ? filteredAnnouncements : filteredAnnouncements.slice(0, 4)).map(ann => (
                     <div key={ann.id} className="bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col justify-between hover:shadow-md transition-all">
                       <div className="p-5 space-y-3">
                         <div className="flex justify-between items-center">
@@ -1583,6 +1605,17 @@ export default function ViewerPages({
                     </div>
                   ))}
                 </div>
+                {filteredAnnouncements.length > 4 && (
+                  <div className="mt-5 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => setShowAllAnnouncements(showAll => !showAll)}
+                      className="rounded-lg border border-[#091d64] px-5 py-2 text-sm font-bold text-[#091d64] transition-colors hover:bg-blue-50 cursor-pointer"
+                    >
+                      {showAllAnnouncements ? 'Show Fewer Announcements' : 'View All Announcements'}
+                    </button>
+                  </div>
+                )}
 
                 {/* PUBLIC FEED OF PASSED RESOLUTIONS & IMPACT METRICS */}
                 <div className="pt-6 border-t border-slate-100 space-y-4">

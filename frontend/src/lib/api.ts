@@ -494,9 +494,10 @@ class KabisigApiClient {
     });
   }
   async getPublicDocuments(): Promise<any[]> {
-    const res = await this.request<any>('/public/documents', { method: 'GET' });
-    const data = (res as any)?.data ?? res;
-    return Array.isArray(data) ? data : [];
+    const res = await this.request<any[]>('/public/documents', { method: 'GET' });
+    if (!res.success) throw new Error(res.message || 'Public disclosure documents could not be loaded.');
+    if (!Array.isArray(res.data)) throw new Error('The public documents endpoint returned an invalid response.');
+    return res.data;
   }
 
   async requestPublicDocumentCopy(
@@ -940,7 +941,7 @@ class KabisigApiClient {
 
   async uploadDocument(payload: {
     title: string;
-    document_type: string;
+    document_type: 'Resolutions' | 'Minutes' | 'Reports' | 'Vouchers';
     file: File;
   }): Promise<{ success: boolean; data?: any; message?: string; error?: any }> {
     const allowedTypes = new Set([

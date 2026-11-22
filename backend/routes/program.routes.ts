@@ -169,7 +169,7 @@ router.get(
   '/:id/registrations',
   authenticateUser,
   requireActiveUser,
-  requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'),
+  requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN', 'YOUTH_CONSTITUENT'),
   async (req: Request, res: Response): Promise<void> => {
     const programId = String(req.params.id || '');
     const user = (req as AuthRequest).user!;
@@ -188,12 +188,17 @@ router.get(
       return;
     }
 
-    const { data, error } = await supabaseAdmin
+    const registrationsQuery = supabaseAdmin
       .from('program_registrations')
-      .select('id, program_id, user_id, tenant_id, status, registered_at, users!user_id(full_name, email, phone, resident_profile!resident_profile_user_id_fkey(zone))')
+      .select(
+        user.role === 'YOUTH_CONSTITUENT'
+          ? 'users!user_id(full_name, avatar_url)'
+          : 'id, program_id, user_id, tenant_id, status, registered_at, users!user_id(full_name, email, phone, resident_profile!resident_profile_user_id_fkey(zone))'
+      )
       .eq('program_id', programId)
       .neq('status', 'cancelled')
       .order('registered_at', { ascending: true });
+    const { data, error } = await registrationsQuery;
 
     if (error) {
       sendError(res, `Failed to retrieve program registrations: ${error.message}`, 500);

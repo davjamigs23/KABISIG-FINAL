@@ -718,13 +718,11 @@ export default function YouthPages({
     try {
       const rows = await kabisigApi.getProgramRegistrations(program.id);
       const mapped = (rows || []).map((row: any) => {
-        const u = Array.isArray(row.users) ? row.users[0] : row.users;
-        const rp = Array.isArray(u?.resident_profile) ? u.resident_profile[0] : u?.resident_profile;
+        const u = Array.isArray(row?.users) ? row.users[0] : row?.users;
         return {
-          id: row.id,
-          name: u?.full_name || row.participantName || 'Youth',
-          zone: rp?.zone || '\u2014',
-          email: u?.email || '\u2014'
+          id: row?.id,
+          full_name: u?.full_name || row?.participantName || 'Youth Participant',
+          avatar_url: u?.avatar_url || null
         };
       });
       setProgramParticipants(mapped);
@@ -896,13 +894,20 @@ export default function YouthPages({
   // Dynamically count filled fields for the Youth Profile
   const countCompletedFields = (() => {
     const y = youth as any;
-    const guardianName = y.guardian_name ?? y.guardianName;
-    const guardianContact = y.guardian_contact ?? y.guardianContact;
+    const resident = y.resident_profile ?? y.resident ?? {};
+    const age = calculateAge(y.birthdate) || y.age;
+    const civilStatus = y.civilStatus || y.civil_status || resident.civil_status || resident.marital_status;
+    const zone = y.zone || y.zone_name || resident.zone;
+    const employmentStatus = y.employmentStatus || y.employment_status || resident.employment_status;
+    const guardianName = y.guardianName || y.guardian_name || resident.guardian_name;
+    const guardianContact = y.guardianContact || y.guardian_contact || resident.guardian_contact;
+    const phone = y.phone || y.mobile || resident.phone || resident.mobile;
+    const email = y.email || y.contact || resident.email;
     const digitalYouthId = y.digital_youth_id ?? y.id;
     const fields = [
-      y.name || y.fullName, y.sex, y.birthdate, y.age, y.civilStatus,
-      y.address, y.zone, y.phone, y.contact || y.email, y.education || y.educationalLevel,
-      y.school, y.course, y.yearLevel || y.year, y.employmentStatus,
+      y.name || y.fullName, y.sex, y.birthdate, age, civilStatus,
+      y.address, zone, phone, email, y.education || y.educationalLevel || resident.educational_status,
+      y.school, y.course, y.yearLevel || y.year, employmentStatus,
       y.scholarStatus, y.youthSector,
       guardianName && guardianContact ? `${guardianName} ${guardianContact}` : null,
       digitalYouthId
@@ -975,8 +980,8 @@ export default function YouthPages({
       )}
       
       {/* MOBILE TOP HEADER BAR */}
-      <div className="lg:hidden bg-[#091d64]/95 backdrop-blur-md text-white px-4 py-2 flex justify-between items-center sticky top-0 z-50 shadow-sm border-b border-white/10 h-14">
-        <div className="flex items-center gap-2">
+      <div className="lg:hidden bg-[#091d64]/95 backdrop-blur-md text-white px-3 py-2 flex flex-wrap justify-between items-center gap-2 sticky top-0 z-50 shadow-sm border-b border-white/10 min-h-14">
+        <div className="flex min-w-0 flex-1 items-center gap-1">
           <div className="h-10 px-1.5 rounded-lg bg-white shadow-md ring-1 ring-white/30 flex items-center justify-center overflow-hidden flex-shrink-0">
             <img
               src="/images/Kabisig_logo.png"
@@ -985,12 +990,16 @@ export default function YouthPages({
             />
           </div>
           {resolvedTenant && (
-            <div className="flex items-center gap-1.5 min-w-0">
-              <img src={barangayLogo} alt={`${resolvedTenant.name} Seal`} className="h-7 w-7 rounded-full object-cover" onError={(e) => { e.currentTarget.src = '/icon.png'; }} />
-              <span className="max-w-24 truncate text-[10px] font-bold text-white">Brgy. {resolvedTenant.name}</span>
+            <div className="flex min-w-0 flex-1 items-center gap-1">
+              <img
+                src={barangayLogo}
+                alt={`${resolvedTenant.name} Seal`}
+                className="h-7 w-7 shrink-0 rounded-full object-cover"
+              />
+              <span className="min-w-0 max-w-[76px] whitespace-normal break-words text-[9px] font-bold leading-tight text-white">Brgy. {resolvedTenant.name}</span>
             </div>
           )}
-          <span className="text-[10px] font-bold bg-[#1e3a8a] px-2 py-0.5 rounded text-amber-300">Youth Portal</span>
+          <span className="hidden shrink-0 whitespace-nowrap rounded bg-[#1e3a8a] px-1.5 py-0.5 text-[9px] font-bold text-amber-300 sm:inline-flex">Youth Portal</span>
         </div>
         <div className="flex items-center gap-2">
           <NotificationMenu
@@ -1115,27 +1124,28 @@ export default function YouthPages({
         
         {/* DESKTOP HEADER BLOCK */}
         <header className="hidden lg:flex bg-white border-b border-slate-100 h-20 items-center justify-between px-8 flex-shrink-0 z-30">
-          <div className="flex flex-col">
-            <div className="flex items-center gap-3">
-              <h1 className="font-sans font-bold text-[#091d64] text-2xl tracking-tight leading-none">
-                {activeMenu === 'dashboard' && 'Youth Constituent Dashboard'}
-                {(activeMenu === 'programs' || activeMenu === 'registrations') && 'Barangay Programs & Participation'}
-                {(activeMenu === 'feedback' || activeMenu === 'resolutions') && 'Boses ng Kabataan - Civic Desk'}
-                {activeMenu === 'profile' && 'My Katipunan ng Kabataan Profile'}
-              </h1>
-              <span className="text-[10px] font-extrabold uppercase tracking-widest px-2.5 py-1 rounded bg-[#091d64] text-white">
-                Youth
+          <div className="flex items-center gap-3">
+            <img
+              src={barangayLogo}
+              alt={`${resolvedTenant?.name || 'Barangay'} Seal`}
+              className="w-10 h-10 sm:w-12 sm:h-12 object-cover rounded-full shadow-sm mr-3 shrink-0"
+            />
+            <div className="flex flex-col">
+              <div className="flex items-center gap-3">
+                <h1 className="font-sans font-bold text-[#091d64] text-2xl tracking-tight leading-none">
+                  {activeMenu === 'dashboard' && 'Youth Constituent Dashboard'}
+                  {(activeMenu === 'programs' || activeMenu === 'registrations') && 'Barangay Programs & Participation'}
+                  {(activeMenu === 'feedback' || activeMenu === 'resolutions') && 'Boses ng Kabataan - Civic Desk'}
+                  {activeMenu === 'profile' && 'My Katipunan ng Kabataan Profile'}
+                </h1>
+                <span className="text-[10px] font-extrabold uppercase tracking-widest px-2.5 py-1 rounded bg-[#091d64] text-white">
+                  Youth
+                </span>
+              </div>
+              <span className="text-[11px] text-slate-400 font-sans tracking-wide font-semibold mt-1">
+                Web-Based Kabataan Information System for Inclusive Governance
               </span>
             </div>
-            <span className="text-[11px] text-slate-400 font-sans tracking-wide font-semibold mt-1">
-              Web-Based Kabataan Information System for Inclusive Governance
-            </span>
-            {resolvedTenant && (
-              <span className="mt-1 flex items-center gap-2 text-[11px] font-semibold text-slate-500">
-                <img src={barangayLogo} alt={`${resolvedTenant.name} Seal`} className="h-6 w-6 rounded-full object-cover" onError={(e) => { e.currentTarget.src = '/icon.png'; }} />
-                Barangay {resolvedTenant.name}
-              </span>
-            )}
           </div>
           {/* User Profile Block */}
           <div className={isVerificationPending ? "flex items-center gap-5 opacity-50 pointer-events-none" : "flex items-center gap-5"}>
@@ -1167,7 +1177,7 @@ export default function YouthPages({
           {/* ==================== 1. DASHBOARD VIEW (Image 4) ==================== */}
           {activeMenu === 'dashboard' && (
             <div className="space-y-6">
-              {currentYouth?.is_demoted === true && countCompletedFields < 18 && (
+              {currentYouth?.is_demoted === true && !isProfileLocked && countCompletedFields < 18 && (
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
                   <div className="flex items-start gap-3">
                     <div className="bg-amber-100 p-2 rounded-lg text-slate-900 shrink-0">
@@ -1229,8 +1239,8 @@ export default function YouthPages({
                           </span>
                           <span className="text-[10px] text-slate-400 font-semibold">{a.datePosted}</span>
                         </div>
-                        <p className="text-xs font-bold text-slate-800 truncate">{a.title}</p>
-                        <p className="text-[10px] text-slate-500 line-clamp-2 mt-0.5">{a.content}</p>
+                        <p className="text-sm sm:text-base font-bold text-slate-800 truncate">{a.title}</p>
+                        <p className="text-xs sm:text-sm text-slate-600 font-normal leading-relaxed line-clamp-3 mt-0.5">{a.content}</p>
                       </div>
                     ))}
                   {announcements.filter(a => a.status === 'published').length === 0 && (
@@ -1523,7 +1533,7 @@ export default function YouthPages({
                             <span className="text-[10px] text-slate-400 font-bold block mt-0.5">
                               {program.startDate || 'Date to be announced'}{program.endDate ? ` - ${program.endDate}` : ''}
                             </span>
-                            <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                            <p className="line-clamp-3 text-xs text-slate-500 mt-1.5 leading-relaxed">
                               {program.description || 'Program details will be announced by the Sangguniang Kabataan.'}
                             </p>
                           </div>
@@ -1578,7 +1588,7 @@ export default function YouthPages({
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="px-3 py-1 bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="shrink-0 whitespace-nowrap px-3 py-1 bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
                       <CheckCircle2 className="w-3.5 h-3.5" /> Verified KK Member
                     </span>
                   </div>
@@ -1617,7 +1627,7 @@ export default function YouthPages({
                   <div className="text-center sm:text-left flex-1 min-w-0">
                     <div className="flex flex-col xl:flex-row xl:items-start justify-between gap-4">
                       <div className="min-w-0">
-                        <h4 className="text-2xl font-black text-slate-900 leading-tight">{youth.name}</h4>
+                        <h4 className="min-w-0 break-words text-2xl font-black text-slate-900 leading-tight">{youth.name}</h4>
                         <div className="flex flex-wrap justify-center sm:justify-start gap-2 mt-2">
                           <span className="text-[10px] bg-blue-50 text-[#091d64] border border-blue-100 px-3 py-1 rounded-full font-extrabold uppercase tracking-widest">
                             Resident ID: <span className="font-mono text-slate-900">{youth.id}</span>
@@ -1913,7 +1923,7 @@ export default function YouthPages({
                                 {p.location || "Venue TBA"}
                               </span>
                             </div>
-                            <p className="text-xs text-slate-500 mt-4 leading-relaxed font-medium">
+                            <p className="line-clamp-3 text-xs text-slate-500 mt-4 leading-relaxed font-medium">
                               {p.description}
                             </p>
                           </div>
@@ -3165,17 +3175,24 @@ export default function YouthPages({
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-50 text-[10px] text-slate-500 uppercase">
                     <tr>
-                      <th className="px-3 py-2">Name</th>
-                      <th className="px-3 py-2">Zone</th>
-                      <th className="px-3 py-2 text-right">Email</th>
+                      <th className="px-3 py-2">Participant</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {programParticipants.map((pt, idx) => (
                       <tr key={idx}>
-                        <td className="px-3 py-2 font-bold text-slate-800">{pt.name}</td>
-                        <td className="px-3 py-2 text-slate-600 whitespace-nowrap">{pt.zone || "\u2014"}</td>
-                        <td className="px-3 py-2 text-right text-slate-500 font-mono text-[10px]">{pt.email || "\u2014"}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex items-center gap-3">
+                            {pt?.avatar_url ? (
+                              <img src={pt.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover" />
+                            ) : (
+                              <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">
+                                {(pt?.full_name || 'Youth Participant').charAt(0)}
+                              </div>
+                            )}
+                            <span className="font-bold text-slate-800">{pt?.full_name || 'Youth Participant'}</span>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

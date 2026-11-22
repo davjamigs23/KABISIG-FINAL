@@ -1576,19 +1576,21 @@ useEffect(() => {
                     </div>
                   </div>
                   {hasRegisteredYouthAnalytics ? (
-                    <div className="h-64 w-full min-w-0 overflow-hidden">
-                      <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
-                        <BarChart data={chartBarangayData}>
-                          <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} />
-                          <YAxis stroke="#94a3b8" fontSize={10} />
-                          <Tooltip />
-                          <Legend />
-                          <Bar dataKey="registeredYouth" fill="#2563eb" name="Registered KK Members" radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
+                    <div className="w-full overflow-x-auto">
+                      <div className="h-80 min-w-[1200px]">
+                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
+                          <BarChart data={chartBarangayData}>
+                            <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} interval={0} angle={-45} textAnchor="end" height={80} />
+                            <YAxis stroke="#94a3b8" fontSize={10} />
+                            <Tooltip />
+                            <Legend />
+                            <Bar dataKey="registeredYouth" fill="#2563eb" name="Registered KK Members" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
                     </div>
                   ) : (
-                    <div className="h-64 flex items-center justify-center text-sm text-slate-500">
+                    <div className="h-80 flex items-center justify-center text-sm text-slate-500">
                       No youth registration data available.
                     </div>
                   )}
@@ -2020,19 +2022,21 @@ useEffect(() => {
                     <p className="text-xs text-slate-400">Active youth constituent accounts in the current federation registry</p>
                   </div>
                   {hasRegisteredYouthAnalytics ? (
-                    <div className="h-64 w-full min-w-0 overflow-hidden">
-                      <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
-                        <BarChart data={chartBarangayData}>
-                          <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} />
-                          <YAxis stroke="#94a3b8" fontSize={10} />
-                          <Tooltip />
-                          <Legend />
-                          <Bar dataKey="registeredYouth" fill="#3b82f6" name="KK Registered" radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
+                    <div className="w-full overflow-x-auto">
+                      <div className="h-80 min-w-[1200px]">
+                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
+                          <BarChart data={chartBarangayData}>
+                            <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} interval={0} angle={-45} textAnchor="end" height={80} />
+                            <YAxis stroke="#94a3b8" fontSize={10} />
+                            <Tooltip />
+                            <Legend />
+                            <Bar dataKey="registeredYouth" fill="#3b82f6" name="KK Registered" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
                     </div>
                   ) : (
-                    <div className="h-64 flex items-center justify-center text-sm text-slate-500">
+                    <div className="h-80 flex items-center justify-center text-sm text-slate-500">
                       No youth registration data available.
                     </div>
                   )}

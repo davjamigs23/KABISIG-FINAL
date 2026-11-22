@@ -402,8 +402,16 @@ export default function BarangayAdminPages({
     "'": '&#39;',
   })[character] || character);
 
-  const openDynamicPrintPDF = (title: string, subtitle: string, refCode: string, headers: string[], rowsHTML: string, summaryStatsHTML: string) => {
-    const printWindow = window.open('', '_blank');
+  const openDynamicPrintPDF = (
+    title: string,
+    subtitle: string,
+    refCode: string,
+    headers: string[],
+    rowsHTML: string,
+    summaryStatsHTML: string,
+    targetWindow?: Window
+  ) => {
+    const printWindow = targetWindow || window.open('', '_blank');
     if (!printWindow) {
       setPopupMsg({ title: 'Pop-up Blocked', text: 'Please allow popups for this website to export the PDF report.', type: 'error' });
       return;
@@ -494,21 +502,49 @@ export default function BarangayAdminPages({
     printWindow.document.close();
   };
 
-  const handleExportMasterPDF = () => {
+  const handleExportMasterPDF = async () => {
+    const activeReportTab = reportSubTab;
+    let printWindow: Window | null = null;
+    if (activeReportTab === 'attendance') {
+      printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        setPopupMsg({ title: 'Pop-up Blocked', text: 'Please allow popups for this website to export the PDF report.', type: 'error' });
+        return;
+      }
+    }
+
     let title: string;
     let headers: string[];
     let records: unknown[][];
     let totalAmount = 0;
 
-    switch (reportSubTab) {
+    switch (activeReportTab) {
       case 'attendance':
-        title = 'Program Registration & Capacity Report';
-        headers = ['Program', 'Registered', 'Slots', 'Fill Rate'];
-        records = programs.map(program => {
-          const registered = Number(program.registeredCount) || 0;
-          const slots = Number(program.maxParticipants) || 0;
-          return [program.title, registered, slots, `${slots ? Math.round((registered / slots) * 100) : 0}%`];
-        });
+        title = 'Program Attendance Log';
+        headers = ['Program', 'Participant', 'Check-in Time', 'Status'];
+        try {
+          const attendanceByProgram = await Promise.all(programs.map(async program => {
+            const attendance = await kabisigApi.getProgramAttendance(program.id);
+            if (!Array.isArray(attendance)) {
+              throw new Error(`Attendance records for ${program.title} could not be loaded.`);
+            }
+            return attendance.map(record => [
+              program.title,
+              record.users?.full_name || 'Youth Constituent',
+              record.checked_in_at ? formatPhilippineDateTime(record.checked_in_at) : '—',
+              'Present',
+            ]);
+          }));
+          records = attendanceByProgram.flat();
+        } catch (error) {
+          printWindow?.close();
+          setPopupMsg({
+            title: 'Attendance Export Failed',
+            text: error instanceof Error ? error.message : 'Attendance records could not be loaded.',
+            type: 'error',
+          });
+          return;
+        }
         break;
       case 'accomplishments':
         title = 'Program Accomplishment Report';
@@ -530,18 +566,22 @@ export default function BarangayAdminPages({
         break;
       case 'demographics': {
         title = 'Youth Demographic Summary';
-        headers = ['Demographic Group', 'Category', 'Count'];
+        headers = ['Demographic Category', 'Specific Group', 'Count'];
         const counts = new Map<string, number>();
-        const addCount = (group: string, category: string) => {
-          const key = `${group}|${category || 'Not Specified'}`;
+        const addCount = (demographicCategory: string, specificGroup: string) => {
+          const key = `${demographicCategory}|${specificGroup || 'Not Specified'}`;
           counts.set(key, (counts.get(key) || 0) + 1);
         };
         youthProfiles.forEach(youth => {
-          const ageGroup = youth.age < 18 ? '15-17' : youth.age < 22 ? '18-21' : youth.age < 26 ? '22-25' : '26-30';
+          const age = Number(youth.age);
+          const ageGroup = age >= 15 && age <= 17 ? '15-17'
+            : age >= 18 && age <= 21 ? '18-21'
+              : age >= 22 && age <= 25 ? '22-25'
+                : age >= 26 && age <= 30 ? '26-30'
+                  : 'Not Specified';
           addCount('Sex', youth.sex);
           addCount('Age', ageGroup);
-          addCount('Education', youth.educationalLevel);
-          addCount('Employment', youth.employmentStatus || youth.employment || '');
+          addCount('Education', youth.educationalLevel || youth.education || '');
         });
         records = Array.from(counts.entries()).map(([key, count]) => [...key.split('|'), count]);
         break;
@@ -560,6 +600,15 @@ export default function BarangayAdminPages({
           return [program.title, `\u20B1${Number(allocated || 0).toLocaleString()}`, `\u20B1${Number(spent || 0).toLocaleString()}`, `\u20B1${Number(allocated - spent || 0).toLocaleString()}`];
         });
         break;
+      case 'compliance': {
+        title = 'Compliance Documents Report';
+        headers = ['Document', 'Category', 'Status'];
+        const complianceDocuments = documents.filter(document =>
+          /compliance|resolution|minutes|report|budget|voucher|liquidation/i.test(`${document.category} ${document.title}`)
+        );
+        records = complianceDocuments.map(document => [document.title, document.category, document.status]);
+        break;
+      }
       case 'executive':
       default:
         title = 'Executive Governance Summary';
@@ -584,10 +633,11 @@ export default function BarangayAdminPages({
     openDynamicPrintPDF(
       title,
       `${title} for Barangay ${currentBarangay?.name || 'Barangay'} — ${formatPhilippineDate(new Date())}`,
-      `SK-${reportSubTab.toUpperCase()}-${new Date().getFullYear()}`,
+      `SK-${activeReportTab.toUpperCase()}-${new Date().getFullYear()}`,
       headers,
       rowsHTML,
       summaryStatsHTML,
+      printWindow || undefined,
     );
   };
 
@@ -4069,7 +4119,13 @@ return (
                 setIsUploadingDocument(true);
                 setDocumentUploadError('');
                 try {
-                  const documentType = newDocForm.category === 'Resolutions' ? 'Resolution' : newDocForm.category === 'Minutes' ? 'Minutes' : newDocForm.category === 'Reports' || newDocForm.category === 'Budget' ? 'Financial Report' : 'Other';
+                  const documentType = newDocForm.category === 'Resolutions'
+                    ? 'Resolutions'
+                    : newDocForm.category === 'Minutes'
+                      ? 'Minutes'
+                      : newDocForm.category === 'Vouchers' || newDocForm.category === 'Liquidation'
+                        ? 'Vouchers'
+                        : 'Reports';
                   const result = await kabisigApi.uploadDocument({
                     title: newDocForm.title.trim(),
                     document_type: documentType,
