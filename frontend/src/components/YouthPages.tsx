@@ -722,7 +722,7 @@ export default function YouthPages({
         return {
           id: row?.id,
           full_name: u?.full_name || row?.participantName || 'Youth Participant',
-          avatar_url: u?.avatar_url || null
+          avatar_url: u?.avatar_url || row?.avatar_url || null
         };
       });
       setProgramParticipants(mapped);
@@ -1810,7 +1810,7 @@ export default function YouthPages({
           {activeMenu === 'directory' && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-slate-800">Katipunan ng Kabataan Roster</h2>
+                <h2 className="text-2xl font-bold text-[#091d64] mb-4">Katipunan ng Kabataan Roster</h2>
               </div>
               <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-x-auto pb-4">
                 <table className="w-full text-left text-xs">
@@ -3183,13 +3183,12 @@ export default function YouthPages({
                       <tr key={idx}>
                         <td className="px-3 py-2">
                           <div className="flex items-center gap-3">
-                            {pt?.avatar_url ? (
-                              <img src={pt.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover" />
-                            ) : (
-                              <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">
-                                {(pt?.full_name || 'Youth Participant').charAt(0)}
-                              </div>
-                            )}
+                            <ProfileAvatar
+                              name={pt?.full_name || 'Youth Participant'}
+                              src={pt?.avatar_url || pt?.users?.avatar_url}
+                              alt={pt?.full_name || 'Youth Participant'}
+                              className="w-8 h-8 rounded-full"
+                            />
                             <span className="font-bold text-slate-800">{pt?.full_name || 'Youth Participant'}</span>
                           </div>
                         </td>

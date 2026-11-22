@@ -2,6 +2,7 @@ import express from 'express';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { supabaseAdmin, canAccessTenant, recordAuditLog } from '../services/supabase.service.js';
+import { resolveAvatarUrl } from '../services/avatar.service.js';
 import { sendSuccess, sendCreated, sendError } from '../utils/response.js';
 import { authenticateUser, optionalAuthenticateUser, requireActiveUser, requireRoles } from '../middleware/auth.js';
 import type { AuthRequest } from '../types/database.types.js';
@@ -204,7 +205,27 @@ router.get(
       sendError(res, `Failed to retrieve program registrations: ${error.message}`, 500);
       return;
     }
-    sendSuccess(res, data || [], 'Program registrations retrieved successfully.');
+    const registrations = user.role === 'YOUTH_CONSTITUENT'
+      ? await Promise.all((data || []).map(async (registration: any) => {
+          const participants = registration.users;
+          if (Array.isArray(participants)) {
+            return {
+              ...registration,
+              users: await Promise.all(participants.map(async (participant: any) => ({
+                ...participant,
+                avatar_url: await resolveAvatarUrl(participant.avatar_url),
+              }))),
+            };
+          }
+          return {
+            ...registration,
+            users: participants
+              ? { ...participants, avatar_url: await resolveAvatarUrl(participants.avatar_url) }
+              : participants,
+          };
+        }))
+      : data || [];
+    sendSuccess(res, registrations, 'Program registrations retrieved successfully.');
   }
 );
 

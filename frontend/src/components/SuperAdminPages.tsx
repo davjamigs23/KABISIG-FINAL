@@ -1253,7 +1253,6 @@ useEffect(() => {
       </style></head><body><h1>Naga City SK Federation</h1><p class="meta">Local Youth Development Plan Report • Generated ${formatPhilippineDate(new Date())}</p><h2>Citywide Summary</h2><p>This report summarizes current registry, budget, and active program figures available to KABISIG. It does not create or modify database records.</p><div class="summary"><div>Barangays<b>${barangays.length}</b></div><div>Registered youth<b>${Number(totalYouthPop || 0).toLocaleString()}</b></div><div>Allocated budget<b>\u20B1${Number(totalCityBudget || 0).toLocaleString()}</b></div><div>Active programs<b>${Number(totalActivePrograms || 0)}</b></div></div><h2>Barangay Indicators</h2><table><thead><tr><th>Barangay</th><th>Registered youth</th><th>Allocated budget</th><th>Spent</th><th>Active programs</th></tr></thead><tbody>${rows}</tbody></table></body></html>`);
     reportWindow.document.close();
     reportWindow.focus();
-    reportWindow.print();
   };
 
   const displayBarangayName = (name: string) => name === 'Igualdad Interior' ? 'Igualdad' : name;
@@ -1580,7 +1579,7 @@ useEffect(() => {
                       <div className="h-80 min-w-[1200px]">
                         <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
                           <BarChart data={chartBarangayData}>
-                            <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} interval={0} angle={-45} textAnchor="end" height={80} />
+                            <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} interval={0} angle={-45} textAnchor="end" height={80} tickFormatter={(val) => val === 'Concepcion Pequeña' ? 'Concepcion P.' : val === 'Concepcion Grande' ? 'Concepcion G.' : val} />
                             <YAxis stroke="#94a3b8" fontSize={10} />
                             <Tooltip />
                             <Legend />
@@ -1624,7 +1623,7 @@ useEffect(() => {
                       </ResponsiveContainer>
                     </div>
                   )}
-                  <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                  <div className="max-h-48 overflow-y-auto w-full space-y-1.5 pt-2 border-t border-slate-100">
                     {pieBudgetData.map((item, idx) => (
                       <div key={idx} className="flex justify-between items-center text-[11px] font-semibold">
                         <div className="flex items-center gap-2">
@@ -2026,7 +2025,7 @@ useEffect(() => {
                       <div className="h-80 min-w-[1200px]">
                         <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={50}>
                           <BarChart data={chartBarangayData}>
-                            <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} interval={0} angle={-45} textAnchor="end" height={80} />
+                            <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} interval={0} angle={-45} textAnchor="end" height={80} tickFormatter={(val) => val === 'Concepcion Pequeña' ? 'Concepcion P.' : val === 'Concepcion Grande' ? 'Concepcion G.' : val} />
                             <YAxis stroke="#94a3b8" fontSize={10} />
                             <Tooltip />
                             <Legend />
