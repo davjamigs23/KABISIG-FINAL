@@ -6171,9 +6171,15 @@ export default function OfficialPages({
                     <tbody className="divide-y divide-slate-100 text-xs font-medium bg-white">
                       {filteredExpenses.map(exp => {
                         const withholdingTax = getWithholdingTax(exp);
+                        const programId = exp.programId || (exp as any).program_id;
+                        const joinedProgram = Array.isArray((exp as any).program)
+                          ? (exp as any).program[0]
+                          : (exp as any).program;
+                        const linkedProgram = programs.find(program => String(program.id) === String(programId || ''));
+                        const initiativeTarget = linkedProgram?.title || joinedProgram?.title || 'Unlinked Program';
                         return (
                         <tr key={exp.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-5 py-4 font-bold text-slate-800 tracking-tight whitespace-nowrap">{exp.programTitle}</td>
+                          <td className="px-5 py-4 font-bold text-slate-800 tracking-tight whitespace-nowrap">{initiativeTarget}</td>
                           <td className="px-5 py-4 text-right font-mono text-slate-800 font-bold whitespace-nowrap">{'\u20B1'}{Number(exp.amount || 0).toLocaleString()}</td>
                           <td className="px-5 py-4 text-slate-600 font-semibold whitespace-nowrap">{exp.supplier}</td>
                           <td className="px-5 py-4 text-center whitespace-nowrap"><span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-[10px] font-black">{exp.taxType}</span></td>

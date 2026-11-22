@@ -106,6 +106,7 @@ function AppContent() {
   const [currentYouth, setCurrentYouth] = useState<YouthProfile | null>(null);
   const [currentEmail, setCurrentEmail] = useState<string>('');
   const [authReady, setAuthReady] = useState(false);
+  const [authProfileReady, setAuthProfileReady] = useState(false);
   const [pendingLoginMessage, setPendingLoginMessage] = useState<string | null>(null);
 
   // Program registrations and notifications are private and must only load for authenticated roles.
@@ -369,8 +370,18 @@ function AppContent() {
     // Restore an authenticated session only when this is not an invitation flow.
     const token = isChairpersonInvite ? null : kabisigApi.getToken();
     if (token) {
+      let profileResolved = false;
       kabisigApi.getCurrentUser().then(user => {
-        if (user) {
+        if (!user) {
+          profileResolved = true;
+          return;
+        }
+        if (user.role_id === undefined || user.role_id === null) {
+          setCurrentUser(user);
+          return;
+        }
+        profileResolved = true;
+        {
           const isYouthConstituent = Number(user.role_id) === 4;
           const restoredRole = isYouthConstituent ? 'Youth Constituent' : resolveUserRole(user);
           if (
@@ -499,7 +510,11 @@ function AppContent() {
             setYouthProfiles(prev => [youthFromDb, ...prev.filter(p => p.id !== youthFromDb.id && p.email !== youthFromDb.email)]);
           }
         }
-      }).catch(console.warn);
+      }).catch(console.warn).finally(() => {
+        if (profileResolved) setAuthProfileReady(true);
+      });
+    } else {
+      setAuthProfileReady(true);
     }
 
   }, []);
@@ -1373,10 +1388,10 @@ function AppContent() {
     <div className="min-h-screen flex flex-col relative bg-slate-50">
       
       {/* 1. PUBLIC LANDING / LOGIN / SIGN-UP VIEW */}
-      {!authReady && (
+      {(!authReady || !authProfileReady) && (
         <div className="flex-1 flex items-center justify-center text-slate-500 font-semibold">Checking your session...</div>
       )}
-      {authReady && currentRole === null && publicView === 'landing' && (
+      {authReady && authProfileReady && currentRole === null && publicView === 'landing' && (
         <LandingPage
           onSignIn={() => setPublicView('login')}
           onCreateAccount={() => setPublicView('signup')}
@@ -1384,7 +1399,7 @@ function AppContent() {
         />
       )}
 
-      {authReady && currentRole === null && publicView !== 'landing' && (
+      {authReady && authProfileReady && currentRole === null && publicView !== 'landing' && (
         <PublicPages 
           barangays={tenants}
           programs={programs}

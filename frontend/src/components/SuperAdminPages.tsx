@@ -154,42 +154,27 @@ useEffect(() => {
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showFixTypoModal, setShowFixTypoModal] = useState(false);
   const [typoUserId, setTypoUserId] = useState('');
-  const [typoSearchResults, setTypoSearchResults] = useState<any[]>([]);
   const [typoTargetUserId, setTypoTargetUserId] = useState('');
   const [typoHasProfile, setTypoHasProfile] = useState(false);
   const [typoUserProfile, setTypoUserProfile] = useState<{ is_registered_voter: boolean } | null>(null);
-
-  const getTypoSearchRoleLabel = (user: any): string => {
-    const roleId = Number(user.role_id);
-    if (roleId === 1) return 'Super Admin';
-    if (roleId === 2) return 'Barangay Admin';
-    if (roleId === 3) return user.official_role || 'SK Official';
-    if (roleId === 4) return 'Youth Constituent';
-    return `Role ${roleId || 'Unknown'}`;
-  };
 
   const handleLookupUser = async (searchValue = typoUserId) => {
     if (!searchValue.trim()) return;
     setTypoTargetUserId('');
     setTypoHasProfile(false);
     setTypoUserProfile(null);
-    setTypoSearchResults([]);
     setIsSearching(true);
     try {
       const res = await kabisigApi.lookupUser(searchValue.trim());
       if (res.success && res.data) {
         if (Array.isArray(res.data.matches)) {
-          if (res.data.matches.length === 1) {
+          if (res.data.matches.length > 0) {
             const matchedUserId = res.data.matches[0]?.id;
             if (!matchedUserId) {
               showPopup('The lookup response did not contain a user ID.');
               return;
             }
             await handleLookupUser(matchedUserId);
-            return;
-          }
-          if (res.data.matches.length > 1) {
-            setTypoSearchResults(res.data.matches);
             return;
           }
           showPopup('User not found.');
@@ -2065,17 +2050,20 @@ useEffect(() => {
                         const spentBudget = toNumber(liveRow?.budget_spent ?? b.spentBudget);
                         const activePrograms = toNumber(liveRow?.active_programs ?? b.activePrograms);
                         const rate = totalBudget > 0 ? Math.round((spentBudget / totalBudget) * 100) : 0;
-                        const chairpersonName = b.chairpersonUser?.full_name || b.chairperson || '';
-                        const normalizedChairpersonName = chairpersonName.trim().toLowerCase();
-                        const chairpersonIsPending = b.chairpersonUser?.status?.trim().toLowerCase() === 'pending'
-                          || ['pending invitation', 'sk chairperson', 'hon. sk chairperson'].includes(normalizedChairpersonName);
+                        const chairpersonName = b.chairpersonUser?.full_name || '';
+                        const chairpersonIsPending = Boolean(
+                          b.chairpersonUser
+                          && String(b.chairpersonUser.status || '').trim().toLowerCase() === 'pending'
+                        );
                         return (
                           <tr key={b.id} className="hover:bg-slate-50/50">
                             <td className="p-3 font-bold text-[#091d64] whitespace-nowrap">Brgy. {displayBarangayName(b.name)}</td>
                             <td className="p-3 font-semibold whitespace-nowrap">
                               {chairpersonIsPending
-                                ? 'Unassigned / Pending'
-                                : formatOfficialName(chairpersonName, b.chairpersonUser?.sex, 2, 'SK Chairperson')}
+                                ? <span className="text-amber-600">Pending</span>
+                                : b.chairpersonUser
+                                  ? formatOfficialName(chairpersonName, b.chairpersonUser.sex, 2, 'SK Chairperson')
+                                  : <span className="text-slate-400">Unassigned</span>}
                             </td>
                             <td className="p-3 font-mono whitespace-nowrap">{Number(registeredYouth || 0).toLocaleString()}</td>
                             <td className="p-3 font-mono font-bold text-slate-800 whitespace-nowrap">{'\u20B1'}{Number(totalBudget || 0).toLocaleString()}</td>
@@ -3694,30 +3682,11 @@ useEffect(() => {
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Search by Name, Email, Role, or User ID</label>
                 <div className="flex gap-2">
-                  <input required type="text" value={typoUserId} onChange={e => { setTypoUserId(e.target.value); setTypoSearchResults([]); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); handleLookupUser(); } }} className="flex-1 border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Name, email, role (e.g. Youth Constituent), or user ID" />
+                  <input required type="text" value={typoUserId} onChange={e => setTypoUserId(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); handleLookupUser(); } }} className="flex-1 border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Name, email, role (e.g. Youth Constituent), or user ID" />
                   <button type="button" onClick={(e) => { e.preventDefault(); handleLookupUser(); }} disabled={isSearching} className="px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-lg border border-slate-200 transition-colors disabled:opacity-50">
                     {isSearching ? '...' : 'Search'}
                   </button>
                 </div>
-                {typoSearchResults.length > 1 && (
-                  <div className="mt-2 max-h-48 space-y-1 overflow-y-auto rounded-lg border border-slate-200 bg-white p-2">
-                    <p className="px-2 py-1 text-[10px] font-bold uppercase text-slate-400">Select an account</p>
-                    {typoSearchResults.map((user: any) => (
-                      <button
-                        key={user.id}
-                        type="button"
-                        onClick={() => { void handleLookupUser(user.id); }}
-                        className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-2 text-left hover:bg-slate-50"
-                      >
-                        <span className="min-w-0">
-                          <span className="block truncate text-xs font-bold text-slate-800">{user.full_name || user.email || user.id}</span>
-                          <span className="block truncate text-[10px] text-slate-500">{user.email || 'No email recorded'}</span>
-                        </span>
-                        <span className="shrink-0 rounded bg-blue-50 px-2 py-1 text-[9px] font-bold text-blue-700">{getTypoSearchRoleLabel(user)}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
