@@ -1425,7 +1425,7 @@ export default function OfficialPages({
   .title { font-size: 20px; font-weight: 800; color: #091d64; margin: 24px 0 8px 0; text-transform: uppercase; letter-spacing: 1px; }
   .meta { font-size: 11px; color: #64748b; display: flex; justify-content: space-between; margin-bottom: 30px; padding-bottom: 10px; border-bottom: 1px solid #e2e8f0; }
   .content { font-size: 13px; line-height: 1.7; }
-  .content table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+  .content table { width: 100%; max-width: 100%; table-layout: fixed; word-wrap: break-word; border-collapse: collapse; margin: 16px 0; }
   .content th { background: #091d64; color: white; padding: 10px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
   .content td { padding: 10px; border-bottom: 1px solid #e2e8f0; }
   .content tr:nth-child(even) { background: #f8fafc; }
@@ -1435,7 +1435,14 @@ export default function OfficialPages({
   .sig-role { font-size: 10px; color: #64748b; margin-top: 2px; }
   .footer { text-align: center; font-size: 9px; color: #94a3b8; margin-top: 50px; padding-top: 16px; border-top: 1px dashed #cbd5e1; }
   .print-button { position: fixed; top: 16px; right: 16px; padding: 10px 16px; border: 0; border-radius: 8px; background: #091d64; color: white; font-weight: 700; cursor: pointer; }
-  @media print { body { padding: 0; background: white; } .page { box-shadow: none; padding: 20px; } .print-button { display: none; } }
+  @media print {
+    body { padding: 0; background: white; font-size: 12px; }
+    .content table { width: 100%; max-width: 100%; table-layout: fixed; word-wrap: break-word; }
+    thead { display: table-header-group; }
+    tr { page-break-inside: avoid; break-inside: avoid; }
+    .page { box-shadow: none; padding: 20px; }
+    .print-button { display: none; }
+  }
 </style>
 </head><body>
 <button class="print-button" onclick="window.print()">Print</button>

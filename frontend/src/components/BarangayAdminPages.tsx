@@ -434,7 +434,7 @@ export default function BarangayAdminPages({
           .stat-label { font-size: 9px; font-weight: 800; color: #64748b; text-transform: uppercase; }
           .stat-value { font-size: 18px; font-weight: 800; color: #091d64; margin-top: 2px; }
           .section-title { font-size: 12px; font-weight: 800; color: #091d64; background: #eff6ff; padding: 8px 12px; border-left: 4px solid #091d64; margin: 20px 0 12px 0; text-transform: uppercase; }
-          table { width: 100%; border-collapse: collapse; margin-bottom: 25px; font-size: 11px; }
+          table { width: 100%; max-width: 100%; table-layout: fixed; word-wrap: break-word; border-collapse: collapse; margin-bottom: 25px; font-size: 11px; }
           th { background: #091d64; color: #ffffff; font-weight: 700; text-align: left; padding: 9px 10px; border: 1px solid #091d64; text-transform: uppercase; font-size: 10px; }
           td { padding: 9px 10px; border-bottom: 1px solid #e2e8f0; color: #334155; }
           tr:nth-child(even) { background-color: #f8fafc; }
@@ -449,7 +449,13 @@ export default function BarangayAdminPages({
           .sign-title { font-weight: 800; color: #091d64; font-size: 11px; }
           .sign-role { font-size: 10px; color: #64748b; font-weight: 600; }
           .print-button { position: fixed; top: 16px; right: 16px; padding: 10px 16px; border: 0; border-radius: 8px; background: #091d64; color: white; font-weight: 700; cursor: pointer; }
-          @media print { body { padding: 15px; } .print-button { display: none; } }
+          @media print {
+            body { padding: 15px; font-size: 12px; }
+            table { width: 100%; max-width: 100%; table-layout: fixed; word-wrap: break-word; }
+            thead { display: table-header-group; }
+            tr { page-break-inside: avoid; break-inside: avoid; }
+            .print-button { display: none; }
+          }
         </style>
       </head>
       <body>
