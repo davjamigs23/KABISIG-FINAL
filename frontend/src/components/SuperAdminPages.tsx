@@ -35,23 +35,6 @@ const isPendingChair = (chair: any) =>
       || chair.full_name?.trim() === 'SK Chairperson'
       || chair.full_name?.trim() === 'Pending Invitation';
 
-function parseFullName(fullName: string): { first: string; middle: string; last: string } {
-  if (!fullName) return { first: '', middle: '', last: '' };
-
-  const cleaned = fullName.replace(/^(Hon\.|Mr\.|Ms\.|Mrs\.|Dr\.|Engr\.)\s+/i, '').trim();
-  const parts = cleaned ? cleaned.split(/\s+/) : [];
-
-  if (parts.length === 0) return { first: '', middle: '', last: '' };
-  if (parts.length === 1) return { first: parts[0] || '', middle: '', last: '' };
-  if (parts.length === 2) return { first: parts[0] || '', middle: '', last: parts[1] || '' };
-
-  return {
-    first: parts[0] || '',
-    middle: parts.slice(1, -1).join(' '),
-    last: parts[parts.length - 1] || '',
-  };
-}
-
 interface SuperAdminPagesProps {
   barangays: BarangayTenant[];
   programs: Program[];
@@ -178,67 +161,53 @@ useEffect(() => {
 
   const handleLookupUser = async (searchValue = typoUserId) => {
     if (!searchValue.trim()) return;
-    setTypoTargetUserId('');
-    setTypoTargetUser(null);
-    setTypoHasProfile(false);
-    setTypoUserProfile(null);
+    clearTypoLookupResult();
     setIsSearching(true);
     try {
       const res = await kabisigApi.lookupUser(searchValue.trim());
-      if (res.success && res.data) {
-        if (Array.isArray(res.data.matches)) {
-          if (res.data.matches.length > 0) {
-            const matchedUserId = res.data.matches[0]?.id;
-            if (!matchedUserId) {
-              showPopup('The lookup response did not contain a user ID.');
-              return;
-            }
-            await handleLookupUser(matchedUserId);
-            return;
-          }
-          showPopup('User not found.');
-          return;
-        }
-        const user = res.data.user || res.data;
-        if (!user.id) {
-          showPopup('The lookup response did not contain a user record.');
-          return;
-        }
-        const joinedProfile = user.resident_profile;
-        const profile = Array.isArray(joinedProfile) ? joinedProfile[0] || null : joinedProfile || null;
-        setTypoTargetUserId(user.id || '');
-        setTypoTargetUser({
-          role_id: Number(user.role_id),
-          status: user.status || null,
-          verification_status: profile?.verification_status || user.verification_status || null,
-        });
-        setTypoHasProfile(Boolean(profile || user.has_profile));
-        setTypoUserProfile({
-          is_registered_voter: profile?.is_registered_voter === true || user.is_registered_voter === true,
-        });
-        const fullName = String(user.full_name || '').trim();
-        const parsedName = parseFullName(fullName);
-        const firstName = parsedName.first || String(user.first_name || '').trim();
-        const middleName = parsedName.middle || String(user.middle_name || '').trim();
-        const lastName = parsedName.last || String(user.last_name || '').trim();
-        const suffix = String(user.suffix || '').trim();
-
-        setTypoFirstName(firstName);
-        setTypoMiddleName(middleName);
-        setTypoLastName(lastName);
-        setTypoSuffix(suffix);
-
-        setTypoEmail(user.email || '');
-        setTypoPhone(String(user.phone || ''));
-        const birthdate = user.birthdate || profile?.birthdate;
-        setTypoBirthdate(typeof birthdate === 'string' ? birthdate.slice(0, 10) : '');
-        setTypoAddress(user.address || profile?.address || '');
-        setTypoSex(user.sex || profile?.sex || '');
-        setTypoFullName(fullName || [firstName, middleName, lastName, suffix].filter(Boolean).join(' '));
-      } else {
-        showPopup(res.message || 'User not found.');
+      if (!res.success || !res.data) {
+        clearTypoLookupResult();
+        showPopup('User not found. Please check the exact email or phone number.');
+        return;
       }
+
+      const user = res.data.user || res.data;
+      if (!user.id) {
+        clearTypoLookupResult();
+        showPopup('User not found. Please check the exact email or phone number.');
+        return;
+      }
+      const joinedProfile = user.resident_profile;
+      const profile = Array.isArray(joinedProfile) ? joinedProfile[0] || null : joinedProfile || null;
+      setTypoTargetUserId(user.id);
+      setTypoTargetUser({
+        role_id: Number(user.role_id),
+        status: user.status || null,
+        verification_status: profile?.verification_status || user.verification_status || null,
+      });
+      setTypoHasProfile(Boolean(profile || user.has_profile));
+      setTypoUserProfile({
+        is_registered_voter: profile?.is_registered_voter === true || user.is_registered_voter === true,
+      });
+      const firstName = String(user.first_name || '').trim();
+      const middleName = String(user.middle_name || '').trim();
+      const lastName = String(user.last_name || '').trim();
+      const suffix = String(user.suffix || '').trim();
+
+      setTypoFirstName(firstName);
+      setTypoMiddleName(middleName);
+      setTypoLastName(lastName);
+      setTypoSuffix(suffix);
+
+      setTypoEmail(user.email || '');
+      setTypoPhone(String(user.phone || ''));
+      const birthdate = user.birthdate || profile?.birthdate;
+      setTypoBirthdate(typeof birthdate === 'string' ? birthdate.slice(0, 10) : '');
+      setTypoAddress(user.address || profile?.address || '');
+      setTypoSex(user.sex || profile?.sex || '');
+      setTypoFullName(String(user.full_name || '').trim() || [firstName, middleName, lastName, suffix].filter(Boolean).join(' '));
     } catch (err: any) {
+      clearTypoLookupResult();
       showPopup(err.message || 'Lookup failed.');
     } finally {
       setIsSearching(false);
@@ -281,6 +250,23 @@ useEffect(() => {
   const [emailModalTab, setEmailModalTab] = useState<'update' | 'history'>('update');
   const [emailHistoryList, setEmailHistoryList] = useState<any[]>([]);
   const [isFetchingEmailHistory, setIsFetchingEmailHistory] = useState(false);
+  const clearTypoLookupResult = () => {
+    setTypoTargetUserId('');
+    setTypoTargetUser(null);
+    setTypoHasProfile(false);
+    setTypoUserProfile(null);
+    setTypoFirstName('');
+    setTypoMiddleName('');
+    setTypoLastName('');
+    setTypoSuffix('');
+    setTypoFullName('');
+    setTypoEmail('');
+    setTypoPhone('');
+    setTypoBirthdate('');
+    setTypoAddress('');
+    setTypoSex('');
+    setTypoReason('');
+  };
 
   // Dedicated Assign SK Chairperson Modal State (Email-only)
   const [showAssignModal, setShowAssignModal] = useState(false);
@@ -3760,7 +3746,7 @@ useEffect(() => {
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Search by Name, Email, Role, or User ID</label>
                 <div className="flex gap-2">
-                  <input required type="text" value={typoUserId} onChange={e => setTypoUserId(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); handleLookupUser(); } }} className="flex-1 border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Name, email, role (e.g. Youth Constituent), or user ID" />
+                  <input required type="text" value={typoUserId} onChange={e => setTypoUserId(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); handleLookupUser(); } }} className="flex-1 border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Exact email, phone number, or full name" />
                   <button type="button" onClick={(e) => { e.preventDefault(); handleLookupUser(); }} disabled={isSearching} className="px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-lg border border-slate-200 transition-colors disabled:opacity-50">
                     {isSearching ? '...' : 'Search'}
                   </button>

@@ -34,6 +34,15 @@ const UploadDocumentSchema = z.object({
   file_base64: z.string().min(1, 'File data is required'),
 });
 
+const UpdateDocumentSchema = z.object({
+  title: z.string().min(3, 'Document title must be at least 3 characters').optional(),
+  description: z.string().max(5000, 'Description must be at most 5000 characters').optional(),
+  document_type: z.enum(DOCUMENT_TYPES).optional(),
+}).refine(
+  payload => Object.values(payload).some(value => value !== undefined),
+  'Provide at least one document field to update.'
+);
+
 const MAX_DOCUMENT_BYTES = 25 * 1024 * 1024;
 const ALLOWED_DOCUMENT_TYPES = new Set([
   'application/pdf',
@@ -333,6 +342,70 @@ router.get('/:id', authenticateUser, requireActiveUser, async (req: Request, res
     sendError(res, signedUrlError instanceof Error ? signedUrlError.message : 'Failed to generate document download URL.', 502);
   }
 });
+
+router.patch(
+  '/:id',
+  authenticateUser,
+  requireActiveUser,
+  requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'),
+  async (req: Request, res: Response): Promise<void> => {
+    const parsed = UpdateDocumentSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendError(res, 'Validation failed', 400, parsed.error.flatten().fieldErrors);
+      return;
+    }
+
+    const id = String(req.params.id || '');
+    const user = (req as AuthRequest).user!;
+    const { data: existing, error: existingError } = await supabaseAdmin
+      .from('documents')
+      .select('id, tenant_id, title')
+      .eq('id', id)
+      .single();
+
+    if (existingError || !existing) {
+      sendError(res, 'Document not found.', 404);
+      return;
+    }
+    if (!canAccessTenant(user, existing.tenant_id)) {
+      sendError(res, 'Forbidden: You cannot update documents belonging to another Barangay.', 403);
+      return;
+    }
+
+    const updates: {
+      title?: string;
+      description?: string | null;
+      document_type?: typeof DOCUMENT_TYPES[number];
+    } = {};
+    if (parsed.data.title !== undefined) updates.title = parsed.data.title.trim();
+    if (parsed.data.description !== undefined) updates.description = parsed.data.description.trim() || null;
+    if (parsed.data.document_type !== undefined) updates.document_type = parsed.data.document_type;
+
+    const { data: updatedDocument, error: updateError } = await supabaseAdmin
+      .from('documents')
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq('id', id)
+      .select('*')
+      .single();
+
+    if (updateError || !updatedDocument) {
+      sendError(res, `Failed to update document: ${updateError?.message || 'Updated record was not returned.'}`, 500);
+      return;
+    }
+
+    await recordAuditLog({
+      tenantId: existing.tenant_id,
+      userId: user.id,
+      action: 'UPDATE_DOCUMENT',
+      entityName: 'documents',
+      entityId: id,
+      details: { updated_fields: Object.keys(updates) },
+      ipAddress: req.ip || null,
+    });
+
+    sendSuccess(res, updatedDocument, 'Document updated successfully.');
+  }
+);
 
 router.post(
   '/',

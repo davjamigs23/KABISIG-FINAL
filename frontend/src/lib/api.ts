@@ -939,6 +939,17 @@ class KabisigApiClient {
     return await this.request(`/documents/${encodeURIComponent(id)}/download`, { method: 'GET' });
   }
 
+  async updateDocument(id: string, payload: {
+    title?: string;
+    description?: string;
+    document_type?: 'Resolutions' | 'Minutes' | 'Reports' | 'Vouchers';
+  }): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request(`/documents/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  }
+
   async uploadDocument(payload: {
     title: string;
     description?: string;

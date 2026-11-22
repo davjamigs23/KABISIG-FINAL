@@ -678,7 +678,7 @@ function AppContent() {
         fileSize: '',
         status: d.status === 'approved' ? 'Approved' : d.status === 'pending_approval' ? 'Pending' : d.status,
         resolutionNumber: `DOC-${d.id.slice(0, 6).toUpperCase()}`,
-        description: d.description || '',
+        description: d.description ?? '',
         fileUrl: d.file_url,
         reviewFeedback: d.feedback || '',
         designatedApprover: 'Hon. SK Chairperson',
@@ -1631,6 +1631,7 @@ function AppContent() {
             })));
           }}
           onAddDocument={(d) => setDocuments(prev => [d, ...prev])}
+          onUpdateDocument={(d) => setDocuments(prev => prev.map(document => document.id === d.id ? d : document))}
           onRegisterAttendance={handleRegisterAttendance}
           onLogout={handleLogout}
         />

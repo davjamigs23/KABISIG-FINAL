@@ -411,55 +411,20 @@ router.get('/users/lookup', authenticateUser, requireRoles('SUPER_ADMIN'), async
     const identifier = String(req.query.identifier || '').trim();
     if (!identifier) { sendError(res, 'Identifier is required.', 400); return; }
 
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    const isUuid = uuidRegex.test(identifier);
-    const normalizedSearch = identifier
-      .replace(/[%,()"]/g, ' ')
-      .replace(/\\/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .toLowerCase();
-    if (!normalizedSearch) { sendError(res, 'Enter a name, email, role, or user ID to search.', 400); return; }
-
-    const roleSearchTerms: Record<number, string[]> = {
-      1: ['1', 'role 1', 'super admin', 'super administrator', 'federation president'],
-      2: ['2', 'role 2', 'barangay admin', 'sk chairperson', 'chairperson'],
-      3: ['3', 'role 3', 'sk official', 'kagawad', 'secretary', 'treasurer'],
-      4: ['4', 'role 4', 'youth constituent', 'registered youth', 'youth'],
-    };
     let userQuery = supabaseAdmin
       .from('users')
       .select('id, email, full_name, first_name, middle_name, last_name, suffix, phone, role_id, tenant_id, status, official_role');
-    if (isUuid) {
-      userQuery = userQuery.eq('id', identifier);
+    if (identifier.includes('@')) {
+      userQuery = userQuery.eq('email', identifier);
+    } else if (/^\d+$/.test(identifier)) {
+      userQuery = userQuery.eq('phone', identifier);
     } else {
-      const searchPattern = `%${normalizedSearch}%`;
-      const searchFilters = [
-        `email.ilike.${searchPattern}`,
-        `full_name.ilike.${searchPattern}`,
-        `first_name.ilike.${searchPattern}`,
-        `middle_name.ilike.${searchPattern}`,
-        `last_name.ilike.${searchPattern}`,
-        `official_role.ilike.${searchPattern}`,
-      ];
-      const matchingRoleIds = Object.entries(roleSearchTerms)
-        .filter(([, terms]) => terms.some(term => term.includes(normalizedSearch) || normalizedSearch.includes(term)))
-        .map(([roleId]) => Number(roleId));
-      searchFilters.push(...matchingRoleIds.map(roleId => `role_id.eq.${roleId}`));
-      userQuery = userQuery.or(searchFilters.join(','));
+      userQuery = userQuery.ilike('full_name', `%${identifier}%`);
     }
 
-    const { data: matchingUsers, error: userErr } = await userQuery
-      .order('full_name', { ascending: true })
-      .limit(isUuid ? 2 : 1000);
+    const { data: user, error: userErr } = await userQuery.limit(1).maybeSingle();
     if (userErr) { sendError(res, 'Lookup failed: ' + userErr.message, 500); return; }
-    if (!matchingUsers?.length) { sendError(res, 'User not found.', 404); return; }
-    if (matchingUsers.length > 1) {
-      sendSuccess(res, { matches: matchingUsers }, 'Select an account to continue.');
-      return;
-    }
-    const user = matchingUsers[0];
-    if (!user) { sendError(res, 'User not found.', 404); return; }
+    if (!user) { sendError(res, 'User not found', 404); return; }
 
     const { data: authResult, error: authLookupError } = await supabaseAdmin.auth.admin.getUserById(user.id);
     if (authLookupError && authLookupError.status !== 404) {

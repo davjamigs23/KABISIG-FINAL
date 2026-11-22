@@ -181,6 +181,7 @@ interface OfficialPagesProps {
   onAddExpense: (e: ExpenseRecord) => Promise<void> | void;
   onRefreshExpenses: () => Promise<void>;
   onAddDocument: (d: DocumentRecord) => void;
+  onUpdateDocument: (d: DocumentRecord) => void;
   onRegisterAttendance: (record: AttendanceRecord, qrPayload: string) => Promise<AttendanceRecord>;
   onLogout: () => void;
 }
@@ -226,6 +227,7 @@ export default function OfficialPages({
   onAddExpense,
   onRefreshExpenses,
   onAddDocument,
+  onUpdateDocument,
   onRegisterAttendance,
   onLogout
 }: OfficialPagesProps) {
@@ -376,6 +378,7 @@ export default function OfficialPages({
   const [selectedDoc, setSelectedDoc] = useState<DocumentRecord | null>(null);
   const [selectedDocumentFile, setSelectedDocumentFile] = useState<File | null>(null);
   const [isUploadingDocument, setIsUploadingDocument] = useState(false);
+  const [isSavingDocEdit, setIsSavingDocEdit] = useState(false);
   const [documentUploadError, setDocumentUploadError] = useState('');
 
   // Youth Records & Profile Management State
@@ -1234,31 +1237,52 @@ export default function OfficialPages({
     }
   };
 
-  const handleSaveDocEdit = () => {
+  const handleSaveDocEdit = async () => {
     if (!selectedDoc) return;
-      const currentVerNum = parseFloat((selectedDoc.version || 'v1.0').replace('v', '')) || 1.0;
-    setLocalDocs(prev => prev.map(doc => {
-      if (doc.id === selectedDoc.id) {
-        const newVer = `v${(currentVerNum + 0.1).toFixed(1)}`;
-        const updatedHistory = doc.history || [];
-        return {
-          ...selectedDoc,
-          version: newVer,
-          history: [
-            ...updatedHistory,
-            {
-              date: getPhilippineDateString(),
-              action: `Document Revised (${newVer})`,
-              user: `${currentRole} Secretariat`,
-              notes: 'Document metadata updated.'
-            }
-          ]
-        };
+    setIsSavingDocEdit(true);
+    try {
+      const payload = {
+        title: selectedDoc.title.trim(),
+        description: selectedDoc.description?.trim() || '',
+        document_type: getNormalizedDocumentType(selectedDoc),
+      };
+      const result = await kabisigApi.updateDocument(selectedDoc.id, payload);
+      if (!result.success || !result.data) {
+        throw new Error(result.message || 'Document details could not be saved.');
       }
-      return doc;
-    }));
-    setShowEditDocModal(false);
-    setSelectedDoc(null);
+
+      const currentVerNum = parseFloat((selectedDoc.version || 'v1.0').replace('v', '')) || 1.0;
+      const newVer = `v${(currentVerNum + 0.1).toFixed(1)}`;
+      const updatedDocument: DocumentRecord = {
+        ...selectedDoc,
+        title: result.data.title || payload.title,
+        description: typeof result.data.description === 'string' ? result.data.description : payload.description,
+        category: getNormalizedDocumentType(selectedDoc),
+        version: newVer,
+        history: [
+          ...(selectedDoc.history || []),
+          {
+            date: getPhilippineDateString(),
+            action: `Document Revised (${newVer})`,
+            user: `${currentRole} Secretariat`,
+            notes: 'Document metadata updated.'
+          }
+        ]
+      };
+      setLocalDocs(previous => previous.map(document => document.id === updatedDocument.id ? updatedDocument : document));
+      onUpdateDocument(updatedDocument);
+      setShowEditDocModal(false);
+      setSelectedDoc(null);
+      setPopupMsg({ title: 'Document Updated', text: 'Document details were saved successfully.', type: 'success' });
+    } catch (error) {
+      setPopupMsg({
+        title: 'Document Update Failed',
+        text: error instanceof Error ? error.message : 'Document details could not be saved.',
+        type: 'error',
+      });
+    } finally {
+      setIsSavingDocEdit(false);
+    }
   };
 
   const getSignedDocumentUrl = async (documentId: string): Promise<string> => {
@@ -7127,8 +7151,10 @@ export default function OfficialPages({
                 />
               </div>
               <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
-                <button onClick={() => setShowEditDocModal(false)} className="px-4 py-2 border rounded-lg text-xs">Close</button>
-                <button onClick={handleSaveDocEdit} className="px-5 py-2 bg-[#091d64] text-white font-bold rounded-lg text-xs">Save Changes</button>
+                <button onClick={() => setShowEditDocModal(false)} disabled={isSavingDocEdit} className="px-4 py-2 border rounded-lg text-xs disabled:opacity-50">Close</button>
+                <button onClick={() => void handleSaveDocEdit()} disabled={isSavingDocEdit} className="px-5 py-2 bg-[#091d64] text-white font-bold rounded-lg text-xs disabled:opacity-50">
+                  {isSavingDocEdit ? 'Saving...' : 'Save Changes'}
+                </button>
               </div>
             </div>
           </div>
