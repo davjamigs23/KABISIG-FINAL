@@ -305,7 +305,7 @@ export default function PublicPages({
         setIsLoggingIn(false);
         return;
       }
-      if (dbUser?.status === 'pending') {
+      if (String(dbUser?.status || '').toLowerCase() === 'pending' && finalRole !== 'Youth Constituent') {
         if (finalRole !== 'Super Admin' && finalRole !== 'Barangay Admin') {
           localStorage.removeItem('token');
           localStorage.removeItem('kabisig_token');

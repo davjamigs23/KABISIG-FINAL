@@ -371,9 +371,11 @@ function AppContent() {
     if (token) {
       kabisigApi.getCurrentUser().then(user => {
         if (user) {
-          const restoredRole = resolveUserRole(user);
+          const isYouthConstituent = Number(user.role_id) === 4;
+          const restoredRole = isYouthConstituent ? 'Youth Constituent' : resolveUserRole(user);
           if (
-            user.status === 'pending'
+            String(user.status || '').toLowerCase() === 'pending'
+            && !isYouthConstituent
             && restoredRole !== 'Super Admin'
             && restoredRole !== 'Barangay Admin'
           ) {
@@ -915,7 +917,7 @@ function AppContent() {
     if (emailOrName) {
       const matchedProfile = youthProfiles.find(p => p.email.toLowerCase() === emailOrName.trim().toLowerCase());
       if (matchedProfile && matchedProfile.registeredRole === role) {
-        if (matchedProfile.status === 'Pending') {
+        if (matchedProfile.status === 'Pending' && role !== 'Youth Constituent') {
           showGlobalAlert(`Access Denied!\n\nYour registration as ${role} is currently PENDING approval by your Sangguniang Kabataan Chairperson.\n\nPlease wait for validation.`, 'error');
           return;
         } else if (matchedProfile.status === 'Rejected') {

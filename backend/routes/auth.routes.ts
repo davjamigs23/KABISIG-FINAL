@@ -991,7 +991,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  if (String(publicUser.status || '').toLowerCase() === 'pending') {
+  if (String(publicUser.status || '').toLowerCase() === 'pending' && Number(publicUser.role_id) !== 4) {
     sendError(res, 'Your account is pending approval.', 403);
     return;
   }

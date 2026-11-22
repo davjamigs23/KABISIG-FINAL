@@ -247,6 +247,7 @@ export default function YouthPages({
   const isDemotedChair = verificationStatus?.is_demoted_chair === true;
     const isUnderReview = currentVerifStatus === 'submitted' || currentVerifStatus === 'pending_approval';
   const isRejected = currentVerifStatus === 'rejected';
+  const isAccountPending = String(currentYouth.status || '').toLowerCase() === 'pending';
   const isVerificationPending = currentVerifStatus !== 'verified';
   const [showVerifyModal, setShowVerifyModal] = useState(false);
   const [idType, setIdType] = useState('PhilSys National ID');
@@ -1153,10 +1154,12 @@ export default function YouthPages({
                   </button>
                 </div>
               )}
-              {!isLoadingStatus && (isVerificationPending || showSuccessBanner) && (
-                <div role="status" className={`rounded-xl border px-4 py-3 text-sm flex flex-col sm:flex-row items-center justify-between gap-3 shadow-sm ${showSuccessBanner ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : isRejected ? 'border-rose-200 bg-rose-50 text-rose-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+              {(isAccountPending || (!isLoadingStatus && (isVerificationPending || showSuccessBanner))) && (
+                <div role="status" className={`rounded-xl border px-4 py-3 text-sm flex flex-col sm:flex-row items-center justify-between gap-3 shadow-sm ${isAccountPending ? 'border-amber-200 bg-amber-50 text-amber-900' : showSuccessBanner ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : isRejected ? 'border-rose-200 bg-rose-50 text-rose-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
                   <span className="font-semibold">
-                    {showSuccessBanner
+                    {isAccountPending
+                      ? 'Your account is pending Chairperson approval.'
+                      : showSuccessBanner
                       ? "Your account has been successfully verified! You now have full access to the KABISIG system."
                       : isRejected
                       ? "Your uploaded ID was rejected by your SK Chairperson. Please upload a valid ID again to verify your account."

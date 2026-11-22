@@ -829,6 +829,14 @@ useEffect(() => {
       return;
     }
 
+    const getResendErrorMessage = (message?: string) => {
+      const normalizedMessage = String(message || '').toLowerCase();
+      if (normalizedMessage.includes('already active') || normalizedMessage.includes('already completed')) {
+        return 'This user has already completed their account setup. You do not need to resend an invitation.';
+      }
+      return message || 'Failed to resend invitation.';
+    };
+
     setIsResendingOfficialId(official.id);
     setInviteOfficialNotice(null);
     try {
@@ -839,8 +847,9 @@ useEffect(() => {
       );
       if (!response.success) {
         const setupLink = response.details?.action_link || response.details?.setup_url;
-        if (setupLink) showPopup(response.message || 'Invitation could not be resent.', 'error', setupLink);
-        setInviteOfficialNotice({ type: 'error', text: response.message || 'Failed to resend invitation.' });
+        const errorMessage = getResendErrorMessage(response.message);
+        if (setupLink) showPopup(errorMessage, 'error', setupLink);
+        setInviteOfficialNotice({ type: 'error', text: errorMessage });
         return;
       }
       showPopup(
@@ -851,7 +860,8 @@ useEffect(() => {
       const refreshedCapacity = await kabisigApi.getRoleCapacity(inviteOfficialBarangay.id);
       if (refreshedCapacity.success) setRoleCapacity(refreshedCapacity.data);
     } catch (error: any) {
-      setInviteOfficialNotice({ type: 'error', text: error?.message || 'Failed to resend invitation.' });
+      const errorMessage = error?.response?.data?.message || error?.message;
+      setInviteOfficialNotice({ type: 'error', text: getResendErrorMessage(errorMessage) });
     } finally {
       setIsResendingOfficialId(null);
     }
