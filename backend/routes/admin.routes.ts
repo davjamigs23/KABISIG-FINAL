@@ -413,7 +413,7 @@ router.get('/users/lookup', authenticateUser, requireRoles('SUPER_ADMIN'), async
 
     let userQuery = supabaseAdmin
       .from('users')
-      .select('id, email, full_name, first_name, middle_name, last_name, suffix, phone, role_id, tenant_id, status, official_role');
+      .select('*, resident_profile!resident_profile_user_id_fkey(*)');
     if (identifier.includes('@')) {
       userQuery = userQuery.eq('email', identifier);
     } else if (/^\d+$/.test(identifier)) {
@@ -425,21 +425,18 @@ router.get('/users/lookup', authenticateUser, requireRoles('SUPER_ADMIN'), async
     const { data: user, error: userErr } = await userQuery.limit(1).maybeSingle();
     if (userErr) { sendError(res, 'Lookup failed: ' + userErr.message, 500); return; }
     if (!user) { sendError(res, 'User not found', 404); return; }
+    if (Number(user.role_id) === 1) {
+      sendError(res, 'Cannot modify Super Admin credentials.', 403);
+      return;
+    }
 
     const { data: authResult, error: authLookupError } = await supabaseAdmin.auth.admin.getUserById(user.id);
     if (authLookupError && authLookupError.status !== 404) {
       sendError(res, 'Failed to load authentication details: ' + authLookupError.message, 500);
       return;
     }
-    const { data: profile, error: profileError } = await supabaseAdmin
-      .from('resident_profile')
-      .select('birthdate, sex, address, is_registered_voter, verification_status')
-      .eq('user_id', user.id)
-      .maybeSingle();
-    if (profileError) {
-      sendError(res, 'Failed to load resident profile: ' + profileError.message, 500);
-      return;
-    }
+    const joinedProfile = user.resident_profile;
+    const profile = Array.isArray(joinedProfile) ? joinedProfile[0] || null : joinedProfile || null;
 
     sendSuccess(res, {
       ...user,
@@ -558,11 +555,36 @@ router.put('/users/:userId/update-name', authenticateUser, requireRoles('SUPER_A
   try {
     const authUser = (req as AuthRequest).user!;
     const rawId = String(req.params.userId || '').trim();
-    const { full_name, first_name, middle_name, last_name, suffix, email, phone, birthdate, address, sex, is_registered_voter, reason } = req.body;
+    const {
+      full_name, first_name, middle_name, last_name, suffix, email, phone, birthdate, address, sex,
+      zone, civil_status, educational_status, school, course, year_level, employment_status, scholar_status,
+      is_registered_voter, reason,
+    } = req.body;
     if (!full_name) { sendError(res, 'Full name is required.', 400); return; }
     if (is_registered_voter !== undefined && typeof is_registered_voter !== 'boolean') {
       sendError(res, 'is_registered_voter must be a boolean.', 400);
       return;
+    }
+    const optionalProfileStrings: Record<string, unknown> = {
+      zone, civil_status, educational_status, school, course, year_level, employment_status, scholar_status,
+    };
+    for (const [field, value] of Object.entries(optionalProfileStrings)) {
+      if (value !== undefined && typeof value !== 'string') {
+        sendError(res, `${field} must be a string.`, 400);
+        return;
+      }
+    }
+    const validProfileValues: Record<string, string[]> = {
+      civil_status: ['Single', 'Married', 'Widowed', 'Separated'],
+      educational_status: ['Elementary', 'High School', 'Vocational', 'College', 'Post-Graduate', 'Out of School Youth'],
+      employment_status: ['Employed', 'Unemployed', 'Self-Employed', 'Student'],
+    };
+    for (const [field, allowedValues] of Object.entries(validProfileValues)) {
+      const value = optionalProfileStrings[field];
+      if (value !== undefined && value !== '' && !allowedValues.includes(value as string)) {
+        sendError(res, `${field} has an invalid value.`, 400);
+        return;
+      }
     }
 
     // --- Resolve UUID from Email or use as-is if already a UUID ---
@@ -591,18 +613,22 @@ router.put('/users/:userId/update-name', authenticateUser, requireRoles('SUPER_A
     }
 
     // --- Fetch old data for diff ---
-    const { data: oldUser } = await supabaseAdmin.from('users').select('full_name, first_name, middle_name, last_name, email, phone').eq('id', userId).single();
+    const { data: oldUser } = await supabaseAdmin.from('users').select('full_name, first_name, middle_name, last_name, email, phone, tenant_id').eq('id', userId).single();
     const { data: oldProfile, error: oldProfileError } = await supabaseAdmin
       .from('resident_profile')
-      .select('birthdate, address, sex, is_registered_voter')
+      .select('birthdate, address, sex, is_registered_voter, zone, civil_status, marital_status, educational_status, school, course, year_level, employment_status, scholar_status')
       .eq('user_id', userId)
       .maybeSingle();
     if (oldProfileError) {
       sendError(res, 'Failed to load the user profile: ' + oldProfileError.message, 500);
       return;
     }
-    if (is_registered_voter !== undefined && !oldProfile) {
-      sendError(res, 'Voter status cannot be updated because this user has no resident profile.', 409);
+    const residentProfileFields = [
+      birthdate, address, sex, is_registered_voter, zone, civil_status, educational_status,
+      school, course, year_level, employment_status, scholar_status,
+    ];
+    if (residentProfileFields.some((value) => value !== undefined) && !oldProfile) {
+      sendError(res, 'Resident profile details cannot be updated because this user has no resident profile.', 409);
       return;
     }
 
@@ -635,11 +661,22 @@ router.put('/users/:userId/update-name', authenticateUser, requireRoles('SUPER_A
     if (authError) { sendError(res, 'Auth update failed: ' + authError.message, 500); return; }
 
     // --- Update resident_profile ---
-    if (birthdate || address !== undefined || sex !== undefined || is_registered_voter !== undefined) {
+    if (residentProfileFields.some((value) => value !== undefined)) {
       const profileUpdate: Record<string, string | boolean | null> = {};
       if (birthdate) profileUpdate.birthdate = birthdate;
       if (address !== undefined) profileUpdate.address = address?.trim() || null;
       if (sex !== undefined) profileUpdate.sex = sex || null;
+      if (zone !== undefined) profileUpdate.zone = zone.trim() || null;
+      if (civil_status !== undefined) {
+        profileUpdate.civil_status = civil_status || null;
+        profileUpdate.marital_status = civil_status || null;
+      }
+      if (educational_status !== undefined) profileUpdate.educational_status = educational_status || null;
+      if (school !== undefined) profileUpdate.school = school.trim() || null;
+      if (course !== undefined) profileUpdate.course = course.trim() || null;
+      if (year_level !== undefined) profileUpdate.year_level = year_level.trim() || null;
+      if (employment_status !== undefined) profileUpdate.employment_status = employment_status || null;
+      if (scholar_status !== undefined) profileUpdate.scholar_status = scholar_status.trim() || null;
       if (is_registered_voter !== undefined) profileUpdate.is_registered_voter = is_registered_voter;
       const { error: profileError } = await supabaseAdmin.from('resident_profile').update(profileUpdate).eq('user_id', userId);
       if (profileError) {
@@ -703,22 +740,26 @@ router.put('/users/:userId/update-name', authenticateUser, requireRoles('SUPER_A
       }
     }
 // --- Audit Log ---
+    const newEmail = email?.trim() || '';
+    const emailChanged = Boolean(newEmail && oldUser?.email !== newEmail);
     await recordAuditLog({
-      tenantId: null,
+      tenantId: oldUser?.tenant_id || null,
       userId: authUser.id,
-      action: 'UPDATE_USER_CREDENTIALS',
+      action: emailChanged ? 'EMAIL_CHANGE' : 'UPDATE_USER_CREDENTIALS',
       entityName: 'users',
       entityId: userId,
       details: {
         reason: reason || 'No reason provided',
         target_name: full_name,
         old_full_name: oldUser?.full_name || 'Unknown',
+        old_email: emailChanged ? oldUser?.email : undefined,
+        new_email: emailChanged ? newEmail : undefined,
         target_barangay: targetBarangayName,
         changes: {
           first_name: (oldUser?.first_name || '') !== (first_name || '') ? { old: oldUser?.first_name || '', new: first_name || '' } : undefined,
           middle_name: (oldUser?.middle_name || '') !== (middle_name || '') ? { old: oldUser?.middle_name || '', new: middle_name || '' } : undefined,
           last_name: (oldUser?.last_name || '') !== (last_name || '') ? { old: oldUser?.last_name || '', new: last_name || '' } : undefined,
-          email: oldUser?.email !== email && email ? { old: oldUser?.email, new: email } : undefined,
+          email: emailChanged ? { old: oldUser?.email || '', new: newEmail } : undefined,
           phone: oldUser?.phone !== phone ? { old: oldUser?.phone, new: phone } : undefined,
           birthdate: oldProfile?.birthdate !== birthdate && birthdate ? { old: oldProfile?.birthdate, new: birthdate } : undefined,
           is_registered_voter: oldProfile?.is_registered_voter !== is_registered_voter && is_registered_voter !== undefined
@@ -2269,6 +2310,14 @@ router.patch('/users/:id/email', authenticateUser, requireRoles('SUPER_ADMIN'), 
   const cleanEmail = email.trim().toLowerCase();
   const admin = (req as AuthRequest).user!;
 
+  const { data: targetUser, error: targetUserError } = await supabaseAdmin
+    .from('users')
+    .select('email')
+    .eq('id', userId)
+    .maybeSingle();
+  if (targetUserError) { sendError(res, 'Failed to load user: ' + targetUserError.message, 500); return; }
+  if (!targetUser) { sendError(res, 'User not found.', 404); return; }
+
   const { data: existing } = await supabaseAdmin.from('users').select('id').eq('email', cleanEmail).maybeSingle();
   if (existing && existing.id !== userId) { sendError(res, 'Email already in use by another account.', 409); return; }
 
@@ -2278,7 +2327,15 @@ router.patch('/users/:id/email', authenticateUser, requireRoles('SUPER_ADMIN'), 
   const { error: dbErr } = await supabaseAdmin.from('users').update({ email: cleanEmail }).eq('id', userId);
   if (dbErr) { sendError(res, 'Failed to update DB: ' + dbErr.message, 500); return; }
 
-  await recordAuditLog({ tenantId: null, userId: admin.id, action: 'UPDATE_USER_EMAIL', entityName: 'users', entityId: userId, details: { new_email: cleanEmail }, ipAddress: req.ip || null });
+  await recordAuditLog({
+    tenantId: null,
+    userId: admin.id,
+    action: 'EMAIL_CHANGE',
+    entityName: 'users',
+    entityId: userId,
+    details: { old_email: targetUser.email, new_email: cleanEmail },
+    ipAddress: req.ip || null,
+  });
   sendSuccess(res, { id: userId, email: cleanEmail }, 'Email updated successfully.');
 });
 
@@ -2411,7 +2468,7 @@ router.post(
       // 4. Audit Log
       await recordAuditLog({
         userId: (req as AuthRequest).user!.id,
-        action: 'UPDATE_USER_EMAIL',
+        action: 'EMAIL_CHANGE',
         entityName: 'users',
         entityId: userIdToUpdate,
         details: { old_email, new_email, reason },
@@ -2428,8 +2485,8 @@ router.get(
   async (req: Request, res: Response): Promise<void> => {
     const { data, error } = await supabaseAdmin
       .from('audit_logs')
-      .select('id, created_at, user_id, details, users(full_name, barangay(name))')
-      .in('action', ['UPDATE_USER_EMAIL', 'UPDATE_USER_CREDENTIALS'])
+      .select('*')
+      .eq('action', 'EMAIL_CHANGE')
       .order('created_at', { ascending: false });
 
     if (error) {

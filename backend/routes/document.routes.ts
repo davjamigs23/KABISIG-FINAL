@@ -37,6 +37,7 @@ const UploadDocumentSchema = z.object({
 const UpdateDocumentSchema = z.object({
   title: z.string().min(3, 'Document title must be at least 3 characters').optional(),
   description: z.string().max(5000, 'Description must be at most 5000 characters').optional(),
+  resolution_number: z.string().max(100, 'Resolution number must be at most 100 characters').optional(),
   document_type: z.enum(DOCUMENT_TYPES).optional(),
 }).refine(
   payload => Object.values(payload).some(value => value !== undefined),
@@ -349,7 +350,10 @@ router.patch(
   requireActiveUser,
   requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'),
   async (req: Request, res: Response): Promise<void> => {
-    const parsed = UpdateDocumentSchema.safeParse(req.body);
+    const parsed = UpdateDocumentSchema.safeParse({
+      ...req.body,
+      resolution_number: req.body.resolutionNumber || req.body.resolution_number,
+    });
     if (!parsed.success) {
       sendError(res, 'Validation failed', 400, parsed.error.flatten().fieldErrors);
       return;
@@ -375,10 +379,12 @@ router.patch(
     const updates: {
       title?: string;
       description?: string | null;
+      resolution_number?: string | null;
       document_type?: typeof DOCUMENT_TYPES[number];
     } = {};
     if (parsed.data.title !== undefined) updates.title = parsed.data.title.trim();
     if (parsed.data.description !== undefined) updates.description = parsed.data.description.trim() || null;
+    if (parsed.data.resolution_number !== undefined) updates.resolution_number = parsed.data.resolution_number.trim() || null;
     if (parsed.data.document_type !== undefined) updates.document_type = parsed.data.document_type;
 
     const { data: updatedDocument, error: updateError } = await supabaseAdmin

@@ -584,6 +584,17 @@ export default function BarangayAdminPages({
           addCount('Sex', youth.sex);
           addCount('Age', ageGroup);
           addCount('Education', youth.educationalLevel || youth.education || '');
+          addCount('Employment', youth.employmentStatus || youth.employment || '');
+          const scholarStatus = String(youth.scholarStatus || (youth.isScholar ? 'Scholar' : '')).trim().toLowerCase();
+          addCount(
+            'Scholar Status',
+            ['scholar', 'yes'].includes(scholarStatus)
+              ? 'Scholar'
+              : ['non-scholar', 'no'].includes(scholarStatus)
+                ? 'Not Scholar'
+                : ''
+          );
+          addCount('Youth Sector', youth.youthSector || (youth as any).youth_sector || '');
         });
         records = Array.from(counts.entries()).map(([category, groups]) => [
           category,
@@ -946,10 +957,15 @@ export default function BarangayAdminPages({
     ? Number(currentBarangay.allocated_budget ?? currentBarangay.allocatedBudget ?? 0)
     : savedTotalBudgetForYear ?? (Number(generalFundBudget?.allocated_amount) || 0);
   const selectedYearSpent = _filterExpenses.reduce((sum, expense: any) =>
-    sum + Number(expense.netAmount ?? expense.net_amount ?? expense.amount ?? 0), 0
+    sum + Number(expense.gross_amount ?? expense.amount ?? 0), 0
   );
-  const programAllocatedBudgetForYear = _filterPrograms.reduce(
-    (sum, program: any) => sum + (Number(program.budgetAllocation) || 0),
+  const programAllocatedBudgetForYear = budgetAllocations
+    .filter((budget: any) => {
+      const category = String(budget.category || '').trim().toLowerCase();
+      return category !== 'general youth development fund' && !['heha', 'aaaa'].includes(category);
+    })
+    .reduce(
+    (sum: number, budget: any) => sum + (Number(budget.allocated_amount) || 0),
     0
   );
   const budgetAnalytics = getBudgetAnalytics(programAllocatedBudgetForYear, _filterPrograms, _filterExpenses);
@@ -1458,12 +1474,7 @@ export default function BarangayAdminPages({
   const totalBudget = selectedYearBudget;
   const totalSpent = selectedYearSpent;
   const hasTotalBudget = totalBudget > 0;
-  const allocatedToPrograms = budgetAllocations
-    .filter((budget: any) =>
-      budget.category !== 'General Youth Development Fund'
-      && !['heha', 'aaaa'].includes(String(budget.category || '').trim().toLowerCase())
-    )
-    .reduce((sum: number, budget: any) => sum + Number(budget.allocated_amount || 0), 0);
+  const allocatedToPrograms = programAllocatedBudgetForYear;
   const remainingBalance = hasTotalBudget ? totalBudget - totalSpent : 0;
   const utilizationRate = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
 
@@ -1495,7 +1506,7 @@ export default function BarangayAdminPages({
           return Boolean(programId && String(expenseProgramId) === String(programId))
             || Boolean(program && expense.programId === program.id);
         })
-        .reduce((sum, expense: any) => sum + Number(expense.netAmount ?? expense.net_amount ?? 0), 0);
+        .reduce((sum, expense: any) => sum + Number(expense.gross_amount ?? expense.amount ?? 0), 0);
       const remaining = allocated - spent;
       const rate = allocated > 0 ? Number(((spent / allocated) * 100).toFixed(1)) : 0;
       return {
@@ -1509,7 +1520,7 @@ export default function BarangayAdminPages({
     ...(budgetProgramFilter === 'All Programs' && expenses.some(expense => !expense.programId) ? [{
       program: 'Unassigned expenses',
       allocated: 0,
-      spent: expenses.filter(expense => !expense.programId).reduce((sum, expense) => sum + (Number(expense.netAmount) || 0), 0),
+      spent: expenses.filter(expense => !expense.programId).reduce((sum, expense) => sum + Number((expense as any).gross_amount ?? expense.amount ?? 0), 0),
       remaining: 0,
       rate: 0,
     }] : []),
@@ -3186,7 +3197,7 @@ return (
                     <tbody className="divide-y divide-slate-100 font-medium text-slate-700 bg-white">{localDocs.map(doc => (
                         <tr key={doc.id} className="hover:bg-slate-50/70 transition-colors">
                           <td className="px-5 py-4 font-mono font-bold text-[#091d64] whitespace-nowrap">
-                            {doc.resolutionNumber || doc.id}
+                            {doc.resolutionNumber || doc.resolution_number || '—'}
                           </td>
                           <td className="px-5 py-4 font-bold text-slate-900 truncate whitespace-nowrap" title="Document Title">
                             {doc.title}
@@ -3382,7 +3393,7 @@ return (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="p-5 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1"><div className="flex justify-between items-center text-slate-400"><span className="text-[10px] font-bold uppercase tracking-wider">Registered Youth</span><Users className="w-4 h-4 text-[#091d64]" /></div><h4 className="text-xl font-black text-[#091d64]">{Number(youthProfiles.length || 0).toLocaleString()}</h4><p className="text-[10px] text-slate-500">KK roster</p></div>
                   <div className="p-5 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1"><div className="flex justify-between items-center text-slate-400"><span className="text-[10px] font-bold uppercase tracking-wider">Active Programs</span><ClipboardList className="w-4 h-4 text-blue-600" /></div><h4 className="text-xl font-black text-blue-600">{programs.filter(p => p.status === 'Upcoming' || p.status === 'Ongoing').length}</h4><p className="text-[10px] text-slate-500">Upcoming & ongoing</p></div>
-                  <div className="p-5 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1"><div className="flex justify-between items-center text-slate-400"><span className="text-[10px] font-bold uppercase tracking-wider">Total Allocated</span><Coins className="w-4 h-4 text-emerald-600" /></div><h4 className="text-xl font-black text-emerald-600">{'\u20B1'}{Number(programs.reduce((s, p) => s + (Number(p.budgetAllocation) || 0), 0) || 0).toLocaleString()}</h4><p className="text-[10px] text-slate-500">Program budget</p></div>
+                  <div className="p-5 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1"><div className="flex justify-between items-center text-slate-400"><span className="text-[10px] font-bold uppercase tracking-wider">Total Allocated</span><Coins className="w-4 h-4 text-emerald-600" /></div><h4 className="text-xl font-black text-emerald-600">{'\u20B1'}{Number(allocatedToPrograms || 0).toLocaleString()}</h4><p className="text-[10px] text-slate-500">Program budget</p></div>
                   <div className="p-5 rounded-xl border border-slate-100 bg-slate-50/50 space-y-1"><div className="flex justify-between items-center text-slate-400"><span className="text-[10px] font-bold uppercase tracking-wider">Documents</span><Folder className="w-4 h-4 text-amber-600" /></div><h4 className="text-xl font-black text-amber-600">{documents.length}</h4><p className="text-[10px] text-slate-500">Repository records</p></div>
                 </div>
 
