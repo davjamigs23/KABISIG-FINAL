@@ -76,12 +76,12 @@ export interface YouthProfile {
   school: string; // School (Required if applicable)
   course?: string; // Course (Optional)
   year?: string; // Year Level (Optional)
-  employmentStatus?: 'Student' | 'Employed' | 'Unemployed' | 'Self-employed' | 'Out-of-School Youth' | 'Working Student'; // Employment Status (Required)
+  employmentStatus?: 'Student' | 'Employed' | 'Unemployed' | 'Self-Employed' | 'Self-employed' | 'Out-of-School Youth' | 'Working Student'; // Employment Status (Required)
   scholarStatus: 'Scholar' | 'Non-Scholar' | 'Yes' | 'No'; // Scholar Status (Required)
   scholarshipSource?: string;
   scholarshipSourceDetail?: string;
   scholarshipType?: string; // Scholarship Type (if applicable)
-  youthSector?: 'In-School Youth' | 'Out-of-School Youth' | 'Working Youth' | 'Youth with Special Needs' | 'PWD' | 'Solo Parent'; // Youth Sector (Required - DILG MC 2022-033)
+  youthSector?: 'In-School Youth' | 'Out-of-School Youth' | 'Working Youth' | 'Youth with Special Needs' | 'Youth with Special Needs / PWD' | 'PWD' | 'Solo Parent' | 'Solo Parent Youth' | 'Indigenous Youth'; // Youth Sector (Required - DILG MC 2022-033)
   guardianName: string; // Parent/Guardian Information (Required)
   guardianContact: string; // Parent/Guardian Contact (Required)
   profilePic?: string; // Profile Picture (Optional)

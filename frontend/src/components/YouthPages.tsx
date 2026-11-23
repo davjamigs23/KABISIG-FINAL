@@ -2796,13 +2796,12 @@ export default function YouthPages({
                         onChange={(e) => setEditForm({ ...editForm, educationalLevel: e.target.value as any })}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
                       >
-                        <option value="College">College / Tertiary</option>
-                        <option value="Senior High School">Senior High School</option>
-                        <option value="Junior High School">Junior High School</option>
                         <option value="Elementary">Elementary</option>
-                        <option value="Vocational">Vocational / Technical</option>
-                        <option value="Post Graduate">Post Graduate</option>
-                        <option value="None">None</option>
+                        <option value="High School">High School (Junior/Senior)</option>
+                        <option value="College">College</option>
+                        <option value="Vocational">Vocational / Tech-Voc</option>
+                        <option value="Post-Graduate">Post-Graduate</option>
+                        <option value="Out of School Youth">Out of School Youth</option>
                       </select>
                     </div>
                     <div>
@@ -2831,21 +2830,14 @@ export default function YouthPages({
                     </div>
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Year Level</label>
-                      <select 
+                      <input
+                        type="text"
                         disabled={isProfileLocked}
-                        value={editForm.year || '1st Year'} 
+                        readOnly={isProfileLocked}
+                        value={editForm.year || ''}
                         onChange={(e) => setEditForm({ ...editForm, year: e.target.value })}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
-                      >
-                        <option value="1st Year">1st Year</option>
-                        <option value="2nd Year">2nd Year</option>
-                        <option value="3rd Year">3rd Year</option>
-                        <option value="4th Year">4th Year</option>
-                        <option value="5th Year">5th Year</option>
-                        <option value="Grade 11">Grade 11</option>
-                        <option value="Grade 12">Grade 12</option>
-                        <option value="N/A">N/A</option>
-                      </select>
+                      />
                     </div>
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Employment Status</label>
@@ -2858,7 +2850,7 @@ export default function YouthPages({
                         <option value="Student">Student</option>
                         <option value="Employed">Employed</option>
                         <option value="Unemployed">Unemployed</option>
-                        <option value="Self-employed">Self-employed</option>
+                        <option value="Self-Employed">Self-Employed</option>
                         <option value="Working Student">Working Student</option>
                       </select>
                     </div>
@@ -2952,16 +2944,6 @@ export default function YouthPages({
                         className="h-4 w-4 rounded border-slate-300 text-[#091d64] focus:ring-[#091d64]"
                       />
                       Registered Voter
-                    </label>
-                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={editForm.privacy_consent === true}
-                        disabled={isProfileLocked}
-                        onChange={(e) => setEditForm({ ...editForm, privacy_consent: e.target.checked })}
-                        className="h-4 w-4 rounded border-slate-300 text-[#091d64] focus:ring-[#091d64]"
-                      />
-                      Privacy Consent
                     </label>
                   </div>
                 </div>

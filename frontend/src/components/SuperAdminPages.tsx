@@ -112,12 +112,11 @@ export default function SuperAdminPages({
   const [activeMenu, setActiveMenu] = useState<string>('dashboard');
   const [popupMsg, setPopupMsg] = useState<PopupMessage | null>(null);
   const [confirmMsg, setConfirmMsg] = useState<PopupMessage | null>(null);
-  const showPopup = (message: string, type: PopupMessage['type'] = 'error', setupLink?: string) => {
+  const showPopup = (message: string, type: PopupMessage['type'] = 'error') => {
     setPopupMsg({
       title: type === 'success' ? 'Success' : type === 'error' ? 'Notice' : type === 'warning' ? 'Warning' : 'Information',
       message,
       type,
-      ...(setupLink ? { setupLink } : {}),
     });
   };
   
@@ -336,8 +335,6 @@ useEffect(() => {
   const [assignError, setAssignError] = useState<string | null>(null);
   const [assignNotice, setAssignNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [assignSuccessMessage, setAssignSuccessMessage] = useState<string | null>(null);
-  const [copiedLink, setCopiedLink] = useState(false);
-  const [chairpersonSetupLink, setChairpersonSetupLink] = useState('');
   const [districtFilter, setDistrictFilter] = useState<'All' | 'North' | 'South' | 'West' | 'East'>('All');
   const [chairpersonFilter, setChairpersonFilter] = useState<'All' | 'Assigned' | 'Pending' | 'Unassigned'>('All');
   // Panel rec #9: Transfer Leadership modal state
@@ -421,7 +418,6 @@ useEffect(() => {
   const [inviteOfficialRole, setInviteOfficialRole] = useState<'SK Kagawad' | 'SK Secretary' | 'SK Treasurer' | ''>('');
   const [isInvitingOfficial, setIsInvitingOfficial] = useState(false);
   const [inviteOfficialNotice, setInviteOfficialNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [officialSuccessMsg, setOfficialSuccessMsg] = useState<string | null>(null);
   const [pendingOfficialToCancel, setPendingOfficialToCancel] = useState<any>(null);
   const [isCancellingOfficialInvite, setIsCancellingOfficialInvite] = useState(false);
   const [isResendingOfficialId, setIsResendingOfficialId] = useState<string | null>(null);
@@ -818,7 +814,6 @@ useEffect(() => {
     setInviteOfficialEmail('');
     setInviteOfficialRole('');
     setInviteOfficialNotice(null);
-    setOfficialSuccessMsg(null);
     setRoleCapacity(null);
     setIsLoadingCapacity(Boolean(barangay?.id));
     setInviteReturnToConfigure(returnToConfigure);
@@ -872,12 +867,9 @@ useEffect(() => {
     }
     setIsInvitingOfficial(true);
     setInviteOfficialNotice(null);
-    setOfficialSuccessMsg(null);
     try {
       const res = await kabisigApi.inviteSkOfficial(inviteOfficialBarangay.id, email, inviteOfficialRole);
       if (!res.success) {
-        const setupLink = res.details?.action_link || res.details?.setup_url;
-        if (setupLink) showPopup(res.message || 'Invitation could not be completed.', 'error', setupLink);
         if (inviteOfficialEmailRef.current.trim().toLowerCase() === email) {
           setInviteOfficialNotice({ type: 'error', text: getInviteOfficialFailureMessage(res) });
         }
@@ -887,7 +879,7 @@ useEffect(() => {
       const refreshedCapacity = await kabisigApi.getRoleCapacity(inviteOfficialBarangay.id);
       if (refreshedCapacity.success) setRoleCapacity(refreshedCapacity.data);
       if (inviteOfficialEmailRef.current.trim().toLowerCase() === email) {
-        setOfficialSuccessMsg(`SK Official invitation sent to ${email} for ${inviteOfficialBarangay.name}.`);
+        showPopup(`A secure sign-in link was sent to ${email}.`, 'success');
       }
     } catch (err: any) {
       if (inviteOfficialEmailRef.current.trim().toLowerCase() === email) {
@@ -914,7 +906,6 @@ useEffect(() => {
 
     setIsResendingOfficialId(official.id);
     setInviteOfficialNotice(null);
-    setOfficialSuccessMsg(null);
     try {
       const email = String(official.email).trim().toLowerCase();
       const response = await kabisigApi.inviteSkOfficial(
@@ -923,13 +914,11 @@ useEffect(() => {
         official.official_role
       );
       if (!response.success) {
-        const setupLink = response.details?.action_link || response.details?.setup_url;
         const errorMessage = getResendErrorMessage(response.message);
-        if (setupLink) showPopup(errorMessage, 'error', setupLink);
         setInviteOfficialNotice({ type: 'error', text: errorMessage });
         return;
       }
-      setOfficialSuccessMsg(`SK Official invitation sent to ${email} for ${inviteOfficialBarangay.name}.`);
+      showPopup(`A secure sign-in link was sent to ${email}.`, 'success');
       const refreshedCapacity = await kabisigApi.getRoleCapacity(inviteOfficialBarangay.id);
       if (refreshedCapacity.success) setRoleCapacity(refreshedCapacity.data);
     } catch (error: any) {
@@ -1120,8 +1109,6 @@ useEffect(() => {
     setAssignError(null);
     setAssignNotice(null);
     setAssignSuccessMessage(null);
-    setChairpersonSetupLink('');
-    setCopiedLink(false);
     setAssignReturnToConfigure(returnToConfigure);
     setShowAssignModal(true);
   };
@@ -1155,8 +1142,6 @@ useEffect(() => {
     try {
       const res = await kabisigApi.assignChairpersonByEmail(assigningBarangay.id, email);
       if (!res.success) {
-        const setupLink = res.details?.action_link || res.details?.setup_url;
-        if (setupLink) showPopup(res.message || 'Chairperson invitation could not be completed.', 'error', setupLink);
         setAssignError(res.message || 'Failed to dispatch Chairperson assignment.');
         setAssignNotice({ type: 'error', text: res.message || 'Failed to dispatch Chairperson assignment.' });
         setIsAssigning(false);
@@ -1172,8 +1157,6 @@ useEffect(() => {
       const refreshedBarangay = refreshedBarangays.data?.find((barangay) => String(barangay.id) === String(assigningBarangay.id));
       if (refreshedBarangay) onSyncBarangay(assigningBarangay.id, refreshedBarangay);
       await onRefreshAuditLogs();
-      const setupLink = res.data?.action_link || res.data?.setup_url;
-      setChairpersonSetupLink(setupLink || '');
       setAssignNotice(null);
       setAssignSuccessMessage(`SK Chairperson invitation sent to ${email} for ${assigningBarangay.name}.`);
     } catch (err: any) {
@@ -1191,7 +1174,7 @@ useEffect(() => {
       return;
     }
     const email = response.data?.email || barangay.chairpersonUser?.email || barangay.chairpersonEmail || 'the Chairperson';
-    showPopup(`Invitation resent successfully to ${email}.`, 'success');
+    showPopup(`A secure sign-in link was sent to ${email}.`, 'success');
     await onRefreshAuditLogs();
   };
 
@@ -2888,7 +2871,6 @@ useEffect(() => {
                     setRoleCapacity(null);
                     setIsLoadingCapacity(Boolean(selected));
                     setInviteOfficialNotice(null);
-                    setOfficialSuccessMsg(null);
                   }}
                   className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:ring-1 focus:ring-[#091d64] focus:outline-none cursor-pointer"
                 >
@@ -3037,7 +3019,6 @@ useEffect(() => {
                     inviteOfficialEmailRef.current = email;
                     if (pendingInvite?.official_role) setInviteOfficialRole(pendingInvite.official_role);
                     setInviteOfficialNotice(null);
-                    setOfficialSuccessMsg(null);
                   }}
                   className={`w-full p-2.5 bg-white border ${isInviteOfficialEmailDuplicate ? 'border-rose-500 focus:ring-rose-500' : 'border-slate-200 focus:ring-[#091d64]'} rounded-xl text-xs font-semibold text-slate-800 focus:ring-1 focus:outline-none`}
                   placeholder="official@example.com" required />
@@ -3050,11 +3031,6 @@ useEffect(() => {
               {inviteOfficialNotice && (
                 <div className={'p-3 rounded-xl text-xs border ' + (inviteOfficialNotice.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-700')}>
                   {inviteOfficialNotice.text}
-                </div>
-              )}
-              {officialSuccessMsg && (
-                <div className="p-3 mb-4 text-sm text-emerald-800 bg-emerald-50 rounded-lg border border-emerald-200">
-                  {officialSuccessMsg}
                 </div>
               )}
               {(() => {
