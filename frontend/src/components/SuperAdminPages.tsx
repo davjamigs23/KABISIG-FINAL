@@ -1098,7 +1098,7 @@ useEffect(() => {
 
       onSyncBarangay(transferringBarangay.id, {
         chairperson: res.data?.incoming?.full_name || 'Pending Invitation',
-        chairpersonUser: { full_name: res.data?.incoming?.full_name || 'Pending Invitation', email, status: 'active' },
+        chairpersonUser: { full_name: res.data?.incoming?.full_name || 'Pending Invitation', email, status: 'pending' },
         chairpersonEmail: email,
       });
       await onRefreshAuditLogs();

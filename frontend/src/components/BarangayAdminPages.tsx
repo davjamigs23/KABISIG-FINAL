@@ -2179,8 +2179,13 @@ return (
               supplementalItems={[
                 ...pendingRegistrations.map(profile => ({
                   id: `registration-${profile.id}`,
-                  title: `Registration request from ${profile.name}`,
-                  message: `Requested role: ${profile.registeredRole || 'Youth Constituent'} · Registered ${profile.dateRegistered}`, created_at: profile.dateRegistered ? new Date(profile.dateRegistered).toISOString() : new Date().toISOString(),
+                  title: profile.is_demoted
+                    ? `Re-verification required: ${profile.name}`
+                    : `Registration request from ${profile.name}`,
+                  message: profile.is_demoted
+                    ? 'Former SK Chairperson (demoted) · Awaiting profile and ID re-verification.'
+                    : `Requested role: ${profile.registeredRole || 'Youth Constituent'} · Registered ${profile.dateRegistered}`,
+                  created_at: profile.dateRegistered ? new Date(profile.dateRegistered).toISOString() : new Date().toISOString(),
                   is_read: false,
                   actionLabel: 'Review',
                   onSelect: () => setInspectProfile(profile),
@@ -2510,7 +2515,7 @@ return (
                     </colgroup>
                     <thead className="bg-slate-50 text-[10px] text-slate-500 font-extrabold uppercase border-b border-slate-100">
                       <tr>
-                        <th className="px-2 py-3 break-words min-w-[140px] md:min-w-0">Applicant Profile</th>
+                        <th className="px-2 py-3 break-words min-w-[140px] md:min-w-0">Youth Profile</th>
                         <th className="px-2 py-3 break-words">Age / Sex</th>
                         <th className="px-2 py-3 break-words">Residency Address</th>
                         <th className="px-2 py-3 break-words">Education & Scholarship</th>
@@ -2525,6 +2530,11 @@ return (
                               <ProfileAvatar name={p.name} src={p.profilePic} alt={p.name} className="w-7 h-7 shrink-0 rounded-full border border-slate-100" />
                               <div className="min-w-0">
                                 <span className="block break-words font-bold">{p.name}</span>
+                                {p.is_demoted && (
+                                  <span className="mt-1 inline-block rounded bg-violet-100 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-violet-800">
+                                    Former SK Chairperson · Demoted
+                                  </span>
+                                )}
                                 <span className="mt-0.5 block break-all font-mono text-[9px] font-bold text-slate-400 max-md:whitespace-nowrap">{p.id}</span>
                               </div>
                             </div>
@@ -2551,7 +2561,11 @@ return (
                               p.status === 'Approved' ? 'bg-green-100 text-green-800' :
                               'bg-red-100 text-red-800'
                             }`}>
-                              {isPendingYouthReview(p) ? 'Pending' : p.status}
+                              {p.is_demoted && isPendingYouthReview(p)
+                                ? 'Awaiting Re-verification'
+                                : isPendingYouthReview(p)
+                                  ? 'Pending'
+                                  : p.status}
                             </span>
                           </td>
                           <td className="px-2 py-3 text-center align-top">

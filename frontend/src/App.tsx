@@ -321,12 +321,10 @@ function AppContent() {
   const [publicView, setPublicView] = useState<'landing' | 'login' | 'signup' | 'transparency'>('landing');
   const navigatingToSignInRef = useRef(false);
   const [programConflict, setProgramConflict] = useState<{ program: Program; resolve: (confirmed: boolean) => void } | null>(null);
-  const isChairpersonRole = currentRole === 'Barangay Admin' || currentRole === 'SK Chairperson';
-  const chairpersonSetupRequired = isChairpersonRole && (
-    !currentUser
-    || ['pending', 'pending_invite'].includes(String(currentUser.status || '').toLowerCase())
-    || currentUser.setup_completed !== true
-  );
+  const isChairpersonRole = Number(currentUser?.role_id) === 2;
+  const chairpersonSetupRequired = isChairpersonRole
+    && currentUser?.setup_completed === false
+    && String(currentUser?.status || '').toLowerCase() !== 'active';
 
   useEffect(() => {
     if (typeof window === 'undefined') return;

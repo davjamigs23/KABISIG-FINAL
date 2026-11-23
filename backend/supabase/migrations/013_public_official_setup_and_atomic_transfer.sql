@@ -190,7 +190,9 @@ BEGIN
         UPDATE public.users
         SET tenant_id = p_barangay_id,
             role_id = 2,
-            status = 'active',
+            status = 'pending',
+            official_role = 'SK Chairperson',
+            setup_completed = false,
             approved_by = p_admin_id,
             updated_at = now()
         WHERE id = p_successor_user_id;

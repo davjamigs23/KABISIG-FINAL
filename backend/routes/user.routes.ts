@@ -897,6 +897,7 @@ router.get(
                 : normalizedUserStatus === 'suspended'
                   ? 'suspended'
                   : 'Pending',
+          is_demoted: u.is_demoted === true,
           suspension_reason: (u as any).suspension_reason || null,
           barangayId: u.tenant_id || meta.barangayId || '',
           dateRegistered: u.created_at?.split('T')[0] || meta.dateRegistered || new Date().toISOString().split('T')[0],

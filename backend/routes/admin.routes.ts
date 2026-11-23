@@ -2166,10 +2166,12 @@ router.post(
     }
 
     let successorSetupStateError: string | null = null;
-    if (successor && successorUserId) {
+    if (successorUserId && cleanSuccessorEmail) {
       const { data: successorAuthData, error: successorAuthError } = await supabaseAdmin.auth.admin.getUserById(successorUserId);
       if (successorAuthError || !successorAuthData.user) {
         successorSetupStateError = successorAuthError?.message || 'Supabase Auth account was not found.';
+      } else if (successorAuthData.user.email?.trim().toLowerCase() !== cleanSuccessorEmail) {
+        successorSetupStateError = 'The successor email does not match the linked authentication account.';
       } else {
         const { error: authSetupError } = await supabaseAdmin.auth.admin.updateUserById(successorUserId, {
           app_metadata: {
@@ -2187,11 +2189,23 @@ router.post(
         if (authSetupError) {
           successorSetupStateError = authSetupError.message;
         } else {
-          const { error: publicSetupError } = await supabaseAdmin
+          const { data: publicSuccessor, error: publicSetupError } = await supabaseAdmin
             .from('users')
-            .update({ setup_completed: false })
-            .eq('id', successorUserId);
-          if (publicSetupError) successorSetupStateError = publicSetupError.message;
+            .update({
+              status: 'pending',
+              official_role: 'SK Chairperson',
+              setup_completed: false,
+            })
+            .eq('id', successorUserId)
+            .eq('tenant_id', barangay_id)
+            .eq('role_id', 2)
+            .select('id')
+            .maybeSingle();
+          if (publicSetupError) {
+            successorSetupStateError = publicSetupError.message;
+          } else if (!publicSuccessor) {
+            successorSetupStateError = 'The successor public profile could not be updated.';
+          }
         }
       }
       if (successorSetupStateError) {
@@ -2264,7 +2278,8 @@ router.post(
         email: cleanSuccessorEmail,
         full_name: successor?.full_name || 'Pending Invitation',
         role_id: 2,
-        status: 'active',
+        status: 'pending',
+        setup_completed: false,
         new_role: 'Barangay Admin',
       },
       link_type: successorLinkType || undefined,

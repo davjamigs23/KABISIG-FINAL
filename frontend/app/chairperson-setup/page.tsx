@@ -84,22 +84,35 @@ function SetupForm() {
         if (!active) return;
         setSupabaseClient(client);
         const queryParams = new URLSearchParams(window.location.search);
+        const redirectToAppDashboard = () => {
+          sessionResolved = true;
+          setIsCheckingSession(false);
+          router.replace('/');
+          return true;
+        };
         const acceptSession = (session: Session): boolean => {
-          if (!active) return false;
+          if (!active || sessionResolved) return false;
           const inviteEmail = queryParams.get('invite_email')?.trim().toLowerCase();
+          const sessionEmail = session.user.email?.trim().toLowerCase();
+          const userMetadata = session.user.user_metadata || {};
+          const appMetadata = session.user.app_metadata || {};
+          const roleId = Number(userMetadata.role_id ?? appMetadata.role_id);
+          const setupCompleted = userMetadata.setup_completed === true || appMetadata.setup_completed === true;
+          const accountStatus = String(userMetadata.status || appMetadata.status || '').toLowerCase();
           if (
-            Number(session.user.user_metadata?.role_id) !== 2
-            || session.user.user_metadata?.setup_completed !== false
-            || session.user.app_metadata?.setup_completed !== false
+            (inviteEmail && sessionEmail !== inviteEmail)
+            || roleId !== 2
+            || setupCompleted
+            || accountStatus === 'active'
+          ) {
+            return redirectToAppDashboard();
+          }
+          if (
+            userMetadata.setup_completed !== false
+            || appMetadata.setup_completed !== false
           ) {
             setInviteStatus('invalid');
             setError(INVALID_INVITE_MESSAGE);
-            setIsCheckingSession(false);
-            return false;
-          }
-          if (inviteEmail && session.user.email?.toLowerCase() !== inviteEmail) {
-            setInviteStatus('invalid');
-            setError('This invitation link does not match the signed-in email address.');
             setIsCheckingSession(false);
             return false;
           }
@@ -206,6 +219,19 @@ function SetupForm() {
           if (
             active
             && setupUser
+            && (
+              (inviteEmail && setupUser.email?.trim().toLowerCase() !== inviteEmail)
+              || Number(setupUser.role_id) !== 2
+              || setupStatus === 'active'
+              || setupUser.setup_completed === true
+            )
+          ) {
+            redirectToAppDashboard();
+            return;
+          }
+          if (
+            active
+            && setupUser
             && Number(setupUser.role_id) === 2
             && setupUser.setup_completed !== true
             && (!inviteEmail || setupUser.email?.toLowerCase() === inviteEmail)
@@ -285,11 +311,14 @@ function SetupForm() {
       if (retryTimer !== undefined) window.clearTimeout(retryTimer);
       subscription?.unsubscribe();
     };
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     const inviteEmail = searchParams.get('invite_email');
     const tenant = searchParams.get('tenant_id') || searchParams.get('tenant') || searchParams.get('barangay');
+    if (inviteEmail || tenant) {
+      window.history.replaceState(null, '', '/chairperson-setup');
+    }
     if (inviteEmail) setEmail(inviteEmail);
     if (tenant) {
       setTenantId(tenant);
