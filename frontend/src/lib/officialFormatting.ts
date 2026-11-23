@@ -1,13 +1,18 @@
 export interface OfficialNameSource {
   full_name?: string | null;
   name?: string | null;
+  first_name?: string | null;
+  middle_name?: string | null;
+  last_name?: string | null;
+  suffix?: string | null;
   sex?: string | null;
+  gender_title?: string | null;
   role_id?: number | string | null;
   official_role?: string | null;
   position?: string | null;
 }
 
-export function formatOfficialName(user: OfficialNameSource): string;
+export function formatOfficialName(user: OfficialNameSource | null | undefined): string;
 export function formatOfficialName(
   name: string | null | undefined,
   sex?: string | null,
@@ -21,17 +26,24 @@ export function formatOfficialName(
   position?: string | null
 ): string {
   const user = typeof nameOrUser === 'object' && nameOrUser !== null ? nameOrUser : null;
-  const rawName = String(user?.full_name ?? user?.name ?? nameOrUser ?? '').trim();
-  if (!rawName) return 'Unknown';
+  if (nameOrUser == null) return 'Unassigned';
+  const discreteName = user
+    ? [user.first_name, user.middle_name, user.last_name, user.suffix]
+      .map(value => String(value || '').trim())
+      .filter(Boolean)
+      .join(' ')
+    : '';
+  const rawName = String(discreteName || user?.full_name || user?.name || nameOrUser || '').trim();
+  if (!rawName) return user ? 'Unnamed Official' : 'Unassigned';
 
   const normalizedName = rawName.toLowerCase();
-  if (normalizedName.includes('pending invitation')) return 'Pending Invitation';
+  if (String(user?.full_name || rawName).toLowerCase().includes('pending')) return 'Pending Invitation';
   if (['sk chairperson', 'hon. sk chairperson', 'hon. sk kagawad'].includes(normalizedName)) {
     return 'Pending Invitation';
   }
 
   const cleanName = rawName.replace(/^(Mr\.\/Ms\.|Mr\.|Ms\.|Mrs\.|Hon\.)\s+/i, '').trim();
-  const gender = String(user?.sex ?? sex ?? '').toLowerCase();
+  const gender = String(user?.sex ?? user?.gender_title ?? sex ?? '').toLowerCase();
   const officialPosition = String(user?.official_role || user?.position || position || '').toLowerCase();
   const effectiveRoleId = user?.role_id ?? roleId;
 

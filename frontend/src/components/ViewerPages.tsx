@@ -171,6 +171,7 @@ export default function ViewerPages({
       id: chairperson.id || existingChairperson?.id || `chairperson-${barangay.id}`,
       full_name: chairpersonName,
       role_id: 2,
+      status: 'active',
       official_role: 'SK Chairperson',
       position: 'SK Chairperson',
       gender_title: existingChairperson?.gender_title || '',
@@ -977,7 +978,9 @@ export default function ViewerPages({
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                   {[...group.officials]
                                     .sort((a, b) => getOfficialHierarchyRank(a) - getOfficialHierarchyRank(b))
-                                    .map((official) => (
+                                    .map((official) => {
+                                      if (official.status !== 'active' || official.full_name.toLowerCase().includes('pending')) return null;
+                                      return (
                                       <div key={official.id} className="flex items-center gap-3 rounded-xl border border-slate-100 bg-white p-3">
                                         <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-50 text-[#091d64]">
                                           {official.avatar_url ? (
@@ -992,13 +995,14 @@ export default function ViewerPages({
                                           )}
                                         </div>
                                         <div className="min-w-0">
-                                          <p className="break-words text-sm font-bold text-slate-800">{formatOfficialName(official.full_name, official.gender_title, official.role_id, official.position || official.official_role)}</p>
+                                          <p className="break-words text-sm font-bold text-slate-800">{formatOfficialName(official)}</p>
                                           <p className="text-xs font-semibold text-slate-500">
                                             {official.official_role || (official.role_id === 2 ? 'SK Chairperson' : 'SK Official')}
                                           </p>
                                         </div>
                                       </div>
-                                    ))}
+                                      );
+                                    })}
                                 </div>
                               )}
                             </div>

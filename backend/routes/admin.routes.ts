@@ -186,9 +186,11 @@ router.get('/all-officials', authenticateUser, requireRoles('SUPER_ADMIN'), asyn
   try {
     const { data: users, error: userErr } = await supabaseAdmin
       .from('users')
-      .select('id, tenant_id, email, full_name, role_id, status, phone, avatar_url, setup_completed, official_role')
+      .select('id, tenant_id, email, full_name, first_name, middle_name, last_name, suffix, role_id, status, phone, avatar_url, setup_completed, official_role')
       .in('role_id', [2, 3])
+      .eq('status', 'active')
       .not('tenant_id', 'is', null)
+      .not('full_name', 'ilike', '%Pending%')
       .order('full_name', { ascending: true });
 
     if (userErr) {
@@ -245,6 +247,10 @@ router.get('/all-officials', authenticateUser, requireRoles('SUPER_ADMIN'), asyn
         birthdate: profile?.birthdate || null,
         gender_title: sex === 'Male' ? 'Mr.' : sex === 'Female' ? 'Ms.' : sex === 'Other' ? 'Mr./Ms.' : '',
         full_name: official.full_name || '',
+        first_name: official.first_name,
+        middle_name: official.middle_name,
+        last_name: official.last_name,
+        suffix: official.suffix,
         display_name: isPending ? 'Pending Invite' : (official.full_name || 'Unassigned'),
         email: official.email || '',
         phone: official.phone,

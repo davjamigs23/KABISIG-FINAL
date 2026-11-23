@@ -49,7 +49,12 @@ export interface SystemNotification {
 export interface PublicOfficialRosterEntry {
   id: string;
   full_name: string;
+  first_name?: string | null;
+  middle_name?: string | null;
+  last_name?: string | null;
+  suffix?: string | null;
   role_id: number;
+  status: string;
   official_role: string;
   position: string;
   gender_title: string;

@@ -325,11 +325,11 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
 
   const { data: officials, error } = await supabaseAdmin
     .from('users')
-    .select('id, tenant_id, full_name, role_id, avatar_url, official_role, setup_completed, barangay(name)')
+    .select('id, tenant_id, full_name, first_name, middle_name, last_name, suffix, role_id, status, avatar_url, official_role, setup_completed, barangay(name)')
     .in('role_id', [2, 3])
     .eq('status', 'active')
     .not('tenant_id', 'is', null)
-    .not('full_name', 'ilike', '%Pending Invitation%');
+    .not('full_name', 'ilike', '%Pending%');
 
   if (error) {
     sendError(res, `Failed to load public officials: ${error.message}`, 500);
@@ -358,7 +358,12 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
     officials: Array<{
       id: string;
       full_name: string;
+      first_name: string | null;
+      middle_name: string | null;
+      last_name: string | null;
+      suffix: string | null;
       role_id: number;
+      status: string;
       official_role: string;
       position: string;
       gender_title: string;
@@ -383,7 +388,12 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
       tenant_id: official.tenant_id,
       barangay_name: joinedBarangay?.name || '',
       full_name: official.full_name || '',
+      first_name: official.first_name,
+      middle_name: official.middle_name,
+      last_name: official.last_name,
+      suffix: official.suffix,
       role_id: Number(official.role_id),
+      status: official.status,
       official_role: officialRole,
       position: officialRole,
       gender_title: profileSexByUserId.get(official.id) === 'Male'
@@ -408,7 +418,12 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
     group.officials.push({
       id: official.id,
       full_name: official.full_name || '',
+      first_name: official.first_name,
+      middle_name: official.middle_name,
+      last_name: official.last_name,
+      suffix: official.suffix,
       role_id: Number(official.role_id),
+      status: official.status,
       official_role: official.official_role,
       position: official.position,
       gender_title: official.gender_title,

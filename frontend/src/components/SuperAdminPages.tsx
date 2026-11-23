@@ -108,7 +108,7 @@ export default function SuperAdminPages({
 
   const isDisplayedOfficial = (official: any) =>
     official?.status === 'active'
-    && official?.setup_completed === true;
+    && !String(official?.full_name || '').toLowerCase().includes('pending');
   const [activeMenu, setActiveMenu] = useState<string>('dashboard');
   const [popupMsg, setPopupMsg] = useState<PopupMessage | null>(null);
   const [confirmMsg, setConfirmMsg] = useState<PopupMessage | null>(null);
@@ -725,6 +725,7 @@ useEffect(() => {
   };
 
   const renderAllOfficial = (official: any) => {
+    if (official.status !== 'active' || String(official.full_name || '').toLowerCase().includes('pending')) return null;
     const badge = getOfficialStatusBadge(official);
 
     return (
@@ -737,7 +738,7 @@ useEffect(() => {
           </span>
         )}
         <span className="min-w-0">
-          <span className="block break-words">{formatOfficialName(official.full_name || 'Pending Invitation', official.sex, official.role_id, official.official_role)}</span>
+          <span className="block break-words">{formatOfficialName(official)}</span>
           <span className="block text-[9px] text-slate-500">{official.official_role} · {official.barangay_name}</span>
         </span>
         <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${badge.className}`}>
@@ -2732,7 +2733,7 @@ useEffect(() => {
                               )}
                               <div className="min-w-0">
                                 <p className="flex items-center gap-2 text-sm font-bold text-slate-800">
-                                  <span className="truncate">{formatOfficialName(person.full_name || 'Pending Invitation', person.sex, person.role_id, person.position || person.official_role)}</span>
+                                  <span className="truncate">{formatOfficialName(person)}</span>
                                 </p>
                                 <p className="truncate text-xs text-slate-500">{person.email || 'No email recorded'}</p>
                                 <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold capitalize ${statusBadge.className}`}>
@@ -2802,17 +2803,13 @@ useEffect(() => {
                 return allOfficialsRoster.some((official) =>
                   String(official.tenant_id) === String(barangay.id)
                   && isDisplayedOfficial(official)
-                  && [official.full_name, official.email, official.official_role, official.position]
+                  && [official.full_name, official.first_name, official.middle_name, official.last_name, official.email, official.official_role, official.position]
                     .some((value) => String(value || '').toLowerCase().includes(search))
                 );
               }).map((barangay) => {
-                const search = allOfficialsSearch.trim().toLowerCase();
-                const barangayMatches = !search || barangay.name.toLowerCase().includes(search);
                 const officials = dedupeOfficials(allOfficialsRoster.filter((official) =>
                   String(official.tenant_id) === String(barangay.id)
                   && isDisplayedOfficial(official)
-                  && (barangayMatches || [official.full_name, official.email, official.official_role, official.position]
-                    .some((value) => String(value || '').toLowerCase().includes(search)))
                 )).map((official) => ({
                   ...official,
                   official_role: official.official_role || (Number(official.role_id) === 2 ? 'SK Chairperson' : official.position || 'SK Official'),
