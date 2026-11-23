@@ -329,7 +329,8 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
     .in('role_id', [2, 3])
     .eq('status', 'active')
     .not('tenant_id', 'is', null)
-    .not('full_name', 'ilike', '%Pending%');
+    .not('full_name', 'ilike', '%Pending%')
+    .not('full_name', 'ilike', '%Invitation%');
 
   if (error) {
     sendError(res, `Failed to load public officials: ${error.message}`, 500);

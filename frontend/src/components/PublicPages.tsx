@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { getPhilippineDateString } from '../lib/dateUtils';
 // Logo served from /public/icon.png (single source of truth)
@@ -129,6 +129,47 @@ function calculateAgeFromISODate(value: string): number {
   return age;
 }
 
+function createInitialSignUpForm() {
+  return {
+    firstName: '',
+    middleName: '',
+    lastName: '',
+    suffix: '',
+    sex: '' as '' | 'Male' | 'Female' | 'Prefer not to say',
+    birthdate: '',
+    mobile: '',
+    guardianName: '',
+    guardianContact: '',
+    email: '',
+    address: '',
+    zone: '',
+    school: '',
+    educationalLevel: 'College' as any,
+    course: '',
+    year: '',
+    youthSector: '',
+    scholarStatus: 'Non-Scholar' as 'Scholar' | 'Non-Scholar',
+    scholarshipSource: '' as '' | 'Government' | 'Private' | 'Academic' | 'NGO' | 'Other',
+    scholarshipSourceDetail: '',
+    password: '',
+    confirmPassword: '',
+    privacy_consent: false,
+    profilePic: undefined,
+    registeredRole: 'Youth Constituent' as any,
+    idType: 'Student ID' as string,
+    idNumber: '',
+    idFrontFile: null as File | null,
+    idBackFile: null as File | null,
+    educational_status: '',
+    employment_status: '',
+    scholar_status: 'Non-Scholar',
+    is_pwd: false,
+    is_solo_parent: false,
+    is_registered_voter: false,
+    civil_status: 'Single' as NonNullable<YouthProfile['civilStatus']>,
+  };
+}
+
 export default function PublicPages({
   onLogin,
   loginErrorMessage,
@@ -191,45 +232,19 @@ export default function PublicPages({
   const [signUpBarangayId, setSignUpBarangayId] = useState('');
   const [customError, setCustomError] = useState<string | null>(null);
   const [birthdateError, setBirthdateError] = useState('');
-  const [signUpForm, setSignUpForm] = useState({
-    firstName: '',
-    middleName: '',
-    lastName: '',
-    suffix: '',
-    sex: '' as '' | 'Male' | 'Female' | 'Prefer not to say',
-    birthdate: '',
-    mobile: '',
-    guardianName: '',
-    guardianContact: '',
-    email: '',
-    address: '',
-    zone: '',
-    school: '',
-    educationalLevel: 'College' as any,
-    course: '',
-    year: '',
-    youthSector: '',
-    scholarStatus: 'Non-Scholar' as 'Scholar' | 'Non-Scholar',
-    scholarshipSource: '' as '' | 'Government' | 'Private' | 'Academic' | 'NGO' | 'Other',
-    scholarshipSourceDetail: '',
-    password: '',
-    confirmPassword: '',
-    privacy_consent: false,
-    profilePic: undefined,
-    registeredRole: 'Youth Constituent' as any,
-    idType: 'Student ID' as string,
-    idNumber: '',
-    idFrontFile: null as File | null,
-    idBackFile: null as File | null,
-    educational_status: '',
-    employment_status: '',
-    scholar_status: 'Non-Scholar',
-    is_pwd: false,
-    is_solo_parent: false,
-    is_registered_voter: false,
-        civil_status: 'Single' as NonNullable<YouthProfile['civilStatus']>,
-  });
+  const [signUpForm, setSignUpForm] = useState(createInitialSignUpForm);
   const [idImagePreviewUrls, setIdImagePreviewUrls] = useState({ front: '', back: '' });
+  const resetSignUpState = useCallback(() => {
+    setSignUpForm(createInitialSignUpForm());
+    setSignUpStep(1);
+    setSignUpBarangayId('');
+    setCustomError(null);
+    setBirthdateError('');
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'signup') resetSignUpState();
+  }, [activeTab, resetSignUpState]);
 
   useEffect(() => {
     const front = signUpForm.idFrontFile ? URL.createObjectURL(signUpForm.idFrontFile) : '';
@@ -413,8 +428,8 @@ export default function PublicPages({
       setSignUpStep(1);
       return;
     }
-    if (!signUpForm.educational_status || !signUpForm.employment_status) {
-      showPopup("Please go back to Step 3 and fill out Educational Attainment and Employment Status.");
+    if (!signUpForm.educational_status || !signUpForm.course.trim() || !signUpForm.school.trim() || !signUpForm.employment_status) {
+      showPopup("Please go back to Step 3 and fill out Educational Attainment, Course / Program, School / University, and Employment Status.");
       setSignUpStep(3);
       return;
     }
@@ -624,8 +639,8 @@ export default function PublicPages({
       }
 
       showPopup('Registration submitted successfully!\n\nYour profile has been saved into the database and is pending validation by your Sangguniang Kabataan officials.', 'success');
+      resetSignUpState();
       setActiveTab('login');
-      setSignUpStep(1);
     } catch (err: any) {
       showPopup(`Registration error: ${err.message || 'Network error.'}`);
     } finally {
@@ -925,7 +940,7 @@ export default function PublicPages({
                 <div className="mt-6 text-center text-xs text-slate-500 font-sans">
                   New to KABISIG?{' '}
                   <button 
-                    onClick={() => { setActiveTab('signup'); setSignUpStep(1); }}
+                    onClick={() => { resetSignUpState(); setActiveTab('signup'); }}
                     className="text-[#1a237e] font-bold hover:underline transition-colors cursor-pointer"
                   >
                     Create Account
@@ -974,7 +989,7 @@ export default function PublicPages({
                 {signUpStep === 1 && (
                 <button
                   type="button"
-                  onClick={() => { setActiveTab('login'); }}
+                  onClick={() => { resetSignUpState(); setActiveTab('login'); }}
                   className="absolute top-4 left-4 flex items-center gap-1.5 text-xs text-slate-500 hover:text-[#091d64] font-bold cursor-pointer transition-colors"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" /> Back to Sign In
@@ -1000,14 +1015,14 @@ export default function PublicPages({
                 <div className="flex w-full p-1 bg-slate-100 rounded-xl mb-5 border border-slate-200/70">
                   <button
                     type="button"
-                    onClick={() => { setActiveTab('login'); }}
+                    onClick={() => { resetSignUpState(); setActiveTab('login'); }}
                     className="flex-1 py-2 text-xs font-bold rounded-lg transition-all text-slate-500 hover:text-slate-900 cursor-pointer"
                   >
                     Sign In
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setActiveTab('signup'); setSignUpStep(1); }}
+                    onClick={() => { resetSignUpState(); setActiveTab('signup'); }}
                     className="flex-1 py-2 text-xs font-bold rounded-lg transition-all bg-white text-[#133285] shadow-xs cursor-pointer"
                   >
                     Create Account
@@ -1310,11 +1325,11 @@ export default function PublicPages({
   <option value="Out of School Youth">Out of School Youth</option>
 </select>
 
-                <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans mt-4">Course / Program</label>
-                <input type="text" value={signUpForm.course || ''} onChange={(e) => setSignUpForm({...signUpForm, course: e.target.value})} placeholder="" className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none" />
+                <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans mt-4">Course / Program <span className="text-rose-500">*</span></label>
+                <input type="text" value={signUpForm.course || ''} onChange={(e) => setSignUpForm({...signUpForm, course: e.target.value})} placeholder="" className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none" required />
 
-                <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans mt-4">School / University</label>
-                <input type="text" value={signUpForm.school || ''} onChange={(e) => setSignUpForm({...signUpForm, school: e.target.value})} placeholder="" className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none" />
+                <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans mt-4">School / University <span className="text-rose-500">*</span></label>
+                <input type="text" value={signUpForm.school || ''} onChange={(e) => setSignUpForm({...signUpForm, school: e.target.value})} placeholder="" className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none" required />
 
 <label className="block text-xs font-bold text-slate-700 mb-1.5 font-sans mt-4">Employment Status <span className="text-red-500">*</span></label>
 <select value={signUpForm.employment_status || ''} onChange={(e) => setSignUpForm({...signUpForm, employment_status: e.target.value})} className="w-full pl-3 pr-8 py-2.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none appearance-none cursor-pointer" required>
@@ -1672,13 +1687,13 @@ export default function PublicPages({
                           if (!signUpForm.guardianContact.trim()) { showPopup('Parent or guardian contact number is required.'); return; }
                         }
                         if (signUpStep === 3) {
-                          if (!signUpForm.educational_status.trim() || !signUpForm.school.trim() || !signUpForm.employment_status.trim()) { showPopup('Educational level, school, and employment status are required.'); return; }
+                          if (!signUpForm.educational_status.trim() || !signUpForm.course.trim() || !signUpForm.school.trim() || !signUpForm.employment_status.trim()) { showPopup('Educational level, course/program, school, and employment status are required.'); return; }
                         }
                         setSignUpStep(signUpStep + 1);
                       }}
                       disabled={
                         (signUpStep === 1 && (!signUpForm.birthdate || calculateAgeFromISODate(signUpForm.birthdate) < 15 || calculateAgeFromISODate(signUpForm.birthdate) > 30))
-                        || (signUpStep === 3 && (!signUpForm.educational_status.trim() || !signUpForm.school.trim() || !signUpForm.employment_status.trim()))
+                        || (signUpStep === 3 && (!signUpForm.educational_status.trim() || !signUpForm.course.trim() || !signUpForm.school.trim() || !signUpForm.employment_status.trim()))
                       }
                       className="w-full mt-4 py-3 bg-[#091d64] hover:bg-[#061344] text-white font-bold rounded-lg shadow-sm transition-all active:scale-[0.99] text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                     >
@@ -1717,7 +1732,7 @@ export default function PublicPages({
                   Already have an account?{' '}
                   <button 
                     type="button"
-                    onClick={() => { setActiveTab('login'); setSignUpStep(1); }}
+                    onClick={() => { resetSignUpState(); setActiveTab('login'); }}
                     className="text-[#091d64] font-bold hover:underline transition-colors"
                   >
                     Log in
