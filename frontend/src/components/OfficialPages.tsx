@@ -669,8 +669,10 @@ export default function OfficialPages({
   });
   const [isSavingResolution, setIsSavingResolution] = useState(false);
   const [invForm, setInvForm] = useState({
-    item: '', category: '', quantity: 0, condition: '', cost: 0, location: '', photo_url: ''
+    item: '', category: '', quantity: '0', condition: '', cost: '0', location: '', photo_url: ''
   });
+  const formatWithCommas = (value: string | number) =>
+    String(value ?? '').replace(/,/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
   // Rejection Reason state for Secretary validations
   const [rejectionTargetId, setRejectionTargetId] = useState<string | null>(null);
@@ -1762,9 +1764,9 @@ export default function OfficialPages({
         item_name: invForm.item,
         category: invForm.category,
         condition: invForm.condition,
-        quantity: invForm.quantity,
+        quantity: Number(invForm.quantity || 0),
         unit: 'pcs',
-        unit_cost: invForm.cost,
+        unit_cost: Number(invForm.cost || 0),
         location: invForm.location,
         photo_url: invForm.photo_url,
       };
@@ -1798,9 +1800,9 @@ export default function OfficialPages({
     setInvForm({
       item: item.item,
       category: item.category,
-      quantity: item.quantity,
+      quantity: String(item.quantity ?? 0),
       condition: item.condition,
-      cost: item.cost,
+      cost: String(item.cost ?? 0),
       location: item.location,
       photo_url: item.photo_url || '',
     });
@@ -3360,14 +3362,14 @@ export default function OfficialPages({
                       </div>
 
                       {programs.length > 0 ? (
-                        <div className="h-64 w-full min-w-0">
+                        <div className="h-[300px] w-full min-w-0">
                           <ResponsiveContainer width="100%" height="100%">
                             <BarChart data={programs.slice(0, 10).map(p => ({
                               name: p.title.length > 18 ? p.title.slice(0, 18) + '...' : p.title,
                               registered: p.registeredCount || filteredRegistrations.filter(r => r.programId === p.id).length,
                               capacity: p.maxParticipants || 0
                             }))} margin={{ top: 20, right: 30, left: 20, bottom: 60 }}>
-                                <XAxis dataKey="name" stroke="#64748b" interval={0} angle={0} textAnchor="middle" height={60} tickFormatter={(value) => { const s = String(value || ''); return s.length > 12 ? `${s.substring(0, 12)}...` : s; }} tick={{ fontSize: 10, fill: '#475569' }} tickLine={false} />
+                                <XAxis dataKey="name" stroke="#64748b" interval={0} angle={-45} textAnchor="end" height={75} tickFormatter={(value) => { const s = String(value || ''); return s.length > 12 ? `${s.substring(0, 12)}...` : s; }} tick={{ fontSize: 10, fill: '#475569' }} tickLine={false} />
                               <YAxis stroke="#64748b" tick={{ fontSize: 12, fill: '#64748b' }} tickLine={false} />
                               <Tooltip
                                 contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '8px', fontSize: '12px' }}
@@ -4098,24 +4100,6 @@ export default function OfficialPages({
                   
                   {/* Left Column: Live Camera Scanner */}
                   <div className="lg:col-span-7 space-y-4">
-                    <div className="flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (scanFeedbackTimerRef.current !== null) window.clearTimeout(scanFeedbackTimerRef.current);
-                          scanFeedbackTimerRef.current = null;
-                          setScanFeedback(null);
-                          setLastScanDetail(null);
-                          setQrMessage('');
-                          setManualQrInput('');
-                          setLocalAttendance([]);
-                        }}
-                        title="Clear scanner results from this view; recorded attendance remains saved"
-                        className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
-                      >
-                        Clear Scans
-                      </button>
-                    </div>
                     <LiveCameraScanner 
                       selectedProgId={selectedProgId}
                       disabled={!selectedProgId || isProgramEnded}
@@ -6409,8 +6393,19 @@ export default function OfficialPages({
                         const joinedProgram = Array.isArray((exp as any).program)
                           ? (exp as any).program[0]
                           : (exp as any).program;
+                        const budgetId = exp.budgetId || (exp as any).budget_id;
+                        const joinedBudget = Array.isArray((exp as any).budget)
+                          ? (exp as any).budget[0]
+                          : (exp as any).budget;
+                        const linkedBudget = budgetOptions.find(budget => String(budget.id) === String(budgetId || ''));
                         const linkedProgram = programs.find(program => String(program.id) === String(programId || ''));
-                        const initiativeTarget = linkedProgram?.title || joinedProgram?.title || 'Unlinked Program';
+                        const initiativeTarget = linkedProgram?.title
+                          || joinedProgram?.title
+                          || linkedBudget?.category
+                          || joinedBudget?.category
+                          || (exp as any).budget_category
+                          || exp.category
+                          || 'Unlinked Program';
                         return (
                         <tr key={exp.id} className="hover:bg-slate-50 transition-colors">
                           <td className="px-5 py-4 font-bold text-slate-800 tracking-tight whitespace-nowrap">{initiativeTarget}</td>
@@ -6450,7 +6445,7 @@ export default function OfficialPages({
                   <p className="text-xs text-slate-400 mt-1">Track physical goods, condition statuses, and storage locations.</p>
                 </div>
                 <button 
-                  onClick={() => { setEditingInventoryId(null); setInvForm({ item: '', category: '', quantity: 0, condition: '', cost: 0, location: '', photo_url: '' }); setShowInvModal(true); }}
+                  onClick={() => { setEditingInventoryId(null); setInvForm({ item: '', category: '', quantity: '', condition: '', cost: '', location: '', photo_url: '' }); setShowInvModal(true); }}
                   className="px-4 py-2 bg-[#091d64] hover:bg-opacity-95 text-white font-bold rounded-lg transition-all text-xs flex items-center gap-1.5 cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
@@ -6883,21 +6878,27 @@ export default function OfficialPages({
                   onChange={(e) => {
                     const newBudgetId = e.target.value;
                     const selectedBudget = budgetOptions.find((b: any) => b.id === newBudgetId);
-                    const matchedProgram = programs.find(p => p.title === selectedBudget?.category);
-                    setExpenseForm({ ...expenseForm, budgetId: newBudgetId, programId: matchedProgram?.id || '' });
+                    const budgetProgramId = selectedBudget?.program_id || selectedBudget?.programId;
+                    const budgetCategory = String(selectedBudget?.category || '').trim().toLowerCase();
+                    const matchedProgram = programs.find(program => String(program.id) === String(budgetProgramId || ''))
+                      || programs.find(program => program.title.trim().toLowerCase() === budgetCategory)
+                      || (budgetCategory
+                        ? programs.find(program => {
+                          const title = program.title.trim().toLowerCase();
+                          return title.includes(budgetCategory) || budgetCategory.includes(title);
+                        })
+                        : undefined);
+                    setExpenseForm({
+                      ...expenseForm,
+                      budgetId: newBudgetId,
+                      programId: matchedProgram?.id || budgetProgramId || '',
+                    });
                   }}
                   className="w-full p-2 border rounded text-xs"
                   disabled={isLoadingBudgets || budgetOptions.length === 0}
                 >
                   <option value="" disabled>Select a Budget Allocation</option>
-                  {budgetOptions.filter((budget) => {
-                    const category = String(budget.category || '').trim().toLowerCase();
-                    if (['heha', 'aaaa'].includes(category)) return false;
-                    const programId = budget.program_id || budget.programId;
-                    const linkedProgram = programs.find(program => program.id === programId)
-                      || programs.find(program => program.title.trim().toLowerCase() === category);
-                    return linkedProgram ? linkedProgram.status?.toLowerCase() !== 'deleted' : false;
-                  }).map((budget) => (
+                  {budgetOptions.filter(budget => String(budget.category || '').trim()).map((budget) => (
                     <option key={budget.id} value={budget.id}>
                       {budget.category}
                     </option>
@@ -7033,11 +7034,11 @@ export default function OfficialPages({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Quantity Tracked</label>
-                  <input type="number" value={invForm.quantity} onChange={(e)=>setInvForm({...invForm, quantity: parseInt(e.target.value)||1})} className="w-full p-2 border rounded text-xs font-bold font-mono" />
+                  <input type="text" inputMode="numeric" value={invForm.quantity} onChange={(e)=>setInvForm({...invForm, quantity: e.target.value.replace(/\D/g, '')})} className="w-full p-2 border rounded text-xs font-bold font-mono" />
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Unit purchase Cost ({'\u20B1'})</label>
-                  <input type="number" value={invForm.cost} onChange={(e)=>setInvForm({...invForm, cost: parseInt(e.target.value)||0})} className="w-full p-2 border rounded text-xs font-bold font-mono" />
+                  <input type="text" inputMode="numeric" value={formatWithCommas(invForm.cost)} onChange={(e)=>setInvForm({...invForm, cost: e.target.value.replace(/\D/g, '')})} className="w-full p-2 border rounded text-xs font-bold font-mono" />
                 </div>
               </div>
               <div>
@@ -7056,7 +7057,7 @@ export default function OfficialPages({
                     }
                   }} />
                 </label>
-                {invForm.photo_url && <img src={invForm.photo_url} className="mt-2 h-20 w-20 object-cover rounded border" alt="Preview" />}
+                {invForm.photo_url && <img src={invForm.photo_url} onClick={() => window.open(invForm.photo_url, '_blank')} className="mt-2 h-20 w-20 cursor-pointer object-cover rounded border" alt="Preview" />}
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Storage Location venue *</label>

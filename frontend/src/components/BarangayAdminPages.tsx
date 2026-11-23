@@ -6,7 +6,7 @@ import ProfileSettings from './ProfileSettings';
 import RestrictedUsersPanel from './RestrictedUsersPanel';
 import RestrictedUsers from './RestrictedUsers';
 import { formatAuditDetails } from '../lib/auditFormatter';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CartesianGrid } from 'recharts';
 import { FolderClosed } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -1170,6 +1170,20 @@ export default function BarangayAdminPages({
   const [annImagePreview, setAnnImagePreview] = useState('');
   const [annImagePath, setAnnImagePath] = useState<string | null>(null);
   const [annImageUploading, setAnnImageUploading] = useState(false);
+  const annImageUploadRequestRef = useRef(0);
+  useEffect(() => {
+    if (activeMenu !== 'announcements') {
+      setAnnImageFile(null);
+      setAnnImagePreview('');
+      setAnnImagePath(null);
+      setAnnImageUploading(false);
+    }
+    return () => {
+      if (activeMenu === 'announcements') {
+        annImageUploadRequestRef.current += 1;
+      }
+    };
+  }, [activeMenu]);
   const [editingAnnouncementId, setEditingAnnouncementId] = useState<string | null>(null);
   const [mutatingAnnouncementId, setMutatingAnnouncementId] = useState<string | null>(null);
   const [annPostToFb, setAnnPostToFb] = useState(false);
@@ -1335,6 +1349,7 @@ export default function BarangayAdminPages({
       return;
     }
 
+    const uploadRequestId = ++annImageUploadRequestRef.current;
     setAnnouncementError('');
     setAnnouncementSuccess('');
     setAnnImageFile(file);
@@ -1350,17 +1365,20 @@ export default function BarangayAdminPages({
         upsert: false,
       });
       if (uploadError) throw new Error(`Announcement image upload failed: ${uploadError.message}`);
+      if (uploadRequestId !== annImageUploadRequestRef.current) return;
 
       setAnnImagePath(upload.path);
       const { data: signedUrl, error: signedUrlError } = await storage.createSignedUrl(upload.path, 60 * 60);
       if (signedUrlError || !signedUrl?.signedUrl) {
         throw new Error(`Image uploaded, but its signed preview URL could not be created: ${signedUrlError?.message || 'No URL was returned.'}`);
       }
+      if (uploadRequestId !== annImageUploadRequestRef.current) return;
       setAnnImagePreview(signedUrl.signedUrl);
     } catch (error) {
+      if (uploadRequestId !== annImageUploadRequestRef.current) return;
       setAnnouncementError(error instanceof Error ? error.message : 'Announcement image upload failed.');
     } finally {
-      setAnnImageUploading(false);
+      if (uploadRequestId === annImageUploadRequestRef.current) setAnnImageUploading(false);
     }
   };
 

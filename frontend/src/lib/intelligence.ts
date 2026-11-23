@@ -566,7 +566,8 @@ export function extractFeedbackKeywords(feedbacks: FeedbackRecord[]): Array<{ wo
     'with', 'i', 'you', 'it', 'not', 'or', 'be', 'are', 'from', 'at', 'as', 'your',
     'all', 'have', 'new', 'more', 'an', 'was', 'we', 'will', 'my', 'has', 'very',
     'para', 'sa', 'ang', 'ng', 'mga', 'na', 'at', 'kung', 'ay', 'ito', 'din', 'rin',
-    'po', 'naman', 'natin', 'kami', 'sila', 'kayo', 'yung'
+    'po', 'naman', 'natin', 'kami', 'sila', 'kayo', 'yung',
+    'tang', 'inaa', 'nyooo', 'pak', 'yu', 'gago', 'pakyu', 'kupal'
   ]);
 
   const wordCounts: Record<string, number> = {};
