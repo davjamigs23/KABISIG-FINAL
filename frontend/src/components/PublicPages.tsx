@@ -108,6 +108,9 @@ interface PublicPagesProps {
   programs: Program[];
   activeTab: string;
   setActiveTab: (tab: string) => void;
+  forceChairpersonSetup?: boolean;
+  chairpersonSetupEmail?: string;
+  chairpersonTenantId?: string;
 }
 
 function calculateAgeFromISODate(value: string): number {
@@ -176,7 +179,10 @@ export default function PublicPages({
   barangays,
   programs,
   activeTab,
-  setActiveTab
+  setActiveTab,
+  forceChairpersonSetup = false,
+  chairpersonSetupEmail = '',
+  chairpersonTenantId = '',
 }: PublicPagesProps) {
   const hasOpenBarangays = barangays.some(b => b.is_registration_open === true);
   const [email, setEmail] = useState('');
@@ -198,7 +204,7 @@ export default function PublicPages({
   };
 
   // Chairperson Password Setup State
-  const [isChairpersonSetup, setIsChairpersonSetup] = useState(false);
+  const [isChairpersonSetup, setIsChairpersonSetup] = useState(forceChairpersonSetup);
   const [chairpersonFullName, setChairpersonFullName] = useState('');
   const [chairpersonPassword, setChairpersonPassword] = useState('');
   const [chairpersonConfirmPassword, setChairpersonConfirmPassword] = useState('');
@@ -209,23 +215,56 @@ export default function PublicPages({
   const [isSettingUp, setIsSettingUp] = useState(false);
   const [setupError, setSetupError] = useState<string | null>(null);
 
-  // Auto-detect invite link parameter on mount
+  // Detect invitation links and direct Chairperson setup URLs.
   React.useEffect(() => {
+    let isMounted = true;
+    if (forceChairpersonSetup) {
+      setIsChairpersonSetup(true);
+      setEmail(chairpersonSetupEmail);
+      if (chairpersonTenantId) {
+        setSetupTenantId(chairpersonTenantId);
+        const barangay = barangays.find((item) => item.id === chairpersonTenantId);
+        if (barangay) setSetupBarangayName(barangay.name);
+      }
+      return () => { isMounted = false; };
+    }
+
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const inviteEmail = params.get('invite_email');
       const tenantId = params.get('tenant_id');
-      if (inviteEmail) {
-        setEmail(inviteEmail);
+      const isChairpersonSetupPath = window.location.pathname === '/chairperson-setup';
+      if (inviteEmail || isChairpersonSetupPath) {
+        if (inviteEmail) setEmail(inviteEmail);
         setIsChairpersonSetup(true);
         if (tenantId) {
           setSetupTenantId(tenantId);
           const bgy = barangays.find((b) => b.id === tenantId);
           if (bgy) setSetupBarangayName(bgy.name);
+        } else if (isChairpersonSetupPath) {
+          setSetupError(null);
+          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+          const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+          if (supabaseUrl && supabaseAnonKey) {
+            const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+              auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+            });
+            void supabaseClient.auth.getSession().then(({ data, error }) => {
+              if (!isMounted) return;
+              if (error) {
+                setSetupError(error.message);
+                return;
+              }
+              if (data.session?.user.email) setEmail(data.session.user.email);
+            }).catch((error: unknown) => {
+              if (isMounted) setSetupError(error instanceof Error ? error.message : 'Could not verify the Chairperson invitation session.');
+            });
+          }
         }
       }
     }
-  }, [barangays]);
+    return () => { isMounted = false; };
+  }, [barangays, forceChairpersonSetup, chairpersonSetupEmail, chairpersonTenantId]);
 
   // Sign up state (Multi-step)
   const [signUpStep, setSignUpStep] = useState(1);
@@ -386,13 +425,33 @@ export default function PublicPages({
       });
       const { data: sessionData, error: sessionError } = await supabaseClient.auth.getSession();
       const inviteSession = sessionData.session;
-      if (
-        sessionError ||
-        !inviteSession ||
-        inviteSession.user.user_metadata?.setup_completed !== false ||
-        inviteSession.user.app_metadata?.setup_completed !== false ||
-        inviteSession.user.email?.toLowerCase() !== cleanEmail
-      ) {
+      let setupAccessToken = '';
+      if (inviteSession) {
+        if (
+          sessionError ||
+          inviteSession.user.user_metadata?.setup_completed !== false ||
+          inviteSession.user.app_metadata?.setup_completed !== false ||
+          inviteSession.user.email?.toLowerCase() !== cleanEmail
+        ) {
+          setSetupError('This invitation link has already been used or has expired. Please log in normally or contact the Super Admin.');
+          return;
+        }
+        setupAccessToken = inviteSession.access_token;
+      } else if (forceChairpersonSetup) {
+        const apiToken = kabisigApi.getToken();
+        const setupUser = apiToken ? await kabisigApi.getCurrentUser() : null;
+        if (
+          !apiToken
+          || !setupUser
+          || setupUser.email?.toLowerCase() !== cleanEmail
+          || Number(setupUser.role_id) !== 2
+          || setupUser.setup_completed === true
+        ) {
+          setSetupError('A valid Chairperson session is required. Please open the latest invitation email or contact the Super Admin.');
+          return;
+        }
+        setupAccessToken = apiToken;
+      } else {
         setSetupError('This invitation link has already been used or has expired. Please log in normally or contact the Super Admin.');
         return;
       }
@@ -402,7 +461,7 @@ export default function PublicPages({
         password: chairpersonPassword,
         confirmPassword: chairpersonConfirmPassword,
         full_name: chairpersonFullName.trim() || 'Hon. SK Chairperson',
-      }, inviteSession.access_token);
+      }, setupAccessToken);
 
       if (!res.success || !res.user) {
         setSetupError(res.message || 'Password setup failed. Please check your inputs and try again.');
@@ -657,7 +716,7 @@ export default function PublicPages({
               <DecorativeBackground />
 
             <div className="relative z-10 w-full max-w-[440px] flex flex-col items-center animate-in fade-in zoom-in-95 duration-300">
-              <button onClick={() => setActiveTab('_landing')} className="self-start mb-4 inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-[#091d64] cursor-pointer transition-colors"><ChevronLeft className="w-4 h-4" /> Back to Home</button>
+              {!isChairpersonSetup && <button onClick={() => setActiveTab('_landing')} className="self-start mb-4 inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-[#091d64] cursor-pointer transition-colors"><ChevronLeft className="w-4 h-4" /> Back to Home</button>}
               <div className="w-full bg-white rounded-[2rem] border border-slate-100 shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-8 sm:p-10 flex flex-col items-center">
                 {!isChairpersonSetup && <KabisigLogo className="mb-4" />}
                 

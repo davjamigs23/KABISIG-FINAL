@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import kabisigApi from './lib/api';
 import { formatPhilippineDate, getPhilippineDateString } from './lib/dateUtils';
 import { DEFAULT_BARANGAY_LOGOS } from './data';
@@ -8,7 +9,6 @@ import PublicPages from './components/PublicPages';
 import LandingPage from './components/LandingPage';
 import SuperAdminPages from './components/SuperAdminPages';
 import BarangayAdminPages from './components/BarangayAdminPages';
-import ChairpersonOnboarding from './components/ChairpersonOnboarding';
 import OfficialPages from './components/OfficialPages';
 import YouthPages from './components/YouthPages';
 import ViewerPages from './components/ViewerPages';
@@ -75,6 +75,7 @@ function mapBackendProgram(program: any): Program {
 }
 
 function AppContent() {
+  const router = useRouter();
   // --- Client state synchronized with the backend ---
   const [tenants, setTenants] = useState<BarangayTenant[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
@@ -185,6 +186,22 @@ function AppContent() {
     const refreshCurrentProfile = () => {
       kabisigApi.getCurrentUser().then((profile) => {
         if (!isMounted || !profile || profile.id !== currentUser.id) return;
+        if (
+          currentUser.role_id != null
+          && profile.role_id != null
+          && Number(profile.role_id) !== Number(currentUser.role_id)
+        ) {
+          kabisigApi.logout();
+          queryClient.clear();
+          setCurrentUser(null);
+          setCurrentRole(null);
+          setCurrentTenant(null);
+          setCurrentYouth(null);
+          setCurrentEmail('');
+          setPendingLoginMessage('Your account role has changed. Please sign in again.');
+          setPublicView('login');
+          return;
+        }
         setCurrentUser(profile);
         const verificationStatus = profile.resident_profile?.verification_status;
         if (verificationStatus) {
@@ -203,7 +220,7 @@ function AppContent() {
       if (document.visibilityState === 'visible') refreshCurrentProfile();
     };
     refreshCurrentProfile();
-    const intervalId = window.setInterval(refreshCurrentProfile, 60 * 60 * 1000);
+    const intervalId = window.setInterval(refreshCurrentProfile, 60 * 1000);
     window.addEventListener('focus', refreshCurrentProfile);
     document.addEventListener('visibilitychange', refreshWhenVisible);
     return () => {
@@ -304,11 +321,32 @@ function AppContent() {
   const [publicView, setPublicView] = useState<'landing' | 'login' | 'signup' | 'transparency'>('landing');
   const navigatingToSignInRef = useRef(false);
   const [programConflict, setProgramConflict] = useState<{ program: Program; resolve: (confirmed: boolean) => void } | null>(null);
+  const isChairpersonRole = currentRole === 'Barangay Admin' || currentRole === 'SK Chairperson';
+  const chairpersonSetupRequired = isChairpersonRole && (
+    !currentUser
+    || ['pending', 'pending_invite'].includes(String(currentUser.status || '').toLowerCase())
+    || currentUser.setup_completed !== true
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    if (chairpersonSetupRequired) {
+      const setupParams = new URLSearchParams();
+      const email = currentEmail || currentUser?.email || '';
+      const tenantId = currentTenant?.id || currentUser?.tenant_id || '';
+      if (email) setupParams.set('invite_email', email);
+      if (tenantId) setupParams.set('tenant_id', tenantId);
+      setupParams.set('role', 'chairperson');
+      router.replace(`/chairperson-setup?${setupParams.toString()}`);
+    }
+  }, [chairpersonSetupRequired, currentEmail, currentUser?.email, currentUser?.tenant_id, currentTenant?.id, router]);
 
   // Load 27 permanently seeded Naga City barangays and restore session from backend API
   useEffect(() => {
     const invalidateSession = () => {
       kabisigApi.setToken(null);
+      queryClient.clear();
       setCurrentUser(null);
       setCurrentRole(null);
       setCurrentTenant(null);
@@ -358,14 +396,19 @@ function AppContent() {
       : null;
     const isChairpersonInvite = inviteParams?.get('invite_email')
       && inviteParams.get('role') === 'chairperson';
+    const isChairpersonSetupPath = typeof window !== 'undefined'
+      && window.location.pathname === '/chairperson-setup';
 
     if (isChairpersonInvite) {
       kabisigApi.logout();
+      queryClient.clear();
       setCurrentUser(null);
       setCurrentTenant(null);
       setCurrentYouth(null);
       setCurrentRole(null);
-      setPublicView('landing');
+      setPublicView('login');
+    } else if (isChairpersonSetupPath) {
+      setPublicView('login');
     }
 
     // Restore an authenticated session only when this is not an invitation flow.
@@ -949,8 +992,13 @@ function AppContent() {
       setCurrentEmail(emailOrName);
     }
     if (userObj) {
+      if (currentUser?.id !== userObj.id) {
+        queryClient.clear();
+      }
       setCurrentUser(userObj);
     } else {
+      queryClient.clear();
+      setCurrentUser(null);
       kabisigApi.getCurrentUser().then(user => {
         if (user) if (user && user.role_id === 4 && user.full_name) { user.full_name = user.full_name.replace(/^Hon\.\s+/i, ''); }
         setCurrentUser(user);
@@ -1070,6 +1118,7 @@ function AppContent() {
 
   const handleLogout = () => {
     kabisigApi.logout();
+    queryClient.clear();
     navigatingToSignInRef.current = false;
     setCurrentRole(null);
     setCurrentTenant(null);
@@ -1426,7 +1475,7 @@ function AppContent() {
         <LandingPage
           onSignIn={() => { navigatingToSignInRef.current = true; setPublicView('login'); }}
           onCreateAccount={() => { navigatingToSignInRef.current = false; setPublicView('signup'); }}
-          onTransparencyPortal={() => { navigatingToSignInRef.current = false; kabisigApi.logout(); setCurrentRole('Viewer'); setCurrentUser(null); setCurrentYouth(null); setCurrentEmail('viewer@kabisig.ph'); }}
+          onTransparencyPortal={() => { navigatingToSignInRef.current = false; kabisigApi.logout(); queryClient.clear(); setCurrentRole('Viewer'); setCurrentUser(null); setCurrentYouth(null); setCurrentEmail('viewer@kabisig.ph'); }}
         />
       )}
 
@@ -1437,7 +1486,21 @@ function AppContent() {
           loginErrorMessage={pendingLoginMessage}
           activeTab={publicView}
           setActiveTab={(tab) => { navigatingToSignInRef.current = tab === 'login'; setPublicView(tab === '_landing' ? 'landing' : (tab as any)); }}
-          onLogin={(email, role, tenantId, userObj) => { if (role === 'Viewer') { navigatingToSignInRef.current = false; kabisigApi.logout(); setCurrentUser(null); setCurrentYouth(null); setCurrentEmail('viewer@kabisig.ph'); setCurrentRole('Viewer'); setPublicView('login'); return; } handleLogin(role, tenantId || '', email, userObj); }}
+          onLogin={(email, role, tenantId, userObj) => { if (role === 'Viewer') { navigatingToSignInRef.current = false; kabisigApi.logout(); queryClient.clear(); setCurrentUser(null); setCurrentYouth(null); setCurrentEmail('viewer@kabisig.ph'); setCurrentRole('Viewer'); setPublicView('login'); return; } handleLogin(role, tenantId || '', email, userObj); }}
+        />
+      )}
+
+      {authReady && authProfileReady && isChairpersonRole && chairpersonSetupRequired && (
+        <PublicPages
+          key={`chairperson-setup-${currentUser?.id || currentEmail}`}
+          barangays={tenants}
+          programs={programs}
+          activeTab="login"
+          forceChairpersonSetup
+          chairpersonSetupEmail={currentEmail || currentUser?.email || ''}
+          chairpersonTenantId={currentTenant?.id || ''}
+          setActiveTab={() => {}}
+          onLogin={(email, role, tenantId, userObj) => handleLogin(role, tenantId || '', email, userObj)}
         />
       )}
 
@@ -1500,24 +1563,10 @@ function AppContent() {
       )}
 
       {/* 3. BARANGAY ADMIN (SK CHAIRPERSON) PANELS */}
-      {(currentRole === 'Barangay Admin' || currentRole === 'SK Chairperson') && currentTenant && (
-        (currentUser?.setup_completed !== true &&
-          currentUser?.user_metadata?.setup_completed !== true &&
-          (!currentUser?.full_name || currentUser.full_name.trim() === '' || currentUser.full_name === 'Pending Chairperson' || currentUser.full_name === 'Pending Invitation' || !currentUser?.resident_profile?.birthdate)) ? (
-          <ChairpersonOnboarding 
-            currentBarangay={currentTenant}
-            userEmail={currentEmail || currentUser?.email || ''}
-            onProfileCompleted={(updatedUser) => {
-              setCurrentUser(updatedUser);
-              if (updatedUser.full_name) {
-                setTenants(prev => prev.map(t => t.id === currentTenant.id ? { ...t, chairperson: updatedUser.full_name, chairpersonEmail: updatedUser.email } : t));
-              }
-            }}
-            onLogout={handleLogout}
-          />
-        ) : (
-          <BarangayAdminPages 
-            currentBarangay={currentTenant}
+      {isChairpersonRole && currentTenant && !chairpersonSetupRequired && (
+        <BarangayAdminPages
+          key={`barangay-admin-${currentUser?.id || currentEmail}`}
+          currentBarangay={currentTenant}
           onTotalBudgetSaved={(allocatedBudget, fiscalYear) => {
             setTenants(prev => prev.map(tenant => tenant.id === currentTenant.id
               ? {
@@ -1585,7 +1634,6 @@ function AppContent() {
             onAnnouncementsChanged={(updatedAnnouncements) => setAnnouncements(updatedAnnouncements)}
             onLogout={handleLogout}
           />
-        )
       )}
 
       {/* 4. OTHER SK OFFICIALS (KAGAWAD, SECRETARY, TREASURER) PANELS */}

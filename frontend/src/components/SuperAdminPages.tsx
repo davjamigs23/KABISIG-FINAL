@@ -400,7 +400,6 @@ useEffect(() => {
   const [transferNotes, setTransferNotes] = useState('');
   const [isTransferring, setIsTransferring] = useState(false);
   const [transferNotice, setTransferNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [transferSetupLink, setTransferSetupLink] = useState('');
   // Cancel pending Chairperson invitation state
   const [showCancelInviteModal, setShowCancelInviteModal] = useState(false);
   const [cancellingBarangay, setCancellingBarangay] = useState<BarangayTenant | null>(null);
@@ -1052,7 +1051,6 @@ useEffect(() => {
     setTransferReason('');
     setTransferNotes('');
     setTransferNotice(null);
-    setTransferSetupLink('');
     setTransferCurrentChair(null);
     setTransferReturnToConfigure(returnToConfigure);
     setShowTransferModal(true);
@@ -1100,12 +1098,16 @@ useEffect(() => {
 
       onSyncBarangay(transferringBarangay.id, {
         chairperson: res.data?.incoming?.full_name || 'Pending Invitation',
-        chairpersonUser: { full_name: res.data?.incoming?.full_name || 'Pending Invitation', email, status: 'pending' },
+        chairpersonUser: { full_name: res.data?.incoming?.full_name || 'Pending Invitation', email, status: 'active' },
         chairpersonEmail: email,
       });
       await onRefreshAuditLogs();
-      setTransferSetupLink(res.data?.action_link || res.data?.setup_url || '');
-      setTransferNotice({ type: 'success', text: res.message || 'Leadership transferred successfully.' });
+      setTransferNotice({
+        type: 'success',
+        text: res.data?.email_delivery === true
+          ? `Leadership transferred successfully. Invitation email sent to ${email}.`
+          : 'Leadership transferred successfully, but invitation email delivery could not be confirmed. Please resend the invitation.',
+      });
     } catch (err: any) {
       setTransferNotice({ type: 'error', text: err.message || 'Network error.' });
     } finally {
@@ -1189,11 +1191,7 @@ useEffect(() => {
       return;
     }
     const email = response.data?.email || barangay.chairpersonUser?.email || barangay.chairpersonEmail || 'the Chairperson';
-    showPopup(
-      `Invitation resent successfully to ${email}.`,
-      'success',
-      response.data?.action_link || response.data?.setup_url
-    );
+    showPopup(`Invitation resent successfully to ${email}.`, 'success');
     await onRefreshAuditLogs();
   };
 
@@ -2643,13 +2641,6 @@ useEffect(() => {
                 </div>
               )}
 
-              {transferSetupLink && (
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
-                  <p className="font-bold text-slate-700">Successor Setup Link:</p>
-                  <p className="text-[10px] break-all text-[#091d64] font-mono">{transferSetupLink}</p>
-                </div>
-              )}
-
               <button
                 type="submit"
                 disabled={isTransferring}
@@ -4004,23 +3995,32 @@ useEffect(() => {
               </div>
 
               <div className="flex justify-between items-center pt-2 border-t border-slate-100">
-                <button type="button" onClick={() => { setShowFixTypoModal(false); setShowEmailModal(true); setEmailModalTab('history'); void handleLoadEmailHistory(); }} className="text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline">
-                  View Change History
-                </button>
+                <div className="flex items-center gap-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearTypoLookupResult();
+                      setTypoUserId('');
+                      setShowFixTypoModal(false);
+                    }}
+                    disabled={isUpdating || isSearching}
+                    className="text-xs font-bold text-slate-600 hover:text-slate-900 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button type="button" onClick={() => { setShowFixTypoModal(false); setShowEmailModal(true); setEmailModalTab('history'); void handleLoadEmailHistory(); }} className="text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline">
+                    View Change History
+                  </button>
+                </div>
                 <div className="flex gap-2">
                   {!isEditingCreds ? (
                     <button type="button" disabled={!typoTargetUserId} onClick={() => setIsEditingCreds(true)} className="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold rounded-lg disabled:opacity-50">
                       Edit Credentials
                     </button>
                   ) : (
-                    <>
-                      <button type="button" onClick={() => setIsEditingCreds(false)} disabled={isUpdating} className="px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-50 rounded-lg disabled:opacity-50">
-                        Cancel
-                      </button>
-                      <button type="button" onClick={handleUpdateCredentials} disabled={isUpdating} className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg disabled:opacity-50">
-                        {isUpdating ? 'Saving...' : 'Save Changes'}
-                      </button>
-                    </>
+                    <button type="button" onClick={handleUpdateCredentials} disabled={isUpdating} className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg disabled:opacity-50">
+                      {isUpdating ? 'Saving...' : 'Save Changes'}
+                    </button>
                   )}
                 </div>
               </div>

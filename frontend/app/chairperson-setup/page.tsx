@@ -47,6 +47,7 @@ function SetupForm() {
   const searchParams = useSearchParams();
   const [supabaseClient, setSupabaseClient] = useState<SupabaseClient | null>(null);
   const [cachedSession, setCachedSession] = useState<Session | null>(null);
+  const [apiSetupToken, setApiSetupToken] = useState<string | null>(null);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [inviteStatus, setInviteStatus] = useState<'checking' | 'ready' | 'invalid'>('checking');
   const [email, setEmail] = useState('');
@@ -83,31 +84,61 @@ function SetupForm() {
         if (!active) return;
         setSupabaseClient(client);
         const queryParams = new URLSearchParams(window.location.search);
-        const acceptSession = (session: Session) => {
-          if (!active) return;
+        const acceptSession = (session: Session): boolean => {
+          if (!active) return false;
+          const inviteEmail = queryParams.get('invite_email')?.trim().toLowerCase();
+          if (
+            Number(session.user.user_metadata?.role_id) !== 2
+            || session.user.user_metadata?.setup_completed !== false
+            || session.user.app_metadata?.setup_completed !== false
+          ) {
+            setInviteStatus('invalid');
+            setError(INVALID_INVITE_MESSAGE);
+            setIsCheckingSession(false);
+            return false;
+          }
+          if (inviteEmail && session.user.email?.toLowerCase() !== inviteEmail) {
+            setInviteStatus('invalid');
+            setError('This invitation link does not match the signed-in email address.');
+            setIsCheckingSession(false);
+            return false;
+          }
           sessionResolved = true;
           setCachedSession(session);
           setIsCheckingSession(false);
           setError(null);
-          const inviteEmail = queryParams.get('invite_email')?.trim().toLowerCase();
-          if (inviteEmail && session.user.email?.toLowerCase() !== inviteEmail) {
-            setInviteStatus('invalid');
-            setError('This invitation link does not match the signed-in email address.');
-            return;
-          }
           setInviteStatus('ready');
+          return true;
         };
         const authState = client.auth.onAuthStateChange((_event, session) => {
           if (session) acceptSession(session);
           else setCachedSession(null);
         });
         subscription = authState.data.subscription;
+        const invitationHashParams = new URLSearchParams(window.location.hash.substring(1));
+        const hashAccessToken = invitationHashParams.get('access_token');
+        const hashRefreshToken = invitationHashParams.get('refresh_token');
+        if (hashAccessToken && hashRefreshToken) {
+          localStorage.setItem('setup_access_token', hashAccessToken);
+          localStorage.setItem('setup_refresh_token', hashRefreshToken);
+          const { data: hashInviteData, error: hashInviteError } = await client.auth.setSession({
+            access_token: hashAccessToken,
+            refresh_token: hashRefreshToken,
+          });
+          if (hashInviteError) {
+            console.error('Unable to establish Chairperson session from invitation hash:', hashInviteError);
+          } else if (hashInviteData.session && acceptSession(hashInviteData.session)) {
+            window.history.replaceState(
+              null,
+              document.title,
+              `${window.location.pathname}${window.location.search}`
+            );
+            return;
+          }
+        }
         const { data: persistedSessionData, error: persistedSessionError } = await client.auth.getSession();
         if (persistedSessionError) throw persistedSessionError;
-        if (persistedSessionData.session) {
-          acceptSession(persistedSessionData.session);
-          return;
-        }
+        if (persistedSessionData.session && acceptSession(persistedSessionData.session)) return;
         if (sessionResolved) return;
 
         const storedAccessToken = localStorage.getItem('setup_access_token')
@@ -124,13 +155,12 @@ function SetupForm() {
           if (storedSessionError) {
             console.error('Unable to restore Chairperson session from saved invitation tokens:', storedSessionError);
           }
-          if (storedSessionData.session) {
+          if (storedSessionData.session && acceptSession(storedSessionData.session)) {
             window.history.replaceState(
               null,
               document.title,
               `${window.location.pathname}${window.location.search}`
             );
-            acceptSession(storedSessionData.session);
             return;
           }
         }
@@ -162,12 +192,35 @@ function SetupForm() {
         }
         const { data, error: sessionError } = await client.auth.getSession();
         if (sessionError) throw sessionError;
-        if (data.session) {
+        if (data.session && acceptSession(data.session)) {
           setCachedSession(data.session);
-          acceptSession(data.session);
           return;
         }
         if (sessionResolved) return;
+
+        const apiToken = kabisigApi.getToken();
+        if (apiToken) {
+          const setupUser = await kabisigApi.getCurrentUser();
+          const inviteEmail = queryParams.get('invite_email')?.trim().toLowerCase();
+          const setupStatus = String(setupUser?.status || '').toLowerCase();
+          if (
+            active
+            && setupUser
+            && Number(setupUser.role_id) === 2
+            && setupUser.setup_completed !== true
+            && (!inviteEmail || setupUser.email?.toLowerCase() === inviteEmail)
+            && (setupUser.setup_completed === false || ['pending', 'pending_invite'].includes(setupStatus))
+          ) {
+            sessionResolved = true;
+            setApiSetupToken(apiToken);
+            setEmail(setupUser.email || '');
+            setTenantId(setupUser.tenant_id || '');
+            setInviteStatus('ready');
+            setIsCheckingSession(false);
+            return;
+          }
+        }
+
         if (hashParams.get('error') === 'access_denied' || hashParams.get('error_code') === 'otp_expired') {
           sessionResolved = true;
           const canRecoverSession = Boolean(window.location.hash || localStorage.getItem('setup_access_token') || localStorage.getItem('setup_token'));
@@ -299,14 +352,22 @@ function SetupForm() {
         setError(`Unable to verify your invitation session: ${sessionError.message}`);
         return;
       }
-      const session = sessionData.session || cachedSession;
+      const sessionCandidate = sessionData.session || cachedSession;
+      const session = sessionCandidate
+        && Number(sessionCandidate.user.user_metadata?.role_id) === 2
+        && sessionCandidate.user.user_metadata?.setup_completed === false
+        && sessionCandidate.user.app_metadata?.setup_completed === false
+        && sessionCandidate.user.email?.trim().toLowerCase() === cleanEmail
+        ? sessionCandidate
+        : null;
       setCachedSession(session);
-      if (!session?.access_token) {
+      const setupToken = session?.access_token || apiSetupToken;
+      if (!setupToken) {
         setInviteStatus('invalid');
         setError('Your session has expired. Please request a new invitation link.');
         return;
       }
-      const sessionEmail = session.user.email?.trim().toLowerCase() || null;
+      const sessionEmail = session?.user.email?.trim().toLowerCase() || email.trim().toLowerCase() || null;
       if (!sessionEmail || sessionEmail !== cleanEmail) {
         setError('The email address must match the invitation.');
         return;
@@ -324,7 +385,7 @@ function SetupForm() {
         birthdate: birthdate || undefined,
         sex: sex,
         address: address.trim() || undefined,
-      }, session.access_token);
+      }, setupToken);
       if (!res.success) {
         const responseMessage = res.message || 'Password setup failed. Please check your inputs and try again.';
         const lowerMessage = responseMessage.toLowerCase();

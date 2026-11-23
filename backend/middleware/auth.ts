@@ -25,7 +25,7 @@ export async function authenticateUser(req: Request, res: Response, next: NextFu
 
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('users')
-      .select('id, full_name, email, tenant_id, role_id, status, roles(role_name), barangay(name)')
+      .select('id, full_name, email, tenant_id, role_id, status, setup_completed, roles(role_name), barangay(name)')
       .eq('id', authUser.id)
       .single();
 
@@ -41,6 +41,18 @@ export async function authenticateUser(req: Request, res: Response, next: NextFu
       ? roleRecord[0]?.role_name || 'YOUTH_CONSTITUENT'
       : roleRecord?.role_name || 'YOUTH_CONSTITUENT';
 
+    const chairpersonSetupRoute = req.method === 'POST' && req.path === '/setup-chairperson-password';
+    const currentUserRoute = req.method === 'GET' && req.path === '/me';
+    if (
+      Number(profile.role_id) === 2
+      && (String(profile.status || '').toLowerCase() !== 'active' || profile.setup_completed !== true)
+      && !chairpersonSetupRoute
+      && !currentUserRoute
+    ) {
+      sendError(res, 'Chairperson account setup is incomplete. Complete first-time setup before accessing the dashboard.', 403);
+      return;
+    }
+
     const barangayName = Array.isArray(barangayRecord)
       ? barangayRecord[0]?.name || null
       : barangayRecord?.name || null;
@@ -54,6 +66,7 @@ export async function authenticateUser(req: Request, res: Response, next: NextFu
       tenant_id: profile.tenant_id,
       barangay_name: barangayName,
       status: profile.status,
+      setup_completed: profile.setup_completed,
       official_role: ((authUser.user_metadata as any)?.official_role) || null,
       app_metadata: authUser.app_metadata || {},
     };
@@ -87,7 +100,7 @@ export async function optionalAuthenticateUser(req: Request, res: Response, next
 
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('users')
-      .select('id, full_name, email, tenant_id, role_id, status, roles(role_name), barangay(name)')
+      .select('id, full_name, email, tenant_id, role_id, status, setup_completed, roles(role_name), barangay(name)')
       .eq('id', authUser.id)
       .single();
 
@@ -116,6 +129,7 @@ export async function optionalAuthenticateUser(req: Request, res: Response, next
       tenant_id: profile.tenant_id,
       barangay_name: barangayName,
       status: profile.status,
+      setup_completed: profile.setup_completed,
       official_role: ((authUser.user_metadata as any)?.official_role) || null,
       app_metadata: authUser.app_metadata || {},
     };

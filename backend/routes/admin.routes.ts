@@ -338,6 +338,33 @@ router.post(
       return;
     }
 
+    const { error: setupMetadataError } = await supabaseAdmin.auth.admin.updateUserById(chairperson.id, {
+      app_metadata: {
+        ...(authUserData.user.app_metadata || {}),
+        setup_completed: false,
+      },
+      user_metadata: {
+        ...(authUserData.user.user_metadata || {}),
+        tenant_id: barangay_id,
+        role_id: 2,
+        role: 'Barangay Admin',
+        setup_completed: false,
+      },
+    });
+    if (setupMetadataError) {
+      sendError(res, `Failed to prepare Chairperson account setup: ${setupMetadataError.message}`, 500);
+      return;
+    }
+
+    const { error: setupRecordError } = await supabaseAdmin
+      .from('users')
+      .update({ setup_completed: false })
+      .eq('id', chairperson.id);
+    if (setupRecordError) {
+      sendError(res, `Failed to reset Chairperson setup status: ${setupRecordError.message}`, 500);
+      return;
+    }
+
     const setupUrl = `${FRONTEND_URL}/chairperson-setup?invite_email=${encodeURIComponent(cleanEmail)}&role=chairperson&tenant_id=${barangay_id}`;
     let linkData: any = null;
     let linkError: unknown = null;
@@ -1981,11 +2008,6 @@ router.post(
       return;
     }
 
-    if (outgoing.email && outgoing.email.toLowerCase() === cleanSuccessorEmail) {
-      sendError(res, 'Successor cannot be the same person as the current Chairperson.', 409, { code: 'SAME_AS_CURRENT' });
-      return;
-    }
-
     // 3. Find or create successor
     let successorUserId: string | null = null;
     let successorInviteMethod: 'existing_user' | 'email_invitation' | 'temp_credentials' | 'setup_link_only' | 'resignation' = 'resignation';
@@ -1997,19 +2019,56 @@ router.post(
     const redirectUrl = FRONTEND_URL + '/chairperson-setup?invite_email=' + encodeURIComponent(cleanSuccessorEmail || '') + '&role=chairperson&tenant_id=' + barangay_id;
 
     if (cleanSuccessorEmail) {
-      const { data: successorData } = await supabaseAdmin
+      const { data: successorData, error: successorLookupError } = await supabaseAdmin
         .from('users')
-        .select('id, email, full_name, first_name, middle_name, last_name, suffix, status, role_id, tenant_id')
+        .select('id, email, full_name, first_name, middle_name, last_name, suffix, status, role_id, tenant_id, setup_completed')
         .ilike('email', cleanSuccessorEmail)
         .maybeSingle();
 
+      if (successorLookupError) {
+        sendError(res, `Failed to look up successor account: ${successorLookupError.message}`, 500);
+        return;
+      }
+
       successor = successorData;
-      successorInviteMethod = 'existing_user';
+      if (successor && String(successor.id) === String(outgoing.id)) {
+        sendError(res, 'Successor cannot be the same person as the current Chairperson.', 409, { code: 'SAME_AS_CURRENT' });
+        return;
+      }
 
       if (successor) {
         // Defer role changes until the transfer record is safely written.
         successorUserId = successor.id;
-        successorLink = redirectUrl;
+        const { data: successorAuthData, error: successorAuthError } = await supabaseAdmin.auth.admin.getUserById(successor.id);
+        if (successorAuthError || !successorAuthData.user) {
+          sendError(res, `Failed to verify successor authentication account: ${successorAuthError?.message || 'Auth account not found.'}`, 500);
+          return;
+        }
+        if (successorAuthData.user.email?.trim().toLowerCase() !== cleanSuccessorEmail) {
+          sendError(res, 'The successor email does not match the linked authentication account.', 409);
+          return;
+        }
+
+        const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
+          type: 'magiclink',
+          email: cleanSuccessorEmail,
+          options: { redirectTo: redirectUrl, expiresIn: 60 * 60 * 24 * 30 } as any,
+        });
+        if (
+          linkError
+          || !linkData?.properties?.action_link
+          || String(linkData.user?.id || '') !== String(successor.id)
+        ) {
+          sendError(
+            res,
+            `Failed to generate a secure Chairperson setup link: ${linkError?.message || 'Supabase did not return the matching successor action link.'}`,
+            502
+          );
+          return;
+        }
+        successorLink = linkData.properties.action_link;
+        successorLinkType = 'magiclink';
+        successorInviteMethod = 'existing_user';
       } else {
         successorNeedsPublicRecord = true;
         const { data: inviteData, error: inviteErr } = await inviteWithBrevo(
@@ -2037,7 +2096,7 @@ router.post(
             res,
             `Supabase link type '${linkType}' generated a link, but successor setup initialization failed: ${inviteErr.message}`,
             502,
-            { link_type: linkType, action_link: inviteData.properties.action_link }
+            { link_type: linkType }
           );
           return;
         } else {
@@ -2079,8 +2138,12 @@ router.post(
             console.error(`[INVITATION LINK] type=magiclink result=error reason=${getInvitationErrorMessage(linkErr)}`);
           }
         }
-        if (!successorLink) successorLink = redirectUrl;
       }
+    }
+
+    if (cleanSuccessorEmail && (!successorUserId || !successorLink)) {
+      sendError(res, 'A secure Chairperson setup invitation could not be generated. No leadership transfer was completed.', 502);
+      return;
     }
 
     // The database function commits the public user changes and transfer record atomically.
@@ -2100,6 +2163,40 @@ router.post(
     if (transferError) {
       sendError(res, 'Failed to complete chairperson transfer: ' + transferError.message, 500);
       return;
+    }
+
+    let successorSetupStateError: string | null = null;
+    if (successor && successorUserId) {
+      const { data: successorAuthData, error: successorAuthError } = await supabaseAdmin.auth.admin.getUserById(successorUserId);
+      if (successorAuthError || !successorAuthData.user) {
+        successorSetupStateError = successorAuthError?.message || 'Supabase Auth account was not found.';
+      } else {
+        const { error: authSetupError } = await supabaseAdmin.auth.admin.updateUserById(successorUserId, {
+          app_metadata: {
+            ...(successorAuthData.user.app_metadata || {}),
+            setup_completed: false,
+          },
+          user_metadata: {
+            ...(successorAuthData.user.user_metadata || {}),
+            tenant_id: barangay_id,
+            role_id: 2,
+            role: 'Barangay Admin',
+            setup_completed: false,
+          },
+        });
+        if (authSetupError) {
+          successorSetupStateError = authSetupError.message;
+        } else {
+          const { error: publicSetupError } = await supabaseAdmin
+            .from('users')
+            .update({ setup_completed: false })
+            .eq('id', successorUserId);
+          if (publicSetupError) successorSetupStateError = publicSetupError.message;
+        }
+      }
+      if (successorSetupStateError) {
+        successorInviteError = new Error(`Successor setup state could not be prepared: ${successorSetupStateError}`);
+      }
     }
 
     // 5. Audit log
@@ -2134,13 +2231,17 @@ router.post(
       }
       
       if (successorEmail) {
-        console.log('[TRANSFER] Sending appointment email to successor: ' + successorEmail);
-        const successHtml = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;"><h1 style="color: #091d64; margin: 0 0 8px 0;">KABISIG</h1><p style="color: #64748b; font-size: 12px; margin: 0 0 24px 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p><h2 style="color: #091d64;">You are Invited to be SK Chairperson!</h2><p style="color: #334155; line-height: 1.6;">You have been appointed as the new SK Chairperson. Please click the button below to set up your account password and complete your profile.</p><div style="text-align: center; margin: 24px 0;"><a href="' + successorLink + '" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Set Up Account</a></div><p style="color: #94a3b8; font-size: 11px;">If the button does not work, copy this link: ' + successorLink + '</p></div>';
-        await sendEmail(successorEmail, 'KABISIG Chairmanship Appointment', successHtml);
-        emailDelivered = true;
-        if (successorInviteMethod === 'setup_link_only') {
-          successorInviteMethod = 'email_invitation';
-          successorInviteError = null;
+        if (!successorSetupStateError) {
+          console.log('[TRANSFER] Sending appointment email to successor: ' + successorEmail);
+          const successHtml = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;"><h1 style="color: #091d64; margin: 0 0 8px 0;">KABISIG</h1><p style="color: #64748b; font-size: 12px; margin: 0 0 24px 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p><h2 style="color: #091d64;">You are Invited to be SK Chairperson!</h2><p style="color: #334155; line-height: 1.6;">You have been appointed as the new SK Chairperson. Please click the button below to set up your account password and complete your profile.</p><div style="text-align: center; margin: 24px 0;"><a href="' + successorLink + '" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Set Up Account</a></div><p style="color: #94a3b8; font-size: 11px;">If the button does not work, copy this link: <a href="' + successorLink + '">Open secure setup link</a></p></div>';
+          await sendEmail(successorEmail, 'KABISIG Chairmanship Appointment', successHtml);
+          emailDelivered = true;
+          if (successorInviteMethod === 'setup_link_only' || successorInviteMethod === 'existing_user') {
+            successorInviteMethod = 'email_invitation';
+            successorInviteError = null;
+          }
+        } else {
+          console.error('[TRANSFER] Skipping successor email because setup state could not be prepared.');
         }
       }
     } catch (emailErr) {
@@ -2167,11 +2268,9 @@ router.post(
         new_role: 'Barangay Admin',
       },
       link_type: successorLinkType || undefined,
-      setup_url: successorLink,
-      action_link: successorLink,
       invitation_method: successorInviteMethod,
       email_delivery: emailDelivered,
-    }, 'Leadership transferred at Barangay ' + barangay.name + '. ' + (outgoing.full_name || outgoing.email) + ' demoted to Youth Constituent (pending re-approval); ' + cleanSuccessorEmail + ' is now Chairperson.' + (successorInviteError ? ' The invitation email failed: ' + getInvitationErrorMessage(successorInviteError) + '. Manually deliver the setup link from the response.' : ''));
+    }, 'Leadership transferred at Barangay ' + barangay.name + '. ' + (outgoing.full_name || outgoing.email) + ' demoted to Youth Constituent (pending re-approval); ' + cleanSuccessorEmail + ' is now Chairperson.' + (successorInviteError ? ' The invitation could not be completed: ' + getInvitationErrorMessage(successorInviteError) + '. Please resend the Chairperson invitation.' : ''));
   }
 );
 // ============================================================
