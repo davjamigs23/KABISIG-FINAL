@@ -189,6 +189,7 @@ router.get('/all-officials', authenticateUser, requireRoles('SUPER_ADMIN'), asyn
       .select('id, tenant_id, email, full_name, first_name, middle_name, last_name, suffix, role_id, status, phone, avatar_url, setup_completed, official_role')
       .in('role_id', [2, 3])
       .eq('status', 'active')
+      .eq('setup_completed', true)
       .not('tenant_id', 'is', null)
       .not('full_name', 'ilike', '%Pending%')
       .not('full_name', 'ilike', '%Invitation%')

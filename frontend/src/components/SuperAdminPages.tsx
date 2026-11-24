@@ -47,6 +47,8 @@ const isDisplayedOfficial = (official: any) => {
     official?.last_name,
   ].filter(Boolean).join(' ').toLowerCase();
   return String(official?.status || '').trim().toLowerCase() === 'active'
+    && official?.setup_completed === true
+    && String(official?.full_name || '').trim().toLowerCase() !== 'pending invitation'
     && !/(pending|invitation|\bsk official\b)/i.test(name);
 };
 
@@ -2953,7 +2955,7 @@ useEffect(() => {
                       <div key={official.id} className="rounded-lg border border-amber-100 bg-amber-50 p-2.5">
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
-                            <span className="block truncate text-[11px] font-bold text-slate-800">{formatOfficialName(official.full_name, official.sex, official.role_id, official.position || official.official_role)}</span>
+                            <span className="block truncate text-[11px] font-bold text-slate-800">Pending Invite</span>
                             <span className="block truncate font-mono text-[10px] text-slate-500">{official.email}</span>
                             <span className="mt-1 inline-block rounded bg-white px-1.5 py-0.5 text-[9px] font-bold text-[#091d64]">
                               {official.official_role}

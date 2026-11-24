@@ -527,6 +527,11 @@ export default function YouthPages({
       suffix: profile.suffix ?? parts.suffix,
       scholarshipSource,
       scholarshipSourceDetail,
+      youthSector: (
+        profile.youthSector
+          ?? (profile as YouthProfile & { youth_sector?: string }).youth_sector
+          ?? ''
+      ) as YouthProfile['youthSector'],
     };
   };
   const loadVerification = async () => {
@@ -662,8 +667,13 @@ export default function YouthPages({
         const _str = String(val ?? '').trim();
         if (_str === '' || placeholders.includes(_str)) _missing.push(label);
       };
+      const selectedYouthSector = String(
+        editForm.youthSector
+          ?? (editForm as YouthProfile & { youth_sector?: string }).youth_sector
+          ?? ''
+      ).trim();
       _checkField('Zone / Purok', editForm.zone);
-      _checkField('Youth Sector', editForm.youthSector);
+      _checkField('Youth Sector', selectedYouthSector);
       _checkField('Employment Status', editForm.employmentStatus);
       _checkField('Guardian Name', editForm.guardianName);
       _checkField('Guardian Contact', editForm.guardianContact);
@@ -695,6 +705,11 @@ export default function YouthPages({
       ...editForm,
       scholarshipSource: editForm.scholarshipSource || '',
       scholarshipSourceDetail: editForm.scholarshipSourceDetail || '',
+      youthSector: String(
+        editForm.youthSector
+          ?? (editForm as YouthProfile & { youth_sector?: string }).youth_sector
+          ?? ''
+      ).trim() as YouthProfile['youthSector'],
       name: composedName,
       age: calculatedAge
     };
@@ -704,6 +719,7 @@ export default function YouthPages({
         ...updatedProfile,
         scholarship_source: updatedProfile.scholarshipSource || null,
         scholarship_source_detail: updatedProfile.scholarshipSourceDetail || null,
+        youth_sector: updatedProfile.youthSector || null,
         ...(isInDemotionCompletion ? { has_edited_profile: true } : {}),
       });
       if (!res.success) {
@@ -718,6 +734,7 @@ export default function YouthPages({
         middle_name: Object.prototype.hasOwnProperty.call(savedFields, 'middle_name') ? savedFields.middle_name : updatedProfile.middle_name,
         last_name: Object.prototype.hasOwnProperty.call(savedFields, 'last_name') ? savedFields.last_name : updatedProfile.last_name,
         suffix: Object.prototype.hasOwnProperty.call(savedFields, 'suffix') ? savedFields.suffix : updatedProfile.suffix,
+        youthSector: savedFields.youth_sector ?? savedFields.youthSector ?? updatedProfile.youthSector,
         ...(isInDemotionCompletion ? { has_edited_profile: true } : {}),
       };
       setYouth(savedProfile);
@@ -2949,11 +2966,16 @@ export default function YouthPages({
                     <div className="sm:col-span-2">
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Youth Sector</label>
                       <select 
-                        value={editForm.youthSector || 'In-School Youth'} 
-                        onChange={(e) => setEditForm({ ...editForm, youthSector: e.target.value as YouthProfile['youthSector'] })}
+                        value={editForm.youthSector || (editForm as YouthProfile & { youth_sector?: string }).youth_sector || ''}
+                        onChange={(e) => {
+                          const youthSector = e.currentTarget.value as YouthProfile['youthSector'];
+                          setEditForm((previous) => ({ ...previous, youthSector }));
+                        }}
                         disabled={isProfileLocked}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
+                        required
                       >
+                        <option value="">Select Youth Sector</option>
                         <option value="In-School Youth">In-School Youth</option>
                         <option value="Out-of-School Youth">Out-of-School Youth (OSY)</option>
                         <option value="Working Youth">Working Youth</option>

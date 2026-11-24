@@ -110,12 +110,14 @@ function AppContent() {
   const [authProfileReady, setAuthProfileReady] = useState(false);
   const [pendingLoginMessage, setPendingLoginMessage] = useState<string | null>(null);
   const isChairpersonRole = Number(currentUser?.role_id) === 2;
-  const chairpersonSetupRequired = isChairpersonRole && currentUser?.setup_completed === false;
+  const officialSetupRequired = [2, 3].includes(Number(currentUser?.role_id))
+    && currentUser?.setup_completed === false;
+  const chairpersonSetupRequired = isChairpersonRole && officialSetupRequired;
 
   // Program registrations and notifications are private and must only load for authenticated roles.
   const programIdsKey = programs.map(program => program.id).join(',');
   useEffect(() => {
-    if (chairpersonSetupRequired || !currentRole || currentRole === 'Viewer' || currentRole === 'Youth Constituent' || !currentUser?.id || !kabisigApi.getToken() || !programIdsKey) {
+    if (officialSetupRequired || !currentRole || currentRole === 'Viewer' || currentRole === 'Youth Constituent' || !currentUser?.id || !kabisigApi.getToken() || !programIdsKey) {
       setRegistrations([]);
       return;
     }
@@ -141,10 +143,10 @@ function AppContent() {
       if (!cancelled) setRegistrations(all);
     })();
     return () => { cancelled = true; };
-  }, [programIdsKey, currentRole, currentUser?.id, chairpersonSetupRequired]);
+  }, [programIdsKey, currentRole, currentUser?.id, officialSetupRequired]);
 
   useEffect(() => {
-    if (chairpersonSetupRequired || !currentRole || currentRole === 'Viewer' || !currentUser?.id || !kabisigApi.getToken()) {
+    if (officialSetupRequired || !currentRole || currentRole === 'Viewer' || !currentUser?.id || !kabisigApi.getToken()) {
       setNotifications([]);
       return;
     }
@@ -169,7 +171,7 @@ function AppContent() {
       window.removeEventListener('focus', refreshNotifications);
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
-  }, [currentRole, currentUser?.id, chairpersonSetupRequired]);
+  }, [currentRole, currentUser?.id, officialSetupRequired]);
 
   useEffect(() => {
     const handleAvatarUpdated = (event: Event) => {
@@ -231,10 +233,10 @@ function AppContent() {
       window.removeEventListener('focus', refreshCurrentProfile);
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
-  }, [currentRole, currentUser?.id, chairpersonSetupRequired]);
+  }, [currentRole, currentUser?.id, officialSetupRequired]);
 
   useEffect(() => {
-    if (chairpersonSetupRequired || !currentRole || currentRole === 'Viewer' || !currentUser?.id || !kabisigApi.getToken()) return;
+    if (officialSetupRequired || !currentRole || currentRole === 'Viewer' || !currentUser?.id || !kabisigApi.getToken()) return;
     let isMounted = true;
     kabisigApi.getAnnouncements().then(rows => {
       if (!isMounted) return;
@@ -260,7 +262,7 @@ function AppContent() {
 
 
   return () => { isMounted = false; };
-  }, [currentRole, currentTenant?.id, currentUser?.id, chairpersonSetupRequired]);
+  }, [currentRole, currentTenant?.id, currentUser?.id, officialSetupRequired]);
 
   // --- VIEWER PORTAL PUBLIC DATA (no auth) ---
   useEffect(() => {
@@ -592,7 +594,7 @@ function AppContent() {
   }, [currentUser?.id, currentUser?.tenant_id]);
 
   useEffect(() => {
-    if (chairpersonSetupRequired) {
+    if (officialSetupRequired) {
       setPrograms([]);
       setDocuments([]);
       setExpenses([]);
@@ -770,7 +772,7 @@ function AppContent() {
     window.removeEventListener('focus', refreshPrograms);
     document.removeEventListener('visibilitychange', refreshProgramsWhenVisible);
   };
-  }, [currentRole, currentTenant?.id, chairpersonSetupRequired]);
+  }, [currentRole, currentTenant?.id, officialSetupRequired]);
 
   // After login, reload barangays with the user's token: the pre-login list hides contact details.
   useEffect(() => {
@@ -806,7 +808,7 @@ function AppContent() {
   }, [tenants]);
 
   useEffect(() => {
-    if (chairpersonSetupRequired) {
+    if (officialSetupRequired) {
       setYouthProfilesLoading(false);
       setYouthProfilesError(null);
       return;
@@ -867,10 +869,10 @@ function AppContent() {
       window.removeEventListener('focus', refreshYouthProfiles);
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
-  }, [currentRole, currentTenant?.id, currentUser?.id, currentUser?.tenant_id, youthProfilesRetryCount, chairpersonSetupRequired]);
+  }, [currentRole, currentTenant?.id, currentUser?.id, currentUser?.tenant_id, youthProfilesRetryCount, officialSetupRequired]);
 
   useEffect(() => {
-    if (chairpersonSetupRequired || !currentRole || currentRole === 'Viewer' || !currentUser?.id || !kabisigApi.getToken()) {
+    if (officialSetupRequired || !currentRole || currentRole === 'Viewer' || !currentUser?.id || !kabisigApi.getToken()) {
       setPollsError(null);
       return;
     }
@@ -900,10 +902,10 @@ function AppContent() {
       window.removeEventListener('focus', refreshPolls);
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
-  }, [currentRole, currentTenant?.id, currentUser?.id, chairpersonSetupRequired]);
+  }, [currentRole, currentTenant?.id, currentUser?.id, officialSetupRequired]);
 
   useEffect(() => {
-    if (chairpersonSetupRequired) {
+    if (officialSetupRequired) {
       setFeedback([]);
       setFeedbackError(null);
       return;
@@ -962,10 +964,10 @@ function AppContent() {
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
 
-  }, [currentRole, currentTenant?.id, currentUser?.id, chairpersonSetupRequired]);
+  }, [currentRole, currentTenant?.id, currentUser?.id, officialSetupRequired]);
 
   useEffect(() => {
-    if (chairpersonSetupRequired) {
+    if (officialSetupRequired) {
       setAuditLogs([]);
       return;
     }
@@ -988,7 +990,7 @@ function AppContent() {
       isMounted = false;
       window.clearInterval(intervalId);
     };
-  }, [currentRole, currentUser?.id, chairpersonSetupRequired]);
+  }, [currentRole, currentUser?.id, officialSetupRequired]);
 
   // --- AUTH CALLBACKS ---
   const handleLogin = (role: UserRole | 'Viewer', tenantId: string, emailOrName?: string, userObj?: any) => {
@@ -1524,8 +1526,26 @@ function AppContent() {
         />
       )}
 
+      {authReady && authProfileReady && officialSetupRequired && !isChairpersonRole && (
+        <div className="flex min-h-[70vh] flex-1 flex-col items-center justify-center px-6 text-center">
+          <div className="max-w-lg rounded-2xl border border-amber-200 bg-amber-50 p-8 shadow-sm">
+            <h1 className="text-xl font-black text-slate-900">Official Account Setup Required</h1>
+            <p className="mt-3 text-sm leading-6 text-slate-700">
+              Your SK Official account is not ready to access the dashboard. Complete setup using the secure link in your invitation email.
+            </p>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="mt-6 rounded-lg bg-[#091d64] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#102a83]"
+            >
+              Sign Out
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 2. SUPER ADMIN PANELS */}
-      {!chairpersonSetupRequired && currentRole === 'Super Admin' && (
+      {!officialSetupRequired && currentRole === 'Super Admin' && (
         <SuperAdminPages 
           barangays={tenants}
           programs={programs}
@@ -1583,7 +1603,7 @@ function AppContent() {
       )}
 
       {/* 3. BARANGAY ADMIN (SK CHAIRPERSON) PANELS */}
-      {!chairpersonSetupRequired && isChairpersonRole && currentTenant && (
+      {!officialSetupRequired && isChairpersonRole && currentTenant && (
         <BarangayAdminPages
           key={`barangay-admin-${currentUser?.id || currentEmail}`}
           currentBarangay={currentTenant}
@@ -1657,7 +1677,7 @@ function AppContent() {
       )}
 
       {/* 4. OTHER SK OFFICIALS (KAGAWAD, SECRETARY, TREASURER) PANELS */}
-      {!chairpersonSetupRequired && (currentRole === 'SK Kagawad' || currentRole === 'SK Secretary' || currentRole === 'SK Treasurer') && (
+      {!officialSetupRequired && (currentRole === 'SK Kagawad' || currentRole === 'SK Secretary' || currentRole === 'SK Treasurer') && (
         <OfficialPages 
           key={`${currentUser?.id || currentEmail}:${currentRole}`}
           currentRole={currentRole}
@@ -1713,7 +1733,7 @@ function AppContent() {
       )}
 
       {/* 5. YOUTH CONSTITUENT PANELS */}
-      {!chairpersonSetupRequired && currentRole === 'Youth Constituent' && currentYouth && (
+      {!officialSetupRequired && currentRole === 'Youth Constituent' && currentYouth && (
         <YouthPages 
           notifications={notifications}
           currentYouth={currentYouth}
@@ -1745,7 +1765,7 @@ function AppContent() {
       )}
 
       {/* 6. PUBLIC TRANSPARENCY VIEWER PORTAL */}
-      {!chairpersonSetupRequired && currentRole === 'Viewer' && (
+      {!officialSetupRequired && currentRole === 'Viewer' && (
         <ViewerPages 
           tenants={tenants}
           programs={programs}

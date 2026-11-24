@@ -328,18 +328,18 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
     .select('id, tenant_id, full_name, first_name, middle_name, last_name, suffix, role_id, status, avatar_url, official_role, setup_completed, barangay(name)')
     .in('role_id', [2, 3])
     .eq('status', 'active')
+    .eq('setup_completed', true)
     .not('tenant_id', 'is', null)
     .not('full_name', 'ilike', '%Pending%')
-    .not('full_name', 'ilike', '%Invitation%');
+    .not('full_name', 'ilike', '%Invitation%')
+    .not('full_name', 'ilike', '%SK Official%');
 
   if (error) {
     sendError(res, `Failed to load public officials: ${error.message}`, 500);
     return;
   }
 
-  const displayedOfficials = (officials || []).filter((official) =>
-    official.setup_completed === true || Number(official.role_id) === 3
-  );
+  const displayedOfficials = officials || [];
   const officialUserIds = displayedOfficials.map((official) => official.id);
   const profileSexByUserId = new Map<string, string | null>();
   if (officialUserIds.length > 0) {
