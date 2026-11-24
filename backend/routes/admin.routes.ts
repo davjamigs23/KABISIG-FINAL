@@ -192,6 +192,7 @@ router.get('/all-officials', authenticateUser, requireRoles('SUPER_ADMIN'), asyn
       .not('tenant_id', 'is', null)
       .not('full_name', 'ilike', '%Pending%')
       .not('full_name', 'ilike', '%Invitation%')
+      .not('full_name', 'ilike', '%SK Official%')
       .order('full_name', { ascending: true });
 
     if (userErr) {

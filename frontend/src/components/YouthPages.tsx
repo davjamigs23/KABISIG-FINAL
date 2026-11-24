@@ -1,5 +1,5 @@
 import { ShieldAlert } from 'lucide-react';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { formatBirthdate, getPhilippineDateString } from '../lib/dateUtils';
 import { 
@@ -69,7 +69,7 @@ import NotificationMenu from './NotificationMenu';
 import { UserMenu } from './UserMenu';
 import ProfileAvatar from './ProfileAvatar';
 import ImageCropModal from './ImageCropModal';
-import kabisigApi from '../lib/api';
+import kabisigApi, { getFirstValidationError } from '../lib/api';
 import PopupDialog, { PopupMessage } from './PopupDialog';
 interface YouthPagesProps {
   currentYouth: YouthProfile;
@@ -213,6 +213,8 @@ export default function YouthPages({
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [showEditWarning, setShowEditWarning] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [contactFieldsTouched, setContactFieldsTouched] = useState({ mobile: false, guardianContact: false });
+  const skipYouthPropSyncRef = useRef(false);
   const [showSuccessBanner, setShowSuccessBanner] = useState(false);
   const [isLoadingStatus, setIsLoadingStatus] = useState(true);
   // Panel rec #12: Identity verification state
@@ -343,11 +345,15 @@ export default function YouthPages({
       ? profile.qrCode
       : profile.id;
   useEffect(() => {
-    if (currentYouth) {
-      setYouth(currentYouth);
-      setEditForm(ensureSplitName(currentYouth));
+    if (!currentYouth) return;
+    if (skipYouthPropSyncRef.current) {
+      skipYouthPropSyncRef.current = false;
+      return;
     }
-  }, [currentYouth]);
+    if (isEditModalOpen || isEditingProfile) return;
+    setYouth(currentYouth);
+    setEditForm(ensureSplitName(currentYouth));
+  }, [currentYouth, isEditModalOpen, isEditingProfile]);
   useEffect(() => {
     let isMounted = true;
     kabisigApi.getMyProgramRegistrations().then((rows) => {
@@ -637,7 +643,17 @@ export default function YouthPages({
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isProfileLocked) return;
-    setIsSavingProfile(true);
+    setContactFieldsTouched({ mobile: true, guardianContact: true });
+    const mobileIsValid = /^09\d{9}$/.test(editForm.mobile.trim());
+    const guardianContactIsValid = /^09\d{9}$/.test(editForm.guardianContact.trim());
+    if (!mobileIsValid || !guardianContactIsValid) {
+      setPopupMsg({
+        title: 'Invalid Contact Number',
+        text: 'Mobile / Phone Number and Parent / Guardian Contact No. must each contain 11 digits and start with 09.',
+        type: 'error',
+      });
+      return;
+    }
 
     // Validation: demoted users get only ONE edit - force completeness
     if (currentYouth?.is_demoted === true) {
@@ -657,6 +673,7 @@ export default function YouthPages({
         return;
       }
     }
+    setIsSavingProfile(true);
     
     // Calculate age from birthdate if provided
     let calculatedAge = editForm.age;
@@ -690,7 +707,7 @@ export default function YouthPages({
         ...(isInDemotionCompletion ? { has_edited_profile: true } : {}),
       });
       if (!res.success) {
-        throw new Error(res.message || 'The profile could not be saved.');
+        throw new Error(getFirstValidationError(res) || res.message || 'The profile could not be saved.');
       }
       const savedFields = res.data || {};
       const savedProfile: YouthProfile = {
@@ -704,6 +721,7 @@ export default function YouthPages({
         ...(isInDemotionCompletion ? { has_edited_profile: true } : {}),
       };
       setYouth(savedProfile);
+      skipYouthPropSyncRef.current = true;
       if (onUpdateYouthProfile) {
         onUpdateYouthProfile(savedProfile);
       }
@@ -2585,20 +2603,14 @@ export default function YouthPages({
                     </div>
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Zone / Purok</label>
-                      <select 
+                      <input
+                        type="text"
                         value={editForm.zone} 
                         onChange={(e) => setEditForm({ ...editForm, zone: e.target.value })}
                         disabled={isProfileLocked}
+                        readOnly={isProfileLocked}
                         className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
-                      >
-                        <option value="Zone 1">Zone 1</option>
-                        <option value="Zone 2">Zone 2</option>
-                        <option value="Zone 3">Zone 3</option>
-                        <option value="Zone 4">Zone 4</option>
-                        <option value="Zone 5">Zone 5</option>
-                        <option value="Zone 6">Zone 6</option>
-                        <option value="Zone 7">Zone 7</option>
-                      </select>
+                      />
                     </div>
                   </div>
                 </div>
@@ -2735,14 +2747,22 @@ export default function YouthPages({
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Mobile / Phone Number</label>
                       <input 
-                        type="text" 
+                        type="tel"
                         disabled={isProfileLocked}
                         readOnly={isProfileLocked}
                         value={editForm.mobile} 
                         onChange={(e) => setEditForm({ ...editForm, mobile: e.target.value })}
-                        className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
+                        onBlur={() => setContactFieldsTouched((previous) => ({ ...previous, mobile: true }))}
+                        onInvalid={() => setContactFieldsTouched((previous) => ({ ...previous, mobile: true }))}
+                        maxLength={11}
+                        minLength={11}
+                        pattern={"^09\\d{9}$"}
+                        className={`w-full border rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64] ${contactFieldsTouched.mobile && !/^09\d{9}$/.test(editForm.mobile.trim()) ? 'border-rose-400' : 'border-slate-200'}`}
                         required
                       />
+                      {contactFieldsTouched.mobile && !/^09\d{9}$/.test(editForm.mobile.trim()) && (
+                        <p role="alert" className="mt-1 text-[11px] font-semibold text-rose-600">Enter an 11-digit number starting with 09.</p>
+                      )}
                     </div>
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Email Address</label>
@@ -2771,14 +2791,22 @@ export default function YouthPages({
                     <div>
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">Parent / Guardian Contact No.</label>
                       <input 
-                        type="text" 
+                        type="tel"
                         disabled={isProfileLocked}
                         readOnly={isProfileLocked}
                         value={editForm.guardianContact} 
                         onChange={(e) => setEditForm({ ...editForm, guardianContact: e.target.value })}
-                        className="w-full border border-slate-200 rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64]"
+                        onBlur={() => setContactFieldsTouched((previous) => ({ ...previous, guardianContact: true }))}
+                        onInvalid={() => setContactFieldsTouched((previous) => ({ ...previous, guardianContact: true }))}
+                        maxLength={11}
+                        minLength={11}
+                        pattern={"^09\\d{9}$"}
+                        className={`w-full border rounded-lg p-2.5 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#091d64] ${contactFieldsTouched.guardianContact && !/^09\d{9}$/.test(editForm.guardianContact.trim()) ? 'border-rose-400' : 'border-slate-200'}`}
                         required
                       />
+                      {contactFieldsTouched.guardianContact && !/^09\d{9}$/.test(editForm.guardianContact.trim()) && (
+                        <p role="alert" className="mt-1 text-[11px] font-semibold text-rose-600">Enter an 11-digit number starting with 09.</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -2851,7 +2879,6 @@ export default function YouthPages({
                         <option value="Employed">Employed</option>
                         <option value="Unemployed">Unemployed</option>
                         <option value="Self-Employed">Self-Employed</option>
-                        <option value="Working Student">Working Student</option>
                       </select>
                     </div>
                     <div>
@@ -2932,7 +2959,6 @@ export default function YouthPages({
                         <option value="Working Youth">Working Youth</option>
                         <option value="Youth with Special Needs / PWD">Youth with Special Needs / PWD</option>
                         <option value="Solo Parent Youth">Solo Parent Youth</option>
-                        <option value="Indigenous Youth">Indigenous Youth</option>
                       </select>
                     </div>
                     <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
@@ -3115,6 +3141,7 @@ export default function YouthPages({
                 onClick={() => {
                   setShowEditWarning(false);
                   setEditForm(ensureSplitName(currentYouth));
+                  setContactFieldsTouched({ mobile: false, guardianContact: false });
                   setIsEditingProfile(true);
                   setIsEditModalOpen(true);
                 }}

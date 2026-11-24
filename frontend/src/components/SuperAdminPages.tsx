@@ -39,6 +39,17 @@ const isPendingChair = (chair: any) => {
     || chair.full_name?.trim() === 'Pending Invitation';
 };
 
+const isDisplayedOfficial = (official: any) => {
+  const name = [
+    official?.full_name,
+    official?.first_name,
+    official?.middle_name,
+    official?.last_name,
+  ].filter(Boolean).join(' ').toLowerCase();
+  return String(official?.status || '').trim().toLowerCase() === 'active'
+    && !/(pending|invitation|\bsk official\b)/i.test(name);
+};
+
 interface SuperAdminPagesProps {
   barangays: BarangayTenant[];
   programs: Program[];
@@ -82,7 +93,7 @@ export default function SuperAdminPages({
       if (!response.success || !Array.isArray(response.data)) {
         throw new Error(response.message || 'Unable to load officials.');
       }
-      return response.data;
+      return response.data.filter(isDisplayedOfficial);
     },
     enabled: Boolean(kabisigApi.getToken()),
   });
@@ -106,9 +117,6 @@ export default function SuperAdminPages({
     return Number.isFinite(parsed) ? parsed : 0;
   };
 
-  const isDisplayedOfficial = (official: any) =>
-    official?.status === 'active'
-    && !String(official?.full_name || '').toLowerCase().includes('pending');
   const [activeMenu, setActiveMenu] = useState<string>('dashboard');
   const [popupMsg, setPopupMsg] = useState<PopupMessage | null>(null);
   const [confirmMsg, setConfirmMsg] = useState<PopupMessage | null>(null);
