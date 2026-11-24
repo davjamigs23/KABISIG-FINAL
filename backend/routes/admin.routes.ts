@@ -1435,7 +1435,8 @@ router.post(
         .select('id, role_id, status, official_role')
         .eq('tenant_id', barangay_id)
         .eq('role_id', 3)
-        .eq('status', 'active');
+        .eq('status', 'active')
+        .eq('setup_completed', true);
       if (existingOfficialsError) {
         sendError(res, 'Failed to verify role capacity: ' + existingOfficialsError.message, 500);
         return;

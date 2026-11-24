@@ -460,6 +460,22 @@ useEffect(() => {
         || String(official.status || '').toLowerCase() === 'pending'
         || String(official.full_name || '').toLowerCase().includes('pending invitation')
       );
+  const getOfficialRoleCapacity = (key: 'kagawad' | 'secretary' | 'treasurer') => {
+    const roleName = key === 'secretary' ? 'secretary' : key === 'treasurer' ? 'treasurer' : 'kagawad';
+    const current = roleCapacityOfficials.filter((official: any) => {
+      if (String(official.status || '').trim().toLowerCase() !== 'active' || official.setup_completed !== true) {
+        return false;
+      }
+      const officialRole = String(official.official_role || '').toLowerCase();
+      return roleName === 'kagawad'
+        ? !officialRole.includes('secretary') && !officialRole.includes('treasurer')
+        : officialRole.includes(roleName);
+    }).length;
+    return {
+      current,
+      limit: Number(roleCapacity?.[key]?.limit) || 0,
+    };
+  };
   const completedOfficialRoster = roleCapacityOfficials.filter((official: any) => !pendingOfficialInvites.some((pending: any) => pending.id === official.id));
   const isPendingInviteForEmail = (email: string): boolean => {
     const normalizedEmail = email.trim().toLowerCase();
@@ -867,7 +883,7 @@ useEffect(() => {
       : inviteOfficialRole === 'SK Secretary'
         ? 'secretary'
         : 'treasurer';
-    const roleCapacityRow = roleCapacity[capacityKey];
+    const roleCapacityRow = getOfficialRoleCapacity(capacityKey);
     if (roleCapacityRow && roleCapacityRow.current >= roleCapacityRow.limit) {
       setInviteOfficialNotice({
         type: 'error',
@@ -2933,7 +2949,7 @@ useEffect(() => {
                   <div className="mt-2 space-y-1 text-[10px]">
                     {(['SK Kagawad', 'SK Secretary', 'SK Treasurer'] as const).map((r) => {
                       const key = r === 'SK Kagawad' ? 'kagawad' : r === 'SK Secretary' ? 'secretary' : 'treasurer';
-                      const row = roleCapacity[key] || { current: 0, limit: 0 };
+                      const row = getOfficialRoleCapacity(key);
                       const full = row.current >= row.limit;
                       const isSelected = inviteOfficialRole === r;
                       return (
@@ -3045,7 +3061,7 @@ useEffect(() => {
               )}
               {(() => {
                 const _key = inviteOfficialRole === 'SK Kagawad' ? 'kagawad' : inviteOfficialRole === 'SK Secretary' ? 'secretary' : 'treasurer';
-                const _row = roleCapacity?.[_key];
+                const _row = getOfficialRoleCapacity(_key);
                 const _full = Boolean(inviteOfficialRole && _row && _row.current >= _row.limit);
                 const _pendingResend = isPendingInviteForEmail(normalizedInviteOfficialEmail);
                 const _emailHasPendingInvite = Boolean(normalizedInviteOfficialEmail && pendingOfficialInvites.some(

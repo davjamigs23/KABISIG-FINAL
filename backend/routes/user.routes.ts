@@ -1452,7 +1452,9 @@ router.get(
       return;
     }
 
-    const activeOnly = (officials || []).filter((o: any) => o.status === 'active');
+    const activeOnly = (officials || []).filter((o: any) =>
+      o.status === 'active' && o.setup_completed === true
+    );
 
     let chairperson = 0;
     let secretary = 0;

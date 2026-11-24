@@ -111,7 +111,7 @@ function AppContent() {
   const [pendingLoginMessage, setPendingLoginMessage] = useState<string | null>(null);
   const isChairpersonRole = Number(currentUser?.role_id) === 2;
   const officialSetupRequired = [2, 3].includes(Number(currentUser?.role_id))
-    && currentUser?.setup_completed === false;
+    && currentUser?.setup_completed !== true;
   const chairpersonSetupRequired = isChairpersonRole && officialSetupRequired;
 
   // Program registrations and notifications are private and must only load for authenticated roles.

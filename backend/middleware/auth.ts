@@ -41,15 +41,16 @@ export async function authenticateUser(req: Request, res: Response, next: NextFu
       ? roleRecord[0]?.role_name || 'YOUTH_CONSTITUENT'
       : roleRecord?.role_name || 'YOUTH_CONSTITUENT';
 
-    const chairpersonSetupRoute = req.method === 'POST' && req.path === '/setup-chairperson-password';
+    const officialSetupRoute = req.method === 'POST'
+      && ['/setup-chairperson-password', '/setup-official-password'].includes(req.path);
     const currentUserRoute = req.method === 'GET' && req.path === '/me';
     if (
-      Number(profile.role_id) === 2
+      [2, 3].includes(Number(profile.role_id))
       && (String(profile.status || '').toLowerCase() !== 'active' || profile.setup_completed !== true)
-      && !chairpersonSetupRoute
+      && !officialSetupRoute
       && !currentUserRoute
     ) {
-      sendError(res, 'Chairperson account setup is incomplete. Complete first-time setup before accessing the dashboard.', 403);
+      sendError(res, 'Official account setup is incomplete. Complete first-time setup before accessing protected routes.', 403);
       return;
     }
 
