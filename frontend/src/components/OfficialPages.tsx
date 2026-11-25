@@ -680,6 +680,7 @@ export default function OfficialPages({
   const [invForm, setInvForm] = useState({
     item: '', category: '', quantity: '0', condition: '', cost: '0', location: '', photo_url: ''
   });
+  const inventoryImageInputRef = useRef<HTMLInputElement | null>(null);
   const formatWithCommas = (value: string | number) =>
     String(value ?? '').replace(/,/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
@@ -905,6 +906,10 @@ export default function OfficialPages({
         }
       ];
 
+  const expenseBudgetOptions = (budgetOptions || []).filter((budget: any) => (
+    String(budget.program_name || budget.program?.name || '').trim().toLowerCase() !== 'general youth development fund'
+    && String(budget.category || '').trim().toLowerCase() !== 'general youth development fund'
+  ));
   const treasurerProgramsBudget = (budgetOptions || [])
     .filter((budget: any) => {
       const year = budget.fiscal_year ?? budget.fiscalYear ?? budget.year;
@@ -3636,7 +3641,7 @@ export default function OfficialPages({
                       <button 
                         onClick={() => {
                           setEditingExpenseId(null);
-                          setExpenseForm({ programId: programs[0]?.id || '', budgetId: budgetOptions[0]?.id || '', amount: '', supplier: '', taxType: '', category: 'Supplies' });
+                          setExpenseForm({ programId: programs[0]?.id || '', budgetId: expenseBudgetOptions[0]?.id || '', amount: '', supplier: '', taxType: '', category: 'Supplies' });
                           setShowExpenseModal(true);
                         }}
                         className="px-3.5 py-2 bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-extrabold text-xs rounded-lg transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
@@ -6940,7 +6945,7 @@ export default function OfficialPages({
                   value={expenseForm.budgetId}
                   onChange={(e) => {
                     const newBudgetId = e.target.value;
-                    const selectedBudget = budgetOptions.find((b: any) => b.id === newBudgetId);
+                    const selectedBudget = expenseBudgetOptions.find((b: any) => b.id === newBudgetId);
                     const budgetProgramId = selectedBudget?.program_id || selectedBudget?.programId;
                     const budgetCategory = String(selectedBudget?.category || '').trim().toLowerCase();
                     const matchedProgram = programs.find(program => String(program.id) === String(budgetProgramId || ''))
@@ -6958,17 +6963,17 @@ export default function OfficialPages({
                     });
                   }}
                   className="w-full p-2 border rounded text-xs"
-                  disabled={isLoadingBudgets || budgetOptions.length === 0}
+                  disabled={isLoadingBudgets || expenseBudgetOptions.length === 0}
                 >
                   <option value="" disabled>Select a Budget Allocation</option>
-                  {budgetOptions.filter(budget => String(budget.category || '').trim()).map((budget) => (
+                  {expenseBudgetOptions.filter(budget => String(budget.category || '').trim()).map((budget) => (
                     <option key={budget.id} value={budget.id}>
                       {budget.category}
                     </option>
                   ))}
                 </select>
-                {budgetOptions.length === 0 && !isLoadingBudgets && (
-                  <p className="mt-1 text-[10px] text-rose-600">No current-year budgets are available for this barangay.</p>
+                {expenseBudgetOptions.length === 0 && !isLoadingBudgets && (
+                  <p className="mt-1 text-[10px] text-rose-600">No eligible program budget allocations are available for this barangay.</p>
                 )}
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -7007,7 +7012,7 @@ export default function OfficialPages({
               <div className="flex justify-end gap-2 border-t pt-4">
                 {expenseSaveError && <p role="alert" className="mr-auto self-center text-[10px] text-rose-700">{expenseSaveError}</p>}
                 <button disabled={isSavingExpense} onClick={()=>{setShowExpenseModal(false); setEditingExpenseId(null);}} className="px-4 py-2 border rounded text-xs disabled:opacity-50">Close</button>
-                <button disabled={isSavingExpense || isLoadingBudgets || budgetOptions.length === 0} onClick={handleLogExpenseSubmit} className="px-5 py-2 bg-[#091d64] text-white rounded font-bold text-xs disabled:opacity-50">
+                <button disabled={isSavingExpense || isLoadingBudgets || expenseBudgetOptions.length === 0} onClick={handleLogExpenseSubmit} className="px-5 py-2 bg-[#091d64] text-white rounded font-bold text-xs disabled:opacity-50">
                   {isSavingExpense ? 'Saving...' : editingExpenseId ? 'Save Changes' : 'Log Transaction'}
                 </button>
               </div>
@@ -7111,16 +7116,36 @@ export default function OfficialPages({
                     <Upload className="w-8 h-8 mb-2 text-slate-500" />
                     <p className="text-sm text-slate-500 font-bold">Click to upload image</p>
                   </div>
-                  <input type="file" accept="image/*" className="hidden" onChange={(e) => {
+                  <input ref={inventoryImageInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) {
                       const reader = new FileReader();
-                      reader.onloadend = () => setInvForm({...invForm, photo_url: reader.result as string});
+                      reader.onloadend = () => setInvForm(previous => ({ ...previous, photo_url: reader.result as string }));
                       reader.readAsDataURL(file);
                     }
                   }} />
                 </label>
-                {invForm.photo_url && <img src={invForm.photo_url} onClick={() => window.open(invForm.photo_url, '_blank')} className="mt-2 h-20 w-20 cursor-pointer object-cover rounded border" alt="Preview" />}
+                {invForm.photo_url && (
+                  <div className="relative mt-2 inline-block">
+                    <img
+                      src={invForm.photo_url}
+                      onClick={() => setPreviewImage(invForm.photo_url)}
+                      className="h-20 w-20 cursor-pointer rounded border object-cover"
+                      alt="Preview"
+                    />
+                    <button
+                      type="button"
+                      aria-label="Remove asset photo"
+                      onClick={() => {
+                        setInvForm(previous => ({ ...previous, photo_url: '' }));
+                        if (inventoryImageInputRef.current) inventoryImageInputRef.current.value = '';
+                      }}
+                      className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-rose-600 text-white shadow hover:bg-rose-700"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Storage Location venue *</label>
