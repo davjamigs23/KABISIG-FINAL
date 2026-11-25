@@ -1545,9 +1545,10 @@ export default function BarangayAdminPages({
     ...budgetAllocations
     .filter((budget: any) => {
       const category = String(budget.category || '').trim().toLowerCase();
+      const programId = budget.program_id || budget.programId;
+      if (!budget.id || !programId || category === 'unassigned expenses') return false;
       if (category === 'general youth development fund' || ['heha', 'aaaa'].includes(category)) return false;
       if (budgetProgramFilter === 'All Programs') return true;
-      const programId = budget.program_id || budget.programId;
       const program = programs.find(item => item.id === programId)
         || programs.find(item => item.title.trim().toLowerCase() === category);
       return String(programId || '') === budgetProgramFilter
@@ -1579,14 +1580,8 @@ export default function BarangayAdminPages({
         remaining,
         rate
       };
-    }),
-    ...(budgetProgramFilter === 'All Programs' && expenses.some(expense => !expense.programId) ? [{
-      program: 'Unassigned expenses',
-      allocated: 0,
-      spent: expenses.filter(expense => !expense.programId).reduce((sum, expense) => sum + Number((expense as any).gross_amount ?? expense.amount ?? 0), 0),
-      remaining: 0,
-      rate: 0,
-    }] : []),
+    })
+    .filter(row => String(row.program || '').trim().toLowerCase() !== 'unassigned expenses'),
   ];
   const overspentBudgetPrograms = budgetUtilizationTable.filter(row => row.spent > row.allocated && row.allocated > 0);
 
@@ -2756,7 +2751,21 @@ return (
                               }}
                               className="cursor-pointer hover:bg-slate-50 focus:bg-slate-50 focus:outline-none"
                             >
-                              <td className="px-5 py-4 font-bold text-[#091d64]">{program.title}</td>
+                              <td className="px-5 py-4 font-bold text-[#091d64]">
+                                <div className="flex items-center gap-3">
+                                  <img
+                                    src={program.imageUrl || (program as any).image_url || '/images/placeholder.png'}
+                                    alt=""
+                                    loading="lazy"
+                                    onError={(event) => {
+                                      event.currentTarget.onerror = null;
+                                      event.currentTarget.src = '/images/placeholder.png';
+                                    }}
+                                    className="h-10 w-10 shrink-0 rounded-lg bg-slate-100 object-cover"
+                                  />
+                                  <span>{program.title}</span>
+                                </div>
+                              </td>
                               <td className="px-5 py-4">{getStandardCategory(program.category)}</td>
                               <td className="px-5 py-4 whitespace-nowrap">
                                 {program.startDate || 'Date not set'}{program.endDate && program.endDate !== program.startDate ? ` – ${program.endDate}` : ''}

@@ -29,6 +29,7 @@ const UploadDocumentSchema = z.object({
   title: z.string().min(3, 'Document title is required'),
   description: z.string().optional(),
   document_type: z.enum(DOCUMENT_TYPES),
+  resolution_number: z.string().max(100, 'Resolution number must be at most 100 characters').optional(),
   file_name: z.string().min(1, 'File name is required'),
   content_type: z.string().min(1, 'Content type is required'),
   file_base64: z.string().min(1, 'File data is required'),
@@ -96,7 +97,10 @@ router.post(
   requireActiveUser,
   requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'),
   async (req: Request, res: Response): Promise<void> => {
-    const parsed = UploadDocumentSchema.safeParse(req.body);
+    const parsed = UploadDocumentSchema.safeParse({
+      ...req.body,
+      resolution_number: req.body.resolutionNumber ?? req.body.resolution_number ?? req.body.resolution_no,
+    });
     if (!parsed.success) {
       sendError(res, 'Validation failed', 400, parsed.error.flatten().fieldErrors);
       return;
@@ -109,7 +113,7 @@ router.post(
       return;
     }
 
-    const { title, description, document_type, file_name, content_type, file_base64 } = parsed.data;
+    const { title, description, document_type, resolution_number, file_name, content_type, file_base64 } = parsed.data;
     const status = user.role === 'SK_OFFICIAL' ? 'pending_approval' : 'approved';
     const normalizedContentType = content_type.toLowerCase().split(';')[0]?.trim() || '';
     const extension = file_name.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1] || '';
@@ -148,6 +152,7 @@ router.post(
         title,
         description: description?.trim() || null,
         document_type,
+        resolution_number: resolution_number?.trim() || null,
         file_url: objectPath,
         status,
         submitted_by: user.id,

@@ -1054,6 +1054,7 @@ class KabisigApiClient {
   async uploadDocument(payload: {
     title: string;
     description?: string;
+    resolutionNumber?: string;
     document_type: 'Resolutions' | 'Minutes' | 'Reports' | 'Vouchers';
     file: File;
   }): Promise<{ success: boolean; data?: any; message?: string; error?: any }> {
@@ -1084,6 +1085,7 @@ class KabisigApiClient {
       body: JSON.stringify({
         title: payload.title,
         description: payload.description,
+        resolution_number: payload.resolutionNumber,
         document_type: payload.document_type,
         file_name: payload.file.name,
         content_type: payload.file.type || 'application/octet-stream',

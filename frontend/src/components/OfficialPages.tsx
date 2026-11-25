@@ -1256,6 +1256,7 @@ export default function OfficialPages({
       const result = await kabisigApi.uploadDocument({
         title: docForm.title.trim(),
         description: docForm.description.trim(),
+        resolutionNumber: autoResNum,
         document_type: docForm.category,
         file: selectedDocumentFile,
       });
@@ -1274,7 +1275,7 @@ export default function OfficialPages({
         uploadedDate,
         fileSize: `${(selectedDocumentFile.size / (1024 * 1024)).toFixed(2)} MB`,
         description: docForm.description,
-        resolutionNumber: autoResNum,
+        resolutionNumber: saved.resolution_number || autoResNum,
         designatedApprover: docForm.designatedApprover,
         version: 'v1.0',
         barangayId: saved.tenant_id,

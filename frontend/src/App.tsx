@@ -729,7 +729,7 @@ function AppContent() {
         uploadedDate: d.created_at ? formatPhilippineDate(d.created_at) : '',
         fileSize: '',
         status: d.status === 'approved' ? 'Approved' : d.status === 'pending_approval' ? 'Pending' : d.status,
-        resolutionNumber: d.resolution_number || `DOC-${d.id.slice(0, 6).toUpperCase()}`,
+        resolutionNumber: d.resolution_number || d.resolution_no || `DOC-${d.id.slice(0, 6).toUpperCase()}`,
         description: d.description ?? '',
         fileUrl: d.file_url,
         reviewFeedback: d.feedback || '',

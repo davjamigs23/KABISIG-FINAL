@@ -443,7 +443,54 @@ router.delete(
       return;
     }
 
-    const { error: deleteError } = await supabaseAdmin.from('program').delete().eq('id', id);
+    const { data: relatedBudgets, error: budgetLookupError } = await supabaseAdmin
+      .from('budget')
+      .select('id')
+      .eq('tenant_id', existing.tenant_id)
+      .eq('program_id', id);
+    if (budgetLookupError) {
+      sendError(res, `Failed to find program budget allocations: ${budgetLookupError.message}`, 500);
+      return;
+    }
+
+    const budgetIds = (relatedBudgets || []).map((budget) => budget.id);
+    const { error: programExpenseDeleteError } = await supabaseAdmin
+      .from('expense')
+      .delete()
+      .eq('tenant_id', existing.tenant_id)
+      .eq('program_id', id);
+    if (programExpenseDeleteError) {
+      sendError(res, `Failed to delete program expenses: ${programExpenseDeleteError.message}`, 500);
+      return;
+    }
+
+    if (budgetIds.length > 0) {
+      const { error: budgetExpenseDeleteError } = await supabaseAdmin
+        .from('expense')
+        .delete()
+        .eq('tenant_id', existing.tenant_id)
+        .in('budget_id', budgetIds);
+      if (budgetExpenseDeleteError) {
+        sendError(res, `Failed to delete expenses linked to program budgets: ${budgetExpenseDeleteError.message}`, 500);
+        return;
+      }
+
+      const { error: budgetDeleteError } = await supabaseAdmin
+        .from('budget')
+        .delete()
+        .eq('tenant_id', existing.tenant_id)
+        .in('id', budgetIds);
+      if (budgetDeleteError) {
+        sendError(res, `Failed to delete program budget allocations: ${budgetDeleteError.message}`, 500);
+        return;
+      }
+    }
+
+    const { error: deleteError } = await supabaseAdmin
+      .from('program')
+      .delete()
+      .eq('tenant_id', existing.tenant_id)
+      .eq('id', id);
 
     if (deleteError) {
       sendError(res, `Failed to delete program: ${deleteError.message}`, 500);
