@@ -1,0 +1,170 @@
+=== KABISIG CODE AUDIT ===
+
+[1] Hardcoded demo data patterns
+  ??  Found 94 potential hardcoded-data matches:
+     C:\dev\KABISIG-FINAL\frontend\src\components\BarangayAdminPages.tsx:83 ? classifyDemographics,
+     C:\dev\KABISIG-FINAL\frontend\src\components\BarangayAdminPages.tsx:204 ? const [reportSubTab, setReportSubTab] = useState<'executive'|'attendance'|'accomplishments'|'beneficiaries'|'demographics'|'financial'>('attendance');
+     C:\dev\KABISIG-FINAL\frontend\src\components\BarangayAdminPages.tsx:271 ? const [reportCategoryFilter, setReportCategoryFilter] = useState<'All' | 'Demographic' | 'Accomplishment' | 'Attendance' | 'Beneficiary' | 'Financial' | 'Feedback'>('All');
+     C:\dev\KABISIG-FINAL\frontend\src\components\BarangayAdminPages.tsx:1027 ? const demographicsDonutData = [
+     C:\dev\KABISIG-FINAL\frontend\src\components\BarangayAdminPages.tsx:2741 ? <button onClick={() => setReportSubTab('demographics')} className={reportSubTab === 'demographics' ? 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-[#091d64] text-white' : 'px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 bg-slate-50 text-slate-600 hover:bg-slate-100'}>Demographics</button>
+     C:\dev\KABISIG-FINAL\frontend\src\components\BarangayAdminPages.tsx:2747 ? {reportSubTab === 'demographics' && (
+     C:\dev\KABISIG-FINAL\frontend\src\components\BarangayAdminPages.tsx:2750 ? <h4 className="font-bold text-slate-800 text-sm">Katipunan ng Kabataan Demographics</h4>
+     C:\dev\KABISIG-FINAL\frontend\src\components\BarangayAdminPages.tsx:3267 ? {youthVerification.verification_status === "submitted" && (youthVerification as any).is_demoted_chair && (
+     C:\dev\KABISIG-FINAL\frontend\src\components\LandingPage.tsx:19 ? { icon: Users, title: 'Youth Profiling & Digital ID', desc: 'Centralized Katipunan ng Kabataan registry with automated demographic classification, digital youth ID, and QR code generation.' },
+     C:\dev\KABISIG-FINAL\frontend\src\components\OfficialPages.tsx:2211 ? {/* Section 2: Katipunan ng Kabataan (KK) Sectoral & Demographic Profiling Grid */}
+     C:\dev\KABISIG-FINAL\frontend\src\components\OfficialPages.tsx:2219 ? <p className="text-xs text-slate-400 mt-0.5">Demographic classification derived automatically from verified youth resident digital profiles.</p>
+     C:\dev\KABISIG-FINAL\frontend\src\components\OfficialPages.tsx:4502 ? <p className="text-xs text-slate-500 mt-0.5">The SK Secretary maintains the verified constituent roster and demographic profile database. Final registration approvals for new constituents are processed by the Barangay Admin.</p>
+     C:\dev\KABISIG-FINAL\frontend\src\components\OfficialPages.tsx:4548 ? <option value="All">All Demographic Filters</option>
+     C:\dev\KABISIG-FINAL\frontend\src\components\OfficialPages.tsx:6050 ? <h3 className="font-sans font-bold text-lg mt-1">Beneficiaries Demographic Summary</h3>
+     C:\dev\KABISIG-FINAL\frontend\src\components\OfficialPages.tsx:6085 ? <h4 className="font-bold text-slate-800 text-xs uppercase mb-2">Zone Demographic Distribution</h4>
+     C:\dev\KABISIG-FINAL\frontend\src\components\SuperAdminPages.tsx:1798 ? This person will be demoted to SK Official. Their record is preserved.
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:78 ? // Sub-tab inside Transparency: 'financial' | 'demographics' | 'fpd' | 'auditing'
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:79 ? const [transparencySubTab, setTransparencySubTab] = useState<'financial' | 'demographics' | 'fpd' | 'auditing'>('financial');
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:81 ? // --- Public demographics (anonymized aggregate) ---
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:82 ? const [publicDemographics, setPublicDemographics] = useState<any>(null);
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:83 ? const [publicDemographicsLoading, setPublicDemographicsLoading] = useState(false);
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:90 ? if (activeMenu !== 'transparency' || transparencySubTab !== 'demographics') return;
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:92 ? setPublicDemographicsLoading(true);
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:93 ? kabisigApi.getPublicDemographics()
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:94 ? .then((d) => { if (isMounted) setPublicDemographics(d); })
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:96 ? .finally(() => { if (isMounted) setPublicDemographicsLoading(false); });
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:231 ? // Demographics aggregation
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:236 ? const _demoRaw = (publicDemographics as any)?.data?.data
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:237 ? ?? (publicDemographics as any)?.data
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:238 ? ?? publicDemographics;
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:239 ? const _genderSource = _demoRaw?.sex_distribution ?? _demoRaw?.sexCounts;
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:243 ? const genderDemographicData = Object.entries(_genderMap)
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:255 ? const _educationSource = _demoRaw?.education_distribution ?? _demoRaw?.eduCounts;
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:259 ? const educationDemographicData = Object.entries(_educationMap)
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:498 ? KABISIG (Kabataang Bagong Sistema para sa Inklusibong Gobyerno) provides direct public access to financial audits, youth demographics, active civic programs, and official legislative resolutions across all 27 barangays of Naga City.
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:657 ? onClick={() => setTransparencySubTab('demographics')}
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:659 ? transparencySubTab === 'demographics'
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:664 ? <Users className="w-4 h-4" /> Youth Demographics & Accomplishments
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:697 ? <span className="text-[10px] font-bold text-slate-400 uppercase block tracking-wider">City Youth Demographics</span>
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:777 ? {/* SUB-TAB 2: ANONYMIZED YOUTH DEMOGRAPHICS & ACCOMPLISHMENTS */}
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:778 ? {transparencySubTab === 'demographics' && (
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:782 ? <h3 className="font-bold text-slate-800 text-base">Anonymized Youth Demographics & Program Accomplishments</h3>
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:795 ? <Pie data={genderDemographicData} outerRadius={60} dataKey="value">
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:796 ? {genderDemographicData.map((entry, i) => (
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:814 ? <BarChart data={educationDemographicData}>
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:830 ? <span className="text-2xl font-black text-emerald-800 block">{publicDemographics?.youth_event_attendees ?? 0}</span>
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:834 ? <span className="text-2xl font-black text-[#091d64] block">{publicDemographics?.scholar_count ?? 0} Active</span>
+     C:\dev\KABISIG-FINAL\frontend\src\components\ViewerPages.tsx:838 ? <span className="text-2xl font-black text-amber-800 block">{publicDemographics?.passed_resolutions ?? 0} Passed</span>
+     C:\dev\KABISIG-FINAL\frontend\src\components\YouthPages.tsx:61 ? classifyDemographics,
+     C:\dev\KABISIG-FINAL\frontend\src\components\YouthPages.tsx:152 ? // One-time success banner for demoted chairs
+     C:\dev\KABISIG-FINAL\frontend\src\components\YouthPages.tsx:153 ? if (res.data.is_demoted_chair && res.data.verification_status === 'verified') {
+     C:\dev\KABISIG-FINAL\frontend\src\components\YouthPages.tsx:172 ? const isDemotedChair = verificationStatus?.is_demoted_chair === true;
+     C:\dev\KABISIG-FINAL\frontend\src\components\YouthPages.tsx:346 ? const myDemographics = classifyDemographics(youth);
+     C:\dev\KABISIG-FINAL\frontend\src\components\YouthPages.tsx:529 ? // Validation: demoted users get only ONE edit — force completeness
+     C:\dev\KABISIG-FINAL\frontend\src\components\YouthPages.tsx:530 ? if (currentYouth?.is_demoted === true) {
+     C:\dev\KABISIG-FINAL\frontend\src\components\YouthPages.tsx:580 ? if (currentYouth.is_demoted) { await kabisigApi.updateProfile({ ...editForm, has_edited_profile: true }); }
+     C:\dev\KABISIG-FINAL\frontend\src\components\YouthPages.tsx:1002 ? {currentYouth?.is_demoted === true && countCompletedFields < 18 && (
+     C:\dev\KABISIG-FINAL\frontend\src\components\YouthPages.tsx:1233 ? {/* Demographic Classifications Panel */}
+     C:\dev\KABISIG-FINAL\frontend\src\components\YouthPages.tsx:1235 ? <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Your Demographic Classification</span>
+     C:\dev\KABISIG-FINAL\frontend\src\components\YouthPages.tsx:1237 ? {myDemographics.map((cat, index) => (
+     C:\dev\KABISIG-FINAL\frontend\src\components\YouthPages.tsx:1242 ? {myDemographics.length === 0 && (
+     C:\dev\KABISIG-FINAL\frontend\src\components\YouthPages.tsx:1471 ? {currentYouth.is_demoted === true && currentYouth.has_edited_profile !== true && !isEditingProfile && (
+     C:\dev\KABISIG-FINAL\frontend\src\components\YouthPages.tsx:2140 ? <span className="text-slate-400 block mb-0.5 text-[10px] uppercase tracking-wider">Demographic Zone</span>
+     C:\dev\KABISIG-FINAL\frontend\src\components\YouthPages.tsx:2239 ? <p className="text-xs text-rose-700">Please review your details carefully. You can only edit your profile once after being demoted to a Youth Constituent. If you make a mistake, you will need to contact the SK Federation President to correct it.</p>
+     C:\dev\KABISIG-FINAL\frontend\src\components\YouthPages.tsx:2385 ? {!verificationLoading && (verificationStatus?.is_demoted_chair && (!verificationStatus || verificationStatus.verification_status !== 'verified')) && (
+     C:\dev\KABISIG-FINAL\frontend\src\lib\api.ts:357 ? async getPublicDemographics(): Promise<any | null> {
+     C:\dev\KABISIG-FINAL\frontend\src\lib\api.ts:358 ? const res = await this.request<any>('/public/demographics', { method: 'GET' });
+     C:\dev\KABISIG-FINAL\frontend\src\lib\intelligence.ts:13 ? * 1. Demographic Classification (Rule-Based)
+     C:\dev\KABISIG-FINAL\frontend\src\lib\intelligence.ts:16 ? export function classifyDemographics(profile: YouthProfile): string[] {
+     C:\dev\KABISIG-FINAL\frontend\src\lib\intelligence.ts:109 ? // Criteria D: Democratic Policy voting (+10 per resolution voted, max 15)
+     C:\dev\KABISIG-FINAL\frontend\src\lib\intelligence.ts:141 ? const categories = classifyDemographics(profile);
+     C:\dev\KABISIG-FINAL\frontend\src\App.tsx:467 ? is_demoted: (user as any).is_demoted === true,
+     C:\dev\KABISIG-FINAL\frontend\src\App.tsx:939 ? is_demoted: (userObj as any).is_demoted === true,
+     C:\dev\KABISIG-FINAL\frontend\src\types.ts:39 ? is_demoted?: boolean;
+     C:\dev\KABISIG-FINAL\backend\routes\admin.routes.ts:1171 ? // 3. Demote outgoing Chairperson -> Youth Constituent (role_id 4) per manuscript.
+     C:\dev\KABISIG-FINAL\backend\routes\admin.routes.ts:1178 ? const { error: demoteErr } = await supabaseAdmin
+     C:\dev\KABISIG-FINAL\backend\routes\admin.routes.ts:1180 ? .update({ role_id: 4, status: 'active', full_name: cleanName, is_demoted: true, has_edited_profile: false })
+     C:\dev\KABISIG-FINAL\backend\routes\admin.routes.ts:1183 ? if (demoteErr) {
+     C:\dev\KABISIG-FINAL\backend\routes\admin.routes.ts:1184 ? sendError(res, 'Failed to demote outgoing Chairperson: ' + demoteErr.message, 500);
+     C:\dev\KABISIG-FINAL\backend\routes\admin.routes.ts:1323 ? previous_role_action: 'DEMOTED_TO_YOUTH_CONSTITUENT',
+     C:\dev\KABISIG-FINAL\backend\routes\admin.routes.ts:1354 ? console.log('[TRANSFER] Sending demotion email to outgoing: ' + outgoingEmail);
+     C:\dev\KABISIG-FINAL\backend\routes\admin.routes.ts:1355 ? const outgoingHtml = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;"><h1 style="color: #091d64; margin: 0 0 8px 0;">KABISIG</h1><p style="color: #64748b; font-size: 12px; margin: 0 0 24px 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p><h2 style="color: #091d64;">Leadership Update</h2><p style="color: #334155; line-height: 1.6;">Your role as SK Chairperson has been successfully transferred.</p><p style="color: #334155; line-height: 1.6;">You have been demoted to <strong>Youth Constituent</strong> and your profile verification is pending re-approval by the incoming Chairperson.</p><div style="text-align: center; margin: 24px 0;"><a href="' + FRONTEND_URL + '" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Log In to KABISIG</a></div><p style="color: #94a3b8; font-size: 11px;">If the button does not work, copy this link: ' + FRONTEND_URL + '</p></div>';
+     C:\dev\KABISIG-FINAL\backend\routes\admin.routes.ts:1391 ? }, 'Leadership transferred at Barangay ' + barangay.name + '. ' + (outgoing.full_name || outgoing.email) + ' demoted to Youth Constituent (pending re-approval); ' + cleanSuccessorEmail + ' is now Chairperson.');
+     C:\dev\KABISIG-FINAL\backend\routes\analytics.routes.ts:249 ? demographics: {
+     C:\dev\KABISIG-FINAL\backend\routes\public.routes.ts:47 ? // GET /api/public/demographics — anonymized aggregate only, no PII
+     C:\dev\KABISIG-FINAL\backend\routes\public.routes.ts:48 ? router.get('/demographics', async (_req: Request, res: Response): Promise<void> => {
+     C:\dev\KABISIG-FINAL\backend\routes\public.routes.ts:56 ? sendError(res, `Failed to load demographics: ${error.message}`, 500);
+     C:\dev\KABISIG-FINAL\backend\routes\public.routes.ts:117 ? 'Anonymized city demographics retrieved.'
+     C:\dev\KABISIG-FINAL\backend\routes\user.routes.ts:265 ? .select('id, email, tenant_id, full_name, first_name, middle_name, last_name, suffix, suspension_reason, is_demoted')
+     C:\dev\KABISIG-FINAL\backend\routes\user.routes.ts:304 ? if (body.has_edited_profile === true && user.is_demoted === true) {
+     C:\dev\KABISIG-FINAL\backend\routes\user.routes.ts:896 ? const isDemotedChair = Boolean(transferRecord);
+     C:\dev\KABISIG-FINAL\backend\routes\user.routes.ts:900 ? data ? { ...data, is_demoted_chair: isDemotedChair } : { id_type: null, id_number: null, verification_status: 'not_submitted', verification_notes: null, verification_reviewed_at: null, is_demoted_chair: isDemotedChair },
+     C:\dev\KABISIG-FINAL\backend\routes\user.routes.ts:970 ? // 4. Check if demoted chair
+     C:\dev\KABISIG-FINAL\backend\routes\user.routes.ts:981 ? is_demoted_chair: Boolean(transferRecord),
+
+[2] Hardcoded array literals inside JSX (suspicious for charts)
+  ? Clean — no hardcoded {name,value} arrays
+
+[3] API call authentication audit
+  Total API calls: 53
+  Unprotected (manual review needed): 42
+     C:\dev\KABISIG-FINAL\frontend\src\lib\api.ts:101 ? async request<T>(endpoint: string, options: RequestInit = {}): Promise<{ success
+     C:\dev\KABISIG-FINAL\frontend\src\lib\api.ts:113 ? const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+     C:\dev\KABISIG-FINAL\frontend\src\lib\api.ts:159 ? const res = await this.request<BarangayTenant[]>('/barangays', { method: 'GET' }
+     C:\dev\KABISIG-FINAL\frontend\src\lib\api.ts:167 ? const res = await this.request<BarangayTenant>(`/barangays/${id}`, { method: 'GE
+     C:\dev\KABISIG-FINAL\frontend\src\lib\api.ts:198 ? return await this.request<any>('/admin/transfer-chairmanship', {
+     C:\dev\KABISIG-FINAL\frontend\src\lib\api.ts:205 ? return await this.request<any>('/users/role-capacity/' + barangayId, { method: '
+     C:\dev\KABISIG-FINAL\frontend\src\lib\api.ts:209 ? return await this.request<any>('/admin/cancel-chairperson-invitation', {
+     C:\dev\KABISIG-FINAL\frontend\src\lib\api.ts:215 ? return await this.request<any[]>('/admin/chairperson-transfers/' + barangayId, {
+     C:\dev\KABISIG-FINAL\frontend\src\lib\api.ts:274 ? return await this.request<any>('/users/verification/upload', {
+     C:\dev\KABISIG-FINAL\frontend\src\lib\api.ts:281 ? return await this.request<any>('/users/verification/status', { method: 'GET' });
+
+[4] RBAC role checks
+  Role guard sites: 49
+     NotificationMenu.tsx: 1 checks
+     OfficialPages.tsx: 14 checks
+     ProfileSettings.tsx: 1 checks
+     PublicPages.tsx: 1 checks
+     SuperAdminPages.tsx: 1 checks
+     App.tsx: 31 checks
+
+[5] Backend tenant_id filter audit
+  DB queries: 149
+  With tenant_id filter: 51
+  ??  Manually verify: every non-public endpoint filters by tenant_id
+
+[6] Fix presence check
+  Fix #1 (Program image click):
+     ? line 1061
+     ? line 1069
+     ? line 1089
+  Fix #2 (Read More max-h-40vh):
+     ? line 1244
+  Fix #3 (Budget max-h-48):
+     ? line 1088
+  Fix #4 (Chairperson email lookup):
+     ? line 215
+     ? line 235
+  Fix #5 (Real expense categories):
+     ? line 266
+     ? line 269
+     ? line 630
+     ? line 633
+     ? line 1234
+     ? line 1235
+     ? line 211
+     ? line 217
+     ? line 222
+     ? line 274
+     ? line 280
+     ? line 758
+     ? line 763
+     ? line 945
+  Fix #6 (Public polls route):
+     ? line 245
+     ? line 496
+
+[7] Known regression guards
+  ??  setResolutions([]) outside catch/error — may regress Viewer feed
+     562: setResolutions([]);
+  ? No duplicate NOTICE badge
+
+=== AUDIT COMPLETE ===
+Log: C:\dev\KABISIG-FINAL\audit-code-20261110-045954.log
+
+Next: Compare SQL Block 1.1 results with chart bars on live site.

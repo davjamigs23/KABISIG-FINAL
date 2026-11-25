@@ -1,0 +1,12 @@
+=== KABISIG Deploy — 20261110-045131 ===
+
+[1/4] Backend: clean + TSC + build + deploy
+Backend deployed: https://kabisig-backend.vercel.app
+
+[2/4] Frontend: clean + TSC + build + deploy
+Frontend deployed: https://kabisig-frontend.vercel.app
+
+[3/4] Opening live site...
+
+[4/4] DONE. Hard refresh with Ctrl+Shift+R in browser.
+Log file: C:\dev\KABISIG-FINAL\deploy-20261110-045131.log
