@@ -100,7 +100,8 @@ function isOutsideYouthAgeRange(profile: YouthProfile): boolean {
   if (profile.is_age_out === true) return true;
   const birthdate = new Date(profile.birthdate || '');
   if (Number.isNaN(birthdate.getTime())) {
-    return Number.isFinite(Number(profile.age)) && (Number(profile.age) < 15 || Number(profile.age) > 30);
+    const age = Number(profile.age);
+    return Number.isFinite(age) && age > 0 && (age < 15 || age > 30);
   }
   const today = new Date();
   let age = today.getFullYear() - birthdate.getFullYear();

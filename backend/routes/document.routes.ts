@@ -281,11 +281,18 @@ router.get('/:id/download', authenticateUser, requireActiveUser, async (req: Req
   const user = (req as AuthRequest).user!;
   const canReadInternalDocuments = INTERNAL_DOCUMENT_ROLES.has(user.role);
 
-  const { data: document, error } = await supabaseAdmin
+  let documentQuery = supabaseAdmin
     .from('documents')
     .select('id, tenant_id, file_url, status')
-    .eq('id', id)
-    .single();
+    .eq('id', id);
+  if (user.role !== 'SUPER_ADMIN') {
+    if (!user.tenant_id) {
+      sendError(res, 'User has no assigned Barangay tenant.', 403);
+      return;
+    }
+    documentQuery = documentQuery.eq('tenant_id', user.tenant_id);
+  }
+  const { data: document, error } = await documentQuery.single();
 
   if (error || !document) {
     sendError(res, 'Document not found.', 404);
@@ -319,13 +326,20 @@ router.get('/:id', authenticateUser, requireActiveUser, async (req: Request, res
   const user = (req as AuthRequest).user!;
   const canReadInternalDocuments = INTERNAL_DOCUMENT_ROLES.has(user.role);
 
-  const { data: document, error } = await supabaseAdmin
+  let documentQuery = supabaseAdmin
     .from('documents')
     .select(canReadInternalDocuments
       ? '*, submitter:users!submitted_by(full_name, email), reviewer:users!reviewed_by(full_name)'
       : '*, submitter:users!submitted_by(full_name), reviewer:users!reviewed_by(full_name)')
-    .eq('id', id)
-    .single();
+    .eq('id', id);
+  if (user.role !== 'SUPER_ADMIN') {
+    if (!user.tenant_id) {
+      sendError(res, 'User has no assigned Barangay tenant.', 403);
+      return;
+    }
+    documentQuery = documentQuery.eq('tenant_id', user.tenant_id);
+  }
+  const { data: document, error } = await documentQuery.single();
 
   if (error || !document) {
     sendError(res, 'Document not found.', 404);

@@ -132,12 +132,19 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
 // Self-service: registration results are always filtered by the authenticated user's ID.
 router.get('/registrations/mine', authenticateUser, requireActiveUser, async (req: Request, res: Response): Promise<void> => {
   const user = (req as AuthRequest).user!;
-  const { data, error } = await supabaseAdmin
+  let registrationsQuery = supabaseAdmin
     .from('program_registrations')
     .select('id, program_id, tenant_id, status, registered_at, program(title)')
     .eq('user_id', user.id)
-    .neq('status', 'cancelled')
-    .order('registered_at', { ascending: false });
+    .neq('status', 'cancelled');
+  if (user.role !== 'SUPER_ADMIN') {
+    if (!user.tenant_id) {
+      sendError(res, 'User has no assigned Barangay tenant.', 403);
+      return;
+    }
+    registrationsQuery = registrationsQuery.eq('tenant_id', user.tenant_id);
+  }
+  const { data, error } = await registrationsQuery.order('registered_at', { ascending: false });
 
   if (error) {
     sendError(res, `Failed to retrieve your program registrations: ${error.message}`, 500);
@@ -152,11 +159,18 @@ router.get('/:id', authenticateUser, async (req: Request, res: Response): Promis
   const id = String(req.params.id || '');
   const user = (req as AuthRequest).user!;
 
-  const { data: program, error } = await supabaseAdmin
+  let programQuery = supabaseAdmin
     .from('program')
     .select('*, barangay(name)')
-    .eq('id', id)
-    .single();
+    .eq('id', id);
+  if (user.role !== 'SUPER_ADMIN') {
+    if (!user.tenant_id) {
+      sendError(res, 'User has no assigned Barangay tenant.', 403);
+      return;
+    }
+    programQuery = programQuery.eq('tenant_id', user.tenant_id);
+  }
+  const { data: program, error } = await programQuery.single();
 
   if (error || !program) {
     sendError(res, 'Program not found.', 404);
@@ -172,12 +186,14 @@ router.get('/:id', authenticateUser, async (req: Request, res: Response): Promis
     .from('program_registrations')
     .select('*', { count: 'exact', head: true })
     .eq('program_id', id)
+    .eq('tenant_id', program.tenant_id)
     .neq('status', 'cancelled');
 
   const { data: userReg } = await supabaseAdmin
     .from('program_registrations')
     .select('id, status, registered_at')
     .eq('program_id', id)
+    .eq('tenant_id', program.tenant_id)
     .eq('user_id', user.id)
     .maybeSingle();
 
@@ -205,11 +221,18 @@ router.get(
   async (req: Request, res: Response): Promise<void> => {
     const programId = String(req.params.id || '');
     const user = (req as AuthRequest).user!;
-    const { data: program, error: programError } = await supabaseAdmin
+    let programQuery = supabaseAdmin
       .from('program')
       .select('id, tenant_id')
-      .eq('id', programId)
-      .single();
+      .eq('id', programId);
+    if (user.role !== 'SUPER_ADMIN') {
+      if (!user.tenant_id) {
+        sendError(res, 'User has no assigned Barangay tenant.', 403);
+        return;
+      }
+      programQuery = programQuery.eq('tenant_id', user.tenant_id);
+    }
+    const { data: program, error: programError } = await programQuery.single();
 
     if (programError || !program) {
       sendError(res, 'Program not found.', 404);
@@ -228,6 +251,7 @@ router.get(
           : 'id, program_id, user_id, tenant_id, status, registered_at, users!user_id(full_name, email, phone, resident_profile!resident_profile_user_id_fkey(zone))'
       )
       .eq('program_id', programId)
+      .eq('tenant_id', program.tenant_id)
       .neq('status', 'cancelled')
       .order('registered_at', { ascending: true });
     const { data, error } = await registrationsQuery;
@@ -453,7 +477,7 @@ router.delete(
   '/:id',
   authenticateUser,
   requireActiveUser,
-  requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'),
+  requireRoles('BARANGAY_ADMIN', 'SUPER_ADMIN'),
   async (req: Request, res: Response): Promise<void> => {
     const id = String(req.params.id || '');
     const user = (req as AuthRequest).user!;
@@ -924,11 +948,18 @@ router.get(
   async (req: Request, res: Response): Promise<void> => {
     const programId = String(req.params.id || '');
     const user = (req as AuthRequest).user!;
-    const { data: program, error: programError } = await supabaseAdmin
+    let programQuery = supabaseAdmin
       .from('program')
       .select('id, tenant_id')
-      .eq('id', programId)
-      .single();
+      .eq('id', programId);
+    if (user.role !== 'SUPER_ADMIN') {
+      if (!user.tenant_id) {
+        sendError(res, 'User has no assigned Barangay tenant.', 403);
+        return;
+      }
+      programQuery = programQuery.eq('tenant_id', user.tenant_id);
+    }
+    const { data: program, error: programError } = await programQuery.single();
 
     if (programError || !program) {
       sendError(res, 'Program not found.', 404);
@@ -943,6 +974,7 @@ router.get(
       .from('program_attendance')
       .select('id, program_id, user_id, tenant_id, checked_in_at, qr_payload, users!user_id(full_name)')
       .eq('program_id', programId)
+      .eq('tenant_id', program.tenant_id)
       .order('checked_in_at', { ascending: false });
 
     if (error) {

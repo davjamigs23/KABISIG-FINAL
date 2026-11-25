@@ -689,11 +689,20 @@ router.get('/profile', authenticateUser, async (req: Request, res: Response): Pr
       return;
     }
 
-    const { data: user, error: userError } = await supabaseAdmin
+    const requiresTenant = ['BARANGAY_ADMIN', 'SK_OFFICIAL'].includes(authenticatedUser.role);
+    if (!adminScope && requiresTenant && !authenticatedUser.tenant_id) {
+      sendError(res, 'User has no assigned Barangay tenant.', 403);
+      return;
+    }
+
+    let targetUserQuery = supabaseAdmin
       .from('users')
       .select('id')
-      .eq('id', userId)
-      .maybeSingle();
+      .eq('id', userId);
+    if (!adminScope && authenticatedUser.role !== 'SUPER_ADMIN' && authenticatedUser.tenant_id) {
+      targetUserQuery = targetUserQuery.eq('tenant_id', authenticatedUser.tenant_id);
+    }
+    const { data: user, error: userError } = await targetUserQuery.maybeSingle();
     if (userError) {
       sendError(res, `Failed to retrieve user profile: ${userError.message}`, 500);
       return;
@@ -703,11 +712,14 @@ router.get('/profile', authenticateUser, async (req: Request, res: Response): Pr
       return;
     }
 
-    const { data: dbUser } = await supabaseAdmin
+    let dbUserQuery = supabaseAdmin
       .from('users')
       .select('*, roles(role_name), barangay(name, city, district), resident_profile!resident_profile_user_id_fkey(*)')
-      .eq('id', userId)
-      .single();
+      .eq('id', userId);
+    if (!adminScope && authenticatedUser.role !== 'SUPER_ADMIN' && authenticatedUser.tenant_id) {
+      dbUserQuery = dbUserQuery.eq('tenant_id', authenticatedUser.tenant_id);
+    }
+    const { data: dbUser } = await dbUserQuery.single();
 
     const { data: authData } = await supabaseAdmin.auth.admin.getUserById(userId);
     const meta = authData?.user?.user_metadata || {};
@@ -715,6 +727,10 @@ router.get('/profile', authenticateUser, async (req: Request, res: Response): Pr
     const resident = Array.isArray(joinedResident) ? joinedResident[0] || {} : joinedResident || {};
     const profileBirthdate = resident.birthdate || meta.birthdate || null;
     const profileAge = profileBirthdate ? calculateAge(String(profileBirthdate)) : null;
+    const metadataAge = meta.age !== undefined && meta.age !== null && meta.age !== ''
+      && Number.isFinite(Number(meta.age))
+      ? Number(meta.age)
+      : 0;
 
     const fullProfile = {
       id: meta.id || resident.digital_youth_id || getFallbackDigitalYouthId(userId, dbUser || {}),
@@ -724,25 +740,25 @@ router.get('/profile', authenticateUser, async (req: Request, res: Response): Pr
       middle_name: dbUser?.middle_name ?? meta.middle_name ?? null,
       last_name: dbUser?.last_name ?? meta.last_name ?? null,
       suffix: dbUser?.suffix ?? meta.suffix ?? null,
-      sex: resident.sex || meta.sex || 'Female',
-      birthdate: profileBirthdate || '2005-01-01',
-      age: profileAge ?? (Number(meta.age) || 20),
+      sex: resident.sex || meta.sex || '',
+      birthdate: profileBirthdate || '',
+      age: profileAge ?? metadataAge,
       is_age_out: profileAge !== null && (profileAge < 15 || profileAge > 30),
-      civilStatus: (resident as any).civil_status || (resident as any).marital_status || meta.civilStatus || 'Single',
+      civilStatus: (resident as any).civil_status || (resident as any).marital_status || meta.civilStatus || '',
       address: resident.address || meta.address || '',
       zone: resident.zone || meta.zone || null,
       mobile: dbUser?.phone || meta.mobile || '',
       email: dbUser?.email || meta.email || '',
-      educationalLevel: meta.educationalLevel || resident.educational_status || 'College',
+      educationalLevel: meta.educationalLevel || resident.educational_status || '',
       school: resident.school || meta.school || '',
       course: resident.course || meta.course || '',
       year: resident.year_level || meta.year || '',
-      employmentStatus: (resident as any).employment_status || meta.employmentStatus || 'Not Specified',
-      scholarStatus: (resident as any).scholar_status || meta.scholarStatus || 'Not Specified',
+      employmentStatus: (resident as any).employment_status || meta.employmentStatus || '',
+      scholarStatus: (resident as any).scholar_status || meta.scholarStatus || '',
       scholarshipSource: (resident as any).scholarship_source || meta.scholarshipSource || '',
       scholarshipSourceDetail: meta.scholarshipSourceDetail || '',
       scholarshipType: meta.scholarshipType || '',
-      youthSector: meta.youthSector || 'In-School Youth',
+      youthSector: meta.youthSector || '',
           isPwd: (resident as any).is_pwd || false,
           isSoloParent: (resident as any).is_solo_parent || false,
           is_registered_voter: resident.is_registered_voter === true,
@@ -754,7 +770,7 @@ router.get('/profile', authenticateUser, async (req: Request, res: Response): Pr
       qrCode: resident.qr_code_url || meta.qrCode || resident.digital_youth_id || '',
       status: dbUser?.status === 'active' ? 'Approved' : (dbUser?.status === 'rejected' ? 'Rejected' : dbUser?.status === 'suspended' ? 'suspended' : 'Pending'),
       barangayId: dbUser?.tenant_id || meta.barangayId || '',
-      dateRegistered: dbUser?.created_at?.split('T')[0] || meta.dateRegistered || new Date().toISOString().split('T')[0],
+      dateRegistered: dbUser?.created_at?.split('T')[0] || meta.dateRegistered || '',
       registeredRole: 'Youth Constituent',
     };
 
@@ -846,6 +862,10 @@ router.get(
         const resident = (Array.isArray(joinedProfile) ? joinedProfile[0] : joinedProfile) || {};
         const residentBirthdate = resident.birthdate || meta.birthdate || null;
         const calculatedAge = residentBirthdate ? calculateAge(String(residentBirthdate)) : null;
+        const metadataAge = meta.age !== undefined && meta.age !== null && meta.age !== ''
+          && Number.isFinite(Number(meta.age))
+          ? Number(meta.age)
+          : 0;
         const verificationStatus = (resident as any).verification_status || 'pending';
         const normalizedUserStatus = String(u.status || '').toLowerCase();
         const isPendingSubmission = normalizedUserStatus !== 'rejected'
@@ -867,25 +887,25 @@ router.get(
           userId: u.id,
           id: meta.id || resident.digital_youth_id || getFallbackDigitalYouthId(u.id, u),
           name: u.full_name || meta.name || '',
-          sex: resident.sex || meta.sex || 'Female',
-          birthdate: residentBirthdate || '2005-01-01',
-          age: calculatedAge ?? (Number(meta.age) || 20),
+          sex: resident.sex || meta.sex || '',
+          birthdate: residentBirthdate || '',
+          age: calculatedAge ?? metadataAge,
           is_age_out: calculatedAge !== null && (calculatedAge < 15 || calculatedAge > 30),
-          civilStatus: (resident as any).civil_status || (resident as any).marital_status || meta.civilStatus || 'Single',
+          civilStatus: (resident as any).civil_status || (resident as any).marital_status || meta.civilStatus || '',
           address: resident.address || meta.address || '',
           zone: resident.zone || meta.zone || null,
           mobile: u.phone || meta.mobile || '',
           email: u.email || meta.email || '',
-          educationalLevel: meta.educationalLevel || resident.educational_status || 'College',
+          educationalLevel: meta.educationalLevel || resident.educational_status || '',
           school: resident.school || meta.school || '',
           course: resident.course || meta.course || '',
-          year: resident.year_level || meta.year || '1st Year',
-          employmentStatus: (resident as any).employment_status || meta.employmentStatus || 'Not Specified',
-          scholarStatus: (resident as any).scholar_status || meta.scholarStatus || 'Not Specified',
+          year: resident.year_level || meta.year || '',
+          employmentStatus: (resident as any).employment_status || meta.employmentStatus || '',
+          scholarStatus: (resident as any).scholar_status || meta.scholarStatus || '',
           scholarshipSource: (resident as any).scholarship_source || meta.scholarshipSource || '',
           scholarshipSourceDetail: meta.scholarshipSourceDetail || '',
           scholarshipType: meta.scholarshipType || '',
-          youthSector: meta.youthSector || 'In-School Youth',
+          youthSector: meta.youthSector || '',
           isPwd: (resident as any).is_pwd || false,
           isSoloParent: (resident as any).is_solo_parent || false,
           is_registered_voter: resident.is_registered_voter === true,
@@ -907,7 +927,7 @@ router.get(
           is_demoted: u.is_demoted === true,
           suspension_reason: (u as any).suspension_reason || null,
           barangayId: u.tenant_id || meta.barangayId || '',
-          dateRegistered: u.created_at?.split('T')[0] || meta.dateRegistered || new Date().toISOString().split('T')[0],
+          dateRegistered: u.created_at?.split('T')[0] || meta.dateRegistered || '',
           registeredRole,
         };
       })
@@ -927,12 +947,19 @@ router.get(
   requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'),
   async (req: Request, res: Response): Promise<void> => {
     const requester = (req as AuthRequest).user!;
-    const { data: youth, error: youthError } = await supabaseAdmin
+    let youthQuery = supabaseAdmin
       .from('users')
       .select('id, tenant_id, role_id')
       .eq('id', req.params.id)
-      .eq('role_id', 4)
-      .maybeSingle();
+      .eq('role_id', 4);
+    if (requester.role !== 'SUPER_ADMIN') {
+      if (!requester.tenant_id) {
+        sendError(res, 'User has no assigned Barangay tenant.', 403);
+        return;
+      }
+      youthQuery = youthQuery.eq('tenant_id', requester.tenant_id);
+    }
+    const { data: youth, error: youthError } = await youthQuery.maybeSingle();
     if (youthError) {
       sendError(res, `Failed to load youth profile for history: ${youthError.message}`, 500);
       return;
@@ -1290,11 +1317,19 @@ router.get(
   async (req: Request, res: Response): Promise<void> => {
     const user = (req as AuthRequest).user!;
 
-    const { data, error } = await supabaseAdmin
+    if (['BARANGAY_ADMIN', 'SK_OFFICIAL'].includes(user.role) && !user.tenant_id) {
+      sendError(res, 'User has no assigned Barangay tenant.', 403);
+      return;
+    }
+
+    let verificationQuery = supabaseAdmin
       .from('resident_profile')
       .select('id_type, id_number, verification_status, verification_notes, verification_reviewed_at')
-      .eq('user_id', user.id)
-      .maybeSingle();
+      .eq('user_id', user.id);
+    if (user.role !== 'SUPER_ADMIN' && user.tenant_id) {
+      verificationQuery = verificationQuery.eq('tenant_id', user.tenant_id);
+    }
+    const { data, error } = await verificationQuery.maybeSingle();
 
     if (error) {
       sendError(res, 'Failed to load verification status: ' + error.message, 500);
@@ -1334,11 +1369,18 @@ router.get(
     }
 
     // 1. Fetch the user first so tenant access can be checked even without a resident profile.
-    const { data: userData, error: userError } = await supabaseAdmin
+    let targetUserQuery = supabaseAdmin
       .from('users')
       .select('id, tenant_id, full_name, email')
-      .eq('id', targetUserId)
-      .maybeSingle();
+      .eq('id', targetUserId);
+    if (requester.role !== 'SUPER_ADMIN') {
+      if (!requester.tenant_id) {
+        sendError(res, 'User has no assigned Barangay tenant.', 403);
+        return;
+      }
+      targetUserQuery = targetUserQuery.eq('tenant_id', requester.tenant_id);
+    }
+    const { data: userData, error: userError } = await targetUserQuery.maybeSingle();
 
     if (userError) {
       sendError(res, 'Failed to load user: ' + userError.message, 500);
@@ -1358,6 +1400,7 @@ router.get(
       .from('resident_profile')
       .select('user_id, tenant_id, id_type, id_number, id_document_path, id_back_document_path, verification_status, verification_notes, verification_reviewed_at')
       .eq('user_id', targetUserId)
+      .eq('tenant_id', userData.tenant_id)
       .maybeSingle();
 
     if (error) {

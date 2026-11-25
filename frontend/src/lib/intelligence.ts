@@ -432,6 +432,16 @@ export function getComplianceIssues(
     });
   }
 
+  const ageOutCount = profiles.filter(profile => profile.is_age_out === true).length;
+  if (ageOutCount > 0) {
+    issues.push({
+      level: 'Warning',
+      code: 'YOUTH_AGE_OUT',
+      message: `${ageOutCount} youth profile${ageOutCount === 1 ? '' : 's'} flagged as age-out and excluded from new program registrations.`,
+      action: 'Review Youth Management'
+    });
+  }
+
   // Check B: Completed programs missing reports (Accomplishment/Liquidation)
   const completedPrograms = programs.filter(p => p.status === 'Completed');
   for (const prog of completedPrograms) {

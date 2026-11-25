@@ -4019,13 +4019,6 @@ export default function OfficialPages({
                             >
                               Edit
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => void handleDeleteProgram(p)}
-                              className="rounded border border-rose-200 bg-white px-3 py-1.5 font-bold text-rose-700 hover:bg-rose-50"
-                            >
-                              Delete
-                            </button>
                           </div>
                         )}
                       </div>
@@ -4060,7 +4053,6 @@ export default function OfficialPages({
                             <td className="px-6 py-4 text-center whitespace-nowrap">
                               <div className="flex justify-center gap-2">
                                 <button type="button" onClick={() => handleEditProgram(p)} className="rounded border border-blue-200 px-2.5 py-1 font-bold text-[#091d64] hover:bg-blue-50">Edit</button>
-                                <button type="button" onClick={() => void handleDeleteProgram(p)} className="rounded border border-rose-200 px-2.5 py-1 font-bold text-rose-700 hover:bg-rose-50">Delete</button>
                               </div>
                             </td>
                           )}

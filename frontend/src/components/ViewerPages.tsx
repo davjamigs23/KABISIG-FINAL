@@ -755,7 +755,7 @@ export default function ViewerPages({
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Barangay Councils</span>
                     <h4 className="text-2xl font-black text-slate-800 mt-1">{tenants.length} Barangays</h4>
-                    <span className="text-[10px] text-emerald-600 font-bold block mt-0.5">100% Active Federation</span>
+                    <span className="text-[10px] text-emerald-600 font-bold block mt-0.5">Listed in the public directory</span>
                   </div>
                   <div className="p-3 bg-blue-50 text-[#091d64] rounded-xl">
                     <Building2 className="w-5 h-5" />

@@ -119,22 +119,37 @@ function canViewSignatorySex(req: Request, barangayId: string): boolean {
 // GET /api/barangays - Public/Authenticated: List all 27 Naga City permanently seeded barangays
 router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { data: barangays, error: bgyError } = await supabaseAdmin
+    const viewer = (req as AuthRequest).user;
+    const tenantScopedViewer = Boolean(viewer && [2, 3].includes(Number(viewer.role_id)));
+    if (tenantScopedViewer && !viewer?.tenant_id) {
+      sendError(res, 'User has no assigned Barangay tenant.', 403);
+      return;
+    }
+
+    let barangaysQuery = supabaseAdmin
       .from('barangay')
       .select('*')
       .order('name', { ascending: true });
+    if (tenantScopedViewer) {
+      barangaysQuery = barangaysQuery.eq('id', viewer!.tenant_id!);
+    }
+    const { data: barangays, error: bgyError } = await barangaysQuery;
 
     if (bgyError) {
       sendError(res, `Failed to load barangays: ${bgyError.message}`, 500);
       return;
     }
 
-    const { data: activeChairs, error: activeChairsError } = await supabaseAdmin
+    let activeChairsQuery = supabaseAdmin
       .from('users')
       .select('tenant_id')
       .eq('role_id', 2)
       .eq('status', 'active')
       .eq('setup_completed', true);
+    if (tenantScopedViewer) {
+      activeChairsQuery = activeChairsQuery.eq('tenant_id', viewer!.tenant_id!);
+    }
+    const { data: activeChairs, error: activeChairsError } = await activeChairsQuery;
     if (activeChairsError) {
       sendError(res, `Failed to load active chairpersons: ${activeChairsError.message}`, 500);
       return;
@@ -145,12 +160,16 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
       if (chair.tenant_id) activeChairTenantIds.add(chair.tenant_id);
     });
 
-    // Include pending officials, but exclude rejected records from the roster.
-    const { data: allUsers, error: usersError } = await supabaseAdmin
+    let officialsQuery = supabaseAdmin
       .from('users')
       .select('id, tenant_id, role_id, full_name, email, status, setup_completed')
       .in('role_id', [2, 3])
-      .neq('status', 'rejected');
+      .eq('status', 'active')
+      .eq('setup_completed', true);
+    if (tenantScopedViewer) {
+      officialsQuery = officialsQuery.eq('tenant_id', viewer!.tenant_id!);
+    }
+    const { data: allUsers, error: usersError } = await officialsQuery;
     if (usersError) {
       sendError(res, `Failed to load chairpersons: ${usersError.message}`, 500);
       return;
@@ -199,9 +218,13 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
       }
     });
 
-    const { data: programs } = await supabaseAdmin
+    let programsQuery = supabaseAdmin
       .from('program')
       .select('tenant_id, status');
+    if (tenantScopedViewer) {
+      programsQuery = programsQuery.eq('tenant_id', viewer!.tenant_id!);
+    }
+    const { data: programs } = await programsQuery;
 
     const progCountMap = new Map<string, number>();
     programs?.forEach((p) => {
@@ -210,22 +233,34 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
       }
     });
 
-    const { data: youthUsers, error: youthUsersError } = await supabaseAdmin
+    let youthUsersQuery = supabaseAdmin
       .from('users')
       .select('tenant_id')
       .eq('role_id', 4)
       .eq('status', 'active');
+    if (tenantScopedViewer) {
+      youthUsersQuery = youthUsersQuery.eq('tenant_id', viewer!.tenant_id!);
+    }
+    const { data: youthUsers, error: youthUsersError } = await youthUsersQuery;
 
     const youthCountMap = new Map<string, number>();
     youthUsers?.forEach((u) => {
       if (u.tenant_id) youthCountMap.set(u.tenant_id, (youthCountMap.get(u.tenant_id) || 0) + 1);
     });
+    if (youthUsersError) {
+      sendError(res, `Failed to load barangay youth counts: ${youthUsersError.message}`, 500);
+      return;
+    }
 
     const currentYear = new Date().getFullYear();
-    const { data: budgets, error: budgetsError } = await supabaseAdmin
+    let budgetsQuery = supabaseAdmin
       .from('budget')
       .select('id, tenant_id, allocated_amount')
       .eq('fiscal_year', currentYear);
+    if (tenantScopedViewer) {
+      budgetsQuery = budgetsQuery.eq('tenant_id', viewer!.tenant_id!);
+    }
+    const { data: budgets, error: budgetsError } = await budgetsQuery;
     if (budgetsError) {
       sendError(res, `Failed to load barangay budgets: ${budgetsError.message}`, 500);
       return;
@@ -242,12 +277,16 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
 
     const expensePageSize = 1000;
     for (let offset = 0; ; offset += expensePageSize) {
-      const { data: expenses, error: expensesError } = await supabaseAdmin
+      let expensesQuery = supabaseAdmin
         .from('expense')
         .select('tenant_id, net_amount')
         .eq('status', 'approved')
         .order('id', { ascending: true })
         .range(offset, offset + expensePageSize - 1);
+      if (tenantScopedViewer) {
+        expensesQuery = expensesQuery.eq('tenant_id', viewer!.tenant_id!);
+      }
+      const { data: expenses, error: expensesError } = await expensesQuery;
       if (expensesError) {
         sendError(res, `Failed to load barangay expenditures: ${expensesError.message}`, 500);
         return;
@@ -304,15 +343,15 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
         allocated_budget: Number(b.allocated_budget) || 0,
         allocatedBudget: budget.allocated,
         spentBudget: budget.spent,
-        status: 'Active',
+        status: b.status || 'Unknown',
         logo: resolveBarangayLogo(b.id, b.name, b.logo_url),
         logo_url: resolveBarangayLogo(b.id, b.name, b.logo_url),
-        dateCreated: b.created_at || '2026-01-01',
+        dateCreated: b.created_at || '',
       };
     });
 
     enrichedBarangays.sort((a, b) => a.name.localeCompare(b.name));
-    sendSuccess(res, enrichedBarangays, '27 Naga City barangays retrieved successfully.');
+    sendSuccess(res, enrichedBarangays, 'Barangays retrieved successfully.');
   } catch (err: any) {
     sendError(res, err.message || 'Error fetching barangays', 500);
   }
@@ -321,10 +360,15 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
 // GET /api/barangays/:id - Get specific barangay details
 router.get('/:id', optionalAuthenticateUser, async (req: Request, res: Response): Promise<void> => {
   const id = String(req.params.id);
+  const viewer = (req as AuthRequest).user;
+  if (viewer && [2, 3].includes(Number(viewer.role_id)) && viewer.tenant_id !== id) {
+    sendError(res, 'You can only view your assigned Barangay.', 403);
+    return;
+  }
 
   const { data: barangay, error } = await supabaseAdmin
     .from('barangay')
-    .select('*')
+    .select('id, name, city, district, sk_district, allocated_budget, active_fiscal_year, logo_url, created_at, status')
     .eq('id', id)
     .single();
 
@@ -340,6 +384,7 @@ router.get('/:id', optionalAuthenticateUser, async (req: Request, res: Response)
     .eq('tenant_id', id)
     .eq('role_id', 2)
     .eq('status', 'active')
+    .eq('setup_completed', true)
     .maybeSingle();
 
   sendSuccess(res, {

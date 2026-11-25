@@ -95,6 +95,32 @@ function mapBackendDocument(document: any): DocumentRecord {
   };
 }
 
+function mapBackendExpense(expense: any): ExpenseRecord {
+  return {
+    id: expense.id,
+    programId: expense.program_id || '',
+    budgetId: expense.budget_id,
+    programTitle: expense.program?.title || expense.title,
+    category: expense.budget?.category || 'Supplies',
+    amount: Number(expense.gross_amount) || Number(expense.amount) || 0,
+    gross_amount: Number(expense.gross_amount) || 0,
+    supplier: expense.payee || expense.supplier || expense.title || 'N/A',
+    taxType: expense.tax_type === 'EXEMPT' ? 'Exempt' : expense.tax_type || expense.taxType || 'Non-VAT',
+    vatAmount: Number(expense.vat_amount ?? expense.vatAmount) || 0,
+    withholdingTax: Number(expense.withholding_tax ?? expense.withholdingTax) || 0,
+    netAmount: expense.net_amount != null || expense.netAmount != null
+      ? Number(expense.net_amount ?? expense.netAmount)
+      : undefined,
+    description: expense.description || '',
+    date: expense.expense_date || (expense.created_at ? getPhilippineDateString(expense.created_at) : ''),
+    dateLogged: expense.expense_date || expense.dateLogged || (expense.created_at ? getPhilippineDateString(expense.created_at) : ''),
+    voucherNumber: `DV-${String(expense.id || '').slice(0, 6).toUpperCase()}`,
+    status: expense.status === 'approved' ? 'Approved' : 'Pending',
+    payee: expense.payee || expense.title,
+    barangayId: expense.tenant_id,
+  };
+}
+
 function AppContent() {
   const router = useRouter();
   // --- Client state synchronized with the backend ---
@@ -116,6 +142,9 @@ function AppContent() {
   const [auditLogs, setAuditLogs] = useState<SystemAuditLog[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [realtimeRefreshVersions, setRealtimeRefreshVersions] = useState({
+    program: 0,
+    budget: 0,
+    expense: 0,
     documents: 0,
     announcement: 0,
     feedback: 0,
@@ -139,20 +168,26 @@ function AppContent() {
   const officialSetupRequired = [2, 3].includes(Number(currentUser?.role_id))
     && currentUser?.setup_completed !== true;
   const chairpersonSetupRequired = isChairpersonRole && officialSetupRequired;
+  const realtimeTenantIds = Number(currentUser?.role_id) === 1
+    ? tenants.map(tenant => tenant.id)
+    : currentUser?.tenant_id || currentTenant?.id;
 
   useTenantFinancialRealtime(
     !officialSetupRequired && currentUser?.id && currentRole !== 'Viewer'
-      ? currentUser.tenant_id || currentTenant?.id
+      ? realtimeTenantIds
       : undefined,
     (tables) => {
       setRealtimeRefreshVersions(previous => ({
         ...previous,
+        program: previous.program + (tables.includes('program') ? 1 : 0),
+        budget: previous.budget + (tables.includes('budget') ? 1 : 0),
+        expense: previous.expense + (tables.includes('expense') ? 1 : 0),
         documents: previous.documents + (tables.includes('documents') ? 1 : 0),
         announcement: previous.announcement + (tables.includes('announcement') ? 1 : 0),
         feedback: previous.feedback + (tables.includes('feedback') ? 1 : 0),
       }));
     },
-    ['documents', 'announcement', 'feedback'],
+    ['program', 'budget', 'expense', 'documents', 'announcement', 'feedback'],
   );
 
   // Program registrations and notifications are private and must only load for authenticated roles.
@@ -774,28 +809,7 @@ function AppContent() {
 
     kabisigApi.getExpenses(currentTenant?.id).then(exps => {
       if (!isMounted) return;
-      setExpenses(exps.map((e: any): ExpenseRecord => ({
-          id: e.id,
-          programId: e.program_id || '',
-          budgetId: e.budget_id,
-          programTitle: e.program?.title || e.title,
-          category: e.budget?.category || 'Supplies',
-          amount: Number(e.gross_amount) || Number(e.amount) || 0,
-          supplier: e.payee || e.supplier || e.title || 'N/A',
-          taxType: e.tax_type === 'EXEMPT' ? 'Exempt' : e.tax_type || e.taxType || 'Non-VAT',
-          vatAmount: Number(e.vat_amount ?? e.vatAmount) || 0,
-          withholdingTax: Number(e.withholding_tax ?? e.withholdingTax) || 0,
-          netAmount: e.net_amount != null || e.netAmount != null
-            ? Number(e.net_amount ?? e.netAmount)
-            : undefined,
-          description: e.description || '',
-          date: e.expense_date || (e.created_at ? getPhilippineDateString(e.created_at) : ''),
-          dateLogged: e.expense_date || e.dateLogged || (e.created_at ? getPhilippineDateString(e.created_at) : ''),
-          voucherNumber: `DV-${e.id.slice(0, 6).toUpperCase()}`,
-          status: e.status === 'approved' ? 'Approved' : 'Pending',
-          payee: e.payee || e.title,
-          barangayId: e.tenant_id,
-      })));
+      setExpenses(exps.map(mapBackendExpense));
     }).catch(error => console.warn('Unable to load expenses for active role:', error));
 
 
@@ -807,6 +821,49 @@ function AppContent() {
     document.removeEventListener('visibilitychange', refreshProgramsWhenVisible);
   };
   }, [currentRole, currentTenant?.id, officialSetupRequired]);
+
+  useEffect(() => {
+    const hasFinancialUpdate = realtimeRefreshVersions.program > 0
+      || realtimeRefreshVersions.budget > 0
+      || realtimeRefreshVersions.expense > 0;
+    if (
+      !hasFinancialUpdate
+      || officialSetupRequired
+      || !currentRole
+      || currentRole === 'Viewer'
+      || !currentUser?.id
+      || !kabisigApi.getToken()
+    ) return;
+
+    let isMounted = true;
+    const canReadExpenses = [1, 2, 3].includes(Number(currentUser.role_id));
+    const refresh = async () => {
+      try {
+        const [programRows, expenseRows] = await Promise.all([
+          kabisigApi.getPrograms(),
+          canReadExpenses ? kabisigApi.getExpenses(currentTenant?.id) : Promise.resolve(null),
+        ]);
+        if (!isMounted) return;
+        setPrograms(programRows.map(mapBackendProgram));
+        if (expenseRows) setExpenses(expenseRows.map(mapBackendExpense));
+      } catch (error) {
+        console.error('Unable to refresh financial data after a realtime update:', error);
+      }
+    };
+    void refresh();
+    return () => {
+      isMounted = false;
+    };
+  }, [
+    currentRole,
+    currentTenant?.id,
+    currentUser?.id,
+    currentUser?.role_id,
+    officialSetupRequired,
+    realtimeRefreshVersions.program,
+    realtimeRefreshVersions.budget,
+    realtimeRefreshVersions.expense,
+  ]);
 
   useEffect(() => {
     if (
@@ -830,8 +887,17 @@ function AppContent() {
   useEffect(() => {
     if (!currentUser?.id || !kabisigApi.getToken()) return;
     let isMounted = true;
+    const tenantScopedRole = [2, 3].includes(Number(currentUser.role_id));
+    if (tenantScopedRole && currentUser.tenant_id) {
+      setTenants(previous => previous.filter(tenant => tenant.id === currentUser.tenant_id));
+    }
     kabisigApi.getBarangays().then((data) => {
-      if (!isMounted || !data || data.length === 0) return;
+      if (!isMounted || !Array.isArray(data)) return;
+      if (tenantScopedRole) {
+        setTenants(data);
+        return;
+      }
+      if (data.length === 0) return;
       setTenants(prev => prev.map(existing => {
         const fresh = data.find(b => b.id === existing.id);
         return fresh ? {
@@ -844,7 +910,7 @@ function AppContent() {
 
 
   return () => { isMounted = false; };
-  }, [currentUser?.id]);
+  }, [currentUser?.id, currentUser?.role_id, currentUser?.tenant_id]);
 
   // Keep currentTenant in step with the live tenants list so budget cards update after expenses or a refetch.
   useEffect(() => {
@@ -1699,29 +1765,7 @@ function AppContent() {
             }}
             onRefreshExpenses={async () => {
               const rows = await kabisigApi.getExpenses(currentTenant?.id);
-              setExpenses(rows.map((expense: any): ExpenseRecord => ({
-                id: expense.id,
-                programId: expense.program_id || '',
-                budgetId: expense.budget_id,
-                programTitle: expense.program?.title || expense.title,
-                category: expense.budget?.category || 'Supplies',
-                amount: Number(expense.gross_amount) || Number(expense.amount) || 0,
-                gross_amount: Number(expense.gross_amount) || 0,
-                supplier: expense.payee || expense.supplier || expense.title || 'N/A',
-                taxType: expense.tax_type === 'EXEMPT' ? 'Exempt' : expense.tax_type || expense.taxType || 'Non-VAT',
-                vatAmount: Number(expense.vat_amount ?? expense.vatAmount) || 0,
-                withholdingTax: Number(expense.withholding_tax ?? expense.withholdingTax) || 0,
-                netAmount: expense.net_amount != null || expense.netAmount != null
-                  ? Number(expense.net_amount ?? expense.netAmount)
-                  : undefined,
-                description: expense.description || '',
-                date: expense.expense_date || '',
-                dateLogged: expense.expense_date || '',
-                voucherNumber: `DV-${expense.id.slice(0, 6).toUpperCase()}`,
-                status: expense.status === 'approved' ? 'Approved' : 'Pending',
-                payee: expense.payee || expense.title,
-                barangayId: expense.tenant_id,
-              })));
+              setExpenses(rows.map(mapBackendExpense));
             }}
             onApproveDocument={async (id, notes) => {
               const result = await kabisigApi.approveDocument(id, notes);
@@ -1784,28 +1828,7 @@ function AppContent() {
           onAddExpense={handleLogExpense}
           onRefreshExpenses={async () => {
             const rows = await kabisigApi.getExpenses(currentTenant?.id);
-            setExpenses(rows.map((e: any): ExpenseRecord => ({
-              id: e.id,
-              programId: e.program_id || '',
-              budgetId: e.budget_id,
-              programTitle: e.program?.title || e.title,
-              category: e.budget?.category || 'Supplies',
-              amount: Number(e.gross_amount) || Number(e.amount) || 0,
-              supplier: e.payee || e.supplier || e.title || 'N/A',
-              taxType: e.tax_type === 'EXEMPT' ? 'Exempt' : e.tax_type || e.taxType || 'Non-VAT',
-              vatAmount: Number(e.vat_amount ?? e.vatAmount) || 0,
-              withholdingTax: Number(e.withholding_tax ?? e.withholdingTax) || 0,
-              netAmount: e.net_amount != null || e.netAmount != null
-                ? Number(e.net_amount ?? e.netAmount)
-                : undefined,
-              description: e.description || '',
-              date: e.expense_date || (e.created_at ? getPhilippineDateString(e.created_at) : ''),
-              dateLogged: e.expense_date || e.dateLogged || (e.created_at ? getPhilippineDateString(e.created_at) : ''),
-              voucherNumber: `DV-${e.id.slice(0, 6).toUpperCase()}`,
-              status: e.status === 'approved' ? 'Approved' : 'Pending',
-              payee: e.payee || e.title,
-              barangayId: e.tenant_id,
-            })));
+            setExpenses(rows.map(mapBackendExpense));
           }}
           onRefreshPrograms={async () => {
             const rows = await kabisigApi.getPrograms();

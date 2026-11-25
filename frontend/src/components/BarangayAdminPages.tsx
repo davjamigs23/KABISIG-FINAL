@@ -632,7 +632,8 @@ export default function BarangayAdminPages({
         };
         youthProfiles.forEach(youth => {
           const age = Number(youth.age);
-          const ageGroup = age >= 15 && age <= 17 ? '15-17'
+          const ageGroup = youth.is_age_out ? 'Age Out'
+            : age >= 15 && age <= 17 ? '15-17'
             : age >= 18 && age <= 21 ? '18-21'
               : age >= 22 && age <= 25 ? '22-25'
                 : age >= 26 && age <= 30 ? '26-30'
@@ -2625,7 +2626,7 @@ return (
                             </div>
                           </td>
                           <td className="px-2 py-3 align-top font-bold break-words">
-                            {p.age} yrs / <span className="text-slate-500 font-semibold">{p.sex}</span>
+                            {Number(p.age) > 0 ? `${p.age} yrs` : 'Age unavailable'} / <span className="text-slate-500 font-semibold">{p.sex || 'Not specified'}</span>
                           </td>
                           <td className="px-2 py-3 align-top font-semibold text-slate-500 break-words">
                             {p.address} ({p.zone || 'Not Specified'})
@@ -3659,16 +3660,18 @@ return (
                     </div>
                     {(() => {
                       const byGender: Record<string, number> = {};
-                      const byAge: Record<string, number> = { '15-17': 0, '18-24': 0, '25-30': 0 };
+                      const byAge: Record<string, number> = { '15-17': 0, '18-24': 0, '25-30': 0, 'Age Out': 0, 'Not Specified': 0 };
                       const byEdu: Record<string, number> = {};
                       const byEmp: Record<string, number> = {};
                       youthProfiles.forEach(y => {
                         const g = y.sex || 'Unspecified';
                         byGender[g] = (byGender[g] || 0) + 1;
-                        const a = Number(y.age) || 0;
-                        if (a >= 15 && a <= 17) byAge['15-17']++;
+                        const a = Number(y.age);
+                        if (y.is_age_out) byAge['Age Out']++;
+                        else if (a >= 15 && a <= 17) byAge['15-17']++;
                         else if (a >= 18 && a <= 24) byAge['18-24']++;
                         else if (a >= 25 && a <= 30) byAge['25-30']++;
+                        else byAge['Not Specified']++;
                         const e = y.educationalLevel || 'Not Specified';
                         byEdu[e] = (byEdu[e] || 0) + 1;
                         const em = y.employmentStatus || 'Not Specified';

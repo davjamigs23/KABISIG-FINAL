@@ -246,7 +246,11 @@ router.get('/demographics', async (_req: Request, res: Response): Promise<void> 
       .select('*', { count: 'exact', head: true })
       .eq('role_id', 4)
       .eq('status', 'active'),
-    supabaseAdmin.from('program_attendance').select('user_id', { count: 'exact', head: true }),
+    supabaseAdmin
+      .from('program_attendance')
+      .select('user_id, users!program_attendance_user_id_fkey!inner(role_id, status)', { count: 'exact', head: true })
+      .eq('users.role_id', 4)
+      .eq('users.status', 'active'),
     supabaseAdmin
       .from('resident_profile')
       .select('user_id, users!resident_profile_user_id_fkey!inner(role_id, status)', { count: 'exact', head: true })
