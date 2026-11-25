@@ -53,17 +53,38 @@ async function findOverlappingProgram(
 ) {
   let query = supabaseAdmin
     .from('program')
-    .select('id')
+    .select('id, tenant_id, start_date, end_date, status')
     .eq('tenant_id', tenantId)
     .in('status', ACTIVE_PROGRAM_STATUSES)
     .lte('start_date', endDate)
     .gte('end_date', startDate);
 
-  if (excludeProgramId) {
+  if (excludeProgramId !== undefined) {
     query = query.neq('id', excludeProgramId);
   }
 
-  return query.limit(1).maybeSingle();
+  const result = await query.limit(1).maybeSingle();
+  if (result.error) {
+    console.error('Failed to check for overlapping programs.', {
+      tenantId,
+      startDate,
+      endDate,
+      excludeProgramId,
+      error: result.error.message,
+    });
+  } else if (result.data) {
+    console.warn('Program date overlap detected.', {
+      program_id: result.data.id,
+      conflict_start_date: result.data.start_date,
+      conflict_end_date: result.data.end_date,
+      tenant_id: result.data.tenant_id,
+      status: result.data.status,
+      excludeProgramId,
+      requested_start_date: startDate,
+      requested_end_date: endDate,
+    });
+  }
+  return result;
 }
 
 router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): Promise<void> => {
@@ -396,7 +417,7 @@ router.put(
         existing.tenant_id,
         updatedStartDate,
         updatedEndDate,
-        id
+        existing.id
       );
       if (overlapError) {
         sendError(res, `Failed to check for overlapping programs: ${overlapError.message}`, 500);
