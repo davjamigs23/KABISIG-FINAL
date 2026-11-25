@@ -855,7 +855,7 @@ router.get(
       .limit(limit);
 
     const user = (req as AuthRequest).user!;
-    if (user.role_id !== 1) {
+    if (Number(user.role_id) !== 1) {
       if (!user.tenant_id) {
         sendError(res, 'Tenant scope missing from session.', 403);
         return;

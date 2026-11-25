@@ -35,82 +35,108 @@ export function formatAuditAction(action: string | null | undefined): string {
   return action.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function fmtAmount(n: any): string {
-  const num = Number(n);
-  if (!Number.isFinite(num)) return '0';
-  return num.toLocaleString('en-PH');
+function formatValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return 'not set';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (Array.isArray(value)) return value.map(formatValue).join(', ');
+  if (typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, item]) => `${formatKey(key)}: ${formatValue(item)}`)
+      .join('; ');
+  }
+  return String(value);
+}
+
+function formatKey(key: string): string {
+  return key.replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+}
+
+function formatAmount(value: unknown): string {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? `PHP ${amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : formatValue(value);
 }
 
 export function formatAuditDetails(detailsOrAction: any, maybeDetails?: any): string {
+  const action = maybeDetails !== undefined && typeof detailsOrAction === 'string'
+    ? detailsOrAction
+    : '';
   let details = maybeDetails !== undefined ? maybeDetails : detailsOrAction;
-  if (!details) return 'N/A';
+  if (details === null || details === undefined || details === '') return 'No additional details were recorded.';
 
-  // Parse JSON string if needed
   if (typeof details === 'string') {
     const cleaned = details.replace(/\s*\(Barangay:\s*[^)]*\)\s*$/, '').trim();
     try {
-      const parsed = JSON.parse(cleaned);
-      if (parsed && typeof parsed === 'object') details = parsed;
-      else return cleaned;
+      details = JSON.parse(cleaned);
     } catch {
-      return cleaned;
+      return cleaned || 'No additional details were recorded.';
     }
   }
-
-  // Barangay Settings Update (clean output - skip FY unless changed)
-  if (details.updated_by || details.chairperson || details.active_fiscal_year) {
-    const parts: string[] = [];
-    if (details.updated_by) parts.push('Updated By: ' + details.updated_by);
-    else if (details.chairperson) parts.push('Chairperson: ' + details.chairperson);
-    if (details.chairpersonEmail) parts.push('Email: ' + details.chairpersonEmail);
-    if (details.barangay_name) parts.push('Barangay: ' + details.barangay_name);
-    if (parts.length > 0) return parts.join(' | ');
+  if (!details || typeof details !== 'object' || Array.isArray(details)) {
+    return formatValue(details);
   }
 
-  // Diff format
-  if (details.changes && typeof details.changes === 'object') {
-    const parts: string[] = [];
-    for (const [key, val] of Object.entries(details.changes)) {
-      const v: any = val;
-      if (!v) continue;
-      parts.push(key.replace(/_/g, ' ').toUpperCase() + ': ' + (v.old || 'None') + ' -> ' + (v.new || 'None'));
-    }
-    if (parts.length > 0) return parts.join(' | ');
+  const record = details as Record<string, any>;
+  const title = record.title || record.subject;
+  const documentType = record.document_type || record.type || record.category;
+  const fileName = record.file_name || record.filename;
+
+  if (action === 'SUBMIT_DOCUMENT') {
+    const kind = documentType ? `${formatValue(documentType)} ` : '';
+    const titleText = title ? ` titled '${formatValue(title)}'` : '';
+    const fileText = fileName ? ` (File: ${formatValue(fileName)})` : '';
+    return `Uploaded a ${kind}document${titleText}${fileText}.`;
+  }
+  if (action === 'APPROVE_DOCUMENT') {
+    return `Approved the document${title ? ` titled '${formatValue(title)}'` : ''}.`;
+  }
+  if (action === 'REJECT_DOCUMENT') {
+    const reason = record.feedback || record.reason;
+    return `Rejected the document${title ? ` titled '${formatValue(title)}'` : ''}${reason ? `: ${formatValue(reason)}.` : '.'}`;
+  }
+  if (action === 'CREATE_ANNOUNCEMENT' || action === 'PUBLISH_ANNOUNCEMENT') {
+    const verb = action === 'PUBLISH_ANNOUNCEMENT' ? 'Published' : 'Created';
+    return `${verb} the announcement${title ? ` titled '${formatValue(title)}'` : ''}.`;
+  }
+  if (action === 'SUBMIT_FEEDBACK') {
+    return `Submitted feedback${title ? ` titled '${formatValue(title)}'` : ''}.`;
+  }
+  if (record.old_email || record.new_email) {
+    return `Changed the email from ${formatValue(record.old_email)} to ${formatValue(record.new_email)}.`;
+  }
+  if (record.gross_amount !== undefined || record.net_amount !== undefined) {
+    const amount = record.gross_amount !== undefined ? record.gross_amount : record.net_amount;
+    const item = title ? ` for '${formatValue(title)}'` : '';
+    const category = record.budget_category ? ` under ${formatValue(record.budget_category)}` : '';
+    return `Recorded an expense of ${formatAmount(amount)}${item}${category}.`;
+  }
+  if (record.amount !== undefined && record.category) {
+    const fiscalYear = record.fiscal_year ? ` for fiscal year ${formatValue(record.fiscal_year)}` : '';
+    return `Allocated ${formatAmount(record.amount)} to ${formatValue(record.category)}${fiscalYear}.`;
+  }
+  if (record.changes && typeof record.changes === 'object') {
+    const changes = Object.entries(record.changes as Record<string, unknown>).map(([key, value]) => {
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        const change = value as { old?: unknown; new?: unknown };
+        return `${formatKey(key)} changed from ${formatValue(change.old)} to ${formatValue(change.new)}.`;
+      }
+      return `${formatKey(key)} was updated to ${formatValue(value)}.`;
+    });
+    if (changes.length) return changes.join('\n');
+  }
+  if (record.outgoing_name || record.incoming_email) {
+    const outgoing = record.outgoing_name ? `${formatValue(record.outgoing_name)}'s role` : "the outgoing Chairperson's role";
+    const incoming = record.incoming_email ? ` to ${formatValue(record.incoming_email)}` : '';
+    return `Transferred ${outgoing}${incoming}${record.reason ? ` (${formatValue(record.reason)})` : ''}.`;
   }
 
-  // Email change
-  if (details.old_email || details.new_email) {
-    return 'Email: ' + (details.old_email || 'None') + ' -> ' + (details.new_email || 'None');
-  }
-
-  // Expense
-  if (details.gross_amount !== undefined || details.net_amount !== undefined) {
-    const amt = details.gross_amount !== undefined ? details.gross_amount : details.net_amount;
-    const parts: string[] = ['Recorded ' + fmtAmount(amt)];
-    if (details.title) parts.push('for "' + details.title + '"');
-    if (details.budget_category) parts.push('under ' + details.budget_category);
-    return parts.join(' ');
-  }
-
-  // Budget
-  if (details.amount !== undefined && details.category) {
-    const parts: string[] = ['Allocated ' + fmtAmount(details.amount)];
-    parts.push('to ' + details.category);
-    if (details.fiscal_year) parts.push('(FY ' + details.fiscal_year + ')');
-    return parts.join(' ');
-  }
-
-  // Fallback (skip noisy keys — including active_fiscal_year now)
-  const skipKeys = ['reason', 'updated_by', 'barangay_name', 'target_name', 'target_barangay', 'active_fiscal_year'];
-  try {
-    const entries = Object.entries(details).filter(([k, v]) => v !== undefined && v !== null && !skipKeys.includes(k));
-    if (entries.length > 0) {
-      return entries.map(([k, v]) => {
-        const val = typeof v === 'object' ? JSON.stringify(v) : String(v);
-        return k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) + ': ' + val;
-      }).join(' | ');
-    }
-  } catch {}
-
-  return 'System update recorded';
+  const hiddenKeys = new Set(['id', 'user_id', 'tenant_id', 'storage_path', 'updated_by', 'active_fiscal_year']);
+  const entries = Object.entries(record).filter(([key, value]) => (
+    value !== undefined
+    && value !== null
+    && !hiddenKeys.has(key)
+  ));
+  if (!entries.length) return 'System update recorded.';
+  return entries
+    .map(([key, value]) => `${formatKey(key)}: ${formatValue(value)}.`)
+    .join('\n');
 }

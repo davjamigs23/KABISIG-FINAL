@@ -300,9 +300,28 @@ export default function BarangayAdminPages({
   }, [activeMenu]);
 
   const [searchTerm, setSearchTerm] = useState('');
+  const [auditSearchTerm, setAuditSearchTerm] = useState('');
+  const [auditDateFilter, setAuditDateFilter] = useState('');
   const [reportSubTab, setReportSubTab] = useState<'executive'|'attendance'|'accomplishments'|'beneficiaries'|'demographics'|'financial'|'compliance'>('attendance');
   const [showClosedPolls, setShowClosedPolls] = useState(false);
   const barangayLogo = currentBarangay?.logo_url || currentBarangay?.logo || DEFAULT_BARANGAY_LOGOS[currentBarangay?.name || ''] || '/images/default-barangay.png';
+  const filteredAuditLogs = useMemo(() => {
+    const searchValue = auditSearchTerm.trim().toLowerCase();
+    const dateFormatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    return auditLogs.filter(log => {
+      const searchableText = `${log.user} ${log.action} ${log.timestamp}`.toLowerCase();
+      const matchesSearch = !searchValue || searchableText.includes(searchValue);
+      if (!matchesSearch) return false;
+      if (!auditDateFilter) return true;
+      const timestamp = new Date(log.timestamp);
+      return !Number.isNaN(timestamp.getTime()) && dateFormatter.format(timestamp) === auditDateFilter;
+    });
+  }, [auditDateFilter, auditLogs, auditSearchTerm]);
   const closedPolls = (resolutions || []).filter((resolution: any) =>
     String(resolution.status || '').toLowerCase() === 'closed'
     || Boolean(resolution.end_date && new Date(resolution.end_date).getTime() < Date.now())
@@ -4000,7 +4019,38 @@ return (
             <div className="space-y-6">
               <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-xs space-y-4">
                 <h3 className="text-lg font-extrabold text-[#091d64]">Barangay Official Activity & Audit Log</h3>
-                <AuditLogAccordion logs={auditLogs} />
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <label className="relative min-w-0 flex-1">
+                    <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500">Search user or action</span>
+                    <Search className="absolute left-3 top-9 h-4 w-4 text-slate-400" />
+                    <input
+                      type="search"
+                      value={auditSearchTerm}
+                      onChange={event => setAuditSearchTerm(event.target.value)}
+                      placeholder="Name or action"
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#091d64]"
+                    />
+                  </label>
+                  <label className="sm:w-52">
+                    <span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500">Filter by date</span>
+                    <input
+                      type="date"
+                      value={auditDateFilter}
+                      onChange={event => setAuditDateFilter(event.target.value)}
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#091d64]"
+                    />
+                  </label>
+                  {(auditSearchTerm || auditDateFilter) && (
+                    <button
+                      type="button"
+                      onClick={() => { setAuditSearchTerm(''); setAuditDateFilter(''); }}
+                      className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <AuditLogAccordion logs={filteredAuditLogs} />
               </div>
             </div>
           )}

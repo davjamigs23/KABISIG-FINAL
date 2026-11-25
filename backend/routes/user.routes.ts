@@ -948,17 +948,17 @@ router.get(
 
     const [registrationsResult, attendanceResult, feedbackResult] = await Promise.all([
       supabaseAdmin.from('program_registrations')
-        .select('id, program_id, status, registered_at, program(title, end_date)')
+        .select('id, program_id, status, registered_at, program:program!program_registrations_program_id_fkey(title, end_date)')
         .eq('user_id', youth.id)
         .eq('tenant_id', youth.tenant_id)
         .order('registered_at', { ascending: false }),
       supabaseAdmin.from('program_attendance')
-        .select('id, program_id, checked_in_at, program(title)')
+        .select('id, program_id, checked_in_at, program:program!program_attendance_program_id_fkey(title)')
         .eq('user_id', youth.id)
         .eq('tenant_id', youth.tenant_id)
         .order('checked_in_at', { ascending: false }),
       supabaseAdmin.from('feedback')
-        .select('id, subject, message, category, sentiment, status, created_at, program(title)')
+        .select('id, subject, message, category, sentiment, status, created_at')
         .eq('user_id', youth.id)
         .eq('tenant_id', youth.tenant_id)
         .eq('is_anonymous', false)

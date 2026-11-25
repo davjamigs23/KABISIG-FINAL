@@ -15,13 +15,17 @@ function getDateKey(timestamp: string): string {
   return `${part('year')}-${part('month')}-${part('day')}`;
 }
 
-function getDetailsJson(details: string): string {
-  try {
-    const parsed: unknown = JSON.parse(details);
-    return JSON.stringify(parsed, null, 2);
-  } catch {
-    return details || 'No structured diff was recorded.';
+function AuditDetailsView({ action, details }: { action: string; details: string }) {
+  const formatted = formatAuditDetails(action, details);
+  const lines = formatted.split(/\r?\n/).filter(Boolean);
+  if (lines.length > 1) {
+    return (
+      <ul className="list-disc space-y-1 pl-5 text-xs text-slate-600">
+        {lines.map((line, index) => <li key={`${index}-${line}`}>{line}</li>)}
+      </ul>
+    );
   }
+  return <p className="text-xs text-slate-600">{formatted}</p>;
 }
 
 export default function AuditLogAccordion({ logs }: { logs: SystemAuditLog[] }) {
@@ -55,10 +59,7 @@ export default function AuditLogAccordion({ logs }: { logs: SystemAuditLog[] }) 
                   </span>
                 </summary>
                 <div className="space-y-3 border-t border-slate-100 p-3">
-                  <p className="text-xs text-slate-600">{formatAuditDetails(log.action, log.details)}</p>
-                  <pre className="max-h-72 overflow-auto rounded-lg bg-slate-950 p-3 text-[10px] leading-relaxed text-slate-100 whitespace-pre-wrap break-words">
-                    {getDetailsJson(log.details)}
-                  </pre>
+                  <AuditDetailsView action={log.action} details={log.details} />
                 </div>
               </details>
             ))}

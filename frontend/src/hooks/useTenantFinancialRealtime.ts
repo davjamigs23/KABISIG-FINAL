@@ -2,9 +2,18 @@ import { useEffect, useRef } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import kabisigApi from '../lib/api';
 
-export function useTenantFinancialRealtime(tenantId: string | undefined, onChange: () => void): void {
+export type TenantRealtimeTable = 'program' | 'budget' | 'expense' | 'documents' | 'announcement' | 'feedback';
+
+const FINANCIAL_TABLES: TenantRealtimeTable[] = ['program', 'budget', 'expense'];
+
+export function useTenantFinancialRealtime(
+  tenantId: string | undefined,
+  onChange: (tables: readonly TenantRealtimeTable[]) => void,
+  tables: readonly TenantRealtimeTable[] = FINANCIAL_TABLES,
+): void {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const tablesKey = tables.join(',');
 
   useEffect(() => {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -18,14 +27,20 @@ export function useTenantFinancialRealtime(tenantId: string | undefined, onChang
     client.realtime.setAuth(accessToken);
 
     let refreshTimer: number | undefined;
-    const channel = client.channel('custom-all-channel');
-    for (const table of ['program', 'budget', 'expense']) {
+    const changedTables = new Set<TenantRealtimeTable>();
+    const channel = client.channel(`tenant-${tenantId}-${tablesKey}`);
+    for (const table of tablesKey.split(',') as TenantRealtimeTable[]) {
       channel.on(
         'postgres_changes',
         { event: '*', schema: 'public', table, filter: `tenant_id=eq.${tenantId}` },
         () => {
+          changedTables.add(table);
           if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
-          refreshTimer = window.setTimeout(() => onChangeRef.current(), 150);
+          refreshTimer = window.setTimeout(() => {
+            const tablesToRefresh = Array.from(changedTables);
+            changedTables.clear();
+            onChangeRef.current(tablesToRefresh);
+          }, 150);
         },
       );
     }
@@ -35,5 +50,5 @@ export function useTenantFinancialRealtime(tenantId: string | undefined, onChang
       if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
       void client.removeChannel(channel);
     };
-  }, [tenantId]);
+  }, [tablesKey, tenantId]);
 }

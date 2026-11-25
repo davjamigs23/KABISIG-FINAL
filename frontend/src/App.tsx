@@ -12,8 +12,10 @@ import BarangayAdminPages from './components/BarangayAdminPages';
 import OfficialPages from './components/OfficialPages';
 import YouthPages from './components/YouthPages';
 import ViewerPages from './components/ViewerPages';
+import GlobalFormBehavior from './components/GlobalFormBehavior';
 import { computeProgramStatus } from './lib/intelligence';
 import { resolveUserRole } from './lib/role-routing';
+import { useTenantFinancialRealtime } from './hooks/useTenantFinancialRealtime';
 import { 
   BarangayTenant, 
   Program, 
@@ -74,6 +76,25 @@ function mapBackendProgram(program: any): Program {
   };
 }
 
+function mapBackendDocument(document: any): DocumentRecord {
+  return {
+    id: document.id,
+    title: document.title,
+    category: normalizeDocumentCategory(document.document_type),
+    uploadedBy: document.submitter?.full_name || 'Official',
+    uploadedDate: document.created_at ? formatPhilippineDate(document.created_at) : '',
+    fileSize: '',
+    status: document.status === 'approved' ? 'Approved' : document.status === 'pending_approval' ? 'Pending' : document.status,
+    resolutionNumber: document.resolution_number || document.resolution_no || `DOC-${document.id.slice(0, 6).toUpperCase()}`,
+    resolution_number: document.resolution_number || document.resolution_no || `DOC-${document.id.slice(0, 6).toUpperCase()}`,
+    description: document.description ?? '',
+    fileUrl: document.file_url,
+    reviewFeedback: document.feedback || '',
+    designatedApprover: 'Hon. SK Chairperson',
+    barangayId: document.tenant_id,
+  };
+}
+
 function AppContent() {
   const router = useRouter();
   // --- Client state synchronized with the backend ---
@@ -94,6 +115,11 @@ function AppContent() {
   const [announcements, setAnnouncements] = useState<AnnouncementRecord[]>([]);
   const [auditLogs, setAuditLogs] = useState<SystemAuditLog[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [realtimeRefreshVersions, setRealtimeRefreshVersions] = useState({
+    documents: 0,
+    announcement: 0,
+    feedback: 0,
+  });
 
   // --- AUTHENTICATED USER SESSION ---
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -113,6 +139,21 @@ function AppContent() {
   const officialSetupRequired = [2, 3].includes(Number(currentUser?.role_id))
     && currentUser?.setup_completed !== true;
   const chairpersonSetupRequired = isChairpersonRole && officialSetupRequired;
+
+  useTenantFinancialRealtime(
+    !officialSetupRequired && currentUser?.id && currentRole !== 'Viewer'
+      ? currentUser.tenant_id || currentTenant?.id
+      : undefined,
+    (tables) => {
+      setRealtimeRefreshVersions(previous => ({
+        ...previous,
+        documents: previous.documents + (tables.includes('documents') ? 1 : 0),
+        announcement: previous.announcement + (tables.includes('announcement') ? 1 : 0),
+        feedback: previous.feedback + (tables.includes('feedback') ? 1 : 0),
+      }));
+    },
+    ['documents', 'announcement', 'feedback'],
+  );
 
   // Program registrations and notifications are private and must only load for authenticated roles.
   const programIdsKey = programs.map(program => program.id).join(',');
@@ -265,7 +306,7 @@ function AppContent() {
 
 
   return () => { isMounted = false; };
-  }, [currentRole, currentTenant?.id, currentUser?.id, officialSetupRequired]);
+  }, [currentRole, currentTenant?.id, currentUser?.id, officialSetupRequired, realtimeRefreshVersions.announcement]);
 
   // --- VIEWER PORTAL PUBLIC DATA (no auth) ---
   useEffect(() => {
@@ -728,22 +769,7 @@ function AppContent() {
 
     kabisigApi.getDocuments().then(docs => {
       if (!isMounted) return;
-      setDocuments(docs.map((d: any): DocumentRecord => ({
-        id: d.id,
-        title: d.title,
-        category: normalizeDocumentCategory(d.document_type),
-        uploadedBy: d.submitter?.full_name || 'Official',
-        uploadedDate: d.created_at ? formatPhilippineDate(d.created_at) : '',
-        fileSize: '',
-        status: d.status === 'approved' ? 'Approved' : d.status === 'pending_approval' ? 'Pending' : d.status,
-        resolutionNumber: d.resolution_number || d.resolution_no || `DOC-${d.id.slice(0, 6).toUpperCase()}`,
-        resolution_number: d.resolution_number || d.resolution_no || `DOC-${d.id.slice(0, 6).toUpperCase()}`,
-        description: d.description ?? '',
-        fileUrl: d.file_url,
-        reviewFeedback: d.feedback || '',
-        designatedApprover: 'Hon. SK Chairperson',
-        barangayId: d.tenant_id,
-      })));
+      setDocuments(docs.map(mapBackendDocument));
     }).catch(error => console.warn('Unable to load documents for active role:', error));
 
     kabisigApi.getExpenses(currentTenant?.id).then(exps => {
@@ -781,6 +807,24 @@ function AppContent() {
     document.removeEventListener('visibilitychange', refreshProgramsWhenVisible);
   };
   }, [currentRole, currentTenant?.id, officialSetupRequired]);
+
+  useEffect(() => {
+    if (
+      realtimeRefreshVersions.documents === 0
+      || officialSetupRequired
+      || !currentRole
+      || currentRole === 'Viewer'
+      || !currentUser?.id
+      || !kabisigApi.getToken()
+    ) return;
+    let isMounted = true;
+    kabisigApi.getDocuments().then(docs => {
+      if (isMounted) setDocuments(docs.map(mapBackendDocument));
+    }).catch(error => console.warn('Unable to refresh documents after a realtime update:', error));
+    return () => {
+      isMounted = false;
+    };
+  }, [currentRole, currentUser?.id, officialSetupRequired, realtimeRefreshVersions.documents]);
 
   // After login, reload barangays with the user's token: the pre-login list hides contact details.
   useEffect(() => {
@@ -972,7 +1016,7 @@ function AppContent() {
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
 
-  }, [currentRole, currentTenant?.id, currentUser?.id, officialSetupRequired]);
+  }, [currentRole, currentTenant?.id, currentUser?.id, officialSetupRequired, realtimeRefreshVersions.feedback]);
 
   useEffect(() => {
     if (officialSetupRequired) {
@@ -1833,7 +1877,7 @@ function AppContent() {
             <h3 className="text-lg font-black text-slate-900">Schedule conflict detected</h3>
             <p className="mt-2 text-sm text-slate-600">This program overlaps an active program in the same Barangay. Do you want to create it anyway?</p>
             <div className="mt-6 flex justify-end gap-3">
-              <button type="button" onClick={() => { programConflict.resolve(false); setProgramConflict(null); }} className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600">Cancel</button>
+              <button type="button" data-escape-close onClick={() => { programConflict.resolve(false); setProgramConflict(null); }} className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600">Cancel</button>
               <button type="button" onClick={async () => { const pending = programConflict; setProgramConflict(null); const confirmed = await handleCreateProgram(pending.program, true); pending.resolve(confirmed); }} className="rounded-xl bg-[#091d64] px-4 py-2 text-xs font-bold text-white">Create Anyway</button>
             </div>
           </div>
@@ -1856,7 +1900,7 @@ function AppContent() {
               })}
             </p>
             <div className="space-y-2">
-              <button onClick={() => setGlobalAlert(null)} className="w-full py-3 bg-[#091d64] hover:bg-[#102a83] text-white font-bold rounded-xl text-xs transition-colors cursor-pointer">
+              <button data-escape-close onClick={() => setGlobalAlert(null)} className="w-full py-3 bg-[#091d64] hover:bg-[#102a83] text-white font-bold rounded-xl text-xs transition-colors cursor-pointer">
                 Okay, I understand
               </button>
               {globalAlert.message.startsWith('Access Denied!') && (
@@ -1882,6 +1926,7 @@ function AppContent() {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <GlobalFormBehavior />
       <AppContent />
     </QueryClientProvider>
   );

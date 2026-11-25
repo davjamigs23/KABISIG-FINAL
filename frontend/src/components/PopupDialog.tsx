@@ -44,7 +44,7 @@ export default function PopupDialog({ notice, onClose }: PopupDialogProps) {
         <p className="mb-6 whitespace-pre-wrap text-sm text-slate-600">{notice.message}</p>
         {isConfirmation ? (
           <div className="flex gap-2">
-            <button type="button" onClick={onClose} className="flex-1 rounded-lg border border-slate-200 py-2 font-bold text-slate-600 hover:bg-slate-50">
+            <button type="button" data-escape-close onClick={onClose} className="flex-1 rounded-lg border border-slate-200 py-2 font-bold text-slate-600 hover:bg-slate-50">
               {notice.cancelLabel || 'Cancel'}
             </button>
             <button type="button" onClick={handleConfirm} className="flex-1 rounded-lg bg-[#091d64] py-2 font-bold text-white hover:bg-[#102a83]">
@@ -52,7 +52,7 @@ export default function PopupDialog({ notice, onClose }: PopupDialogProps) {
             </button>
           </div>
         ) : (
-          <button type="button" onClick={onClose} className="w-full rounded-lg bg-[#091d64] py-2 font-bold text-white hover:bg-[#102a83]">
+          <button type="button" data-escape-close onClick={onClose} className="w-full rounded-lg bg-[#091d64] py-2 font-bold text-white hover:bg-[#102a83]">
             Okay, I understand
           </button>
         )}
