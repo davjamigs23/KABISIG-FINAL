@@ -248,7 +248,10 @@ function AppContent() {
         where: announcement.where_text || '',
         when: announcement.event_when || '',
         hashtags: announcement.hashtags || '',
-        imageUrl: announcement.image_url || '',
+        imageUrl: announcement.image_urls?.[0] || announcement.image_url || '',
+        imageUrls: announcement.image_urls || (announcement.image_url ? [announcement.image_url] : []),
+        imagePaths: announcement.image_paths || announcement.image_urls || [],
+        imagePath: announcement.image_path || '',
         author: announcement.author?.full_name || 'SK Official',
         barangay: tenants.find(tenant => tenant.id === announcement.tenant_id)?.name || 'Barangay',
         datePosted: (announcement.published_at || announcement.created_at)
@@ -279,7 +282,10 @@ function AppContent() {
         where: a.where_text || '',
         when: a.event_when || '',
         hashtags: a.hashtags || '',
-        imageUrl: a.image_url || '',
+        imageUrl: a.image_urls?.[0] || a.image_url || '',
+        imageUrls: a.image_urls || (a.image_url ? [a.image_url] : []),
+        imagePaths: a.image_paths || a.image_urls || [],
+        imagePath: a.image_path || '',
         author: a.author?.full_name || 'SK Official',
         barangay: a.barangay?.name || 'Barangay',
         datePosted: (a.published_at || a.created_at)
@@ -517,7 +523,8 @@ function AppContent() {
               suffix: (user as any).suffix ?? null,
               sex: resident.sex || meta.sex || '',
               birthdate: resident.birthdate || meta.birthdate || '',
-              age: Number(meta.age) || 0,
+              age: Number(user.age ?? meta.age) || 0,
+              is_age_out: user.is_age_out === true,
               civilStatus: resident.civil_status || resident.marital_status || meta.civilStatus || '',
               address: resident.address || meta.address || '',
               zone: resident.zone || meta.zone || '',
@@ -730,6 +737,7 @@ function AppContent() {
         fileSize: '',
         status: d.status === 'approved' ? 'Approved' : d.status === 'pending_approval' ? 'Pending' : d.status,
         resolutionNumber: d.resolution_number || d.resolution_no || `DOC-${d.id.slice(0, 6).toUpperCase()}`,
+        resolution_number: d.resolution_number || d.resolution_no || `DOC-${d.id.slice(0, 6).toUpperCase()}`,
         description: d.description ?? '',
         fileUrl: d.file_url,
         reviewFeedback: d.feedback || '',
@@ -1641,6 +1649,36 @@ function AppContent() {
             onApproveYouth={handleApproveYouth}
             onRejectYouth={handleRejectYouth}
             onAddExpense={handleLogExpense}
+            onRefreshPrograms={async () => {
+              const rows = await kabisigApi.getPrograms();
+              setPrograms(rows.map(mapBackendProgram));
+            }}
+            onRefreshExpenses={async () => {
+              const rows = await kabisigApi.getExpenses(currentTenant?.id);
+              setExpenses(rows.map((expense: any): ExpenseRecord => ({
+                id: expense.id,
+                programId: expense.program_id || '',
+                budgetId: expense.budget_id,
+                programTitle: expense.program?.title || expense.title,
+                category: expense.budget?.category || 'Supplies',
+                amount: Number(expense.gross_amount) || Number(expense.amount) || 0,
+                gross_amount: Number(expense.gross_amount) || 0,
+                supplier: expense.payee || expense.supplier || expense.title || 'N/A',
+                taxType: expense.tax_type === 'EXEMPT' ? 'Exempt' : expense.tax_type || expense.taxType || 'Non-VAT',
+                vatAmount: Number(expense.vat_amount ?? expense.vatAmount) || 0,
+                withholdingTax: Number(expense.withholding_tax ?? expense.withholdingTax) || 0,
+                netAmount: expense.net_amount != null || expense.netAmount != null
+                  ? Number(expense.net_amount ?? expense.netAmount)
+                  : undefined,
+                description: expense.description || '',
+                date: expense.expense_date || '',
+                dateLogged: expense.expense_date || '',
+                voucherNumber: `DV-${expense.id.slice(0, 6).toUpperCase()}`,
+                status: expense.status === 'approved' ? 'Approved' : 'Pending',
+                payee: expense.payee || expense.title,
+                barangayId: expense.tenant_id,
+              })));
+            }}
             onApproveDocument={async (id, notes) => {
               const result = await kabisigApi.approveDocument(id, notes);
               if (!result.success || !result.data) throw new Error(result.message || 'Document approval failed.');
@@ -1724,6 +1762,10 @@ function AppContent() {
               payee: e.payee || e.title,
               barangayId: e.tenant_id,
             })));
+          }}
+          onRefreshPrograms={async () => {
+            const rows = await kabisigApi.getPrograms();
+            setPrograms(rows.map(mapBackendProgram));
           }}
           onAddDocument={(d) => setDocuments(prev => [d, ...prev])}
           onUpdateDocument={(d) => setDocuments(prev => prev.map(document => document.id === d.id ? d : document))}

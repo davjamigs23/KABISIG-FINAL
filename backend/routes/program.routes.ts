@@ -35,6 +35,16 @@ const AttendanceScanSchema = z.object({
 
 const ACTIVE_PROGRAM_STATUSES = ['upcoming', 'ongoing'];
 
+function getAge(birthdate: string): number {
+  const date = new Date(birthdate);
+  if (Number.isNaN(date.getTime())) return -1;
+  const today = new Date();
+  let age = today.getFullYear() - date.getFullYear();
+  if (today.getMonth() < date.getMonth()
+    || (today.getMonth() === date.getMonth() && today.getDate() < date.getDate())) age -= 1;
+  return age;
+}
+
 async function findOverlappingProgram(
   tenantId: string,
   startDate: string,
@@ -520,10 +530,31 @@ router.post(
     const programId = String(req.params.id || '');
     const user = (req as AuthRequest).user!;
 
+    if (Number(user.role_id) !== 4) {
+      sendError(res, 'Only Youth Constituents can register for programs.', 403);
+      return;
+    }
+
     // STRICT CHECK: Block pending users from registering
-    const { data: profile } = await supabaseAdmin.from('resident_profile').select('verification_status').eq('user_id', user.id).maybeSingle();
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('resident_profile')
+      .select('verification_status, birthdate')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (profileError) {
+      sendError(res, `Could not verify your youth profile: ${profileError.message}`, 500);
+      return;
+    }
     if (!profile || profile.verification_status?.toLowerCase() !== 'verified') {
       sendError(res, 'Your uploaded ID is currently under review. You will be able to register once the SK Chairperson approves it.', 403);
+      return;
+    }
+    const age = profile.birthdate ? getAge(profile.birthdate) : -1;
+    if (age < 15 || age > 30) {
+      sendError(res, 'Youth Constituents must be 15 to 30 years old to register for new programs.', 403, {
+        code: 'YOUTH_AGE_OUT',
+        age: age >= 0 ? age : null,
+      });
       return;
     }
 

@@ -50,6 +50,7 @@ export interface BarangayTenant {
 }
 
 export interface YouthProfile {
+  is_age_out?: boolean;
   is_demoted?: boolean;
   has_edited_profile?: boolean;
   userId?: string;
@@ -265,7 +266,9 @@ export interface AnnouncementRecord {
   when?: string;
   hashtags?: string;
   imageUrl?: string;
+  imageUrls?: string[];
   imagePath?: string;
+  imagePaths?: string[];
   author: string;
   barangay: string;
   datePosted: string;

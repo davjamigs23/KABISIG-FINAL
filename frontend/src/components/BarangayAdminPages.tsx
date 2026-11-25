@@ -5,7 +5,6 @@ import { generateBudgetUtilizationReport } from '../lib/pdfReports';
 import ProfileSettings from './ProfileSettings';
 import RestrictedUsersPanel from './RestrictedUsersPanel';
 import RestrictedUsers from './RestrictedUsers';
-import { formatAuditDetails } from '../lib/auditFormatter';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CartesianGrid } from 'recharts';
 import { FolderClosed } from 'lucide-react';
@@ -100,6 +99,8 @@ import { DEFAULT_BARANGAY_LOGOS } from '../data';
 import kabisigApi from '../lib/api';
 import { openPrintableReport } from '../lib/reportGenerator';
 import PopupDialog, { PopupMessage } from './PopupDialog';
+import { useTenantFinancialRealtime } from '../hooks/useTenantFinancialRealtime';
+import AuditLogAccordion from './AuditLogAccordion';
 
 // Distinct calendar colors per program — deterministic hash so colors are consistent across reloads
 const CALENDAR_COLORS: string[] = [
@@ -180,6 +181,8 @@ export interface BarangayAdminPagesProps {
   onUpdateProgram: (program: Program) => Promise<boolean>;
   onDeleteProgram: (programId: string) => Promise<boolean>;
   onAnnouncementsChanged?: (announcements: AnnouncementRecord[]) => void;
+  onRefreshPrograms?: () => Promise<void>;
+  onRefreshExpenses?: () => Promise<void>;
   onTotalBudgetSaved?: (allocatedBudget: number, fiscalYear: number) => void;
   onLogout: () => void;
 }
@@ -209,6 +212,8 @@ export default function BarangayAdminPages({
   onUpdateProgram,
   onDeleteProgram,
   onAnnouncementsChanged,
+  onRefreshPrograms,
+  onRefreshExpenses,
   onTotalBudgetSaved,
   onLogout
 }: BarangayAdminPagesProps) {
@@ -691,6 +696,27 @@ export default function BarangayAdminPages({
 
   const [inspectProfile, setInspectProfile] = useState<YouthProfile | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
+  const [historyYouth, setHistoryYouth] = useState<YouthProfile | null>(null);
+  const [youthHistory, setYouthHistory] = useState<{ registrations: any[]; attendance: any[]; feedback: any[] } | null>(null);
+  const [youthHistoryLoading, setYouthHistoryLoading] = useState(false);
+  const [youthHistoryError, setYouthHistoryError] = useState('');
+
+  const openYouthHistory = async (youth: YouthProfile) => {
+    setHistoryYouth(youth);
+    setYouthHistory(null);
+    setYouthHistoryError('');
+    setYouthHistoryLoading(true);
+    try {
+      if (!youth.userId) throw new Error('The youth account identifier is unavailable.');
+      const result = await kabisigApi.getYouthEngagementHistory(youth.userId);
+      if (!result.success || !result.data) throw new Error(result.message || 'Engagement history could not be loaded.');
+      setYouthHistory(result.data);
+    } catch (error) {
+      setYouthHistoryError(error instanceof Error ? error.message : 'Engagement history could not be loaded.');
+    } finally {
+      setYouthHistoryLoading(false);
+    }
+  };
 
   // Panel rec #12: ID verification preview state
   const [youthVerification, setYouthVerification] = useState<any>(null);
@@ -781,6 +807,7 @@ export default function BarangayAdminPages({
   const [budgetYear, setBudgetYear] = useState(String(currentBarangay?.active_fiscal_year || new Date().getFullYear()));
   const [availableYears, setAvailableYears] = useState<number[]>([new Date().getFullYear()]);
   const [budgetProgramFilter, setBudgetProgramFilter] = useState('All Programs');
+  const [expandedBudgetProgramId, setExpandedBudgetProgramId] = useState<string | null>(null);
   const [budgetAllocations, setBudgetAllocations] = useState<any[]>([]);
   const [showRecordExpense, setShowRecordExpense] = useState(false);
   const [showSetTotal, setShowSetTotal] = useState(false);
@@ -829,6 +856,16 @@ export default function BarangayAdminPages({
       isMounted = false;
     };
   }, [currentBarangay?.id, budgetYear]);
+
+  useTenantFinancialRealtime(currentBarangay?.id, () => {
+    void onRefreshPrograms?.();
+    void onRefreshExpenses?.();
+    if (currentBarangay?.id) {
+      void kabisigApi.getBudgets(currentBarangay.id, Number(budgetYear))
+        .then(setBudgetAllocations)
+        .catch(error => console.error('Failed to refresh budget allocations after a realtime update:', error));
+    }
+  });
 
   // Fetch all available years for the dropdown
   useEffect(() => {
@@ -1166,16 +1203,12 @@ export default function BarangayAdminPages({
   const [annWhen, setAnnWhen] = useState('');
   const [annContent, setAnnContent] = useState('');
   const [annHashtags, setAnnHashtags] = useState('');
-  const [annImageFile, setAnnImageFile] = useState<File | null>(null);
-  const [annImagePreview, setAnnImagePreview] = useState('');
-  const [annImagePath, setAnnImagePath] = useState<string | null>(null);
+  const [announcementImages, setAnnouncementImages] = useState<Array<{ file: File | null; preview: string; path: string }>>([]);
   const [annImageUploading, setAnnImageUploading] = useState(false);
   const annImageUploadRequestRef = useRef(0);
   useEffect(() => {
     if (activeMenu !== 'announcements') {
-      setAnnImageFile(null);
-      setAnnImagePreview('');
-      setAnnImagePath(null);
+      setAnnouncementImages([]);
       setAnnImageUploading(false);
     }
     return () => {
@@ -1296,8 +1329,10 @@ export default function BarangayAdminPages({
     where: announcement.where_text || '',
     when: announcement.event_when || '',
     hashtags: announcement.hashtags || '',
-    imageUrl: announcement.image_url || '',
+    imageUrl: announcement.image_urls?.[0] || announcement.image_url || '',
+    imageUrls: announcement.image_urls || (announcement.image_url ? [announcement.image_url] : []),
     imagePath: announcement.image_path || '',
+    imagePaths: announcement.image_paths || announcement.image_urls || (announcement.image_path ? [announcement.image_path] : []),
     author: formatOfficialName(
       announcement.author?.full_name || currentUser?.full_name || 'SK Official',
       announcement.author?.sex || currentUser?.sex,
@@ -1335,12 +1370,19 @@ export default function BarangayAdminPages({
     void refreshAnnouncements();
   }, [currentBarangay?.id]);
 
-  const handleAnnouncementImageSelected = async (file: File | null) => {
-    if (!file) return;
-    const validMime = file.type === 'image/jpeg' || file.type === 'image/png';
-    const validExtension = /\.(jpe?g|png)$/i.test(file.name);
-    if (!validMime || !validExtension || file.size > 3 * 1024 * 1024) {
-      setAnnouncementError('Maximum file size is 3MB. Please compress your file.');
+  const handleAnnouncementImageSelected = async (files: FileList | null) => {
+    if (!files?.length) return;
+    const selectedFiles = Array.from(files);
+    if (announcementImages.length + selectedFiles.length > 10) {
+      setAnnouncementError('An announcement can include up to 10 images.');
+      return;
+    }
+    if (selectedFiles.some(file => {
+      const validMime = file.type === 'image/jpeg' || file.type === 'image/png';
+      const validExtension = /\.(jpe?g|png)$/i.test(file.name);
+      return !validMime || !validExtension || file.size > 3 * 1024 * 1024;
+    })) {
+      setAnnouncementError('Each image must be a JPG or PNG no larger than 3MB.');
       return;
     }
     const accessToken = kabisigApi.getToken();
@@ -1352,29 +1394,35 @@ export default function BarangayAdminPages({
     const uploadRequestId = ++annImageUploadRequestRef.current;
     setAnnouncementError('');
     setAnnouncementSuccess('');
-    setAnnImageFile(file);
-    setAnnImagePath(null);
-    setAnnImagePreview('');
     setAnnImageUploading(true);
+    const storage = createAnnouncementStorageClient(accessToken).storage.from('announcement-pubmats');
+    const uploadedImages: Array<{ file: File; preview: string; path: string }> = [];
     try {
-      const safeFileName = file.name.split(/[\\/]/).pop()?.replace(/[^A-Za-z0-9._-]/g, '_') || 'announcement-pubmat';
-      const path = `${currentBarangay.id}/${crypto.randomUUID()}/${safeFileName}`;
-      const storage = createAnnouncementStorageClient(accessToken).storage.from('announcement-pubmats');
-      const { data: upload, error: uploadError } = await storage.upload(path, file, {
-        contentType: file.type,
-        upsert: false,
-      });
-      if (uploadError) throw new Error(`Announcement image upload failed: ${uploadError.message}`);
-      if (uploadRequestId !== annImageUploadRequestRef.current) return;
-
-      setAnnImagePath(upload.path);
-      const { data: signedUrl, error: signedUrlError } = await storage.createSignedUrl(upload.path, 60 * 60);
-      if (signedUrlError || !signedUrl?.signedUrl) {
-        throw new Error(`Image uploaded, but its signed preview URL could not be created: ${signedUrlError?.message || 'No URL was returned.'}`);
+      for (const file of selectedFiles) {
+        const safeFileName = file.name.split(/[\\/]/).pop()?.replace(/[^A-Za-z0-9._-]/g, '_') || 'announcement-pubmat';
+        const path = `${currentBarangay.id}/${crypto.randomUUID()}/${safeFileName}`;
+        const { data: upload, error: uploadError } = await storage.upload(path, file, {
+          contentType: file.type,
+          upsert: false,
+        });
+        if (uploadError) throw new Error(`Announcement image upload failed: ${uploadError.message}`);
+        const { data: signedUrl, error: signedUrlError } = await storage.createSignedUrl(upload.path, 60 * 60);
+        if (signedUrlError || !signedUrl?.signedUrl) {
+          await storage.remove([upload.path]);
+          throw new Error(`Image uploaded, but its signed preview URL could not be created: ${signedUrlError?.message || 'No URL was returned.'}`);
+        }
+        uploadedImages.push({ file, preview: signedUrl.signedUrl, path: upload.path });
       }
-      if (uploadRequestId !== annImageUploadRequestRef.current) return;
-      setAnnImagePreview(signedUrl.signedUrl);
+      if (uploadRequestId !== annImageUploadRequestRef.current) {
+        await storage.remove(uploadedImages.map(image => image.path));
+        return;
+      }
+      setAnnouncementImages(previous => [...previous, ...uploadedImages]);
     } catch (error) {
+      if (uploadedImages.length) {
+        const { error: cleanupError } = await storage.remove(uploadedImages.map(image => image.path));
+        if (cleanupError) console.error('Failed to clean up partially uploaded announcement images:', cleanupError);
+      }
       if (uploadRequestId !== annImageUploadRequestRef.current) return;
       setAnnouncementError(error instanceof Error ? error.message : 'Announcement image upload failed.');
     } finally {
@@ -1382,14 +1430,29 @@ export default function BarangayAdminPages({
     }
   };
 
+  const removeAnnouncementImage = async (index: number) => {
+    const image = announcementImages[index];
+    if (!image) return;
+    if (image.file) {
+      const accessToken = kabisigApi.getToken();
+      if (!accessToken) {
+        setAnnouncementError('Sign in again before removing an uploaded announcement image.');
+        return;
+      }
+      const { error } = await createAnnouncementStorageClient(accessToken)
+        .storage.from('announcement-pubmats').remove([image.path]);
+      if (error) {
+        setAnnouncementError(`The uploaded image could not be removed: ${error.message}`);
+        return;
+      }
+    }
+    setAnnouncementImages(previous => previous.filter((_, imageIndex) => imageIndex !== index));
+  };
+
   const handlePublishAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!annTitle.trim() || !annWhat.trim() || !annWhere.trim() || !annWhen.trim()
       || !annContent.trim() || !annHashtags.trim() || isSubmittingAnnouncement) return;
-    if (annImageFile && !annImagePath) {
-      setAnnouncementError('Wait for the announcement image upload to finish successfully before publishing.');
-      return;
-    }
     setIsSubmittingAnnouncement(true);
     setAnnouncementError('');
     setAnnouncementSuccess('');
@@ -1405,7 +1468,7 @@ export default function BarangayAdminPages({
         status: editingAnnouncementId
           ? announcementsList.find(item => item.id === editingAnnouncementId)?.status === 'draft' ? 'draft' as const : 'published' as const
           : 'published' as const,
-        image_path: annImagePath,
+        image_urls: announcementImages.map(image => image.path),
       };
       const result = editingAnnouncementId
         ? await kabisigApi.updateAnnouncement(editingAnnouncementId, payload)
@@ -1422,9 +1485,7 @@ export default function BarangayAdminPages({
       setAnnWhen('');
       setAnnContent('');
       setAnnHashtags('');
-      setAnnImageFile(null);
-      setAnnImagePreview('');
-      setAnnImagePath(null);
+      setAnnouncementImages([]);
       setEditingAnnouncementId(null);
       if (!wasEditing && annPostToFb) {
         const facebookResult = await kabisigApi.publishAnnouncementToFacebook(result.data.id);
@@ -1458,9 +1519,13 @@ export default function BarangayAdminPages({
     setAnnWhen(announcement.when || '');
     setAnnContent(announcement.content);
     setAnnHashtags(announcement.hashtags || '');
-    setAnnImageFile(null);
-    setAnnImagePreview(announcement.imageUrl || '');
-    setAnnImagePath(announcement.imagePath || null);
+    const imagePaths = announcement.imagePaths || (announcement.imagePath ? [announcement.imagePath] : []);
+    const imageUrls = announcement.imageUrls || (announcement.imageUrl ? [announcement.imageUrl] : []);
+    setAnnouncementImages(imagePaths.map((path, index) => ({
+      file: null,
+      path,
+      preview: imageUrls[index] || '',
+    })));
     setAnnouncementError('');
     setAnnouncementSuccess('');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1474,9 +1539,7 @@ export default function BarangayAdminPages({
     setAnnWhen('');
     setAnnContent('');
     setAnnHashtags('');
-    setAnnImageFile(null);
-    setAnnImagePreview('');
-    setAnnImagePath(null);
+    setAnnouncementImages([]);
     setAnnouncementError('');
   };
 
@@ -1560,7 +1623,7 @@ export default function BarangayAdminPages({
       const programId = budget.program_id || budget.programId;
       const program = programs.find(p => p.id === programId)
         || programs.find(p => p.title.trim().toLowerCase() === String(budget.category || '').trim().toLowerCase());
-      const spent = expenses
+      const programExpenses = expenses
         .filter((expense: any) => {
           const expenseDate = expense.expense_date || expense.created_at || expense.date;
           if (expenseDate && new Date(expenseDate).getFullYear() !== Number(budgetYear)) return false;
@@ -1569,16 +1632,19 @@ export default function BarangayAdminPages({
           const expenseProgramId = expense.programId || expense.program_id;
           return Boolean(programId && String(expenseProgramId) === String(programId))
             || Boolean(program && expense.programId === program.id);
-        })
-        .reduce((sum, expense: any) => sum + Number(expense.gross_amount ?? expense.amount ?? 0), 0);
+        });
+      const spent = programExpenses.reduce((sum, expense: any) => sum + Number(expense.gross_amount ?? expense.amount ?? 0), 0);
       const remaining = allocated - spent;
       const rate = allocated > 0 ? Number(((spent / allocated) * 100).toFixed(1)) : 0;
       return {
+        id: String(budget.id),
+        programId: String(programId || ''),
         program: program?.title || budget.category || 'Unallocated',
         allocated,
         spent,
         remaining,
-        rate
+        rate,
+        expenses: programExpenses,
       };
     })
     .filter(row => String(row.program || '').trim().toLowerCase() !== 'unassigned expenses'),
@@ -2501,12 +2567,12 @@ return (
                 <div className="border border-slate-100 rounded-lg overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
                   <table className="w-full table-fixed text-left text-xs text-slate-600 min-w-[720px] md:min-w-0">
                     <colgroup>
-                      <col style={{ width: '24%' }} />
+                      <col style={{ width: '20%' }} />
                       <col style={{ width: '11%' }} />
                       <col style={{ width: '19%' }} />
                       <col style={{ width: '20%' }} />
                       <col style={{ width: '10%' }} />
-                      <col style={{ width: '16%' }} />
+                      <col style={{ width: '18%' }} />
                     </colgroup>
                     <thead className="bg-slate-50 text-[10px] text-slate-500 font-extrabold uppercase border-b border-slate-100">
                       <tr>
@@ -2515,7 +2581,7 @@ return (
                         <th className="px-2 py-3 break-words">Residency Address</th>
                         <th className="px-2 py-3 break-words">Education & Scholarship</th>
                         <th className="px-2 py-3 text-center break-words">Status</th>
-                        <th className="px-2 py-3 text-center break-words">Desk Validation</th>
+                        <th className="px-2 py-3 text-center break-words">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium text-slate-700">{!youthProfilesLoading && !youthProfilesError && filteredProfiles.map(p => (
@@ -2525,6 +2591,11 @@ return (
                               <ProfileAvatar name={p.name} src={p.profilePic} alt={p.name} className="w-7 h-7 shrink-0 rounded-full border border-slate-100" />
                               <div className="min-w-0">
                                 <span className="block break-words font-bold">{p.name}</span>
+                                {p.is_age_out && (
+                                  <span className="mt-1 inline-block rounded bg-rose-100 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-rose-800">
+                                    Age Out (Inactive)
+                                  </span>
+                                )}
                                 {p.is_demoted && (
                                   <span className="mt-1 inline-block rounded bg-violet-100 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-violet-800">
                                     Former SK Chairperson · Demoted
@@ -2571,6 +2642,14 @@ return (
                               >
                                 <Eye className="w-3.5 h-3.5 text-slate-500" />
                                 Inspect
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void openYouthHistory(p)}
+                                className="px-2 py-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-800 text-[10px] font-extrabold rounded-lg flex items-center gap-1 transition-colors"
+                              >
+                                <History className="w-3.5 h-3.5" />
+                                View History
                               </button>
                             </div>
                           </td>
@@ -3195,14 +3274,46 @@ return (
                       <h4 className="mb-4 text-sm font-extrabold text-slate-800">Utilization by program</h4>
                       {budgetUtilizationTable.length ? <div className="w-full overflow-x-auto block"><table className="w-full text-left text-xs min-w-[600px]"><thead className="border-b border-slate-100 text-[10px] uppercase tracking-wider text-slate-400"><tr><th className="px-3 py-3 whitespace-nowrap">Program</th><th className="px-3 py-3 text-right whitespace-nowrap">Allocated</th><th className="px-3 py-3 text-right whitespace-nowrap">Actual</th><th className="px-3 py-3 text-right whitespace-nowrap">Remaining</th><th className="px-3 py-3 text-right whitespace-nowrap">Utilization</th></tr></thead><tbody className="divide-y divide-slate-50">{budgetUtilizationTable.map(row => {
                         const isOverAllocated = row.program === 'Over-Allocated';
+                        const isExpanded = expandedBudgetProgramId === row.id;
                         return (
-                          <tr key={row.program}>
-                            <td className={`px-3 py-3 font-bold whitespace-nowrap ${isOverAllocated ? 'text-rose-600' : 'text-slate-700'}`}>{row.program}</td>
-                            <td className={`px-3 py-3 text-right whitespace-nowrap ${isOverAllocated ? 'text-rose-600' : ''}`}>{'\u20B1'}{Number(row.allocated || 0).toLocaleString()}</td>
-                            <td className="px-3 py-3 text-right whitespace-nowrap">{'\u20B1'}{Number(row.spent || 0).toLocaleString()}</td>
-                            <td className={`px-3 py-3 text-right whitespace-nowrap ${isOverAllocated ? 'text-rose-600' : ''}`}>{'\u20B1'}{Number(row.remaining || 0).toLocaleString()}</td>
-                            <td className={`px-3 py-3 text-right font-bold whitespace-nowrap ${row.rate > 100 || isOverAllocated ? 'text-rose-600' : 'text-slate-700'}`}>{isOverAllocated ? 'Over-Allocated' : `${row.rate.toFixed(1)}%`}</td>
-                          </tr>
+                          <React.Fragment key={row.id}>
+                            <tr>
+                              <td className={`px-3 py-3 font-bold whitespace-nowrap ${isOverAllocated ? 'text-rose-600' : 'text-slate-700'}`}>
+                                <button type="button" onClick={() => setExpandedBudgetProgramId(isExpanded ? null : row.id)} className="text-left hover:underline" aria-expanded={isExpanded}>
+                                  {isExpanded ? '▾' : '▸'} {row.program}
+                                </button>
+                              </td>
+                              <td className={`px-3 py-3 text-right whitespace-nowrap ${isOverAllocated ? 'text-rose-600' : ''}`}>{'\u20B1'}{Number(row.allocated || 0).toLocaleString()}</td>
+                              <td className="px-3 py-3 text-right whitespace-nowrap">{'\u20B1'}{Number(row.spent || 0).toLocaleString()}</td>
+                              <td className={`px-3 py-3 text-right whitespace-nowrap ${isOverAllocated ? 'text-rose-600' : ''}`}>{'\u20B1'}{Number(row.remaining || 0).toLocaleString()}</td>
+                              <td className={`px-3 py-3 text-right font-bold whitespace-nowrap ${row.rate > 100 || isOverAllocated ? 'text-rose-600' : 'text-slate-700'}`}>{isOverAllocated ? 'Over-Allocated' : `${row.rate.toFixed(1)}%`}</td>
+                            </tr>
+                            {isExpanded && (
+                              <tr>
+                                <td colSpan={5} className="bg-slate-50 px-4 py-3">
+                                  <table className="w-full text-[11px]">
+                                    <thead className="text-[9px] uppercase tracking-wide text-slate-500">
+                                      <tr><th className="py-2 text-left">Quantity</th><th className="py-2 text-left">Item Name</th><th className="py-2 text-right">Unit Price</th><th className="py-2 text-right">Total</th></tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-200">
+                                      {row.expenses.map((expense: any) => {
+                                        const total = Number(expense.gross_amount ?? expense.amount ?? 0);
+                                        const quantity = Number(expense.quantity) > 0 ? Number(expense.quantity) : 1;
+                                        const unitPrice = Number(expense.unit_price) > 0 ? Number(expense.unit_price) : total / quantity;
+                                        return <tr key={expense.id}>
+                                          <td className="py-2">{quantity}</td>
+                                          <td className="py-2 font-semibold text-slate-700">{expense.item_name || expense.title || expense.supplier || expense.description || 'Expense'}</td>
+                                          <td className="py-2 text-right">{'\u20B1'}{unitPrice.toLocaleString()}</td>
+                                          <td className="py-2 text-right font-bold">{'\u20B1'}{total.toLocaleString()}</td>
+                                        </tr>;
+                                      })}
+                                      {row.expenses.length === 0 && <tr><td colSpan={4} className="py-3 text-center text-slate-400">No expenses recorded for this program.</td></tr>}
+                                    </tbody>
+                                  </table>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
                         );
                       })}</tbody></table></div> : <div className="py-10 text-center text-xs font-semibold text-slate-400">No programs available for this filter.</div>}
                     </div>
@@ -3283,7 +3394,7 @@ return (
                     <tbody className="divide-y divide-slate-100 font-medium text-slate-700 bg-white">{localDocs.map(doc => (
                         <tr key={doc.id} className="hover:bg-slate-50/70 transition-colors">
                           <td className="px-5 py-4 font-mono font-bold text-[#091d64] whitespace-nowrap">
-                            {doc.resolutionNumber || '—'}
+                            {doc.resolution_number || doc.resolutionNumber || '—'}
                           </td>
                           <td className="px-5 py-4 font-bold text-slate-900 truncate whitespace-nowrap" title="Document Title">
                             {doc.title}
@@ -3641,8 +3752,12 @@ return (
                     <label className="mb-1 block text-[10px] font-bold uppercase text-slate-500">Announcement Pubmat (JPG or PNG)</label>
                     <input
                       type="file"
+                      multiple
                       accept=".jpg,.jpeg,.png,image/jpeg,image/png"
-                      onChange={event => void handleAnnouncementImageSelected(event.currentTarget.files?.[0] || null)}
+                      onChange={event => {
+                        void handleAnnouncementImageSelected(event.currentTarget.files);
+                        event.currentTarget.value = '';
+                      }}
                       disabled={annImageUploading || isSubmittingAnnouncement}
                       className="block w-full rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs file:mr-3 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-1.5 file:text-[10px] file:font-bold file:text-[#091d64]"
                     />
@@ -3652,9 +3767,19 @@ return (
                         Uploading pubmat to Supabase Storage…
                       </p>
                     )}
-                    {annImageFile && !annImageUploading && <p className="mt-1 text-[10px] text-slate-500">{annImageFile.name}</p>}
-                    {!annImageUploading && annImagePreview && (
-                      <img src={annImagePreview} alt="Current announcement pubmat" className="mt-3 max-h-48 rounded-lg border border-slate-200 object-contain" />
+                    {announcementImages.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-3">
+                        {announcementImages.map((image, index) => (
+                          <div key={`${image.path}-${index}`} className="relative">
+                            <button type="button" onClick={() => setLightboxImg(image.preview)} className="block rounded-lg focus:outline-none focus:ring-2 focus:ring-[#091d64]" aria-label="Preview announcement image">
+                              <img src={image.preview} alt={image.file?.name || `Announcement image ${index + 1}`} className="h-24 w-24 rounded-lg border border-slate-200 object-cover" />
+                            </button>
+                            <button type="button" onClick={() => void removeAnnouncementImage(index)} disabled={isSubmittingAnnouncement} aria-label={`Remove image ${index + 1}`} className="absolute -right-2 -top-2 rounded-full bg-rose-600 p-1 text-white shadow hover:bg-rose-700 disabled:opacity-50">
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                   {!editingAnnouncementId && (
@@ -3724,13 +3849,18 @@ return (
                               </button>
                             </div>
                           </div>
-                          {announcement.imageUrl && (
-                            <img
-                              src={announcement.imageUrl}
-                              alt={`Pubmat for ${announcement.title}`}
-                              className="mt-3 max-h-64 w-full cursor-pointer rounded-lg border border-slate-200 bg-white object-contain hover:opacity-90 transition-opacity"
-                              onClick={() => setLightboxImg(announcement.imageUrl)}
-                            />
+                          {(announcement.imageUrls?.length || announcement.imageUrl) && (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {(announcement.imageUrls?.length ? announcement.imageUrls : [announcement.imageUrl!]).map((imageUrl, index) => (
+                                <button key={`${announcement.id}-image-${index}`} type="button" onClick={() => setLightboxImg(imageUrl)} aria-label={`Preview image ${index + 1} for ${announcement.title}`}>
+                                  <img
+                                    src={imageUrl}
+                                    alt={`Pubmat ${index + 1} for ${announcement.title}`}
+                                    className="h-24 w-24 cursor-pointer rounded-lg border border-slate-200 bg-white object-cover hover:opacity-90 transition-opacity"
+                                  />
+                                </button>
+                              ))}
+                            </div>
                           )}
                           <div className="mt-3 space-y-2 text-left text-[11px]">
                             <p className="max-w-md whitespace-normal break-words text-left text-slate-600"><span className="font-bold text-slate-700">What:</span> {announcement.what || '—'}</p>
@@ -3870,42 +4000,7 @@ return (
             <div className="space-y-6">
               <div className="bg-white p-6 rounded-xl border border-slate-100 shadow-xs space-y-4">
                 <h3 className="text-lg font-extrabold text-[#091d64]">Barangay Official Activity & Audit Log</h3>
-                <div className="w-full overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 rounded-xl border border-slate-100">
-                  <table className="w-full table-fixed text-left text-xs font-semibold text-slate-600 min-w-[720px] md:min-w-0">
-                    <thead className="bg-slate-50 text-[10px] text-slate-500 font-extrabold uppercase border-b border-slate-100">
-                      <tr>
-                        <th className="w-[22%] p-3.5 whitespace-nowrap">Timestamp</th>
-                        <th className="w-[24%] p-3.5">Official Name & Role</th>
-                        <th className="w-[18%] p-3.5 whitespace-nowrap font-mono text-[10px]">Action Code</th>
-                        <th className="w-[36%] p-3.5">Activity Details</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 font-medium text-slate-700">{auditLogs.map(log => (
-                        <tr key={log.id} className="hover:bg-slate-50/50">
-                          <td className="p-3.5 font-mono text-slate-400 text-[11px] whitespace-nowrap align-top">
-                            {formatPhilippineDateTime(log.timestamp, undefined, { dateStyle: 'short', timeStyle: 'short' })}
-                          </td>
-                          <td className="p-3.5 font-bold text-slate-800 whitespace-normal break-words align-top min-w-[140px]">
-                            {log.user} ({log.role})
-                          </td>
-                          <td className="p-3.5 font-mono text-[10px] whitespace-nowrap align-top">{log.action.replace(/_/g, ' ')}</td>
-                          <td className="p-3.5 align-top max-w-[300px] break-words">
-                            <div className="max-w-md whitespace-normal break-words text-xs text-slate-600">
-                              {formatAuditDetails(log.action, log.details)}
-                            </div>
-                          </td>
-                        </tr>
-                    ))}
-                      {auditLogs.length === 0 && (
-                        <tr>
-                          <td colSpan={4} className="p-6 text-center text-slate-400 font-bold">
-                            No audit logs recorded yet.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                <AuditLogAccordion logs={auditLogs} />
               </div>
             </div>
           )}
@@ -4195,6 +4290,73 @@ return (
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {historyYouth && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-4" onClick={() => setHistoryYouth(null)}>
+          <section className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl" onClick={event => event.stopPropagation()}>
+            <header className="sticky top-0 flex items-center justify-between border-b border-slate-200 bg-white p-5">
+              <div>
+                <h3 className="text-lg font-extrabold text-[#091d64]">Youth Engagement History</h3>
+                <p className="mt-1 text-xs text-slate-500">{historyYouth.name}</p>
+              </div>
+              <button type="button" onClick={() => setHistoryYouth(null)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="Close youth history">
+                <X className="h-5 w-5" />
+              </button>
+            </header>
+            <div className="space-y-5 p-5">
+              {youthHistoryLoading && <p className="py-6 text-center text-sm font-semibold text-slate-500">Loading engagement history…</p>}
+              {youthHistoryError && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-xs font-semibold text-rose-700">{youthHistoryError}</p>}
+              {youthHistory && (
+                <>
+                  <section>
+                    <h4 className="mb-2 text-xs font-extrabold uppercase tracking-wide text-slate-700">Program Registrations</h4>
+                    <div className="divide-y rounded-lg border border-slate-200">
+                      {youthHistory.registrations.map((item: any) => {
+                        const program = Array.isArray(item.program) ? item.program[0] : item.program;
+                        return <div key={item.id} className="flex flex-wrap justify-between gap-2 p-3 text-xs">
+                          <span className="font-bold text-slate-800">{program?.title || 'Program'}</span>
+                          <span className="text-slate-500">{item.status} · {item.registered_at ? formatPhilippineDateTime(item.registered_at) : 'Date unavailable'}</span>
+                        </div>;
+                      })}
+                      {youthHistory.registrations.length === 0 && <p className="p-3 text-xs text-slate-400">No program registrations.</p>}
+                    </div>
+                  </section>
+                  <section>
+                    <h4 className="mb-2 text-xs font-extrabold uppercase tracking-wide text-slate-700">Attendance</h4>
+                    <div className="divide-y rounded-lg border border-slate-200">
+                      {youthHistory.attendance.map((item: any) => (
+                        <div key={item.id} className="flex flex-wrap justify-between gap-2 p-3 text-xs">
+                          <span className="font-bold text-slate-800">{item.program_title || 'Program'}</span>
+                          <span className={item.status === 'Present' ? 'font-bold text-emerald-700' : 'font-bold text-rose-700'}>
+                            {item.status}{item.checked_in_at ? ` · ${formatPhilippineDateTime(item.checked_in_at)}` : ''}
+                          </span>
+                        </div>
+                      ))}
+                      {youthHistory.attendance.length === 0 && <p className="p-3 text-xs text-slate-400">No attendance records.</p>}
+                    </div>
+                  </section>
+                  <section>
+                    <h4 className="mb-2 text-xs font-extrabold uppercase tracking-wide text-slate-700">Feedback Submitted</h4>
+                    <div className="space-y-2">
+                      {youthHistory.feedback.map((item: any) => (
+                        <article key={item.id} className="rounded-lg border border-slate-200 p-3 text-xs">
+                          <div className="flex flex-wrap justify-between gap-2">
+                            <strong className="text-slate-800">{item.subject || item.category || 'Feedback'}</strong>
+                            <span className="text-slate-500">{item.created_at ? formatPhilippineDateTime(item.created_at) : 'Date unavailable'}</span>
+                          </div>
+                          <p className="mt-2 whitespace-pre-wrap text-slate-600">{item.message}</p>
+                          <p className="mt-2 text-[10px] font-semibold text-slate-500">Status: {item.status} · Sentiment: {item.sentiment || 'Not classified'}</p>
+                        </article>
+                      ))}
+                      {youthHistory.feedback.length === 0 && <p className="rounded-lg border border-slate-200 p-3 text-xs text-slate-400">No feedback records.</p>}
+                    </div>
+                  </section>
+                </>
+              )}
+            </div>
+          </section>
         </div>
       )}
 

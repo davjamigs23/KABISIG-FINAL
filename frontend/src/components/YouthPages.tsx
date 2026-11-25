@@ -96,6 +96,19 @@ const hasProgramEnded = (endDate?: string | Date | null): boolean => {
   return end < new Date();
 };
 
+function isOutsideYouthAgeRange(profile: YouthProfile): boolean {
+  if (profile.is_age_out === true) return true;
+  const birthdate = new Date(profile.birthdate || '');
+  if (Number.isNaN(birthdate.getTime())) {
+    return Number.isFinite(Number(profile.age)) && (Number(profile.age) < 15 || Number(profile.age) > 30);
+  }
+  const today = new Date();
+  let age = today.getFullYear() - birthdate.getFullYear();
+  if (today.getMonth() < birthdate.getMonth()
+    || (today.getMonth() === birthdate.getMonth() && today.getDate() < birthdate.getDate())) age -= 1;
+  return age < 15 || age > 30;
+}
+
 type YouthRosterEntry = {
   id: string;
   name: string;
@@ -331,6 +344,7 @@ export default function YouthPages({
   const [localRegs, setLocalRegs] = useState<Registration[]>(registrations);
   const [registeringProgramId, setRegisteringProgramId] = useState<string | null>(null);
   const [registrationNotice, setRegistrationNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const isAgeOut = isOutsideYouthAgeRange(currentYouth);
   const [viewingParticipantsProgram, setViewingParticipantsProgram] = useState<any>(null);
   const [programParticipants, setProgramParticipants] = useState<any[]>([]);
   const [loadingParticipants, setLoadingParticipants] = useState(false);
@@ -771,6 +785,10 @@ export default function YouthPages({
   };
 
   const handleRegisterProgramClick = async (progId: string) => {
+    if (isAgeOut) {
+      setRegistrationNotice({ type: 'error', text: 'Youth Constituents must be 15 to 30 years old to register for new programs.' });
+      return;
+    }
     const _prog = programs.find(p => p.id === progId);
     const programStatus = String(_prog?.status || '').toLowerCase();
     const programEndDate = (_prog as any)?.endDate || (_prog as any)?.end_date || (_prog as any)?.date || (_prog as any)?.startDate;
@@ -1520,7 +1538,7 @@ export default function YouthPages({
                               {!isRegistered ? (
                                 <button
                                   type="button"
-                                  disabled={registeringProgramId !== null}
+                                  disabled={registeringProgramId !== null || isAgeOut}
                                   onClick={() => handleRegisterProgramClick(rec.program.id)}
                                   className="text-[10px] bg-red-600 hover:bg-red-700 text-white font-extrabold px-2.5 py-1 rounded transition-colors disabled:opacity-60"
                                 >
@@ -1605,7 +1623,7 @@ export default function YouthPages({
                             </div>
                           ) : (
                             <button
-                              disabled={registeringProgramId !== null}
+                              disabled={registeringProgramId !== null || isAgeOut}
                               onClick={() => handleRegisterProgramClick(program.id)}
                               className="px-4 py-1.5 bg-[#091d64] hover:bg-[#122878] text-white font-bold rounded-lg text-[10px] transition-all transform active:scale-95 cursor-pointer disabled:opacity-60"
                             >
@@ -1993,7 +2011,7 @@ export default function YouthPages({
                               </div>
                             ) : (
                               <button 
-                                disabled={registeringProgramId !== null || programEnded}
+                                disabled={registeringProgramId !== null || programEnded || isAgeOut}
                                 onClick={() => handleRegisterProgramClick(p.id)}
                                 className={`px-5 py-2 text-white font-bold rounded-lg text-xs transition-all transform active:scale-95 shadow-sm ${
                                   programEnded

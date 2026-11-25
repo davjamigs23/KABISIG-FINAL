@@ -4,7 +4,7 @@ import { formatPhilippineDate, formatPhilippineDateTime } from '../lib/dateUtils
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import ProfileSettings from './ProfileSettings';
-import { formatAuditDetails } from '../lib/auditFormatter';
+import AuditLogAccordion from './AuditLogAccordion';
 import { formatOfficialName } from '../lib/officialFormatting';
 import { 
   LayoutDashboard, Building2, BarChart3, History, 
@@ -2290,44 +2290,7 @@ useEffect(() => {
                   </div>
                 </div>
 
-                <div className="w-full overflow-x-auto rounded-xl border border-slate-100">
-                  <table className="w-full table-fixed text-left text-xs">
-                    <thead className="bg-slate-50 text-[10px] text-slate-400 font-bold uppercase tracking-wider border-b border-slate-100">
-                      <tr>
-                        <th className="p-3 w-[20%]">Timestamp</th>
-                        <th className="p-3 w-[22%]">SK Chairperson & Barangay</th>
-                        <th className="p-3 w-[18%]">Action</th>
-                        <th className="p-3 w-[40%]">Activity & Executive Details</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-50 font-medium">
-                      {filteredAuditLogs.map(log => (
-                          <tr key={log.id} className="hover:bg-slate-50/50">
-                            <td className="p-3 font-mono text-slate-400 whitespace-nowrap align-top">
-                              {formatPhilippineDateTime(log.timestamp, undefined, { dateStyle: 'short', timeStyle: 'short' })}
-                            </td>
-                            <td className="p-3 font-bold text-slate-800 whitespace-normal break-words align-top">
-                              <span className="text-[#091d64]">{log.user}</span>
-                              <span className="block text-[10px] text-slate-400 font-semibold">{log.role === 'Barangay Admin' ? 'SK Chairperson' : log.role}</span>
-                            </td>
-                            <td className="p-3 font-mono text-[10px] whitespace-normal break-words align-top">{log.action}</td>
-                            <td className="p-3 align-top">
-                              <div className="max-w-md whitespace-normal break-words text-xs text-slate-600">
-                                {formatAuditDetails(log.action, log.details)}
-                              </div>
-                            </td>
-                          </tr>
-                      ))}
-                      {filteredAuditLogs.length === 0 && (
-                        <tr>
-                          <td colSpan={4} className="p-6 text-center text-slate-400 font-bold">
-                            No audit records found matching the search.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                <AuditLogAccordion logs={filteredAuditLogs} />
               </div>
 
             </div>
@@ -3910,7 +3873,7 @@ useEffect(() => {
                       <option value="Separated">Separated</option>
                     </select>
                   </div>
-                  <div>
+                  {![2, 3].includes(typoTargetUser?.role_id ?? 0) && <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Education</label>
                     <select value={typoEducation} disabled={!isEditingCreds} onChange={e => setTypoEducation(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs">
                       <option value="">Leave unchanged</option>
@@ -3921,16 +3884,16 @@ useEffect(() => {
                       <option value="Post-Graduate">Post-Graduate</option>
                       <option value="Out of School Youth">Out of School Youth</option>
                     </select>
-                  </div>
-                  <div>
+                  </div>}
+                  {![2, 3].includes(typoTargetUser?.role_id ?? 0) && <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">School</label>
                     <input type="text" value={typoSchool} disabled={!isEditingCreds} onChange={e => setTypoSchool(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank if unchanged" />
-                  </div>
-                  <div>
+                  </div>}
+                  {![2, 3].includes(typoTargetUser?.role_id ?? 0) && <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Course</label>
                     <input type="text" value={typoCourse} disabled={!isEditingCreds} onChange={e => setTypoCourse(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" placeholder="Leave blank if unchanged" />
-                  </div>
-                  <div>
+                  </div>}
+                  {![2, 3].includes(typoTargetUser?.role_id ?? 0) && <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Year Level</label>
                     <select value={typoYearLevel} disabled={!isEditingCreds} onChange={e => setTypoYearLevel(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs">
                       <option value="">Leave blank if unchanged</option>
@@ -3941,8 +3904,8 @@ useEffect(() => {
                       <option value="5th Year">5th Year</option>
                       <option value="Graduate">Graduate</option>
                     </select>
-                  </div>
-                  <div>
+                  </div>}
+                  {![2, 3].includes(typoTargetUser?.role_id ?? 0) && <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Employment Status</label>
                     <select value={typoEmploymentStatus} disabled={!isEditingCreds} onChange={e => setTypoEmploymentStatus(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs">
                       <option value="">Leave unchanged</option>
@@ -3951,15 +3914,15 @@ useEffect(() => {
                       <option value="Self-Employed">Self-Employed</option>
                       <option value="Student">Student</option>
                     </select>
-                  </div>
-                  <div>
+                  </div>}
+                  {![2, 3].includes(typoTargetUser?.role_id ?? 0) && <div>
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Scholar Status</label>
                     <input type="text" value={typoScholarStatus} disabled={!isEditingCreds} onChange={e => {
                       setTypoScholarStatus(e.target.value);
                       if (!/\bscholar\b/i.test(e.target.value) || /\b(?:not|non)[-\s]+scholar\b/i.test(e.target.value)) setTypoScholarshipType('');
                     }} placeholder="e.g. Scholar, Not Scholar" className="w-full border border-slate-200 rounded-lg p-2.5 text-xs" />
-                  </div>
-                  {hasScholarStatus && (
+                  </div>}
+                  {hasScholarStatus && ![2, 3].includes(typoTargetUser?.role_id ?? 0) && (
                     <div>
                       <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Scholarship Type</label>
                       <select value={typoScholarshipType} disabled={!isEditingCreds} onChange={e => setTypoScholarshipType(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-xs">
@@ -3998,6 +3961,11 @@ useEffect(() => {
 
               <div className="flex justify-between items-center pt-2 border-t border-slate-100">
                 <div className="flex items-center gap-4">
+                  <button type="button" onClick={() => { setShowFixTypoModal(false); setShowEmailModal(true); setEmailModalTab('history'); void handleLoadEmailHistory(); }} className="text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline">
+                    View Change History
+                  </button>
+                </div>
+                <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => {
@@ -4006,15 +3974,10 @@ useEffect(() => {
                       setShowFixTypoModal(false);
                     }}
                     disabled={isUpdating || isSearching}
-                    className="text-xs font-bold text-slate-600 hover:text-slate-900 disabled:opacity-50"
+                    className="px-4 py-2 border border-slate-200 text-slate-600 text-xs font-bold rounded-lg hover:bg-slate-50 disabled:opacity-50"
                   >
                     Cancel
                   </button>
-                  <button type="button" onClick={() => { setShowFixTypoModal(false); setShowEmailModal(true); setEmailModalTab('history'); void handleLoadEmailHistory(); }} className="text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline">
-                    View Change History
-                  </button>
-                </div>
-                <div className="flex gap-2">
                   {!isEditingCreds ? (
                     <button type="button" disabled={!typoTargetUserId} onClick={() => setIsEditingCreds(true)} className="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold rounded-lg disabled:opacity-50">
                       Edit Credentials

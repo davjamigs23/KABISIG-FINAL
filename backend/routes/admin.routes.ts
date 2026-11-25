@@ -37,7 +37,8 @@ function getInvitationErrorMessage(error: unknown): string {
 
 async function inviteWithBrevo(
   email: string,
-  options: any = {}
+  options: any = {},
+  deliverEmail: boolean = true
 ): Promise<{ data: any; error: any }> {
   const inviteOptions = {
     ...options,
@@ -133,17 +134,19 @@ async function inviteWithBrevo(
     };
   }
 
-  const setupLink = data.properties.action_link;
-  const invRole = inviteOptions.data.role_id === 2 ? 'SK Chairperson' : (inviteOptions.data.official_role || inviteOptions.data.role || 'SK Official');
-  try {
-    await sendInvitationEmail(email, invRole, setupLink);
-  } catch (error) {
-    const reason = getInvitationErrorMessage(error);
-    console.error(`[INVITATION EMAIL] link_type=${successfulType} result=error reason=${reason}`);
-    return {
-      data,
-      error: new Error(`Supabase link type '${successfulType}' generated a setup link, but Brevo email delivery failed: ${reason}`),
-    };
+  if (deliverEmail) {
+    const setupLink = data.properties.action_link;
+    const invRole = inviteOptions.data.role_id === 2 ? 'SK Chairperson' : (inviteOptions.data.official_role || inviteOptions.data.role || 'SK Official');
+    try {
+      await sendInvitationEmail(email, invRole, setupLink);
+    } catch (error) {
+      const reason = getInvitationErrorMessage(error);
+      console.error(`[INVITATION EMAIL] link_type=${successfulType} result=error reason=${reason}`);
+      return {
+        data,
+        error: new Error(`Supabase link type '${successfulType}' generated a setup link, but Brevo email delivery failed: ${reason}`),
+      };
+    }
   }
 
   return { data, error: null };
@@ -449,7 +452,9 @@ router.get('/users/lookup', authenticateUser, requireRoles('SUPER_ADMIN'), async
 
     let userQuery = supabaseAdmin
       .from('users')
-      .select('*, resident_profile!resident_profile_user_id_fkey(*)');
+      .select('*, resident_profile!resident_profile_user_id_fkey(*)')
+      .eq('status', 'active')
+      .eq('setup_completed', true);
     if (identifier.includes('@')) {
       userQuery = userQuery.eq('email', identifier);
     } else if (/^\d+$/.test(identifier)) {
@@ -2079,7 +2084,8 @@ router.post(
           {
             data: { tenant_id: barangay_id, role_id: 2 },
             redirectTo: redirectUrl,
-          } as any
+          } as any,
+          false
         );
 
         const emailDeliveryFailed = inviteErr instanceof Error && inviteErr.message.includes('Brevo email delivery failed');
@@ -2235,34 +2241,40 @@ router.post(
     });
 
     // 7. Response
-    let emailDelivered = successorInviteMethod === 'email_invitation';
+    let emailDelivered = false;
     console.log('[TRANSFER] Preparing to send emails...');
-    try {
-      const outgoingEmail = outgoing.email;
-      const successorEmail = cleanSuccessorEmail;
-      
-      if (outgoingEmail) {
-        console.log('[TRANSFER] Sending demotion email to outgoing: ' + outgoingEmail);
-        const outgoingHtml = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;"><h1 style="color: #091d64; margin: 0 0 8px 0;">KABISIG</h1><p style="color: #64748b; font-size: 12px; margin: 0 0 24px 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p><h2 style="color: #091d64;">Leadership Update</h2><p style="color: #334155; line-height: 1.6;">Your role as SK Chairperson has been successfully transferred.</p><p style="color: #334155; line-height: 1.6;">You have been demoted to <strong>Youth Constituent</strong> and your profile verification is pending re-approval by the incoming Chairperson.</p><div style="text-align: center; margin: 24px 0;"><a href="' + FRONTEND_URL + '" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Log In to KABISIG</a></div><p style="color: #94a3b8; font-size: 11px;">If the button does not work, copy this link: ' + FRONTEND_URL + '</p></div>';
+    const outgoingEmail = outgoing.email;
+    const successorEmail = cleanSuccessorEmail;
+
+    if (outgoingEmail) {
+      console.log('[TRANSFER] Sending demotion email to outgoing: ' + outgoingEmail);
+      const outgoingHtml = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;"><h1 style="color: #091d64; margin: 0 0 8px 0;">KABISIG</h1><p style="color: #64748b; font-size: 12px; margin: 0 0 24px 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p><h2 style="color: #091d64;">Leadership Update</h2><p style="color: #334155; line-height: 1.6;">Your role as SK Chairperson has been successfully transferred.</p><p style="color: #334155; line-height: 1.6;">You have been demoted to <strong>Youth Constituent</strong> and your profile verification is pending re-approval by the incoming Chairperson.</p><div style="text-align: center; margin: 24px 0;"><a href="' + FRONTEND_URL + '" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Log In to KABISIG</a></div><p style="color: #94a3b8; font-size: 11px;">If the button does not work, copy this link: ' + FRONTEND_URL + '</p></div>';
+      try {
         await sendEmail(outgoingEmail, 'KABISIG Leadership Update', outgoingHtml);
+      } catch (emailErr) {
+        console.error('[TRANSFER] Outgoing Chairperson email dispatch failed:', emailErr);
       }
-      
-      if (successorEmail) {
-        if (!successorSetupStateError) {
-          console.log('[TRANSFER] Sending appointment email to successor: ' + successorEmail);
-          const successHtml = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;"><h1 style="color: #091d64; margin: 0 0 8px 0;">KABISIG</h1><p style="color: #64748b; font-size: 12px; margin: 0 0 24px 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p><h2 style="color: #091d64;">You are Invited to be SK Chairperson!</h2><p style="color: #334155; line-height: 1.6;">You have been appointed as the new SK Chairperson. Please click the button below to set up your account password and complete your profile.</p><div style="text-align: center; margin: 24px 0;"><a href="' + successorLink + '" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Set Up Account</a></div><p style="color: #94a3b8; font-size: 11px;">If the button does not work, copy this link: <a href="' + successorLink + '">Open secure setup link</a></p></div>';
+    }
+
+    if (successorEmail) {
+      if (!successorSetupStateError) {
+        console.log('[TRANSFER] Sending appointment email to successor: ' + successorEmail);
+        const successHtml = '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px; border: 1px solid #e2e8f0; border-radius: 12px;"><h1 style="color: #091d64; margin: 0 0 8px 0;">KABISIG</h1><p style="color: #64748b; font-size: 12px; margin: 0 0 24px 0;">Kabataang Bagong Sistema para sa Inklusibong Gobyerno</p><h2 style="color: #091d64;">You are Invited to be SK Chairperson!</h2><p style="color: #334155; line-height: 1.6;">You have been appointed as the new SK Chairperson. Please click the button below to set up your account password and complete your profile.</p><div style="text-align: center; margin: 24px 0;"><a href="' + successorLink + '" style="background-color: #091d64; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Set Up Account</a></div><p style="color: #94a3b8; font-size: 11px;">If the button does not work, copy this link: <a href="' + successorLink + '">Open secure setup link</a></p></div>';
+        try {
           await sendEmail(successorEmail, 'KABISIG Chairmanship Appointment', successHtml);
           emailDelivered = true;
           if (successorInviteMethod === 'setup_link_only' || successorInviteMethod === 'existing_user') {
             successorInviteMethod = 'email_invitation';
             successorInviteError = null;
           }
-        } else {
-          console.error('[TRANSFER] Skipping successor email because setup state could not be prepared.');
+        } catch (emailErr) {
+          successorInviteError = emailErr;
+          console.error('[TRANSFER] Successor invitation email dispatch failed:', emailErr);
         }
+      } else {
+        successorInviteError = new Error(`Successor setup state could not be prepared: ${successorSetupStateError}`);
+        console.error('[TRANSFER] Skipping successor email because setup state could not be prepared.');
       }
-    } catch (emailErr) {
-      console.error('[TRANSFER] Email dispatch failed:', emailErr);
     }
 
     sendSuccess(res, {

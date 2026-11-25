@@ -17,6 +17,7 @@ const announcementFields = {
   event_when: z.string().trim().max(500).optional(),
   hashtags: z.string().trim().max(1000).optional(),
   image_path: z.string().trim().max(1024).nullable().optional(),
+  image_urls: z.array(z.string().trim().min(1).max(1024)).max(10).optional(),
   category: z.enum(['Opportunity', 'Notice', 'Emergency', 'Event']),
   status: z.enum(['draft', 'published']),
   image: z.object({
@@ -41,7 +42,7 @@ function missingTable(error: any) {
 }
 
 function missingAnnouncementDetails(error: any) {
-  return /column .*?\b(what|where_text|event_when|hashtags|image_path)\b.*?does not exist|could not find the .*?\b(what|where_text|event_when|hashtags|image_path)\b.*?column/i.test(error?.message || '');
+  return /column .*?\b(what|where_text|event_when|hashtags|image_path|image_urls)\b.*?does not exist|could not find the .*?\b(what|where_text|event_when|hashtags|image_path|image_urls)\b.*?column/i.test(error?.message || '');
 }
 
 function safeFileName(fileName: string): string {
@@ -73,15 +74,31 @@ function decodePubmat(image: z.infer<typeof announcementFields.image>): Buffer |
   return isJpeg || isPng ? buffer : null;
 }
 
-async function signPubmat<T extends { image_path?: string | null }>(announcement: T): Promise<{ data?: T & { image_url?: string }; error?: string }> {
-  if (!announcement.image_path) return { data: announcement };
-  const { data, error } = await supabaseAdmin.storage
-    .from(PUBMAT_BUCKET)
-    .createSignedUrl(announcement.image_path, SIGNED_URL_TTL_SECONDS);
-  if (error || !data?.signedUrl) {
-    return { error: `Failed to create a signed announcement image URL: ${error?.message || 'URL was not returned.'}` };
+async function signPubmat<T extends { image_path?: string | null; image_urls?: string[] | null }>(
+  announcement: T,
+): Promise<{ data?: T & { image_url?: string | null; image_urls?: string[]; image_paths?: string[] }; error?: string }> {
+  const paths = announcement.image_urls?.length
+    ? announcement.image_urls
+    : announcement.image_path
+      ? [announcement.image_path]
+      : [];
+  if (!paths.length) return { data: { ...announcement, image_url: null, image_urls: [], image_paths: [] } };
+
+  const signedUrls = await Promise.all(paths.map(async path => {
+    const { data, error } = await supabaseAdmin.storage
+      .from(PUBMAT_BUCKET)
+      .createSignedUrl(path, SIGNED_URL_TTL_SECONDS);
+    if (error || !data?.signedUrl) {
+      return { error: error?.message || 'URL was not returned.' };
+    }
+    return { url: data.signedUrl };
+  }));
+  const failure = signedUrls.find(result => 'error' in result);
+  if (failure && 'error' in failure) {
+    return { error: `Failed to create a signed announcement image URL: ${failure.error}` };
   }
-  return { data: { ...announcement, image_url: data.signedUrl } };
+  const urls = signedUrls.flatMap(result => 'url' in result ? [result.url] : []);
+  return { data: { ...announcement, image_url: urls[0] || null, image_urls: urls, image_paths: paths } };
 }
 
 async function uploadPubmat(
@@ -120,7 +137,8 @@ router.get('/', authenticateUser, requireActiveUser, async (req, res) => {
     .select('*, author:users!author_id(full_name)')
     .order('created_at', { ascending: false });
   if (user.role !== 'SUPER_ADMIN' && user.role !== 'VIEWER') {
-    if (!user.tenant_id) {
+    const tenantId = user.tenant_id;
+    if (!tenantId) {
       sendError(res, 'User has no assigned Barangay tenant.', 400);
       return;
     }
@@ -161,25 +179,28 @@ router.post(
       return;
     }
     const user = (req as AuthRequest).user!;
-    if (!user.tenant_id) {
+    const tenantId = user.tenant_id;
+    if (!tenantId) {
       sendError(res, 'User has no assigned Barangay tenant.', 400);
       return;
     }
-    if (parsed.data.image_path && !belongsToTenantStoragePath(parsed.data.image_path, user.tenant_id)) {
-      sendError(res, 'Announcement image path must point to an uploaded file in your Barangay folder.', 403);
+    if (parsed.data.image_urls?.some(path => !belongsToTenantStoragePath(path, tenantId))
+      || (typeof parsed.data.image_path === 'string' && !belongsToTenantStoragePath(parsed.data.image_path, tenantId))) {
+      sendError(res, 'Announcement images must point to uploaded files in your Barangay folder.', 403);
       return;
     }
-    if (parsed.data.image_path && parsed.data.image) {
+    if ((parsed.data.image_path || parsed.data.image_urls?.length) && parsed.data.image) {
       sendError(res, 'Provide either an uploaded image path or a legacy image payload, not both.', 400);
       return;
     }
-    const upload = await uploadPubmat(user.tenant_id, parsed.data.image);
+    const upload = await uploadPubmat(tenantId, parsed.data.image);
     if (upload.error) {
       sendError(res, upload.error, upload.error.startsWith('Upload a valid') ? 415 : 502);
       return;
     }
     const {
       image: _image,
+      image_urls,
       where,
       where_text,
       when,
@@ -192,8 +213,9 @@ router.post(
       ...fields,
       where_text: where_text ?? where ?? null,
       event_when: event_when ?? when ?? null,
-      image_path: image_path ?? upload.path ?? null,
-      tenant_id: user.tenant_id,
+      image_path: image_path ?? null,
+      image_urls: image_urls ?? (image_path ? [image_path] : upload.path ? [upload.path] : []),
+      tenant_id: tenantId,
       author_id: user.id,
       published_at: status === 'published' ? new Date().toISOString() : null,
     }).select('*').single();
@@ -250,11 +272,12 @@ router.patch(
       return;
     }
 
-    if (parsed.data.image_path && !belongsToTenantStoragePath(parsed.data.image_path, existing.tenant_id)) {
-      sendError(res, 'Announcement image path must point to an uploaded file in its Barangay folder.', 403);
+    if (parsed.data.image_urls?.some(path => !belongsToTenantStoragePath(path, existing.tenant_id))
+      || (typeof parsed.data.image_path === 'string' && !belongsToTenantStoragePath(parsed.data.image_path, existing.tenant_id))) {
+      sendError(res, 'Announcement images must point to uploaded files in its Barangay folder.', 403);
       return;
     }
-    if (parsed.data.image_path && parsed.data.image) {
+    if ((parsed.data.image_path || parsed.data.image_urls?.length) && parsed.data.image) {
       sendError(res, 'Provide either an uploaded image path or a legacy image payload, not both.', 400);
       return;
     }
@@ -265,6 +288,7 @@ router.patch(
     }
     const {
       image: _image,
+      image_urls,
       where,
       where_text,
       when,
@@ -279,8 +303,16 @@ router.patch(
     if (when !== undefined || event_when !== undefined) {
       changes.event_when = event_when ?? when ?? null;
     }
-    if (image_path !== undefined) changes.image_path = image_path;
-    else if (upload.path) changes.image_path = upload.path;
+    if (image_path !== undefined) {
+      changes.image_path = image_path;
+      if (image_urls === undefined) changes.image_urls = image_path ? [image_path] : [];
+    } else if (image_urls !== undefined) {
+      changes.image_urls = image_urls;
+      changes.image_path = null;
+    } else if (upload.path) {
+      changes.image_path = upload.path;
+      changes.image_urls = [upload.path];
+    }
     if (fields.status) {
       changes.published_at = fields.status === 'published'
         ? existing.published_at || new Date().toISOString()
@@ -309,11 +341,16 @@ router.patch(
       sendError(res, signed.error, 502);
       return;
     }
-    if ((upload.path || image_path !== undefined) && existing.image_path && existing.image_path !== data.image_path) {
-      const cleanupError = await deletePubmat(existing.image_path);
-      if (cleanupError) {
-        console.error('Updated announcement pubmat but could not remove replaced image:', cleanupError);
-      }
+    const currentPaths: string[] = existing.image_urls?.length
+      ? existing.image_urls
+      : existing.image_path
+        ? [existing.image_path]
+        : [];
+    const retainedPaths = new Set((data.image_urls as string[] | null) || []);
+    const removedPaths = currentPaths.filter(path => !retainedPaths.has(path));
+    for (const removedPath of removedPaths) {
+      const cleanupError = await deletePubmat(removedPath);
+      if (cleanupError) console.error('Updated announcement but could not remove a deleted image:', cleanupError);
     }
     sendSuccess(res, signed.data, 'Announcement updated.');
   },
@@ -331,7 +368,7 @@ router.delete(
       return;
     }
     const user = (req as AuthRequest).user!;
-    let deleteQuery = supabaseAdmin.from('announcement').delete().eq('id', idResult.data).select('id, image_path');
+    let deleteQuery = supabaseAdmin.from('announcement').delete().eq('id', idResult.data).select('id, image_path, image_urls');
     if (user.role !== 'SUPER_ADMIN') {
       if (!user.tenant_id) {
         sendError(res, 'User has no assigned Barangay tenant.', 400);
@@ -348,9 +385,11 @@ router.delete(
       sendError(res, 'Announcement not found in your Barangay.', 404);
       return;
     }
-    const cleanupError = await deletePubmat(data.image_path);
+    const imagePaths = [...new Set([...(data.image_urls || []), ...(data.image_path ? [data.image_path] : [])])];
+    const cleanupErrors = await Promise.all(imagePaths.map(deletePubmat));
+    const cleanupError = cleanupErrors.find(Boolean);
     if (cleanupError) {
-      console.error('Announcement was deleted but its pubmat could not be removed:', cleanupError);
+      console.error('Announcement was deleted but one or more pubmats could not be removed:', cleanupError);
     }
     sendSuccess(res, { id: data.id }, cleanupError
       ? 'Announcement deleted; its stored image could not be cleaned up.'

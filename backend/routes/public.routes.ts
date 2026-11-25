@@ -56,7 +56,7 @@ function escapeHtml(value: string): string {
 router.get('/announcements', async (_req: Request, res: Response): Promise<void> => {
   const { data, error } = await supabaseAdmin
     .from('announcement')
-    .select('id, tenant_id, title, content, what, where_text, event_when, hashtags, image_path, category, published_at, created_at, author:users!author_id(full_name), barangay(name)')
+    .select('id, tenant_id, title, content, what, where_text, event_when, hashtags, image_path, image_urls, category, published_at, created_at, author:users!author_id(full_name), barangay(name)')
     .eq('status', 'published')
     .order('published_at', { ascending: false })
     .limit(100);
@@ -65,14 +65,24 @@ router.get('/announcements', async (_req: Request, res: Response): Promise<void>
     sendError(res, `Failed to load public announcements: ${error.message}`, 500);
     return;
   }
-  const signedAnnouncements = await Promise.all((data || []).map(async (ann: any) => {
-    if (!ann.image_path) return { ...ann, image_url: null };
-    try {
-      const { data: urlData } = supabaseAdmin.storage.from('announcement-pubmats').getPublicUrl(ann.image_path);
-      return { ...ann, image_url: urlData?.publicUrl || null };
-    } catch { return { ...ann, image_url: null }; }
+  const signedResults = await Promise.all((data || []).map(async (ann: any) => {
+    const imagePaths: string[] = ann.image_urls?.length ? ann.image_urls : ann.image_path ? [ann.image_path] : [];
+    const results = await Promise.all(imagePaths.map((path: string) =>
+      supabaseAdmin.storage.from('announcement-pubmats').createSignedUrl(path, 60 * 60)
+    ));
+    const failed = results.find(result => result.error || !result.data?.signedUrl);
+    if (failed) {
+      return { error: `Failed to create a signed announcement image URL: ${failed.error?.message || 'URL was not returned.'}` };
+    }
+    const imageUrls = results.flatMap(result => result.data?.signedUrl ? [result.data.signedUrl] : []);
+    return { data: { ...ann, image_urls: imageUrls, image_paths: imagePaths, image_url: imageUrls[0] || null } };
   }));
-  sendSuccess(res, signedAnnouncements, 'Public announcements retrieved.');
+  const signingFailure = signedResults.find(result => 'error' in result);
+  if (signingFailure && 'error' in signingFailure) {
+    sendError(res, signingFailure.error, 502);
+    return;
+  }
+  sendSuccess(res, signedResults.flatMap(result => 'data' in result ? [result.data] : []), 'Public announcements retrieved.');
 });
 
 // GET /api/public/expenses — public financial records without receipt or personal data

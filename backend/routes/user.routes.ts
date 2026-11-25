@@ -711,7 +711,10 @@ router.get('/profile', authenticateUser, async (req: Request, res: Response): Pr
 
     const { data: authData } = await supabaseAdmin.auth.admin.getUserById(userId);
     const meta = authData?.user?.user_metadata || {};
-    const resident = dbUser?.resident_profile || {};
+    const joinedResident = dbUser?.resident_profile;
+    const resident = Array.isArray(joinedResident) ? joinedResident[0] || {} : joinedResident || {};
+    const profileBirthdate = resident.birthdate || meta.birthdate || null;
+    const profileAge = profileBirthdate ? calculateAge(String(profileBirthdate)) : null;
 
     const fullProfile = {
       id: meta.id || resident.digital_youth_id || getFallbackDigitalYouthId(userId, dbUser || {}),
@@ -722,8 +725,9 @@ router.get('/profile', authenticateUser, async (req: Request, res: Response): Pr
       last_name: dbUser?.last_name ?? meta.last_name ?? null,
       suffix: dbUser?.suffix ?? meta.suffix ?? null,
       sex: resident.sex || meta.sex || 'Female',
-      birthdate: resident.birthdate || meta.birthdate || '2005-01-01',
-      age: meta.age || (resident.birthdate ? calculateAge(resident.birthdate) : 20),
+      birthdate: profileBirthdate || '2005-01-01',
+      age: profileAge ?? (Number(meta.age) || 20),
+      is_age_out: profileAge !== null && (profileAge < 15 || profileAge > 30),
       civilStatus: (resident as any).civil_status || (resident as any).marital_status || meta.civilStatus || 'Single',
       address: resident.address || meta.address || '',
       zone: resident.zone || meta.zone || null,
@@ -840,6 +844,8 @@ router.get(
 
         const joinedProfile = u.resident_profile;
         const resident = (Array.isArray(joinedProfile) ? joinedProfile[0] : joinedProfile) || {};
+        const residentBirthdate = resident.birthdate || meta.birthdate || null;
+        const calculatedAge = residentBirthdate ? calculateAge(String(residentBirthdate)) : null;
         const verificationStatus = (resident as any).verification_status || 'pending';
         const normalizedUserStatus = String(u.status || '').toLowerCase();
         const isPendingSubmission = normalizedUserStatus !== 'rejected'
@@ -862,8 +868,9 @@ router.get(
           id: meta.id || resident.digital_youth_id || getFallbackDigitalYouthId(u.id, u),
           name: u.full_name || meta.name || '',
           sex: resident.sex || meta.sex || 'Female',
-          birthdate: resident.birthdate || meta.birthdate || '2005-01-01',
-          age: meta.age || (resident.birthdate ? calculateAge(resident.birthdate) : 20),
+          birthdate: residentBirthdate || '2005-01-01',
+          age: calculatedAge ?? (Number(meta.age) || 20),
+          is_age_out: calculatedAge !== null && (calculatedAge < 15 || calculatedAge > 30),
           civilStatus: (resident as any).civil_status || (resident as any).marital_status || meta.civilStatus || 'Single',
           address: resident.address || meta.address || '',
           zone: resident.zone || meta.zone || null,
@@ -911,6 +918,88 @@ router.get(
     sendError(res, err.message || 'Error fetching youth profiles', 500);
   }
   }
+);
+
+router.get(
+  '/youth-profiles/:id/history',
+  authenticateUser,
+  requireActiveUser,
+  requireRoles('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN'),
+  async (req: Request, res: Response): Promise<void> => {
+    const requester = (req as AuthRequest).user!;
+    const { data: youth, error: youthError } = await supabaseAdmin
+      .from('users')
+      .select('id, tenant_id, role_id')
+      .eq('id', req.params.id)
+      .eq('role_id', 4)
+      .maybeSingle();
+    if (youthError) {
+      sendError(res, `Failed to load youth profile for history: ${youthError.message}`, 500);
+      return;
+    }
+    if (!youth) {
+      sendError(res, 'Youth constituent not found.', 404);
+      return;
+    }
+    if (requester.role !== 'SUPER_ADMIN' && requester.tenant_id !== youth.tenant_id) {
+      sendError(res, 'You cannot view youth history from another Barangay.', 403);
+      return;
+    }
+
+    const [registrationsResult, attendanceResult, feedbackResult] = await Promise.all([
+      supabaseAdmin.from('program_registrations')
+        .select('id, program_id, status, registered_at, program(title, end_date)')
+        .eq('user_id', youth.id)
+        .eq('tenant_id', youth.tenant_id)
+        .order('registered_at', { ascending: false }),
+      supabaseAdmin.from('program_attendance')
+        .select('id, program_id, checked_in_at, program(title)')
+        .eq('user_id', youth.id)
+        .eq('tenant_id', youth.tenant_id)
+        .order('checked_in_at', { ascending: false }),
+      supabaseAdmin.from('feedback')
+        .select('id, subject, message, category, sentiment, status, created_at, program(title)')
+        .eq('user_id', youth.id)
+        .eq('tenant_id', youth.tenant_id)
+        .eq('is_anonymous', false)
+        .order('created_at', { ascending: false }),
+    ]);
+    const failedResult = [registrationsResult, attendanceResult, feedbackResult].find(result => result.error);
+    if (failedResult?.error) {
+      sendError(res, `Failed to load youth engagement history: ${failedResult.error.message}`, 500);
+      return;
+    }
+
+    const attendanceRows = attendanceResult.data || [];
+    const attendanceProgramIds = new Set(attendanceRows.map(row => row.program_id));
+    const absentRows = (registrationsResult.data || []).flatMap((registration: any) => {
+      const program = Array.isArray(registration.program) ? registration.program[0] : registration.program;
+      if (attendanceProgramIds.has(registration.program_id)
+        || !program?.end_date
+        || new Date(program.end_date).getTime() >= Date.now()
+        || ['cancelled', 'waitlisted'].includes(String(registration.status || '').toLowerCase())) return [];
+      return [{
+        id: `absent-${registration.id}`,
+        program_id: registration.program_id,
+        program_title: program.title || 'Program',
+        checked_in_at: null,
+        status: 'Absent',
+      }];
+    });
+    const presentRows = attendanceRows.map((attendance: any) => {
+      const program = Array.isArray(attendance.program) ? attendance.program[0] : attendance.program;
+      return {
+        ...attendance,
+        program_title: program?.title || 'Program',
+        status: 'Present',
+      };
+    });
+    sendSuccess(res, {
+      registrations: registrationsResult.data || [],
+      attendance: [...presentRows, ...absentRows],
+      feedback: feedbackResult.data || [],
+    }, 'Youth engagement history retrieved.');
+  },
 );
 
 /**

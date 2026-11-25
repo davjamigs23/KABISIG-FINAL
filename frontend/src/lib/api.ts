@@ -10,6 +10,7 @@ export interface AnnouncementPayload {
   category: 'Opportunity' | 'Notice' | 'Emergency' | 'Event';
   status: 'draft' | 'published';
   image_path?: string | null;
+  image_urls?: string[];
   image?: {
     file_name: string;
     content_type: 'image/jpeg' | 'image/png';
@@ -1054,7 +1055,7 @@ class KabisigApiClient {
   async uploadDocument(payload: {
     title: string;
     description?: string;
-    resolutionNumber?: string;
+    resolution_number?: string;
     document_type: 'Resolutions' | 'Minutes' | 'Reports' | 'Vouchers';
     file: File;
   }): Promise<{ success: boolean; data?: any; message?: string; error?: any }> {
@@ -1085,7 +1086,7 @@ class KabisigApiClient {
       body: JSON.stringify({
         title: payload.title,
         description: payload.description,
-        resolution_number: payload.resolutionNumber,
+        resolution_number: payload.resolution_number,
         document_type: payload.document_type,
         file_name: payload.file.name,
         content_type: payload.file.type || 'application/octet-stream',
@@ -1285,6 +1286,14 @@ class KabisigApiClient {
       return { data: null, error: 'The server returned an invalid youth profile response.' };
     }
     return { data: res.data, error: null };
+  }
+
+  async getYouthEngagementHistory(userId: string): Promise<{ success: boolean; data?: {
+    registrations: any[];
+    attendance: any[];
+    feedback: any[];
+  }; message?: string }> {
+    return this.request(`/users/youth-profiles/${encodeURIComponent(userId)}/history`, { method: 'GET' });
   }
 
   async updateUserStatus(userId: string, status: string): Promise<{ success: boolean; message?: string }> {

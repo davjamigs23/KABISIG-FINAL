@@ -116,6 +116,7 @@ import { openPrintableReport } from '../lib/reportGenerator';
 import { DEFAULT_BARANGAY_LOGOS } from '../data';
 import PopupDialog, { type PopupMessage } from './PopupDialog';
 import { formatOfficialName } from '../lib/officialFormatting';
+import { useTenantFinancialRealtime } from '../hooks/useTenantFinancialRealtime';
 
 function getStandardCategory(cat: string): string {
   if (!cat) return 'Uncategorized';
@@ -191,6 +192,7 @@ interface OfficialPagesProps {
   onAddResolution: (resolution: ResolutionRecord) => void;
   onAddExpense: (e: ExpenseRecord) => Promise<void> | void;
   onRefreshExpenses: () => Promise<void>;
+  onRefreshPrograms?: () => Promise<void>;
   onAddDocument: (d: DocumentRecord) => void;
   onUpdateDocument: (d: DocumentRecord) => void;
   onRegisterAttendance: (record: AttendanceRecord, qrPayload: string) => Promise<AttendanceRecord>;
@@ -237,6 +239,7 @@ export default function OfficialPages({
   onAddResolution,
   onAddExpense,
   onRefreshExpenses,
+  onRefreshPrograms,
   onAddDocument,
   onUpdateDocument,
   onRegisterAttendance,
@@ -654,6 +657,12 @@ export default function OfficialPages({
     setBudgetOptions(budgets);
   };
 
+  useTenantFinancialRealtime(currentTenant?.id, () => {
+    void onRefreshPrograms?.();
+    void onRefreshExpenses();
+    void refreshBudgetOptions();
+  });
+
   const [showAllocateProgram, setShowAllocateProgram] = useState(false);
   const [allocateForm, setAllocateForm] = useState({ category: '', allocatedAmount: '', description: '', fiscalYear: String(currentTenant?.active_fiscal_year || new Date().getFullYear()) });
   useEffect(() => {
@@ -1012,6 +1021,55 @@ export default function OfficialPages({
     if (!dateStr) return true;
     return new Date(dateStr).getFullYear() === Number(treasurerBudgetYear);
   });
+  const ledgerGroups = (() => {
+    const groups = new Map<string, { title: string; allocated: number; budgets: Set<string>; expenses: ExpenseRecord[] }>();
+    const getGroup = (key: string, title: string) => {
+      let group = groups.get(key);
+      if (!group) {
+        group = { title, allocated: 0, budgets: new Set<string>(), expenses: [] };
+        groups.set(key, group);
+      }
+      return group;
+    };
+
+    budgetOptions.forEach((budget: any) => {
+      const programId = budget.program_id || budget.programId;
+      const program = programs.find(item => String(item.id) === String(programId || ''))
+        || programs.find(item => item.title.trim().toLowerCase() === String(budget.category || '').trim().toLowerCase());
+      const title = program?.title || String(budget.category || 'Unassigned Program');
+      const group = getGroup(String(programId || budget.id || title), title);
+      if (!group.budgets.has(String(budget.id))) {
+        group.budgets.add(String(budget.id));
+        group.allocated += Number(budget.allocated_amount) || 0;
+      }
+    });
+
+    filteredExpenses.forEach((expense: any) => {
+      const programId = expense.programId || expense.program_id;
+      const budgetId = expense.budgetId || expense.budget_id;
+      const budget = budgetOptions.find((item: any) => String(item.id) === String(budgetId || ''));
+      const joinedProgram = Array.isArray(expense.program) ? expense.program[0] : expense.program;
+      const title = programs.find(program => String(program.id) === String(programId || ''))?.title
+        || joinedProgram?.title
+        || budget?.category
+        || expense.programTitle
+        || 'Unassigned Program';
+      const matchingBudget = budget || budgetOptions.find((item: any) => {
+        const linkedProgramId = item.program_id || item.programId;
+        return (programId && String(linkedProgramId) === String(programId))
+          || String(item.category || '').trim().toLowerCase() === String(title).trim().toLowerCase();
+      });
+      const groupKey = String(programId || matchingBudget?.program_id || matchingBudget?.programId || matchingBudget?.id || title);
+      getGroup(groupKey, title).expenses.push(expense);
+    });
+
+    return [...groups.values()]
+      .map(group => ({
+        ...group,
+        spent: group.expenses.reduce((total, expense: any) => total + Number(expense.gross_amount ?? expense.amount ?? 0), 0),
+      }))
+      .sort((a, b) => a.title.localeCompare(b.title));
+  })();
   const getWithholdingTax = (expense: any) => {
     const taxType = String(expense.tax_type || expense.taxType || '').toUpperCase().replace(/-/g, '_');
     const grossAmount = Number(expense.gross_amount ?? expense.amount) || 0;
@@ -1089,6 +1147,9 @@ export default function OfficialPages({
       return category !== 'general youth development fund' && !['heha', 'aaaa'].includes(category);
     })
     .reduce((sum: number, budget: any) => sum + Number(budget.allocated_amount || 0), 0);
+  const remainingSkBudget = totalBarangayBudget
+    - budgetOptions.reduce((sum: number, budget: any) => sum + (Number(budget.allocated_amount) || 0), 0)
+    - totalSpentExpenses;
 
   // --- ACTIONS HANDLERS ---
   const handlePublishProgram = async () => {
@@ -1256,7 +1317,7 @@ export default function OfficialPages({
       const result = await kabisigApi.uploadDocument({
         title: docForm.title.trim(),
         description: docForm.description.trim(),
-        resolutionNumber: autoResNum,
+        resolution_number: autoResNum,
         document_type: docForm.category,
         file: selectedDocumentFile,
       });
@@ -2628,14 +2689,19 @@ export default function OfficialPages({
                         ))}
                       </div>
                     )}
-                    {(announcement.imageUrl || (announcement as any).image_url) && (
-                      <div className="w-full flex justify-center items-center my-6">
-                        <img
-                          src={announcement.imageUrl || (announcement as any).image_url}
-                          alt={announcement.title}
-                          className="mx-auto object-contain max-h-[400px] w-auto rounded-xl shadow-sm"
-                          onClick={() => setLightboxImg(announcement.imageUrl || (announcement as any).image_url)}
-                        />
+                    {(announcement.imageUrls?.length || announcement.imageUrl || (announcement as any).image_url) && (
+                      <div className="my-6 flex flex-wrap justify-center gap-2">
+                        {(announcement.imageUrls?.length
+                          ? announcement.imageUrls
+                          : [announcement.imageUrl || (announcement as any).image_url]).map((imageUrl, index) => (
+                          <img
+                            key={`${announcement.id}-image-${index}`}
+                            src={imageUrl}
+                            alt={`${announcement.title} image ${index + 1}`}
+                            className="h-28 w-28 cursor-pointer rounded-xl object-cover shadow-sm"
+                            onClick={() => setLightboxImg(imageUrl)}
+                          />
+                        ))}
                       </div>
                     )}
                     <p className="border-t border-slate-100 pt-4 text-xs text-slate-400">
@@ -6372,66 +6438,62 @@ export default function OfficialPages({
                   </button>
                 </div>
 
-                <div className="border border-slate-100 rounded-xl shadow-sm">
-                  <div className="w-full overflow-x-auto block">
-                  <table className="w-full text-left text-sm text-slate-600 min-w-[800px]">
-                    <thead className="bg-[#091d64] text-[10px] text-white font-bold uppercase tracking-widest">
-                      <tr>
-                        <th className="px-5 py-3 whitespace-nowrap">Initiative Target</th>
-                        <th className="px-5 py-3 text-right whitespace-nowrap">Gross invoice</th>
-                        <th className="px-5 py-3 whitespace-nowrap">Payee Supplier</th>
-                        <th className="px-5 py-3 text-center whitespace-nowrap">Tax Type</th>
-                        <th className="px-5 py-3 text-right whitespace-nowrap">Withholding Tax</th>
-                        <th className="px-5 py-3 text-right whitespace-nowrap">Net Payable</th>
-                        <th className="px-5 py-3 font-mono text-center whitespace-nowrap">Date Logged</th>
-                        <th className="px-5 py-3 text-center whitespace-nowrap">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-xs font-medium bg-white">
-                      {filteredExpenses.map(exp => {
-                        const withholdingTax = getWithholdingTax(exp);
-                        const programId = exp.programId || (exp as any).program_id;
-                        const joinedProgram = Array.isArray((exp as any).program)
-                          ? (exp as any).program[0]
-                          : (exp as any).program;
-                        const budgetId = exp.budgetId || (exp as any).budget_id;
-                        const joinedBudget = Array.isArray((exp as any).budget)
-                          ? (exp as any).budget[0]
-                          : (exp as any).budget;
-                        const linkedBudget = budgetOptions.find(budget => String(budget.id) === String(budgetId || ''));
-                        const linkedProgram = programs.find(program => String(program.id) === String(programId || ''));
-                        const initiativeTarget = linkedProgram?.title
-                          || joinedProgram?.title
-                          || linkedBudget?.category
-                          || joinedBudget?.category
-                          || (exp as any).budget_category
-                          || exp.category
-                          || 'Unlinked Program';
-                        return (
-                        <tr key={exp.id} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-5 py-4 font-bold text-slate-800 tracking-tight whitespace-nowrap">{initiativeTarget}</td>
-                          <td className="px-5 py-4 text-right font-mono text-slate-800 font-bold whitespace-nowrap">{'\u20B1'}{Number(exp.amount || 0).toLocaleString()}</td>
-                          <td className="px-5 py-4 text-slate-600 font-semibold whitespace-nowrap">{exp.supplier}</td>
-                          <td className="px-5 py-4 text-center whitespace-nowrap"><span className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-[10px] font-black">{exp.taxType}</span></td>
-                          <td className="px-5 py-4 text-right font-mono text-rose-600 font-bold whitespace-nowrap">-{'\u20B1'}{Number(withholdingTax || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                          <td className="px-5 py-4 text-right font-mono text-[#091d64] font-black text-sm whitespace-nowrap">{'\u20B1'}{Number(getNetPayable(exp) || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                          <td className="px-5 py-4 font-mono text-[11px] text-slate-400 text-center font-bold italic whitespace-nowrap">{exp.dateLogged}</td>
-                          <td className="px-5 py-4 text-center whitespace-nowrap">
-                            <div className="inline-flex items-center gap-2">
-                              <button type="button" onClick={() => openExpenseEditor(exp)} className="rounded p-2 text-blue-700 hover:bg-blue-50" aria-label={`Edit expense for ${exp.supplier || exp.programTitle}`} title="Edit expense">
-                                <Edit className="h-4 w-4" />
-                              </button>
-                              <button type="button" onClick={() => setConfirmDelete({ id: exp.id, type: 'expense' })} className="rounded p-2 text-rose-700 hover:bg-rose-50" aria-label={`Delete expense for ${exp.supplier || exp.programTitle}`} title="Delete expense">
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                <div className="space-y-3">
+                  {ledgerGroups.map(group => (
+                    <section key={group.title} className="overflow-hidden rounded-xl border border-slate-200">
+                      <header className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-4">
+                        <div>
+                          <h5 className="text-sm font-extrabold text-[#091d64]">{group.title}</h5>
+                          <p className="mt-1 text-[10px] font-semibold text-slate-500">
+                            Allocated: {'\u20B1'}{group.allocated.toLocaleString()} · Expenses: {'\u20B1'}{group.spent.toLocaleString()} · Remaining: {'\u20B1'}{(group.allocated - group.spent).toLocaleString()}
+                          </p>
+                        </div>
+                      </header>
+                      <div className="w-full overflow-x-auto">
+                        <table className="w-full min-w-[1000px] text-left text-xs text-slate-600">
+                          <thead className="bg-white text-[9px] font-bold uppercase tracking-wide text-slate-500">
+                            <tr>
+                              <th className="px-3 py-3 text-right">Quantity</th>
+                              <th className="px-3 py-3">Item Name</th>
+                              <th className="px-3 py-3 text-right">Unit Price</th>
+                              <th className="px-3 py-3 text-right">Total</th>
+                              <th className="px-3 py-3">Payee</th>
+                              <th className="px-3 py-3 text-center">Tax</th>
+                              <th className="px-3 py-3 text-right">Net Payable</th>
+                              <th className="px-3 py-3 text-center">Date</th>
+                              <th className="px-3 py-3 text-center">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {group.expenses.map((exp: any) => {
+                              const total = Number(exp.gross_amount ?? exp.amount ?? 0);
+                              const quantity = Number(exp.quantity) > 0 ? Number(exp.quantity) : 1;
+                              const unitPrice = Number(exp.unit_price) > 0 ? Number(exp.unit_price) : total / quantity;
+                              const withholdingTax = getWithholdingTax(exp);
+                              return <tr key={exp.id} className="hover:bg-slate-50">
+                                <td className="px-3 py-3 text-right">{quantity}</td>
+                                <td className="px-3 py-3 font-bold text-slate-800">{exp.item_name || exp.title || exp.description || exp.supplier || 'Expense'}</td>
+                                <td className="px-3 py-3 text-right font-mono">{'\u20B1'}{unitPrice.toLocaleString()}</td>
+                                <td className="px-3 py-3 text-right font-mono font-bold">{'\u20B1'}{total.toLocaleString()}</td>
+                                <td className="px-3 py-3">{exp.supplier || exp.payee || '—'}</td>
+                                <td className="px-3 py-3 text-center">{exp.taxType || exp.tax_type || '—'}</td>
+                                <td className="px-3 py-3 text-right font-mono">{'\u20B1'}{Number(getNetPayable(exp) || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                                <td className="px-3 py-3 text-center">{exp.dateLogged || exp.expense_date || '—'}</td>
+                                <td className="px-3 py-3 text-center">
+                                  <div className="inline-flex items-center gap-2">
+                                    <button type="button" onClick={() => openExpenseEditor(exp)} className="rounded p-2 text-blue-700 hover:bg-blue-50" aria-label={`Edit expense for ${exp.supplier || exp.programTitle}`} title="Edit expense"><Edit className="h-4 w-4" /></button>
+                                    <button type="button" onClick={() => setConfirmDelete({ id: exp.id, type: 'expense' })} className="rounded p-2 text-rose-700 hover:bg-rose-50" aria-label={`Delete expense for ${exp.supplier || exp.programTitle}`} title="Delete expense"><Trash2 className="h-4 w-4" /></button>
+                                  </div>
+                                </td>
+                              </tr>;
+                            })}
+                            {group.expenses.length === 0 && <tr><td colSpan={9} className="px-3 py-5 text-center text-slate-400">No expenses recorded for this program.</td></tr>}
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+                  ))}
+                  {ledgerGroups.length === 0 && <p className="rounded-xl border border-slate-100 py-8 text-center text-xs font-semibold text-slate-400">No expenses recorded for this fiscal year.</p>}
                 </div>
               </div>
             </div>
@@ -6868,9 +6930,9 @@ export default function OfficialPages({
               </div>
               <div>
                 <div className="mb-3 p-3 rounded-lg bg-blue-50/50 border border-blue-100">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Total SK Budget (Chairperson)</span>
-                  <span className="text-sm font-black text-[#091d64] mt-0.5 block">{'\u20B1'}{Number(totalBarangayBudget || 0).toLocaleString()}</span>
-                  <span className="text-[10px] text-slate-400 block mt-0.5">Pick a program allocation below to deduct from</span>
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Remaining SK Budget</span>
+                  <span className="text-sm font-black text-[#091d64] mt-0.5 block">{'\u20B1'}{Number(remainingSkBudget || 0).toLocaleString()}</span>
+                  <span className="text-[10px] text-slate-400 block mt-0.5">Total budget minus allocations and expenses</span>
                 </div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Program Budget Allocation *</label>
                 <select
