@@ -125,7 +125,7 @@ DROP POLICY IF EXISTS "Document approvals admin insert" ON public.document_appro
 CREATE POLICY "Document approvals admin insert"
     ON public.document_approvals FOR INSERT TO authenticated
     WITH CHECK (
-        reviewer_id = auth.uid()
+        reviewer_id = (select auth.uid())
         AND (
             (tenant_id = public.get_auth_user_tenant_id() AND public.get_auth_user_role() = 'BARANGAY_ADMIN')
             OR public.get_auth_user_role() = 'SUPER_ADMIN'
@@ -136,7 +136,7 @@ DROP POLICY IF EXISTS "Resolution votes tenant read" ON public.resolution_votes;
 CREATE POLICY "Resolution votes tenant read"
     ON public.resolution_votes FOR SELECT TO authenticated
     USING (
-        user_id = auth.uid()
+        user_id = (select auth.uid())
         OR tenant_id = public.get_auth_user_tenant_id()
         OR public.get_auth_user_role() = 'SUPER_ADMIN'
     );
@@ -144,7 +144,7 @@ CREATE POLICY "Resolution votes tenant read"
 DROP POLICY IF EXISTS "Resolution votes own insert" ON public.resolution_votes;
 CREATE POLICY "Resolution votes own insert"
     ON public.resolution_votes FOR INSERT TO authenticated
-    WITH CHECK (user_id = auth.uid() AND tenant_id = public.get_auth_user_tenant_id());
+    WITH CHECK (user_id = (select auth.uid()) AND tenant_id = public.get_auth_user_tenant_id());
 
 DROP POLICY IF EXISTS "Compliance tenant read" ON public.compliance_monitoring;
 CREATE POLICY "Compliance tenant read"
@@ -205,10 +205,10 @@ CREATE POLICY "Committee assignments tenant manage"
 DROP POLICY IF EXISTS "Notifications recipient read" ON public.notifications;
 CREATE POLICY "Notifications recipient read"
     ON public.notifications FOR SELECT TO authenticated
-    USING (user_id = auth.uid());
+    USING (user_id = (select auth.uid()));
 
 DROP POLICY IF EXISTS "Notifications recipient update" ON public.notifications;
 CREATE POLICY "Notifications recipient update"
     ON public.notifications FOR UPDATE TO authenticated
-    USING (user_id = auth.uid())
-    WITH CHECK (user_id = auth.uid());
+    USING (user_id = (select auth.uid()))
+    WITH CHECK (user_id = (select auth.uid()));

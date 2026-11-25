@@ -280,7 +280,7 @@ router.get('/demographics', async (_req: Request, res: Response): Promise<void> 
     return;
   }
 
-  res.setHeader('Cache-Control', 'public, max-age=60');
+  res.set('Cache-Control', 's-maxage=3600, stale-while-revalidate=60');
   sendSuccess(
     res,
     {
@@ -322,6 +322,7 @@ router.get('/programs', async (_req: Request, res: Response): Promise<void> => {
       : imageUrl;
     return { ...program, image_url: resolvedImageUrl };
   });
+  res.set('Cache-Control', 's-maxage=3600, stale-while-revalidate=60');
   sendSuccess(res, programs, 'Public programs retrieved.');
 });
 
@@ -446,6 +447,7 @@ router.get('/officials', async (_req: Request, res: Response): Promise<void> => 
     });
   });
 
+  res.set('Cache-Control', 's-maxage=3600, stale-while-revalidate=60');
   sendSuccess(res, Array.from(groupedOfficials.values()), 'Public officials roster retrieved.');
 });
 
@@ -537,6 +539,7 @@ router.get('/documents', async (_req: Request, res: Response): Promise<void> => 
     status: document.status,
   }));
 
+  res.set('Cache-Control', 's-maxage=3600, stale-while-revalidate=60');
   sendSuccess(res, publicDocuments, 'Public FPD documents retrieved.');
 });
 

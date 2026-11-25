@@ -411,7 +411,7 @@ CREATE POLICY "Users read own or tenant profile"
     ON public.users FOR SELECT 
     TO authenticated 
     USING (
-        id = auth.uid() 
+        id = (select auth.uid())
         OR tenant_id = public.get_auth_user_tenant_id()
         OR public.get_auth_user_role() IN ('SUPER_ADMIN', 'FEDERATION_OBSERVER', 'LGU_AUDITOR')
     );
@@ -420,8 +420,8 @@ DROP POLICY IF EXISTS "Users can update their own non-sensitive profile" ON publ
 CREATE POLICY "Users can update their own non-sensitive profile"
     ON public.users FOR UPDATE
     TO authenticated
-    USING (id = auth.uid())
-    WITH CHECK (id = auth.uid());
+    USING (id = (select auth.uid()))
+    WITH CHECK (id = (select auth.uid()));
 
 DROP POLICY IF EXISTS "Admins can update user status and role within tenant" ON public.users;
 CREATE POLICY "Admins can update user status and role within tenant"
@@ -438,7 +438,7 @@ CREATE POLICY "Resident profile tenant isolation"
     ON public.resident_profile FOR SELECT
     TO authenticated
     USING (
-        user_id = auth.uid()
+        user_id = (select auth.uid())
         OR tenant_id = public.get_auth_user_tenant_id()
         OR public.get_auth_user_role() IN ('SUPER_ADMIN', 'FEDERATION_OBSERVER', 'LGU_AUDITOR')
     );
@@ -448,7 +448,7 @@ CREATE POLICY "Resident profile insert"
     ON public.resident_profile FOR INSERT
     TO authenticated
     WITH CHECK (
-        user_id = auth.uid()
+        user_id = (select auth.uid())
         OR public.get_auth_user_role() IN ('BARANGAY_ADMIN', 'SK_OFFICIAL', 'SUPER_ADMIN')
     );
 
@@ -457,7 +457,7 @@ CREATE POLICY "Resident profile update"
     ON public.resident_profile FOR UPDATE
     TO authenticated
     USING (
-        user_id = auth.uid()
+        user_id = (select auth.uid())
         OR (tenant_id = public.get_auth_user_tenant_id() AND public.get_auth_user_role() IN ('BARANGAY_ADMIN', 'SK_OFFICIAL'))
         OR public.get_auth_user_role() = 'SUPER_ADMIN'
     );
@@ -487,7 +487,7 @@ CREATE POLICY "Program registration select"
     ON public.program_registrations FOR SELECT
     TO authenticated
     USING (
-        user_id = auth.uid()
+        user_id = (select auth.uid())
         OR tenant_id = public.get_auth_user_tenant_id()
         OR public.get_auth_user_role() IN ('SUPER_ADMIN', 'FEDERATION_OBSERVER')
     );
@@ -497,7 +497,7 @@ CREATE POLICY "Program registration insert"
     ON public.program_registrations FOR INSERT
     TO authenticated
     WITH CHECK (
-        user_id = auth.uid()
+        user_id = (select auth.uid())
         OR (tenant_id = public.get_auth_user_tenant_id() AND public.get_auth_user_role() IN ('BARANGAY_ADMIN', 'SK_OFFICIAL'))
     );
 
@@ -506,7 +506,7 @@ CREATE POLICY "Program attendance select"
     ON public.program_attendance FOR SELECT
     TO authenticated
     USING (
-        user_id = auth.uid()
+        user_id = (select auth.uid())
         OR tenant_id = public.get_auth_user_tenant_id()
         OR public.get_auth_user_role() IN ('SUPER_ADMIN', 'FEDERATION_OBSERVER', 'LGU_AUDITOR')
     );
@@ -601,7 +601,7 @@ CREATE POLICY "Feedback select policy"
     ON public.feedback FOR SELECT
     TO authenticated
     USING (
-        user_id = auth.uid()
+        user_id = (select auth.uid())
         OR (tenant_id = public.get_auth_user_tenant_id() AND public.get_auth_user_role() IN ('BARANGAY_ADMIN', 'SK_OFFICIAL'))
         OR public.get_auth_user_role() IN ('SUPER_ADMIN', 'FEDERATION_OBSERVER')
     );
@@ -635,14 +635,14 @@ DROP POLICY IF EXISTS "Poll responses insert policy" ON public.poll_responses;
 CREATE POLICY "Poll responses insert policy"
     ON public.poll_responses FOR INSERT
     TO authenticated
-    WITH CHECK (user_id = auth.uid());
+    WITH CHECK (user_id = (select auth.uid()));
 
 DROP POLICY IF EXISTS "Poll responses select policy" ON public.poll_responses;
 CREATE POLICY "Poll responses select policy"
     ON public.poll_responses FOR SELECT
     TO authenticated
     USING (
-        user_id = auth.uid()
+        user_id = (select auth.uid())
         OR (tenant_id = public.get_auth_user_tenant_id() AND public.get_auth_user_role() IN ('BARANGAY_ADMIN', 'SK_OFFICIAL'))
         OR public.get_auth_user_role() IN ('SUPER_ADMIN', 'FEDERATION_OBSERVER')
     );
