@@ -1,8 +1,0 @@
-◇ injected env (10) from .env.local // tip: ⌘ enable debugging { debug: true }
-◇ injected env (0) from .env.local // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
-◇ injected env (0) from .env // tip: ⌘ override existing { override: true }
-◇ injected env (0) from .env.local // tip: ◈ secrets for agents [www.dotenvx.com]
-=======================================================
-KABISIG Backend Server running on http://localhost:5000
-Also reachable on LAN at http://192.168.254.110:5000
-=======================================================

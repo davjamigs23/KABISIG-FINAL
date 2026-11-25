@@ -9,6 +9,7 @@
 
 # === Node.js & Next.js ===
 node_modules/
+node_modules.disabled/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -22,17 +23,19 @@ dist/
 next-env.d.ts
 
 # === AI & Temporary Artifacts ===
-backups/
-backups_from_frontend/
+*.log
+*.ps1
 *.bak
 *.bak-*
 *.bak_*
 *.BAK
 backup_*
 *.backup
+backups/
+backups_from_frontend/
+diagnostics/
 *.txt
 *.py
-diagnostics/
 *.csv
 *_test.json
 test-*.json
