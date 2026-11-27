@@ -2,6 +2,7 @@ import express from 'express';
 import type { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import QRCode from 'qrcode';
 import { supabaseAdmin, recordAuditLog } from '../services/supabase.service.js';
 
 import { resolveAvatarUrl } from '../services/avatar.service.js';
@@ -9,6 +10,7 @@ import { sendSuccess, sendError } from '../utils/response.js';
 import {authenticateUser, requireActiveUser, requireRoles} from '../middleware/auth.js';
 import type { AuthRequest } from '../types/database.types.js';
 import { resolveName, splitFullName } from '../utils/name.js';
+import { sendEmail as sendBrevoEmail } from '../utils/email.js';
 
 const router = express.Router();
 
@@ -100,6 +102,147 @@ const SecurePasswordSchema = z
   .regex(/[a-z]/, 'Password must contain at least one lowercase letter (a-z)')
   .regex(/[0-9]/, 'Password must contain at least one number (0-9)')
   .regex(/[^A-Za-z0-9]/, 'Password must contain at least one symbol (!@#$%^&*...)');
+
+const BulkYouthReviewSchema = z.object({
+  user_ids: z.array(z.string().uuid()).min(1).max(100),
+  action: z.enum(['approve', 'reject']),
+  reason: z.string().trim().min(1).max(1000).optional(),
+}).superRefine((value, context) => {
+  if (new Set(value.user_ids).size !== value.user_ids.length) {
+    context.addIssue({ code: 'custom', message: 'User IDs must be unique.', path: ['user_ids'] });
+  }
+});
+
+function escapeEmailHtml(value: string): string {
+  return value.replace(/[&<>"']/g, character => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[character] || character);
+}
+
+router.put(
+  '/bulk-approve',
+  authenticateUser,
+  requireActiveUser,
+  requireRoles('BARANGAY_ADMIN'),
+  async (req: Request, res: Response): Promise<void> => {
+    const parsed = BulkYouthReviewSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendError(res, 'Validation failed', 400, parsed.error.flatten().fieldErrors);
+      return;
+    }
+
+    const admin = (req as AuthRequest).user!;
+    if (!admin.tenant_id) {
+      sendError(res, 'A Barangay tenant is required to review youth applications.', 403);
+      return;
+    }
+
+    const { user_ids: userIds, action } = parsed.data;
+    const reason = parsed.data.reason || 'Rejected by Barangay Chairperson.';
+    const { data: targets, error: targetsError } = await supabaseAdmin
+      .from('users')
+      .select('id, tenant_id, role_id, full_name, email, status, is_demoted, resident_profile!resident_profile_user_id_fkey(verification_status, id_type, id_number, id_document_path)')
+      .eq('tenant_id', admin.tenant_id)
+      .eq('role_id', 4)
+      .in('id', userIds);
+
+    if (targetsError) {
+      sendError(res, `Failed to retrieve selected youth applications: ${targetsError.message}`, 500);
+      return;
+    }
+    if (!targets || targets.length !== userIds.length) {
+      sendError(res, 'One or more selected youth applications are not in your Barangay.', 403);
+      return;
+    }
+    if (targets.some(target => target.status === 'active')) {
+      sendError(res, 'Active youth accounts cannot be included in bulk review.', 400);
+      return;
+    }
+
+    const reviewPayload: Array<{ user_id: string; digital_youth_id: string; qr_code_url: string }> = [];
+    if (action === 'approve') {
+      for (const target of targets) {
+        const joinedProfile = target.resident_profile;
+        const resident = Array.isArray(joinedProfile) ? joinedProfile[0] : joinedProfile;
+        if (!resident || resident.verification_status === 'not_submitted' || !resident.id_document_path) {
+          sendError(
+            res,
+            `Cannot approve ${target.full_name || 'a selected youth'}: an ID document must be submitted and available.`,
+            400,
+            { code: 'ID_DOCUMENT_MISSING', user_id: target.id },
+          );
+          return;
+        }
+
+        const digitalYouthId = `${Number(target.role_id) === 4 && target.is_demoted !== true ? 'KK' : 'SK'}-${new Date().getFullYear()}-${target.id.slice(0, 4)}`;
+        const qrPayload = JSON.stringify({
+          digital_youth_id: digitalYouthId,
+          user_id: target.id,
+          tenant_id: target.tenant_id,
+          full_name: target.full_name,
+          issued_at: new Date().toISOString(),
+        });
+        try {
+          const qrCodeUrl = await QRCode.toDataURL(qrPayload, {
+            errorCorrectionLevel: 'H',
+            margin: 2,
+            width: 300,
+            color: { dark: '#1E3A8A', light: '#FFFFFF' },
+          });
+          reviewPayload.push({ user_id: target.id, digital_youth_id: digitalYouthId, qr_code_url: qrCodeUrl });
+        } catch (error) {
+          sendError(res, `Failed to generate a Digital Youth ID QR code: ${error instanceof Error ? error.message : String(error)}`, 500);
+          return;
+        }
+      }
+    }
+
+    const { data: reviewed, error: reviewError } = await supabaseAdmin.rpc('review_youth_bulk', {
+      p_user_ids: userIds,
+      p_action: action,
+      p_admin_id: admin.id,
+      p_tenant_id: admin.tenant_id,
+      p_review_payload: reviewPayload,
+      p_reason: reason,
+    });
+    if (reviewError || !reviewed) {
+      sendError(res, `Failed to review youth applications: ${reviewError?.message || 'Database operation returned no result.'}`, 500);
+      return;
+    }
+
+    const auditAction = action === 'approve' ? 'BULK_APPROVE_YOUTH' : 'BULK_REJECT_YOUTH';
+    await recordAuditLog({
+      tenantId: admin.tenant_id,
+      userId: admin.id,
+      action: auditAction,
+      entityName: 'users',
+      details: { user_ids: userIds, reason: action === 'reject' ? reason : undefined },
+      ipAddress: req.ip || null,
+    });
+
+    const frontendUrl = (process.env.FRONTEND_URL || 'https://kabisig-naga.vercel.app').replace(/\/+$/, '');
+    const emailResults = await Promise.allSettled(targets.map(async target => {
+      if (!target.email) return;
+      const greeting = escapeEmailHtml(target.full_name || 'Youth Constituent');
+      const message = action === 'approve'
+        ? 'Your KABISIG Youth Constituent account has been approved. You can now sign in to access your Digital Youth ID and community programs.'
+        : `Your KABISIG Youth Constituent application was not approved. Reason: ${escapeEmailHtml(reason)}`;
+      const heading = action === 'approve' ? 'Account Approved' : 'Application Update';
+      const html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden"><div style="background:#091d64;padding:24px;text-align:center"><h1 style="color:#fff;margin:0">KABISIG</h1></div><div style="padding:28px"><h2 style="color:#091d64">${heading}</h2><p>Hello ${greeting},</p><p style="line-height:1.6">${message}</p>${action === 'approve' ? `<p style="text-align:center;margin:28px 0"><a href="${escapeEmailHtml(frontendUrl)}" style="background:#091d64;color:#fff;padding:12px 22px;text-decoration:none;border-radius:8px;font-weight:bold">Log in to KABISIG</a></p>` : ''}</div></div>`;
+      await sendBrevoEmail(target.email, `KABISIG ${heading}`, html);
+    }));
+    const failedEmails = emailResults.filter(result => result.status === 'rejected');
+    if (failedEmails.length > 0) {
+      console.error(`[BULK YOUTH REVIEW] ${failedEmails.length} notification email(s) failed.`);
+    }
+
+    sendSuccess(res, reviewed, `${reviewed.length} youth application(s) ${action === 'approve' ? 'approved' : 'rejected'}.`);
+  },
+);
 
 const CompleteProfileSchema = z.object({
   full_name: z.string().min(2, 'Full name must be at least 2 characters'),

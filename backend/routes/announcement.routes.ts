@@ -5,6 +5,7 @@ import { supabaseAdmin } from '../services/supabase.service.js';
 import { authenticateUser, requireActiveUser, requireRoles } from '../middleware/auth.js';
 import { sendError, sendSuccess } from '../utils/response.js';
 import type { AuthRequest } from '../types/database.types.js';
+import { sendEmail } from '../utils/email.js';
 
 const router = express.Router();
 const announcementFields = {
@@ -34,6 +35,44 @@ const updateSchema = z.object(announcementFields).partial();
 const MAX_PUBMAT_BYTES = 10 * 1024 * 1024;
 const PUBMAT_BUCKET = 'announcement-pubmats';
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
+
+function escapeEmailHtml(value: string): string {
+  return value.replace(/[&<>"']/g, character => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[character] || character);
+}
+
+async function notifyApprovedYouth(tenantId: string, title: string, content: string): Promise<void> {
+  try {
+    const { data: recipients, error } = await supabaseAdmin
+      .from('users')
+      .select('email, resident_profile!resident_profile_user_id_fkey!inner(verification_status)')
+      .eq('tenant_id', tenantId)
+      .eq('role_id', 4)
+      .eq('status', 'active')
+      .eq('resident_profile.verification_status', 'verified');
+    if (error) throw new Error(error.message);
+
+    const frontendUrl = (process.env.FRONTEND_URL || 'https://kabisig-naga.vercel.app').replace(/\/+$/, '');
+    const logoUrl = `${frontendUrl}/images/Kabisig_logo.png`;
+    const safeTitle = escapeEmailHtml(title);
+    const safeContent = escapeEmailHtml(content).replace(/\r?\n/g, '<br>');
+    const html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden"><div style="background:#091d64;padding:22px;text-align:center"><img src="${escapeEmailHtml(logoUrl)}" alt="KABISIG" style="width:160px;max-width:100%;height:auto"></div><div style="padding:28px;background:#fff"><p style="color:#64748b;font-size:13px;font-weight:bold;text-transform:uppercase;letter-spacing:1px">New Barangay Announcement</p><h1 style="color:#091d64;font-size:22px">${safeTitle}</h1><p style="color:#334155;font-size:15px;line-height:1.7">${safeContent}</p><p style="text-align:center;margin:30px 0 8px"><a href="${escapeEmailHtml(frontendUrl)}" style="display:inline-block;background:#091d64;color:#fff;padding:13px 24px;text-decoration:none;border-radius:8px;font-weight:bold">View in KABISIG</a></p></div><div style="background:#f8fafc;padding:14px;text-align:center;color:#94a3b8;font-size:12px">KABISIG · Kabataan Information System for Inclusive Governance</div></div>`;
+    const results = await Promise.allSettled((recipients || [])
+      .filter(recipient => typeof recipient.email === 'string' && recipient.email.trim().length > 0)
+      .map(recipient => sendEmail(recipient.email, `KABISIG Announcement: ${title}`, html)));
+    const failedCount = results.filter(result => result.status === 'rejected').length;
+    if (failedCount > 0) {
+      console.error(`[ANNOUNCEMENT EMAIL] Failed to send ${failedCount} of ${results.length} youth notification(s).`);
+    }
+  } catch (error) {
+    console.error('[ANNOUNCEMENT EMAIL] Announcement was saved, but youth notifications failed:', error);
+  }
+}
 
 function missingTable(error: any) {
   return error?.code === '42P01'
@@ -236,6 +275,9 @@ router.post(
     if (signed.error) {
       sendError(res, signed.error, 502);
       return;
+    }
+    if (status === 'published' && signed.data) {
+      await notifyApprovedYouth(tenantId, signed.data.title, signed.data.content);
     }
     sendSuccess(res, signed.data, 'Announcement saved.');
   },

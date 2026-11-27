@@ -160,12 +160,16 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
       if (chair.tenant_id) activeChairTenantIds.add(chair.tenant_id);
     });
 
+    const superAdminIncludesPending = viewer?.role === 'SUPER_ADMIN';
     let officialsQuery = supabaseAdmin
       .from('users')
       .select('id, tenant_id, role_id, full_name, email, status, setup_completed')
-      .in('role_id', [2, 3])
-      .eq('status', 'active')
-      .eq('setup_completed', true);
+      .in('role_id', [2, 3]);
+    if (superAdminIncludesPending) {
+      officialsQuery = officialsQuery.in('status', ['active', 'pending', 'pending_invite']);
+    } else {
+      officialsQuery = officialsQuery.eq('status', 'active').eq('setup_completed', true);
+    }
     if (tenantScopedViewer) {
       officialsQuery = officialsQuery.eq('tenant_id', viewer!.tenant_id!);
     }
@@ -211,7 +215,7 @@ router.get('/', optionalAuthenticateUser, async (req: Request, res: Response): P
           email: c.email,
           role_id: Number(c.role_id),
           status: c.status,
-          is_pending: c.status === 'pending' || c.status === 'pending_invite' || c.setup_completed === false,
+          is_pending: c.status === 'pending' || c.status === 'pending_invite' || c.setup_completed !== true,
           setup_completed: typeof c.setup_completed === 'boolean' ? c.setup_completed : null,
           sex: profileSexByUserId.get(c.id) || null,
         });
@@ -378,18 +382,27 @@ router.get('/:id', optionalAuthenticateUser, async (req: Request, res: Response)
   }
 
   // Fetch Chairperson
-  const { data: chair } = await supabaseAdmin
+  let chairQuery = supabaseAdmin
     .from('users')
-    .select('id, full_name, email, phone, status')
+    .select('id, full_name, email, phone, status, setup_completed')
     .eq('tenant_id', id)
-    .eq('role_id', 2)
-    .eq('status', 'active')
-    .eq('setup_completed', true)
-    .maybeSingle();
+    .eq('role_id', 2);
+  if (viewer?.role === 'SUPER_ADMIN') {
+    chairQuery = chairQuery.in('status', ['active', 'pending', 'pending_invite']);
+  } else {
+    chairQuery = chairQuery.eq('status', 'active').eq('setup_completed', true);
+  }
+  const { data: chair } = await chairQuery.maybeSingle();
 
   sendSuccess(res, {
     ...barangay,
     chairperson: chair?.full_name || 'Unassigned',
+    chairpersonUser: chair ? {
+      id: chair.id,
+      full_name: chair.full_name,
+      status: chair.status,
+      setup_completed: chair.setup_completed,
+    } : null,
     chairpersonEmail: canSeeBarangayContacts(req, barangay.id) ? (chair?.email || '') : '',
     contact: canSeeBarangayContacts(req, barangay.id) ? (chair?.phone || '') : '',
     logo: resolveBarangayLogo(barangay.id, barangay.name, barangay.logo_url),

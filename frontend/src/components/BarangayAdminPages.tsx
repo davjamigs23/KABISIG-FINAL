@@ -173,6 +173,7 @@ export interface BarangayAdminPagesProps {
   resolutions?: any[];
   onApproveYouth: (id: string) => void;
   onRejectYouth: (id: string, reason: string) => void;
+  onBulkReviewYouth: (ids: string[], action: 'approve' | 'reject', reason?: string) => Promise<void>;
   onApproveDocument: (id: string, notes: string) => Promise<DocumentRecord>;
   onRejectDocument: (id: string, notes: string) => Promise<DocumentRecord>;
   onAddExpense: (expense: ExpenseRecord) => Promise<void>;
@@ -204,6 +205,7 @@ export default function BarangayAdminPages({
   resolutions = [],
   onApproveYouth,
   onRejectYouth,
+  onBulkReviewYouth,
   onApproveDocument,
   onRejectDocument,
   onAddExpense,
@@ -218,6 +220,8 @@ export default function BarangayAdminPages({
   onLogout
 }: BarangayAdminPagesProps) {
   const [popupMsg, setPopupMsg] = useState<{ title: string; text: string; type: 'success' | 'error' } | null>(null);
+  const [selectedYouthIds, setSelectedYouthIds] = useState<Set<string>>(new Set());
+  const [isBulkReviewingYouth, setIsBulkReviewingYouth] = useState(false);
   const [confirmMsg, setConfirmMsg] = useState<PopupMessage | null>(null);
   const [pubmatFile, setPubmatFile] = useState<File | null>(null);
   const [activeMenu, setActiveMenu] = useState<
@@ -987,6 +991,46 @@ export default function BarangayAdminPages({
         : profile.status === filterStatus;
     return matchesBarangay && matchesSearch && matchesStatus;
   });
+  const selectableYouthProfiles = filteredProfiles.filter(profile =>
+    isPendingYouthReview(profile) && Boolean(profile.userId)
+  );
+  const selectedPendingYouthIds = selectableYouthProfiles
+    .map(profile => profile.userId!)
+    .filter(userId => selectedYouthIds.has(userId));
+  const allVisiblePendingYouthSelected = selectableYouthProfiles.length > 0
+    && selectableYouthProfiles.every(profile => selectedYouthIds.has(profile.userId!));
+
+  const handleBulkYouthReview = async (action: 'approve' | 'reject') => {
+    const userIds = selectedPendingYouthIds;
+    if (!userIds.length || isBulkReviewingYouth) return;
+    const reason = action === 'reject'
+      ? window.prompt('Reason for rejecting the selected applications:', 'Application did not meet verification requirements.')
+      : undefined;
+    if (action === 'reject' && reason === null) return;
+
+    setIsBulkReviewingYouth(true);
+    try {
+      await onBulkReviewYouth(userIds, action, reason?.trim() || undefined);
+      setSelectedYouthIds(previous => {
+        const next = new Set(previous);
+        userIds.forEach(userId => next.delete(userId));
+        return next;
+      });
+      setPopupMsg({
+        title: action === 'approve' ? 'Applications Approved' : 'Applications Rejected',
+        text: `${userIds.length} youth application${userIds.length === 1 ? '' : 's'} ${action === 'approve' ? 'approved' : 'rejected'}.`,
+        type: 'success',
+      });
+    } catch (error: any) {
+      setPopupMsg({
+        title: 'Bulk Review Failed',
+        text: error?.message || 'The selected applications could not be reviewed.',
+        type: 'error',
+      });
+    } finally {
+      setIsBulkReviewingYouth(false);
+    }
+  };
 
   // Beneficiary Distribution Audit — computes participation counts to prevent duplicate assistance
 
@@ -2536,6 +2580,29 @@ return (
                   <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                 </div>
 
+                {selectedPendingYouthIds.length > 0 && (
+                  <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 p-3">
+                    <span className="mr-auto text-xs font-bold text-[#091d64]">
+                      {selectedPendingYouthIds.length} pending application{selectedPendingYouthIds.length === 1 ? '' : 's'} selected
+                    </span>
+                    <button
+                      type="button"
+                      disabled={isBulkReviewingYouth}
+                      onClick={() => void handleBulkYouthReview('approve')}
+                      className="rounded-lg bg-emerald-700 px-3 py-2 text-[10px] font-extrabold text-white disabled:opacity-50"
+                    >
+                      {isBulkReviewingYouth ? 'Working...' : 'Approve Selected'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isBulkReviewingYouth}
+                      onClick={() => void handleBulkYouthReview('reject')}
+                      className="rounded-lg bg-rose-700 px-3 py-2 text-[10px] font-extrabold text-white disabled:opacity-50"
+                    >
+                      Reject Selected
+                    </button>
+                  </div>
+                )}
 
               {/* BENEFICIARY DISTRIBUTION AUDIT */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
@@ -2587,7 +2654,8 @@ return (
                 <div className="border border-slate-100 rounded-lg overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
                   <table className="w-full table-fixed text-left text-xs text-slate-600 min-w-[720px] md:min-w-0">
                     <colgroup>
-                      <col style={{ width: '20%' }} />
+                      <col style={{ width: '4%' }} />
+                      <col style={{ width: '18%' }} />
                       <col style={{ width: '11%' }} />
                       <col style={{ width: '19%' }} />
                       <col style={{ width: '20%' }} />
@@ -2596,6 +2664,23 @@ return (
                     </colgroup>
                     <thead className="bg-slate-50 text-[10px] text-slate-500 font-extrabold uppercase border-b border-slate-100">
                       <tr>
+                        <th className="px-2 py-3 text-center">
+                          <input
+                            type="checkbox"
+                            aria-label="Select all pending youth applications"
+                            checked={allVisiblePendingYouthSelected}
+                            disabled={selectableYouthProfiles.length === 0 || isBulkReviewingYouth}
+                            onChange={(event) => {
+                              const visibleIds = selectableYouthProfiles.map(profile => profile.userId!);
+                              setSelectedYouthIds(previous => {
+                                const next = new Set(previous);
+                                if (event.target.checked) visibleIds.forEach(userId => next.add(userId));
+                                else visibleIds.forEach(userId => next.delete(userId));
+                                return next;
+                              });
+                            }}
+                          />
+                        </th>
                         <th className="px-2 py-3 break-words min-w-[140px] md:min-w-0">Youth Profile</th>
                         <th className="px-2 py-3 break-words">Age / Sex</th>
                         <th className="px-2 py-3 break-words">Residency Address</th>
@@ -2606,6 +2691,24 @@ return (
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium text-slate-700">{!youthProfilesLoading && !youthProfilesError && filteredProfiles.map(p => (
                         <tr key={p.id} className="hover:bg-slate-50/50">
+                          <td className="px-2 py-3 text-center align-top">
+                            {isPendingYouthReview(p) && p.userId ? (
+                              <input
+                                type="checkbox"
+                                aria-label={`Select ${p.name}`}
+                                checked={selectedYouthIds.has(p.userId)}
+                                disabled={isBulkReviewingYouth}
+                                onChange={(event) => {
+                                  setSelectedYouthIds(previous => {
+                                    const next = new Set(previous);
+                                    if (event.target.checked) next.add(p.userId!);
+                                    else next.delete(p.userId!);
+                                    return next;
+                                  });
+                                }}
+                              />
+                            ) : null}
+                          </td>
                           <td className="px-2 py-3 align-top font-extrabold text-slate-800">
                             <div className="flex items-start gap-2 min-w-0">
                               <ProfileAvatar name={p.name} src={p.profilePic} alt={p.name} className="w-7 h-7 shrink-0 rounded-full border border-slate-100" />
@@ -2677,7 +2780,7 @@ return (
                       ))}
                       {youthProfilesLoading && (
                         <tr>
-                          <td colSpan={6} className="px-6 py-12 text-center text-slate-500 font-bold text-xs whitespace-nowrap">
+                          <td colSpan={7} className="px-6 py-12 text-center text-slate-500 font-bold text-xs whitespace-nowrap">
                             <span className="inline-flex items-center gap-2">
                               <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-[#091d64]" />
                               Loading youth records...
@@ -2687,7 +2790,7 @@ return (
                       )}
                       {!youthProfilesLoading && youthProfilesError && (
                         <tr>
-                          <td colSpan={6} className="px-6 py-8 text-center text-rose-600 font-semibold text-xs whitespace-nowrap">
+                          <td colSpan={7} className="px-6 py-8 text-center text-rose-600 font-semibold text-xs whitespace-nowrap">
                             <div className="flex flex-col items-center gap-3">
                               <span>Unable to load records. {youthProfilesError}</span>
                               <button
@@ -2703,14 +2806,14 @@ return (
                       )}
                       {!youthProfilesLoading && !youthProfilesError && localProfiles.length === 0 && (
                         <tr>
-                          <td colSpan={6} className="px-6 py-12 text-center text-slate-400 font-bold text-xs whitespace-nowrap">
+                          <td colSpan={7} className="px-6 py-12 text-center text-slate-400 font-bold text-xs whitespace-nowrap">
                             No records found.
                           </td>
                         </tr>
                       )}
                       {!youthProfilesLoading && !youthProfilesError && localProfiles.length > 0 && filteredProfiles.length === 0 && (
                         <tr>
-                          <td colSpan={6} className="px-6 py-12 text-center text-slate-400 font-bold text-xs whitespace-nowrap">
+                          <td colSpan={7} className="px-6 py-12 text-center text-slate-400 font-bold text-xs whitespace-nowrap">
                             No matching applicant profiles found in registry.
                           </td>
                         </tr>

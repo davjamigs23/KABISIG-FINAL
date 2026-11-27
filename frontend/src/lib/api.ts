@@ -768,6 +768,17 @@ class KabisigApiClient {
     });
   }
 
+  async bulkReviewYouth(
+    userIds: string[],
+    action: 'approve' | 'reject',
+    reason?: string,
+  ): Promise<{ success: boolean; data?: any; message?: string }> {
+    return await this.request('/users/bulk-approve', {
+      method: 'PUT',
+      body: JSON.stringify({ user_ids: userIds, action, reason }),
+    });
+  }
+
   async uploadAvatar(base64: string, mime_type: string): Promise<{ success: boolean; data?: any; message?: string }> {
     return await this.request<any>('/users/upload-avatar', { method: 'POST', body: JSON.stringify({ base64, mime_type }) });
   }

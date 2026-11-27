@@ -35,6 +35,7 @@ const isPendingChair = (chair: any) => {
     || status === 'pending_invite'
     || chair.is_pending === true
     || chair.setup_completed === false
+    || (Object.prototype.hasOwnProperty.call(chair, 'setup_completed') && chair.setup_completed !== true)
     || chair.full_name?.trim() === 'SK Chairperson'
     || chair.full_name?.trim() === 'Pending Invitation';
 };
@@ -46,10 +47,16 @@ const isDisplayedOfficial = (official: any) => {
     official?.middle_name,
     official?.last_name,
   ].filter(Boolean).join(' ').toLowerCase();
-  return String(official?.status || '').trim().toLowerCase() === 'active'
+  const status = String(official?.status || '').trim().toLowerCase();
+  const isPending = status === 'pending'
+    || status === 'pending_invite'
+    || official?.setup_completed !== true;
+  return isPending || (
+    status === 'active'
     && official?.setup_completed === true
     && String(official?.full_name || '').trim().toLowerCase() !== 'pending invitation'
-    && !/(pending|invitation|\bsk official\b)/i.test(name);
+    && !/(pending|invitation|\bsk official\b)/i.test(name)
+  );
 };
 
 interface SuperAdminPagesProps {
@@ -728,13 +735,18 @@ useEffect(() => {
     });
   };
 
-  const getOfficialStatusBadge = (official: { status?: string | null } | null | undefined) => {
+  const getOfficialStatusBadge = (official: {
+    status?: string | null;
+    setup_completed?: boolean | string | null;
+  } | null | undefined) => {
     const status = String(official?.status || 'pending').toLowerCase();
-    const isPending = status === 'pending';
+    const isPending = status === 'pending'
+      || status === 'pending_invite'
+      || official?.setup_completed !== true;
     const label = `${status.charAt(0).toUpperCase()}${status.slice(1)}`;
 
     if (isPending) {
-      return { label: 'Pending', className: 'bg-amber-100 text-amber-800' };
+      return { label: 'Pending Invitation', className: 'bg-amber-100 text-amber-800' };
     }
     if (status === 'active') {
       return { label: 'Active', className: 'bg-emerald-100 text-emerald-700' };
@@ -746,26 +758,37 @@ useEffect(() => {
   };
 
   const renderAllOfficial = (official: any) => {
-    if (official.status !== 'active' || String(official.full_name || '').toLowerCase().includes('pending')) return null;
+    if (!isDisplayedOfficial(official)) return null;
+    const isPending = official.status !== 'active' || official.setup_completed !== true;
     const badge = getOfficialStatusBadge(official);
 
     return (
-      <span key={official.id} className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">
+      <div key={official.id} className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700">
         {official.avatar_url ? (
           <img src={official.avatar_url} alt="" className="h-6 w-6 rounded-full object-cover" />
         ) : (
           <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-[10px] font-black text-[#091d64]">
-            {getInitial(official.full_name)}
+            {getInitial(isPending ? 'Pending Invitation' : official.full_name)}
           </span>
         )}
         <span className="min-w-0">
-          <span className="block break-words">{formatOfficialName(official)}</span>
+          <span className="block break-words">{isPending ? 'Pending Invitation' : formatOfficialName(official)}</span>
           <span className="block text-[9px] text-slate-500">{official.official_role} · {official.barangay_name}</span>
         </span>
         <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${badge.className}`}>
           {badge.label}
         </span>
-      </span>
+        {isPending && (
+          <button
+            type="button"
+            disabled={isResendingOfficialId === official.id}
+            onClick={() => void handleResendOfficialInvitation(official)}
+            className="shrink-0 rounded-md bg-[#091d64] px-2 py-1 text-[9px] font-bold text-white disabled:opacity-50"
+          >
+            {isResendingOfficialId === official.id ? 'Sending...' : 'Resend Invitation'}
+          </button>
+        )}
+      </div>
     );
   };
 
@@ -917,8 +940,9 @@ useEffect(() => {
   };
 
   const handleResendOfficialInvitation = async (official: any) => {
-    if (!inviteOfficialBarangay || !official?.email || !official?.official_role) {
-      setInviteOfficialNotice({ type: 'error', text: 'This pending invitation is missing its email or role.' });
+    const tenantId = String(official?.tenant_id || inviteOfficialBarangay?.id || '');
+    if (!tenantId || !official?.email || (!official?.official_role && Number(official?.role_id) !== 2)) {
+      showPopup('This pending invitation is missing its Barangay, email, or role.');
       return;
     }
 
@@ -934,22 +958,23 @@ useEffect(() => {
     setInviteOfficialNotice(null);
     try {
       const email = String(official.email).trim().toLowerCase();
-      const response = await kabisigApi.inviteSkOfficial(
-        inviteOfficialBarangay.id,
-        email,
-        official.official_role
-      );
+      const response = Number(official.role_id) === 2
+        ? await kabisigApi.resendChairpersonInvitation(tenantId)
+        : await kabisigApi.inviteSkOfficial(tenantId, email, official.official_role);
       if (!response.success) {
         const errorMessage = getResendErrorMessage(response.message);
-        setInviteOfficialNotice({ type: 'error', text: errorMessage });
+        showPopup(errorMessage);
         return;
       }
       showPopup(`A secure sign-in link was sent to ${email}.`, 'success');
-      const refreshedCapacity = await kabisigApi.getRoleCapacity(inviteOfficialBarangay.id);
-      if (refreshedCapacity.success) setRoleCapacity(refreshedCapacity.data);
+      if (inviteOfficialBarangay && String(inviteOfficialBarangay.id) === tenantId) {
+        const refreshedCapacity = await kabisigApi.getRoleCapacity(tenantId);
+        if (refreshedCapacity.success) setRoleCapacity(refreshedCapacity.data);
+      }
+      await allOfficialsQuery.refetch();
     } catch (error: any) {
       const errorMessage = error?.response?.data?.message || error?.message;
-      setInviteOfficialNotice({ type: 'error', text: getResendErrorMessage(errorMessage) });
+      showPopup(getResendErrorMessage(errorMessage));
     } finally {
       setIsResendingOfficialId(null);
     }
@@ -1194,14 +1219,18 @@ useEffect(() => {
   };
 
   const handleResendChairpersonInvitation = async (barangay: BarangayTenant) => {
-    const response = await kabisigApi.resendChairpersonInvitation(barangay.id);
-    if (!response.success) {
-      showPopup(response.message || 'Failed to resend invitation.');
-      return;
+    try {
+      const response = await kabisigApi.resendChairpersonInvitation(barangay.id);
+      if (!response.success) {
+        showPopup(response.message || 'Failed to resend invitation.');
+        return;
+      }
+      const email = response.data?.email || barangay.chairpersonUser?.email || barangay.chairpersonEmail || 'the Chairperson';
+      showPopup(`A secure sign-in link was sent to ${email}.`, 'success');
+      await Promise.all([onRefreshAuditLogs(), barangaysQuery.refetch()]);
+    } catch (error: any) {
+      showPopup(error?.message || 'Failed to resend invitation.');
     }
-    const email = response.data?.email || barangay.chairpersonUser?.email || barangay.chairpersonEmail || 'the Chairperson';
-    showPopup(`A secure sign-in link was sent to ${email}.`, 'success');
-    await onRefreshAuditLogs();
   };
 
   // Filtered audit logs
@@ -1974,15 +2003,16 @@ useEffect(() => {
                             {/* Assigned Chairperson (Name & Email) */}
                             <td className="py-3.5 px-4 whitespace-nowrap">
                               {isPendingChairperson ? (
-                                <div className="flex items-center gap-2">
-                                  {chairpersonEmail && (
-                                    <span className="block text-sm text-slate-600 break-all">
-                                      {chairpersonEmail}
-                                    </span>
-                                  )}
-                                  <span className="ml-2 shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-200">
-                                    ASSIGNED
-                                  </span>
+                                <div className="space-y-1">
+                                  <span className="block text-sm font-bold text-amber-700">Pending Invitation</span>
+                                  {chairpersonEmail && <span className="block text-xs text-slate-500 break-all">{chairpersonEmail}</span>}
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleResendChairpersonInvitation(b)}
+                                    className="rounded-md bg-[#091d64] px-2 py-1 text-[9px] font-bold text-white"
+                                  >
+                                    Resend Invitation
+                                  </button>
                                 </div>
                               ) : hasChairperson ? (
                                 <div className="space-y-0.5">
@@ -2684,24 +2714,35 @@ useEffect(() => {
                       {group.members.length > 0 ? (
                         group.members.map((person: any) => {
                           const statusBadge = getOfficialStatusBadge(person);
+                          const isPending = person.status !== 'active' || person.setup_completed !== true;
 
                           return (
                             <div key={person.id} className="flex min-w-0 items-center gap-3 rounded-xl border border-slate-200 p-3">
-                              {person.avatar_url ? (
+                              {!isPending && person.avatar_url ? (
                                 <img src={person.avatar_url} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />
                               ) : (
                                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-black text-[#091d64]">
-                                  {getInitial(person.full_name)}
+                                  {getInitial(isPending ? 'Pending Invitation' : person.full_name)}
                                 </div>
                               )}
                               <div className="min-w-0">
                                 <p className="flex items-center gap-2 text-sm font-bold text-slate-800">
-                                  <span className="truncate">{formatOfficialName(person)}</span>
+                                  <span className="truncate">{isPending ? 'Pending Invitation' : formatOfficialName(person)}</span>
                                 </p>
                                 <p className="truncate text-xs text-slate-500">{person.email || 'No email recorded'}</p>
                                 <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold capitalize ${statusBadge.className}`}>
                                   {statusBadge.label}
                                 </span>
+                                {isPending && (
+                                  <button
+                                    type="button"
+                                    disabled={isResendingOfficialId === person.id}
+                                    onClick={() => void handleResendOfficialInvitation(person)}
+                                    className="ml-2 rounded-md bg-[#091d64] px-2 py-1 text-[9px] font-bold text-white disabled:opacity-50"
+                                  >
+                                    {isResendingOfficialId === person.id ? 'Sending...' : 'Resend Invitation'}
+                                  </button>
+                                )}
                               </div>
                             </div>
                           );
@@ -2934,7 +2975,7 @@ useEffect(() => {
                       <div key={official.id} className="rounded-lg border border-amber-100 bg-amber-50 p-2.5">
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
-                            <span className="block truncate text-[11px] font-bold text-slate-800">Pending Invite</span>
+                            <span className="block truncate text-[11px] font-bold text-slate-800">Pending Invitation</span>
                             <span className="block truncate font-mono text-[10px] text-slate-500">{official.email}</span>
                             <span className="mt-1 inline-block rounded bg-white px-1.5 py-0.5 text-[9px] font-bold text-[#091d64]">
                               {official.official_role}

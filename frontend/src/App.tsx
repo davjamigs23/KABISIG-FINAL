@@ -30,7 +30,7 @@ import {
   SystemAuditLog,
   UserRole
 } from './types';
-import { Settings, Info, RefreshCw, Layers, X } from 'lucide-react';
+import { Settings, Info, RefreshCw, Layers, X, Clock } from 'lucide-react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './lib/queryClient';
 
@@ -167,6 +167,14 @@ function AppContent() {
   const isChairpersonRole = Number(currentUser?.role_id) === 2;
   const officialSetupRequired = [2, 3].includes(Number(currentUser?.role_id))
     && currentUser?.setup_completed !== true;
+  const residentVerificationStatus = Array.isArray(currentUser?.resident_profile)
+    ? currentUser.resident_profile[0]?.verification_status
+    : currentUser?.resident_profile?.verification_status;
+  const isYouthApprovalPending = Number(currentUser?.role_id) === 4 && (
+    String(currentUser?.status || '').toLowerCase() === 'pending'
+    || String(currentYouth?.status || '').toLowerCase() === 'pending'
+    || String(currentYouth?.verificationStatus || residentVerificationStatus || '').toLowerCase() === 'pending'
+  );
   const chairpersonSetupRequired = isChairpersonRole && officialSetupRequired;
   const realtimeTenantIds = Number(currentUser?.role_id) === 1
     ? tenants.map(tenant => tenant.id)
@@ -1353,6 +1361,7 @@ function AppContent() {
         action: 'Account Verification Rejected',
         details: `Rejected registry application for ${matchedYouth.name} (${logRole}). Reason: ${reason}`
       };
+
       setAuditLogs(prev => [newLog, ...prev]);
 
       // Log a notification/feedback item to represent the rejection reason to the youth
@@ -1373,6 +1382,50 @@ function AppContent() {
       // Show in-app rejection notice
       showGlobalAlert(`Rejection Processed!\n\nUser: ${matchedYouth.name}\nRole: ${logRole}\nReason: ${reason}\n\nRejection notice sent to registered email: ${matchedYouth.email}`, 'success');
     }
+  };
+
+  const handleBulkReviewYouth = async (
+    userIds: string[],
+    action: 'approve' | 'reject',
+    reason?: string,
+  ): Promise<void> => {
+    const response = await kabisigApi.bulkReviewYouth(userIds, action, reason);
+    if (!response.success) {
+      throw new Error(response.message || 'The selected applications could not be reviewed.');
+    }
+
+    const reviewedAt = new Date().toISOString();
+    const reviewerName = currentTenant?.chairperson || 'SK Chairperson';
+    const reviewedIds = new Set(userIds);
+    setYouthProfiles(previous => previous.map(profile => {
+      if (!profile.userId || !reviewedIds.has(profile.userId)) return profile;
+      return action === 'approve'
+        ? { ...profile, status: 'Approved', verificationStatus: 'verified', approvedBy: reviewerName, approvedAt: reviewedAt }
+        : { ...profile, status: 'Rejected', verificationStatus: 'rejected', rejectionReason: reason || 'Rejected by Barangay Chairperson.' };
+    }));
+    setRegistrations(previous => previous.map(registration =>
+      reviewedIds.has(String(registration.participantId || registration.userId))
+        ? { ...registration, status: action === 'approve' ? 'Approved' : 'Rejected' }
+        : registration
+    ));
+    if (action === 'approve' && currentTenant) {
+      setTenants(previous => previous.map(tenant => tenant.id === currentTenant.id
+        ? { ...tenant, youthPopulation: tenant.youthPopulation + userIds.length }
+        : tenant
+      ));
+      setCurrentTenant(previous => previous && previous.id === currentTenant.id
+        ? { ...previous, youthPopulation: previous.youthPopulation + userIds.length }
+        : previous
+      );
+    }
+    setAuditLogs(previous => [{
+      id: `LOG-${Date.now().toString().slice(-6)}`,
+      timestamp: reviewedAt,
+      user: reviewerName,
+      role: 'Barangay Admin',
+      action: action === 'approve' ? 'Bulk Youth Applications Approved' : 'Bulk Youth Applications Rejected',
+      details: `${action === 'approve' ? 'Approved' : 'Rejected'} ${userIds.length} youth application${userIds.length === 1 ? '' : 's'}.${action === 'reject' && reason ? ` Reason: ${reason}` : ''}`,
+    }, ...previous]);
   };
 
   // --- SK OFFICIAL ACTIONS WORKFLOWS ---
@@ -1758,6 +1811,7 @@ function AppContent() {
             resolutions={resolutions}
             onApproveYouth={handleApproveYouth}
             onRejectYouth={handleRejectYouth}
+            onBulkReviewYouth={handleBulkReviewYouth}
             onAddExpense={handleLogExpense}
             onRefreshPrograms={async () => {
               const rows = await kabisigApi.getPrograms();
@@ -1842,7 +1896,27 @@ function AppContent() {
       )}
 
       {/* 5. YOUTH CONSTITUENT PANELS */}
-      {!officialSetupRequired && currentRole === 'Youth Constituent' && currentYouth && (
+      {!officialSetupRequired && isYouthApprovalPending && (
+        <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-12">
+          <section className="w-full max-w-lg rounded-2xl border border-amber-200 bg-white p-8 text-center shadow-lg">
+            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+              <Clock className="h-8 w-8" aria-hidden="true" />
+            </div>
+            <h1 className="text-2xl font-black text-[#091d64]">Account Pending Approval</h1>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              Your Youth Constituent account is being reviewed. Please wait for your Barangay Chairperson to approve your account before accessing the dashboard.
+            </p>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="mt-6 rounded-lg bg-[#091d64] px-5 py-2.5 text-sm font-bold text-white transition-colors hover:bg-blue-900"
+            >
+              Sign Out
+            </button>
+          </section>
+        </main>
+      )}
+      {!officialSetupRequired && !isYouthApprovalPending && currentRole === 'Youth Constituent' && currentYouth && (
         <YouthPages 
           notifications={notifications}
           currentYouth={currentYouth}
